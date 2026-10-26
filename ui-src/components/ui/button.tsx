@@ -16,11 +16,11 @@ const buttonVariants = cva(
       variant: {
         default: "bg-accent text-white hover:bg-accent/85",
         outline:
-          "border-line bg-transparent text-text hover:bg-panel-2 hover:text-text aria-expanded:bg-panel-2 aria-expanded:text-text",
+          "border-line bg-transparent text-text hover:bg-hover-fill hover:text-text aria-expanded:bg-hover-fill aria-expanded:text-text",
         secondary:
           "bg-panel-2 text-text hover:bg-select aria-expanded:bg-select aria-expanded:text-text",
         ghost:
-          "text-dim hover:bg-panel-2 hover:text-text aria-expanded:bg-panel-2 aria-expanded:text-text",
+          "text-dim hover:bg-hover-fill hover:text-text aria-expanded:bg-hover-fill aria-expanded:text-text",
         destructive: "bg-err text-white hover:brightness-110",
         link: "text-accent underline-offset-4 hover:underline",
       },

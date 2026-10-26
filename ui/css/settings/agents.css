@@ -15,3 +15,46 @@
 #aeText { flex: 1; min-height: 320px; background: none; border: 0; outline: none; resize: vertical; padding: 12px 14px; color: var(--text); font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.6; }
 
 .ae-status { padding: 8px 14px; font-size: var(--ui-fs-sm); color: var(--faint); border-top: 1px solid var(--line-soft); min-height: 30px; }
+
+/* creation form window (AgentCreateWindow): new button pinned right of the scope bar */
+.agents-bar .skills-btn-new { margin-left: auto; }
+
+/* tools checkbox grid: grid layout only (no own border/background) */
+.agent-form-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; padding: 10px 12px; }
+
+/* the grid is a field: it takes the shared --inset field face */
+.frm-ctl .agent-form-tools { border-radius: 9px; background: var(--inset); --hover-fill: var(--menu-hl); }
+
+/* the show-more toggle hugs its text instead of stretching across the control column */
+.agent-form-tools + .mcp-env-toggle { justify-self: start; }
+
+/* editor status line under the rows */
+.agent-form-status { color: var(--faint); font-size: var(--ui-fs-sm); }
+
+.agent-form-tool { display: flex; align-items: center; gap: 8px; font-size: var(--ui-fs-sm); cursor: pointer; }
+
+.agent-form-tool input[type="checkbox"] { accent-color: var(--tint-accent-500); cursor: pointer; }
+
+.agent-form-tool-name { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* name + model row: the picker fills the form row's control column */
+.agent-form-model { min-width: 0; }
+
+/* scope dropdown inside a form row: read as a field face, not a pill */
+.agent-form-scope .scope-sel { display: flex; width: 100%; box-sizing: border-box; border-radius: 9px; padding: 6px 10px; background: var(--inset); --hover-fill: var(--menu-hl); color: var(--text); font-size: var(--ui-fs-sm); }
+
+.agent-form-scope .scope-sel:hover, .agent-form-scope .scope-sel:has(.menu.open) { background: var(--hover-fill); }
+
+.agent-form-scope .scope-sel-btn { flex: 1; }
+
+.agent-form-scope .scope-sel-btn .caret-svg { margin-left: auto; }
+
+/* model picker dressed as the block-level form select (mirrors .mp-cycle-add .sel): the
+   base .mp-role-sel metrics (7px padding, r7) don't match .mcp-form-input (6px 10px, r9) */
+.agent-form-model .mp-role-sel { display: flex; width: 100%; box-sizing: border-box; border-radius: 9px; padding: 6px 10px; font-size: var(--ui-fs-sm); line-height: 1.5; background: var(--inset); --hover-fill: var(--menu-hl); color: var(--text); }
+
+.agent-form-model .mp-role-sel:hover, .agent-form-model .mp-role-sel:has(.menu.open) { background: var(--hover-fill); }
+
+.agent-form-model .mp-role-sel > span:first-child { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.agent-form-model .mp-role-sel .caret-svg { margin-left: auto; display: inline-flex; color: var(--faint); }

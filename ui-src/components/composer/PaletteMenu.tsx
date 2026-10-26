@@ -4,12 +4,18 @@
 // height = 2.6x the composer card; see placePaletteCard for positioning).
 // Reuses the existing .menu/.mi/.sub base classes and the popIn animation;
 // only the card look and positioning differ.
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { placePaletteCard } from "./place";
 import { pathBase, useAppStore } from "../../store";
-import { BUILTIN_DESC_ZH } from "../../i18n/locales/commands-zh-CN";
+
+// Built-in command descriptions (zh-CN dictionary): loaded on first palette
+// render so the module stays out of the startup closure; rows fall back to the
+// command's own English description for the one frame before it lands.
+let builtinDescZh: Record<string, string> | null = null;
+let builtinDescLoad: Promise<Record<string, string>> | null = null;
+const NO_DESC: Record<string, string> = {};
 
 /** @ file candidate (an element of mentionResult.matches) */
 export type FileItem = { path: string; dir: boolean };
@@ -36,6 +42,7 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
   const menuRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
   const lang = useAppStore((s) => s.uiPrefs.lang);
+  const [builtinDesc, setBuiltinDesc] = useState<Record<string, string>>(builtinDescZh ?? NO_DESC);
   // Position on mount; re-position after candidate/loading changes alter the
   // height (the bottom edge always hugs 2px above the composer card)
   useLayoutEffect(() => {
@@ -46,6 +53,21 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
   useLayoutEffect(() => {
     menuRef.current?.querySelector(".mi.on")?.scrollIntoView({ block: "nearest" });
   }, [index]);
+  // zh-CN only: fetch the dictionary chunk on first command palette use
+  useEffect(() => {
+    if (lang !== "zh-CN" || builtinDescZh) return;
+    builtinDescLoad ??= import("../../i18n/locales/commands-zh-CN").then((m) => {
+      builtinDescZh = m.BUILTIN_DESC_ZH;
+      return builtinDescZh;
+    });
+    let alive = true;
+    void builtinDescLoad.then((dict) => {
+      if (alive) setBuiltinDesc(dict);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lang]);
 
   return (
     <div className="menu palette open" ref={menuRef}>
@@ -87,7 +109,7 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
             // Built-in command descriptions: zh-CN maps through the dictionary;
             // en has no dictionary by design, unmapped and non-builtin names
             // fall back to the command's own English description.
-            desc = (it.source === "builtin" && lang === "zh-CN" ? BUILTIN_DESC_ZH[it.name] : null) || it.description || "";
+            desc = (it.source === "builtin" && lang === "zh-CN" ? builtinDesc[it.name] : null) || it.description || "";
             hint = it.hint || null;
           }
           return (

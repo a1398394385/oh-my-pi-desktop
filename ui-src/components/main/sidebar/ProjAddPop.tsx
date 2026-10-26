@@ -5,7 +5,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send } from "../../../store";
+import { send, effZoom } from "../../../store";
 
 export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRect; onClose: () => void }) {
   const { t } = useTranslation();
@@ -13,7 +13,7 @@ export default function ProjAddPop({ anchorRect, onClose }: { anchorRect: DOMRec
   const inpRef = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
     const el = ref.current!; // exists right after portal mount (the old JS dereferenced directly; same assumption kept)
-    const z = useAppStore.getState().zoomLevel || 1; // same as placeMenu: set zoom first, then divide back
+    const z = effZoom(); // same as placeMenu: set zoom first, then divide back
     el.style.zoom = String(z);
     // measure the real visual width after zoom: the clamps mix it with visual
     // anchor/viewport coordinates, so a fixed layout-width estimate would drift under zoom

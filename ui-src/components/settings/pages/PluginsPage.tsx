@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
-import { emptyRow } from "../common";
+import { emptyRow, FormRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import ScopeSel from "../ScopeSel";
 import { useExtSources } from "../ExtSourceTag";
@@ -42,6 +42,10 @@ export default function PluginsPage() {
   const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
   const [spin, setSpin] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null); // expanded plugin row (path)
+  const [installOpen, setInstallOpen] = useState(false);
+  const [spec, setSpec] = useState(""); // plugin spec being installed (npm / git / local path)
+  const pluginInstall = useAppStore((s) => s.pluginInstall);
+  const installing = pluginInstall?.status === "running";
 
   // State detection: no blind guessing before hostSettings lands
   const known = typeof hostSettings?.pluginsEnabled === "boolean";
@@ -114,6 +118,13 @@ export default function PluginsPage() {
     });
   };
 
+  const doInstall = () => {
+    const value = spec.trim();
+    if (!value || installing) return;
+    useAppStore.setState({ pluginInstall: { spec: value, status: "running" } });
+    send({ type: "asset_plugin_install", spec: value });
+  };
+
   const onRefresh = () => {
     setSpin(true);
     send({ type: "list_agent_assets" });
@@ -154,11 +165,9 @@ export default function PluginsPage() {
 
 
       <div className="set-group-tt">{t("settingsPage.plugins.configGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.plugins.configDesc")}</div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-plugins"]} />
 
       <div className="set-group-tt">{t("settingsPage.plugins.installedGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.plugins.installedDescA")}<code>omp</code>{t("settingsPage.plugins.installedDescB")}</div>
       <div className="ext-bar-primary">
         <ScopeSel
           value={scope}
@@ -169,7 +178,43 @@ export default function PluginsPage() {
         <div className="text-ui-sm font-medium text-dim" id="pluginsScopeDir" title={curSec.dir}>
           {t("settingsPage.plugins.scopeCount", { count: curSec.plugins.length })}
         </div>
+        {/* User-scope only: the base's installer writes the profile plugin root, and
+            has no project-scope install for non-marketplace specs */}
+        {scope === "profile" && (
+          <div className="ext-bar-actions">
+            <button type="button" className="add-btn" onClick={() => setInstallOpen((v) => !v)}>
+              {t("settingsPage.plugins.installBtn")}
+            </button>
+          </div>
+        )}
       </div>
+      {scope === "profile" && installOpen && (
+        <div className="set-card set-edit-card">
+          <div className="frm-rows">
+            <FormRow label={t("settingsPage.plugins.installLabel")}>
+              <input
+                className="mcp-form-input mcp-form-code"
+                placeholder={t("settingsPage.plugins.installPlaceholder")}
+                value={spec}
+                spellCheck={false}
+                onChange={(e) => setSpec(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") doInstall();
+                }}
+              />
+              <div className="frm-hint">{t("settingsPage.plugins.installHint")}</div>
+              {pluginInstall?.status === "error" && pluginInstall.message ? (
+                <div className="plug-install-err">{pluginInstall.message}</div>
+              ) : null}
+              <div>
+                <button type="button" className="frm-primary" disabled={installing} onClick={doInstall}>
+                  {installing ? t("settingsPage.plugins.installing") : t("settingsPage.plugins.installDo")}
+                </button>
+              </div>
+            </FormRow>
+          </div>
+        </div>
+      )}
       <div className="set-card" id="pluginsList">
         {!agentAssets ? (
           emptyRow(t("common.loading"))
@@ -177,7 +222,7 @@ export default function PluginsPage() {
           <div className="srow">
             <div className="srow-tx">
               <b>{t("settingsPage.plugins.noPluginsTitle")}</b>
-              <span>{t("settingsPage.plugins.noPluginsDescA")}<code>omp plugin install &lt;package&gt;</code>{t("settingsPage.plugins.noPluginsDescB")}</span>
+              <span>{t("settingsPage.plugins.noPluginsDesc")}</span>
             </div>
           </div>
         ) : (

@@ -179,7 +179,6 @@ export default function CapabilityPage() {
   return (
     <div className="set-page" id="pg-capabilities">
       <div className="set-tt">{t("settingsPage.nav.capabilities")}</div>
-      <div className="set-group-desc">{t("settingsPage.cap.desc")}</div>
 
       {webRole && (
         <Group title={t("settingsPage.cap.web.title")} hint={t("settingsPage.cap.keysDesc")}>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>第 4 层 · 产品判断（不建议照着删）</title>
+<link rel="stylesheet" href="../dist/assets/index-CxCHg-mi.css" onerror="document.documentElement.dataset.cssMissing='1'" />
+<link rel="stylesheet" href="cull-shell.css" />
+</head>
+<body>
+<div class="cv-bar">
+  <b>第 4 层 · 产品判断（不建议照着删）</b>
+  <span class="cv-note">左「现状」右「提案」。图标以单字符占位（真实页面注入注册表 SVG）。卡片标题/提示词是用户数据，示例值。</span>
+</div>
+<div class="cv-wrap">
+
+<!-- ============ 1 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>AutomationsPage.tsx:215</code><span class="cv-tag">整段说明 → 下沉半句</span><span class="cv-why">删了以后，多出来的任务没人说明「每次都会新开会话」；卡片上的「投递到会话」徽标只标了少数，其余任务会悄悄丢上下文。</span></div>
+  <div class="cmp-cols">
+    <div class="col"><div class="col-tag">现状</div>
+      <div class="al-page">
+        <div class="al-col">
+          <div class="al-head">
+            <h1 class="al-title">自动化</h1>
+            <button type="button" class="icon-btn pg-refresh" title="刷新">↻</button>
+            <button type="button" class="icon-btn" title="自动化设置">⚙</button>
+            <button type="button" class="frm-primary">创建自动化</button>
+          </div>
+          <div class="al-sub cv-mark">自动化到点自动执行提示词：默认新建会话，agent 也可以让它投递到当前会话；全程无人值守，建议将审批模式设为自动接受，避免任务卡在审批。</div>
+          <div class="al-filters">
+            <button type="button" class="al-pill on" aria-pressed="true">全部</button>
+            <button type="button" class="al-pill" aria-pressed="false">进行中</button>
+            <button type="button" class="al-pill" aria-pressed="false">已完成</button>
+            <button type="button" class="al-pill" aria-pressed="false">失败</button>
+          </div>
+          <div class="al-grid">
+            <div class="al-card" role="button" tabindex="0">
+              <div class="al-card-main">
+                <div class="al-card-head"><b class="al-card-title">夜间依赖升级</b></div>
+                <p class="al-card-prompt">检查依赖更新，升级后运行完整测试并汇总失败项。</p>
+                <div class="al-card-meta">
+                  <span class="al-badge"><span class="al-badge-tx">每天 09:00 · 下次运行 明天 09:00</span></span>
+                  <span class="al-delivery">投递到会话</span>
+                  <span class="al-runcount">已运行 12 次</span>
+                </div>
+              </div>
+              <div class="al-card-ctl">
+                <div class="al-menu"><button type="button" class="icon-btn al-more" title="更多操作">⋯</button></div>
+                <div class="tg on" title="已启用，点击禁用"><i></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col"><div class="col-tag">提案</div>
+      <div class="al-page">
+        <div class="al-col">
+          <div class="al-head">
+            <h1 class="al-title">自动化</h1>
+            <button type="button" class="icon-btn pg-refresh" title="刷新">↻</button>
+            <button type="button" class="icon-btn" title="自动化设置">⚙</button>
+            <button type="button" class="frm-primary">创建自动化</button>
+          </div>
+          <div class="al-filters">
+            <button type="button" class="al-pill on" aria-pressed="true">全部</button>
+            <button type="button" class="al-pill" aria-pressed="false">进行中</button>
+            <button type="button" class="al-pill" aria-pressed="false">已完成</button>
+            <button type="button" class="al-pill" aria-pressed="false">失败</button>
+          </div>
+          <div class="al-grid">
+            <div class="al-card" role="button" tabindex="0">
+              <div class="al-card-main">
+                <div class="al-card-head"><b class="al-card-title">夜间依赖升级</b></div>
+                <p class="al-card-prompt">检查依赖更新，升级后运行完整测试并汇总失败项。</p>
+                <div class="cv-muted cv-new">默认新建会话，agent 也可以让它投递到当前会话</div>
+                <div class="al-card-meta">
+                  <span class="al-badge"><span class="al-badge-tx">每天 09:00 · 下次运行 明天 09:00</span></span>
+                  <span class="al-delivery">投递到会话</span>
+                  <span class="al-runcount">已运行 12 次</span>
+                </div>
+              </div>
+              <div class="al-card-ctl">
+                <div class="al-menu"><button type="button" class="icon-btn al-more" title="更多操作">⋯</button></div>
+                <div class="tg on" title="已启用，点击禁用"><i></i></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>CollabDialog.tsx:77 · :84 · :89 · :106</code><span class="cv-tag">说明段复述两个分组</span><span class="cv-why">删了以后，对话框首屏只剩「发起共享 / 加入」两个标题，没有一句总纲；「relay 留空 = 默认」只剩输入框灰字，得先点进去才看得见。</span></div>
+  <div class="cmp-cols">
+    <div class="col"><div class="col-tag">现状</div>
+      <div class="cv-frame">
+        <div class="confirm-title" style="display: flex; align-items: center; gap: 8px"><span class="cv-ic">◎</span><span>协作</span></div>
+        <div class="cv-mark" style="color: var(--faint); font-size: var(--ui-fs-sm); margin-top: 2px">通过 relay 实时共享本会话，或用链接加入他人的房间。</div>
+        <div style="margin-top: 14px">
+          <div style="border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px">
+            <div style="font-weight: 500">发起共享</div>
+            <div style="color: var(--dim); font-size: var(--ui-fs-sm); margin-top: 4px">通过 relay 广播本会话。<span class="cv-mark">relay 地址留空则使用已配置的默认值。</span></div>
+            <!-- Slash pair written as entities: the comment-language gate treats "//" before
+                 CJK on one line as a Chinese comment. Renders as wss://relay.example.com… -->
+            <input class="inp" style="margin-top: 10px"
+                   placeholder="wss:&#x2F;&#x2F;relay.example.com（留空 = 默认）" />
+            <button class="confirm-btn" style="margin-top: 10px">开始共享</button>
+          </div>
+          <div style="border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; margin-top: 12px">
+            <div style="font-weight: 500">加入</div>
+            <div style="color: var(--dim); font-size: var(--ui-fs-sm); margin-top: 4px">粘贴发起方给你的协作链接（omp collab link 或其 web 变体）。</div>
+            <input class="inp" style="margin-top: 10px" placeholder="协作链接" />
+            <button class="confirm-btn" style="margin-top: 10px">加入</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col"><div class="col-tag">提案</div>
+      <div class="cv-frame">
+        <div class="confirm-title" style="display: flex; align-items: center; gap: 8px"><span class="cv-ic">◎</span><span>协作</span></div>
+        <div style="margin-top: 14px">
+          <div style="border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px">
+            <div style="font-weight: 500">发起共享</div>
+            <div style="color: var(--dim); font-size: var(--ui-fs-sm); margin-top: 4px">通过 relay 广播本会话。</div>
+            <!-- Slash pair written as entities: the comment-language gate treats "//" before
+                 CJK on one line as a Chinese comment. Renders as wss://relay.example.com… -->
+            <input class="inp" style="margin-top: 10px"
+                   placeholder="wss:&#x2F;&#x2F;relay.example.com（留空 = 默认）" />
+            <button class="confirm-btn" style="margin-top: 10px">开始共享</button>
+          </div>
+          <div style="border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; margin-top: 12px">
+            <div style="font-weight: 500">加入</div>
+            <div style="color: var(--dim); font-size: var(--ui-fs-sm); margin-top: 4px">粘贴发起方给你的协作链接（omp collab link 或其 web 变体）。</div>
+            <input class="inp" style="margin-top: 10px" placeholder="协作链接" />
+            <button class="confirm-btn" style="margin-top: 10px">加入</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>BrowserPage.tsx:305 · :323</code><span class="cv-tag">空态与失败态讲同一件事</span><span class="cv-why">删了以后，用户在真正失败之前不知道「有些站点根本嵌不进来」，第一次撞上会当成 bug 报；失败态成了唯一解释，而它出现时页面已经白过一次。</span></div>
+  <div class="cmp-cols">
+    <div class="col"><div class="col-tag">现状</div>
+      <div class="cv-frame">
+        <div class="cv-muted">空态（尚未输入地址）</div>
+        <div class="bpane-view" style="height: 210px; border-radius: var(--r-md); overflow: hidden">
+          <div class="bpane-empty">
+            <span class="bpane-empty-ic"><span class="cv-ic">◍</span></span>
+            <div class="bpane-empty-tt">在地址栏输入网址开始浏览</div>
+            <div class="bpane-empty-sub cv-mark">部分网站禁止被嵌入（X-Frame-Options），无法在此显示时可在外部浏览器打开。</div>
+          </div>
+        </div>
+        <div class="cv-muted" style="margin-top: 14px">失败态（已输入地址，加载被拒）</div>
+        <div class="bpane-view" style="height: 240px; border-radius: var(--r-md); overflow: hidden">
+          <div class="bpane-err">
+            <span class="bpane-err-ic"><span class="cv-ic">⚠</span></span>
+            <div class="bpane-err-tt">页面无法加载</div>
+            <div class="bpane-err-sub">网站可能拒绝了嵌入请求，或网络不可用。可重试，或在外部浏览器打开。</div>
+            <div class="bpane-err-acts">
+              <button class="btn">重试</button>
+              <button class="btn">外部打开</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col"><div class="col-tag">提案</div>
+      <div class="cv-frame">
+        <div class="cv-muted">空态（尚未输入地址）</div>
+        <div class="bpane-view" style="height: 210px; border-radius: var(--r-md); overflow: hidden">
+          <div class="bpane-empty">
+            <span class="bpane-empty-ic"><span class="cv-ic">◍</span></span>
+            <div class="bpane-empty-tt">在地址栏输入网址开始浏览</div>
+          </div>
+        </div>
+        <div class="cv-muted" style="margin-top: 14px">失败态（已输入地址，加载被拒）</div>
+        <div class="bpane-view" style="height: 240px; border-radius: var(--r-md); overflow: hidden">
+          <div class="bpane-err">
+            <span class="bpane-err-ic"><span class="cv-ic">⚠</span></span>
+            <div class="bpane-err-tt">页面无法加载</div>
+            <div class="bpane-err-sub">网站可能拒绝了嵌入请求，或网络不可用。可重试，或在外部浏览器打开。</div>
+            <div class="bpane-err-acts">
+              <button class="btn">重试</button>
+              <button class="btn">外部打开</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>GeneralPage.tsx:470</code><span class="cv-tag">desc 与右侧下拉同义</span><span class="cv-why">删了以后，「界面语言」只剩标签，不说明它只管 UI 而不动 agent 回复语言；想确认这一点的用户只能去翻配置文档。</span></div>
+  <div class="cmp-cols">
+    <div class="col"><div class="col-tag">现状</div>
+      <div class="set-page">
+        <div class="set-card">
+          <div class="srow">
+            <div class="srow-tx"><b>界面语言</b><span class="cv-mark">选择应用 UI 的显示语言。</span></div>
+            <div class="sel">简体中文 ▾</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col"><div class="col-tag">提案</div>
+      <div class="set-page">
+        <div class="set-card">
+          <div class="srow">
+            <div class="srow-tx"><b>界面语言</b></div>
+            <div class="sel">简体中文 ▾</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

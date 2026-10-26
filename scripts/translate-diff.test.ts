@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { translateEvent, entriesToTranscript } from "../host/translate.ts";
+import { translateEvent, pendingWrites } from "../host/translate.ts";
+import { entriesToTranscript } from "../host/translate-history.ts";
 import type { PoolEntry } from "../host/state.ts";
 
 describe("translate.ts write and edit diff generation", () => {
-  test("generates scoped diff for write tool modifying existing file", () => {
+  test("generates scoped diff for write tool modifying existing file", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omp-write-test-"));
     const file = path.join(tmp, "test.txt");
     fs.writeFileSync(file, "line 1\nline 2\nline 3\nline 4\nline 5\n", "utf8");
@@ -27,6 +28,12 @@ describe("translate.ts write and edit diff generation", () => {
       },
     };
     translateEvent(startEv, entry);
+
+    // The old-text snapshot pre-read is async (preadWriteOldText): spin the event loop
+    // until it has LANDED before overwriting — a fixed sleep would guess at a duration
+    // and flake under load. Without oldText in place tool_execution_end takes the
+    // whole-file fallback (covered by the next test).
+    while (!pendingWrites.get("call_write_1")?.oldText) await new Promise(setImmediate);
 
     // Now disk file is overwritten
     fs.writeFileSync(file, "line 1\nline 2\nline 3 modified\nline 4\nline 5\n", "utf8");
@@ -56,6 +63,88 @@ describe("translate.ts write and edit diff generation", () => {
       expect(update.diffContent).toContain("+3|line 3 modified");
       // Must not contain unaffected lines beyond context
       expect(update.diffContent?.split("\n").length).toBeLessThan(7);
+    }
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("whole-file fallback when the async pre-read has not landed at tool end", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omp-write-test-"));
+    const file = path.join(tmp, "test.txt");
+    fs.writeFileSync(file, "line 1\nline 2\nline 3\nline 4\nline 5\n", "utf8");
+
+    const entry = {
+      cwd: tmp,
+      transcript: [],
+      assistantDraft: "",
+    } as unknown as PoolEntry;
+
+    const startEv = {
+      type: "tool_execution_start",
+      toolName: "write",
+      toolCallId: "call_write_fallback",
+      args: { path: "test.txt" },
+    };
+    translateEvent(startEv, entry);
+    // Same-tick overwrite + end: the async pre-read cannot have run yet, so end
+    // sees no oldText and must take the documented whole-file fallback
+    fs.writeFileSync(file, "line 1\nline 2\nline 3 modified\nline 4\nline 5\n", "utf8");
+    const endEv = {
+      type: "tool_execution_end",
+      toolName: "write",
+      toolCallId: "call_write_fallback",
+      args: { path: "test.txt", content: "line 1\nline 2\nline 3 modified\nline 4\nline 5\n" },
+      result: { content: [{ type: "text", text: "Successfully wrote" }], details: { resolvedPath: file } },
+    };
+    const update = translateEvent(endEv, entry);
+
+    expect(update?.kind).toBe("tool_update");
+    if (update?.kind === "tool_update") {
+      // Whole-file fallback: every new line is an addition, no scoped removal of line 3
+      expect(update.added).toBeGreaterThan(1);
+      expect(update.diffContent).not.toContain("-3|line 3");
+    }
+
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test("residual race: pre-read landing after the overwrite presents the new text as oldText", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omp-write-test-"));
+    const file = path.join(tmp, "test.txt");
+    fs.writeFileSync(file, "line 1\nline 2\nline 3\nline 4\nline 5\n", "utf8");
+
+    const entry = {
+      cwd: tmp,
+      transcript: [],
+      assistantDraft: "",
+    } as unknown as PoolEntry;
+
+    const startEv = {
+      type: "tool_execution_start",
+      toolName: "write",
+      toolCallId: "call_write_race",
+      args: { path: "test.txt" },
+    };
+    translateEvent(startEv, entry);
+    // Overwrite synchronously BEFORE the async pre-read can run: it now snapshots the
+    // post-write text, so old === new and the diff comes out empty (documented race)
+    fs.writeFileSync(file, "line 1\nline 2\nline 3 modified\nline 4\nline 5\n", "utf8");
+    while (!pendingWrites.get("call_write_race")?.oldText) await new Promise(setImmediate);
+    const endEv = {
+      type: "tool_execution_end",
+      toolName: "write",
+      toolCallId: "call_write_race",
+      args: { path: "test.txt", content: "line 1\nline 2\nline 3 modified\nline 4\nline 5\n" },
+      result: { content: [{ type: "text", text: "Successfully wrote" }], details: { resolvedPath: file } },
+    };
+    const update = translateEvent(endEv, entry);
+
+    expect(update?.kind).toBe("tool_update");
+    if (update?.kind === "tool_update") {
+      // old === new: the documented residual race renders an empty diff
+      expect(update.added).toBe(0);
+      expect(update.removed).toBe(0);
+      expect(update.diffContent).toBe("");
     }
 
     fs.rmSync(tmp, { recursive: true, force: true });

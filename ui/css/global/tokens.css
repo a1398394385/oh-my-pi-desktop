@@ -3,6 +3,8 @@
   --color-card: var(--card);
   --color-inset: var(--inset);
   --color-select: var(--select);
+  --color-menu-hl: var(--menu-hl);
+  --color-hover-fill: var(--hover-fill);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
   --color-surface: var(--surface);
@@ -42,6 +44,15 @@
   --card:      #161616;   /* middle / right column cards */
   --inset:     #2B2B2B;   /* input fields / TODO inset cards */
   --select:    #3F4141;   /* current session highlight */
+  /* Dropdown option highlight (hover / keyboard cursor / selected row).
+     One color per theme, independent of --select (which also carries
+     sidebar/session semantics). */
+  --menu-hl:   #363636;
+  /* Hover plate fill. Default: the neutral raised plate. Any surface whose
+     background IS the dropdown face (--inset/--panel/--ctl-bg) overrides it
+     with --menu-hl, so a control on the input face highlights exactly like a
+     dropdown row on the same face. */
+  --hover-fill: var(--panel-2);
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);
@@ -94,7 +105,9 @@
   --top-toggle-top: 14px;
   --todo-w: 280px;
   --chat-gutter: 48px;
-  --ctl-bg: var(--panel-2);
+  /* Floating surfaces (dropdown menus, popovers, dialogs, tooltips) share the
+     input-field surface: dark #2B2B2B. Every dropdown must reuse --ctl-bg. */
+  --ctl-bg: var(--inset);
   /* Motion discipline: two curves (spring/swift), reused site-wide */
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
   --swift:  cubic-bezier(0.16, 1, 0.3, 1);
@@ -113,8 +126,13 @@
   --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.4), 0 2px 8px 0 rgba(0,0,0,.4);
   --shadow-md: 0 2px 4px 0 rgba(0,0,0,.4), 0 6px 16px 0 rgba(0,0,0,.4);
   --shadow-lg: 0 4px 8px 0 rgba(0,0,0,.5), 0 16px 36px -2px rgba(0,0,0,.4);
-  --shadow-popover: inset 0 0 0 1px rgba(255,255,255,.1), 0 8px 28px rgba(0,0,0,.65), 0 2px 8px rgba(0,0,0,.45);
-  --shadow-panel: 0 0 0 1px var(--line), var(--shadow-sm);
+  /* Floating surfaces (dropdown menus, dialogs, toasts) carry NO shadow and NO
+     ring: every consumer already paints its own 1px --line border, and a
+     projected halo around it read as a fuzzy ring instead of a crisp edge. */
+  --shadow-popover: none;
+  /* Same reasoning for the search palette panel: it draws its own 1px border,
+     so the extra 1px ring only doubled that edge. */
+  --shadow-panel: var(--shadow-sm);
 }
 
 :root[data-theme="light"] {
@@ -122,6 +140,7 @@
   --card:      #f6f6f8;
   --inset:     #ffffff;
   --select:    #cfd0d4;
+  --menu-hl:   #F0F0F0;
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);
@@ -135,7 +154,6 @@
   --faint:     #808088;
   --green-ink: #1e8a3e;
   --bash:      var(--green); /* light fallback: green (--green inherits the :root definition) */
-  --ctl-bg:    var(--inset);
 }
 
 /* ── Lightweight diff (in-house, ported from ZCode lightweight-diff-preview): row background color-mix +
@@ -201,7 +219,6 @@
   --menu-check: hsl(0, 0%, 58%);
   --send-stop: hsl(360, 67%, 60%);
   --tint-black-380: rgba(0,0,0,.38);
-  --context-ring-hover: #363636;
   --send-idle: hsl(0, 0%, 17%);
   --send-ready: hsl(210, 66%, 48%);
   --project-menu-surface: #222222;
@@ -274,7 +291,6 @@
   --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.05), 0 2px 8px 0 rgba(0,0,0,.08);
   --shadow-md: 0 2px 4px 0 rgba(0,0,0,.05), 0 6px 16px 0 rgba(0,0,0,.08);
   --shadow-lg: 0 4px 8px 0 rgba(0,0,0,.06), 0 12px 28px -2px rgba(0,0,0,.08);
-  --shadow-popover: 0 0 0 1px var(--line), 0 8px 24px rgba(0,0,0,.12), 0 2px 6px rgba(0,0,0,.08);
 }
 
 /* Session accent palette: session-color.ts hashes the session title into one slot (title

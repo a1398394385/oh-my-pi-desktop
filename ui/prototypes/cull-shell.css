@@ -1,0 +1,77 @@
+/* Shared preview shell for the four layer pages (cull-l1..l4.html).
+   Loaded AFTER ../dist/assets/index-*.css so these rules win; they only describe
+   the preview frame and never touch a real control class. */
+html { background: var(--base); }
+body {
+  display: block; overflow: auto; height: auto;
+  background: var(--base); color: var(--text); margin: 0; padding-bottom: 60px;
+}
+.cv-bar {
+  position: sticky; top: 0; z-index: 20; display: flex; gap: 12px; align-items: center;
+  padding: 9px 22px; background: var(--panel); border-bottom: 1px solid var(--tint-white-80);
+}
+.cv-bar b { font-weight: 600; flex: none; }
+.cv-bar .cv-note {
+  color: var(--faint); font-size: var(--ui-fs-sm); flex: 1; min-width: 0;
+  white-space: normal;
+}
+.cv-bar .cv-note code { white-space: nowrap; font-family: var(--mono); }
+.cv-btn {
+  font: inherit; font-size: var(--ui-fs-sm); color: var(--dim); background: var(--panel-2);
+  border: 1px solid var(--tint-white-80); border-radius: 6px; padding: 4px 10px;
+  cursor: pointer; flex: none;
+}
+.cv-btn.on { color: var(--text); border-color: var(--accent); }
+.cv-wrap { max-width: 1520px; margin: 0 auto; padding: 18px 22px; }
+.cmp { margin: 0 0 20px; border: 1px solid var(--tint-white-80); border-radius: 10px; overflow: hidden; }
+.cmp-h {
+  display: flex; gap: 10px; align-items: baseline; padding: 8px 14px;
+  background: var(--panel); border-bottom: 1px solid var(--tint-white-80);
+  font-size: var(--ui-fs-sm);
+}
+.cmp-h code { font-family: var(--mono); color: var(--dim); }
+.cmp-h .cv-tag { color: var(--accent); }
+.cmp-h .cv-why { margin-left: auto; color: var(--faint); }
+.cmp-cols { display: grid; grid-template-columns: 1fr 1fr; }
+.cmp-cols > .col { min-width: 0; padding: 4px 18px 18px; }
+.cmp-cols > .col + .col { border-left: 1px solid var(--tint-white-80); }
+.col-tag { font-size: var(--ui-fs-sm); color: var(--faint); padding: 6px 2px 2px; }
+/* Mark a row this layer removes. A floating "delete" label collides with 14–18px chat rows,
+   so the mark is an accent outline + tint; the column tag and each section's cv-why carry
+   the wording. */
+.cv-mark {
+  outline: 1px dashed var(--accent); outline-offset: 2px; border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.cv-new { position: relative; outline: 1px solid var(--accent); outline-offset: 3px; }
+.cv-new::after {
+  content: "新增"; position: absolute; right: 0; top: -9px;
+  font-size: 10px; color: var(--accent); background: var(--base); padding: 0 4px;
+}
+/* Real settings pages cap their width; inside a 2-up column the cap must go. */
+.cmp .set-page { max-width: none; margin: 0; }
+/* Freeze the entry animations so two columns never read as different states. */
+.cmp .set-page > * { animation: none !important; }
+/* Chips used by the chat-side samples */
+.cv-keys { display: inline-flex; gap: 4px; flex: none; white-space: nowrap; vertical-align: middle; }
+/* The real .approval-hint is inline-flex; inside a half-width column its anonymous text
+   items collapse to one character per line once key chips join the row. Keep the box,
+   drop the flex (both columns get the same rule, so the diff stays honest). */
+.cmp .approval-hint { display: block; line-height: 1.9; }
+.cv-keys > span {
+  font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 4px;
+  background: var(--panel-2); color: var(--dim);
+}
+.cv-frame {
+  border: 1px solid var(--tint-white-80); border-radius: 8px; padding: 12px 14px;
+  background: var(--panel); margin-top: 8px;
+}
+/* Icon slot: the real pages inject registry SVGs; prototypes use one character so the
+   row geometry stays comparable without inlining SVG literals. */
+.cv-ic { width: 15px; display: inline-block; text-align: center; color: var(--faint); font-size: 13px; }
+.cv-muted { color: var(--faint); font-size: var(--ui-fs-sm); }
+html[data-css-missing] .cv-bar::after {
+  content: "构建产物 CSS 未加载：dist 里的 hash 文件名已变，请更新本页 <link> 的 href";
+  position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 24px;
+  background: #7a1f1f; color: #fff; font-size: 13px; z-index: 30;
+}

@@ -30,7 +30,86 @@
    portals to body (fixed + placeMenu) because both row containers crop with overflow:hidden */
 .fv-more-wrap { flex: none; }
 
-.fv-menu { position: fixed; bottom: auto; min-width: 200px; max-height: min(60vh, 460px); overflow-y: auto; }
+.fv-menu { position: fixed; bottom: auto; width: 240px; max-height: min(60vh, 460px); overflow-y: auto; }
+
+/* Active-mode mark in the markdown group: gray check pinned to the row's right edge (the
+   generic .ck glyph is green, which reads as "enabled" rather than "current") */
+.fv-menu .mi .fv-ck {
+  margin-left: auto; flex: none;
+  width: 14px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--faint);
+}
 
 /* real app icon inside a menu item (the .mi-ic column is 18px wide) */
 .fv-menu .mi .mi-ic img { width: 15px; height: 15px; object-fit: contain; border-radius: 3px; }
+
+/* two-pane shell: title bar on top, content pane + splitter + always-visible nav pane below (ZCode layout).
+   Negative margins cancel #rightBody's page inset (8px all sides, 4px bottom) so the title bar sits flush
+   under the panel tab strip and both dividers reach the card edges. */
+.fp-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -8px -8px -4px; }
+
+.fp-panes { flex: 1; min-height: 0; display: flex; }
+
+/* top padding lives on the panes' contents, not on .fp-panes: the nav's left divider must meet
+   the title bar's bottom divider without a gap; the side padding keeps the file text off the
+   card edge and off the divider */
+.fp-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 4px 8px 8px; }
+
+/* title bar (ZCode parity): the open file's path relative to the project root on the left
+   (the tab label while no file is open), the file actions + file-navigation toggle on the right;
+   the bottom divider separates it from the panes below and spans the full card width.
+   Height must leave air around the 26px icon buttons, otherwise their hover plate reaches the divider. */
+.fp-title {
+  flex: none;
+  display: flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.fp-title-path {
+  position: relative;
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 2px;
+  overflow: hidden; white-space: nowrap; line-height: 1;
+  font-size: var(--ui-fs-sm); color: var(--dim);
+}
+
+/* path segment: ellipsis per segment. Middle segments shrink 10x faster and can vanish;
+   the project name (first) and the filename (last) never shrink, so a long trail keeps both
+   readable. The bottom padding lifts the text ~1.5px (a flex-centered single line reads low
+   because the descender ink hangs below the line box); it sits on the text, not the row, so
+   the chevrons stay centered */
+.fp-crumb-seg { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding-bottom: 3px; flex: 0 10 auto; }
+
+/* direct children only: inside the middle group the same segments must stay shrinkable.
+   The filename shrinks last (middles shrink 10x faster) but must still ellipsize when it
+   alone overflows, otherwise a long name gets clipped mid-glyph */
+.fp-title-path > .fp-crumb-seg:first-child { flex: none; }
+
+.fp-title-path > .fp-crumb-seg:last-child { flex: 0 1 auto; color: var(--text); font-weight: 500; }
+
+/* hidden unfolded trail used to decide the fold; out of flow so it never affects layout */
+.fp-crumb-mirror {
+  position: absolute; left: 0; top: 0;
+  display: flex; align-items: center; gap: 2px;
+  visibility: hidden; pointer-events: none; white-space: nowrap;
+}
+
+.fp-crumb-sep { flex: none; display: inline-flex; align-items: center; color: var(--faint); }
+
+/* drag handle between the content pane and the nav pane */
+.fp-split { flex: none; width: 5px; cursor: col-resize; }
+
+.fp-split:hover { background: var(--hover-fill); }
+
+/* nav column: the left divider is the boundary against the content pane (the splitter beside
+   it stays invisible until dragged/hovered) */
+.fp-nav { flex: none; min-width: 0; overflow-y: auto; border-left: 1px solid var(--line); }
+
+/* empty state (no file open): centered hint, ZCode wording. No padding: the hint is hidden by a
+   width comparison against clientWidth, so the box must be the exact content width */
+.fp-empty { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; white-space: nowrap; color: var(--faint); font-size: var(--ui-fs-base); }
+
+/* hidden hint copy: its width decides whether the real hint fits; out of flow so it never
+   affects layout */
+.fp-empty-mirror { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; white-space: nowrap; }

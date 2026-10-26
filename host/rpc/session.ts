@@ -4,13 +4,15 @@
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions, stampEvent, defaultWorkspaceDir, pushPoolSnapshot } from "../state.ts";
+import { H, sessions, findPooledSession, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus } from "../state.ts";
 import type { PoolEntry } from "../state.ts";
+import type { SessionListFrame } from "../wire/frames-session.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
-import { readAutomations } from "../automations/store.ts";
+import { readAutomations, retireAutomationsForPaths } from "../automations/store.ts";
 import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath } from "../profile.ts";
-import { entriesToTranscript, treeToDisplay, sumRunDurationMs } from "../translate.ts";
-import { applyActivityTimes } from "../session-activity.ts";
+import { entriesToTranscript, sumRunDurationMs } from "../translate-history.ts";
+import { treeToDisplay } from "../entry-tree.ts";
+import { applyActivityTimes } from "../activity-time.ts";
 import {
   handleCreateSession,
   handleLoadSession,
@@ -19,14 +21,17 @@ import {
   createSessionCore,
   attachEntry,
 } from "../session-lifecycle.ts";
+import { bgJobsPayload } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
+import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
+import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../session-titles.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
 
-export async function handleListSessions(ws: any) {
+export async function buildSessionListPayload() {
   const all = await SessionManager.listAll(); // All project directories, pinned first
   // mtime tracks non-activity writes (session_exit frames); use the last message time instead
   await applyActivityTimes(all);
@@ -133,6 +138,10 @@ export async function handleListSessions(ws: any) {
     }
     return candidates[0] ?? sorted[0]?.cwd ?? "";
   };
+  // Archived records keep the path spelling the request used, while disk rows carry
+  // the base's realpath (macOS /var -> /private/var, Windows 8.3/junction aliases).
+  // Compare normalized, or an archived session renders un-archived on those spellings.
+  const archivedNorm = new Set(H.desktopProjects.archivedSessions.map(norm));
   const projects = [...groups.entries()]
     .map(([key, list]) => {
       list.sort((a, b) => b.modified.getTime() - a.modified.getTime());
@@ -152,56 +161,58 @@ export async function handleListSessions(ws: any) {
           firstMessage: (s.firstMessage ?? "").slice(0, 80),
           modified: s.modified.toISOString(),
           messageCount: s.messageCount,
-          archived: H.desktopProjects.archivedSessions.includes(s.path),
+          archived: archivedNorm.has(norm(s.path)),
         })),
       };
     })
     .sort((a, b) => Date.parse(b.sessions[0].modified) - Date.parse(a.sessions[0].modified));
   // History scan: merge newly seen projects into the all-projects list (reached both at startup and on UI reconnect)
   if (mergeHistoryProjects(projects.map((p) => p.cwd))) await saveDesktopProjects();
-  ws.send(
-    JSON.stringify({
-      type: "session_list",
-      projects,
-      allProjects: H.desktopProjects.allProjects,
-      removedProjects: H.desktopProjects.removedProjects,
-      expandedProjects: H.desktopProjects.expandedProjects,
-      pinnedSessions: H.desktopProjects.pinnedSessions,
-      // App-owned backing dir for "work without a project": the frontend renders
-      // it as a fixed row and never registers it in allProjects.
-      defaultWorkspace: defaultWorkspaceDir,
-    }),
-  );
+  return {
+    type: "session_list",
+    projects,
+    allProjects: H.desktopProjects.allProjects,
+    removedProjects: H.desktopProjects.removedProjects,
+    expandedProjects: H.desktopProjects.expandedProjects,
+    pinnedSessions: H.desktopProjects.pinnedSessions,
+    // App-owned backing dir for "work without a project": the frontend renders
+    // it as a fixed row and never registers it in allProjects.
+    defaultWorkspace: defaultWorkspaceDir,
+    // Project rows gate their "Git" entry on this list: a `.git` dir or worktree
+    // file. Computed per frame (cheap stat per registered project) so a
+    // `git init` shows up on the next list refresh without a host restart.
+    gitProjects: H.desktopProjects.allProjects.filter((p) =>
+      fs.existsSync(`${p.replace(/[/\\]+$/, "")}/.git`),
+    ),
+  } satisfies SessionListFrame;
+}
+
+/**
+ * Push the session list to every connected UI: the requesting socket plus the
+ * other channel's socket (local desktop vs remote phone). The list is global
+ * state — a session created, renamed, archived or deleted on one channel has to
+ * appear/disappear on the other without a reconnect, which is why the mutating
+ * RPCs call this instead of handleListSessions. One disk scan, N sends.
+ */
+export async function refreshAllSessionLists(originWs?: { send(data: string): unknown }): Promise<void> {
+  const payload = JSON.stringify(await buildSessionListPayload());
+  if (originWs) originWs.send(payload);
+  eachUiWs((w) => {
+    if (w === originWs) return;
+    w.send(payload);
+    pushPoolSnapshot(w);
+  });
+}
+
+export async function handleListSessions(ws: any) {
+  ws.send(JSON.stringify(await buildSessionListPayload()));
   pushPoolSnapshot(ws);
 }
 
 
-// 18.5 background job rows for the bg_jobs frame: snapshot list (running +
-// recent, already owner-scoped by the base) enriched per id with inspection
-// data (command/cwd only exist on process-backed jobs; pids are live only
-// while running). Deduped by id in case a row transitions between lists.
-// `type`/`label` come off the snapshot item itself: process-less jobs (eval
-// cells, task rows) have no command, so the label is their only title.
-function bgJobsPayload(session: PoolEntry["session"]) {
-  const snapshot = session.getAsyncJobSnapshot?.();
-  if (!snapshot) return [];
-  const rows = new Map<string, { id: string; status?: string; type?: string; label?: string }>();
-  for (const job of [...(snapshot.running ?? []), ...(snapshot.recent ?? [])]) rows.set(job.id, job);
-  return [...rows.values()].map((job) => {
-    const inspected = session.inspectAsyncJob?.(job.id);
-    return {
-      id: job.id,
-      type: typeof job.type === "string" ? job.type : "unknown",
-      label: typeof job.label === "string" && job.label ? job.label : null,
-      command: inspected?.command ?? null,
-      cwd: inspected?.cwd ?? null,
-      pids: Array.isArray(inspected?.pids) ? inspected.pids : [],
-      exitCode: typeof inspected?.exitCode === "number" ? inspected.exitCode : null,
-      running: job.status === "running",
-    };
-  });
-}
-
+// 18.5 background job rows for the bg_jobs frame: assembled by bgJobsPayload in
+// async-jobs.ts (shared with the load backlog + turn_start broadcast in
+// session-lifecycle.ts)
 // The session whose jobs a bg_jobs reply describes: the pooled one, or the
 // selected subagent's own session (its owner scope filters the shared manager
 // down to the jobs that subagent started). A parked/finished subagent has no
@@ -253,9 +264,62 @@ function sessionBusy(entry: {
 function sessionEntryMatchesPath(entry: { path: string; previousPaths?: string[] }, p: string): boolean {
   return entry.path === p || (entry.previousPaths?.includes(p) ?? false);
 }
+
+/** Full pool teardown for one entry — the sequence the idle sweep, the archive
+    eviction and the session_unload RPC all need: release the shared MCP mounts,
+    drop the event subscriptions, leave the pool, dispose the AgentSession (the
+    sanctioned terminal path, which appends the session_exit row). The disk file
+    is untouched, so the sidebar row survives and re-opening goes through the
+    normal load_session path. Notifies over the existing session_unloaded
+    broadcast so every channel holding the slot drops it. */
+async function evictPoolEntry(key: string, e: PoolEntry): Promise<void> {
+  releaseMcpForSession(key, e);
+  e.unsubscribe();
+  sessions.delete(key);
+  try {
+    await e.session.dispose();
+  } catch (err) {
+    safeStderr(hostI18n.t("errors.session.evictDisposeFailed", { detail: String(err) }));
+  }
+  // Every path the frontend may still key this session by (persistence moves
+  // included), so the slot clears on whichever channel holds it
+  for (const p of [e.path, ...e.previousPaths]) {
+    eachUiWs((ws) => ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded: true })));
+  }
+}
+
+// N2: idle LRU eviction. The pool only shrank via explicit RPCs, so ws churn
+// (frontend reload, remote disconnect) left detached-but-pooled entries
+// resident forever, and every pushPoolSnapshot walk grew with them. Teardown
+// sequence identical to the session_unload RPC; eviction broadcasts over the
+// existing session_unloaded notification path (frontend keeps the sidebar row
+// — the disk file is untouched — and clears its openSessions slot).
+const IDLE_EVICTION_MS = 30 * 60_000;
+const IDLE_SWEEP_INTERVAL_MS = 60_000;
+function sweepIdlePoolSessions(): void {
+  const now = Date.now();
+  let evicted = 0;
+  for (const [key, e] of [...sessions.entries()]) {
+    if (e.uiSockets.size > 0) continue; // still watched from a live UI
+    if (now - e.lastActiveAt < IDLE_EVICTION_MS) continue;
+    if (sessionBusy(e).length > 0) continue; // in-flight turn / queued / background jobs
+    void evictPoolEntry(key, e);
+    evicted++;
+  }
+  if (evicted > 0) eachUiWs(pushPoolSnapshot);
+}
+
+// Started on module load (this file is on the host's startup import graph via
+// profile.ts / session-poll.ts); unref'd like automations/scheduler.ts so the
+// sweep never holds the process open on its own.
+const idleSweepTimer = setInterval(() => sweepIdlePoolSessions(), IDLE_SWEEP_INTERVAL_MS);
+idleSweepTimer.unref?.();
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
     await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true, msg.computerMode === true);
+    // The other channel (phone vs desktop) holds no session_created frame for
+    // this pool entry, so its sidebar only learns about it from this list push.
+    await refreshAllSessionLists(ws);
   },
   async load_session(ws, msg) {
     await handleLoadSession(ws, msg.path);
@@ -350,7 +414,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       unloaded = true;
     }
     if (unloaded) pushPoolSnapshot(ws);
-    ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded }));
+    ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded })); // fan-out: requester-only — every channel already got it from evictPoolEntry's eachUiWs
   },
   async list_sessions(ws) {
     await handleListSessions(ws);
@@ -368,7 +432,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
     if (!H.desktopProjects.removedProjects.includes(cwd)) H.desktopProjects.removedProjects.push(cwd);
     await saveDesktopProjects();
-    await handleListSessions(ws);
+    await refreshAllSessionLists(ws);
   },
   async delete_session(ws, msg) {
     // Permanently delete a session (physical file + its artifacts dir + in-memory pool entry and pin records)
@@ -434,6 +498,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       }
     }
     if (recordsDirty) await saveDesktopProjects();
+    // Automations bound to this session's transcript go away with it: their runs
+    // would otherwise keep waking a target whose file no longer exists.
+    retireAutomationsForPaths(knownPaths.size > 0 ? knownPaths : [p], "delete");
     try {
       await fs.promises.unlink(p);
     } catch (err: any) {
@@ -447,7 +514,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         if (err?.code !== "ENOENT") safeStderr(hostI18n.t("errors.session.deleteArtifactsFailed", { detail: String(err) }));
       }
     }
-    await handleListSessions(ws);
+    await refreshAllSessionLists(ws);
   },
   async set_project_expanded(_ws, msg) {
     // Project expansion persistence: recorded in omp-desktop.json expandedProjects; unrecorded ones default to collapsed
@@ -459,7 +526,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!on && i >= 0) H.desktopProjects.expandedProjects.splice(i, 1);
     await saveDesktopProjects();
   },
-  async set_session_pinned(_ws, msg) {
+  async set_session_pinned(ws, msg) {
     // Pinned session persistence: recorded in omp-desktop.json pinnedSessions, survives restarts
     const p = String(msg.path ?? "").trim();
     const on = !!msg.pinned;
@@ -468,16 +535,33 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (on && i < 0) H.desktopProjects.pinnedSessions.push(p);
     if (!on && i >= 0) H.desktopProjects.pinnedSessions.splice(i, 1);
     await saveDesktopProjects();
+    // pinnedSessions rides on session_list, so the other channel needs the push
+    // to render the same pinned row.
+    await refreshAllSessionLists(ws);
   },
   async archive_session(ws, msg) {
     // Archive persistence: recorded by session file path in omp-desktop.json
     // archivedSessions (same key shape as pinnedSessions, cleaned up in sync
-    // by delete_session); archiving also unpins. Unopened history sessions
-    // (not in the in-memory pool) resolve their path from disk by the base's
-    // session id and can be archived too.
+    // by delete_session); archiving also unpins. Unopened history sessions are
+    // addressed by the same path, so both branches share one key shape.
     const on = !!msg.archived;
-    const entry = sessions.get(msg.sessionId);
-    const p = entry?.path ?? (await sessionPathFromDisk(msg.sessionId));
+    // Addressing: `path` (see rename_session) — a sidebar row's disk id cannot
+    // address a pooled session, and missing the pool would skip the busy gate
+    // below and archive a live run.
+    const p = String(msg.path ?? "").trim();
+    if (!p) throw new Error(hostI18n.t("errors.param.missingPath"));
+    // The pool key is a runtime UUID, so the entry must be looked up together with
+    // the key the eviction below deletes; `msg.sessionId` is never part of a
+    // path-addressed request and would delete nothing.
+    const pooled = [...sessions.entries()].find(([, e]) => sessionEntryMatchesPath(e, p));
+    const entry = pooled?.[1];
+    // A live session cannot be archived: archiving evicts it from the pool, and
+    // an evicted live session keeps running headless with its events going
+    // nowhere. Same gate the unload / reload / delete RPCs use.
+    if (on && entry) {
+      const busy = sessionBusy(entry);
+      if (busy.length > 0) throw new Error(hostI18n.t("errors.session.archiveBusy", { reason: busy.join("、") }));
+    }
     const ai = H.desktopProjects.archivedSessions.indexOf(p);
     if (on && ai < 0) H.desktopProjects.archivedSessions.push(p);
     if (!on && ai >= 0) H.desktopProjects.archivedSessions.splice(ai, 1);
@@ -486,7 +570,30 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       if (pi >= 0) H.desktopProjects.pinnedSessions.splice(pi, 1);
     }
     await saveDesktopProjects();
-    ws.send(JSON.stringify({ type: "session_archived", sessionId: msg.sessionId, ok: true, archived: on }));
+    // Archiving retires the session, so automations that deliver into it can never
+    // run again: complete them (unarchiving does not revive them — the delivery
+    // mode is immutable, so the agent has to create a fresh one).
+    if (on) retireAutomationsForPaths([p], "archive");
+    ws.send(JSON.stringify({ type: "session_archived", path: p, ok: true, archived: on }));
+    // Archiving retires a session, so it also leaves the in-memory pool (same
+    // teardown as the manual eject): an archived session must not keep an
+    // AgentSession plus its MCP mounts resident. A session that never reached
+    // disk holds its only copy in memory — materialize it first, or archiving
+    // would make it vanish entirely.
+    if (on && entry) {
+      if (!fs.existsSync(entry.path)) {
+        try {
+          await entry.manager.ensureOnDisk?.();
+        } catch (err) {
+          safeStderr(hostI18n.t("errors.session.archiveEvictSkipped", { detail: String(err) }));
+        }
+      }
+      if (fs.existsSync(entry.path)) {
+        await evictPoolEntry(pooled![0], entry);
+        eachUiWs(pushPoolSnapshot);
+      }
+    }
+    await refreshAllSessionLists(ws);
   },
   async add_project(ws, msg) {
     // Manual add: if it hits the removed list, move it back to all projects; otherwise merge it in as a new project (pinned to the top, immediately visible)
@@ -505,7 +612,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (ri >= 0) H.desktopProjects.removedProjects.splice(ri, 1);
     if (!H.desktopProjects.allProjects.includes(cwd)) H.desktopProjects.allProjects.unshift(cwd);
     await saveDesktopProjects();
-    await handleListSessions(ws);
+    await refreshAllSessionLists(ws);
   },
   async reorder_projects(_ws, msg) {
     // Drag reorder: the full order sent by the UI wins; existing items it does not cover (concurrent-change fallback) keep their order and append at the tail
@@ -524,6 +631,12 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // agent_end/turn events — no extra wind-down needed.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    // Collab guest: aborts relay to the host over the wire (the local replica
+    // has no in-flight run of its own); still ack so the UI button resets.
+    if (relayGuestAbort(String(msg.sessionId))) {
+      ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
+      return;
+    }
     await entry.session.abort({ reason: USER_INTERRUPT_LABEL });
     ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
   },
@@ -545,19 +658,33 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // memory, rendered via entry.title in the list_sessions fallback entry.
     const title = String(msg.title ?? "").trim();
     if (!title) throw new Error(hostI18n.t("errors.param.missingTitle"));
-    const entry = sessions.get(msg.sessionId);
+    // Addressing: `path`, never an id. The pool key is a runtime UUID and the
+    // on-disk id is re-minted over a session's life, so a sidebar row's id cannot
+    // address a live session (see "Host-side runtime identity" in
+    // session-lifecycle.ts). Resolving by path keeps a pooled session on its
+    // pooled manager; opening a second SessionManager over the same file appends
+    // entries the pooled index never sees, which the external-write poll then
+    // reports as another process (the false "being written by the CLI" bar).
+    const path = String(msg.path ?? "").trim();
+    if (!path) throw new Error(hostI18n.t("errors.param.missingPath"));
+    const entry = findPooledSession(path);
     if (entry) {
       if (!(await entry.manager.setSessionName(title, "user"))) {
         throw new Error(hostI18n.t("errors.session.invalidTitle"));
       }
       entry.title = title;
+      // A pooled entry is subscribed to onSessionNameChanged, which journals this rename
+      // as a branchTitle (the base's title_change entry carries no branch scope).
+      entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
     } else {
-      const manager = await SessionManager.open(await sessionPathFromDisk(msg.sessionId));
+      const manager = await SessionManager.open(path);
       if (!(await manager.setSessionName(title, "user"))) {
         throw new Error(hostI18n.t("errors.session.invalidTitle"));
       }
+      if (readBranchTitles()) appendBranchTitle(manager, title, "user");
     }
-    ws.send(JSON.stringify({ type: "session_renamed", sessionId: msg.sessionId, ok: true, title }));
+    ws.send(JSON.stringify({ type: "session_renamed", path, ok: true, title }));
+    await refreshAllSessionLists(ws);
   },
   async compact_session(ws, msg) {
     // Manual compact: the base's compact rewrites the session history (LLM
@@ -577,7 +704,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       entry.transcript = entriesToTranscript(entry.manager.getEntries());
       // The rebuilt history already contains mention rows: align the cursor to avoid re-sending them on later read-backs
       entry.mentionScanIndex = entry.manager.getEntries().length;
-      ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+      // Cross-channel: the other attached UI still holds the pre-compaction transcript;
+      // the receipt below stays requestor-only (its toast is an answer to the click)
+      entryBus(entry).send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
       ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, ok: true }));
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_compacted", sessionId: msg.sessionId, error: String(err) }));
@@ -652,7 +781,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
           selectedText,
         }),
       );
-      await handleListSessions(ws); // List refresh signal: the session_list frame tells the sidebar project tree to update
+      await refreshAllSessionLists(ws); // List refresh signal: the session_list frame tells the sidebar project tree to update
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_branched", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }
@@ -770,6 +899,16 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // — same scope as the base's renderInitialMessages
       entry.transcript = entriesToTranscript(entry.manager.getBranch());
       ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+      // Mirror the branch's own title into the header: the sidebar, the CLI and
+      // the window title all read the header, so a branch switch must move it.
+      // Display therefore follows the active branch even when auto-refresh is off.
+      if (readBranchTitles()) {
+        const own = readBranchTitle(entry.manager);
+        if (own && own.title !== entry.manager.getSessionName()) {
+          await entry.manager.setSessionName(own.title, "user");
+          entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
+        }
+      }
       ws.send(
         JSON.stringify({
           type: "session_navigated",
@@ -781,6 +920,88 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       );
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_navigated", sessionId: msg.sessionId, ok: false, error: String(err) }));
+    }
+  },
+  async edit_resend(ws, msg) {
+    // Message edit-and-resend (the UserMsg edit box): one atomic navigateTree +
+    // prompt. For a user-message target the base moves the leaf to that
+    // message's parent ("rewind past itself" — a real move even when the target
+    // IS the current leaf), so the abandoned exchange stays in the file as a
+    // sibling branch and the edited text starts a fresh one. Deliberately NOT
+    // routed through handlePrompt: edited text is plain user content, so the
+    // slash dispatch and queue/steer branches are skipped and only its prompt
+    // tail (transcript push + cross-channel echo + session.prompt) is mirrored.
+    const entry = sessions.get(msg.sessionId);
+    if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    const entryId = String(msg.entryId ?? "");
+    if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
+    const text = String(msg.text ?? "");
+    // Images are the original message's attachments round-tripped untouched
+    // (the UI can neither add nor drop any); shape-checked at this boundary.
+    const rawImages: Array<{ type?: unknown; data?: unknown; mimeType?: unknown }> = Array.isArray(msg.images)
+      ? msg.images
+      : [];
+    const images = rawImages
+      .filter((im): im is { type: "image"; data: string; mimeType?: string } => im?.type === "image" && typeof im.data === "string")
+      .map((im) => ({ type: "image" as const, data: im.data, mimeType: String(im.mimeType ?? "image/png") }));
+    if (!text && images.length === 0) throw new Error(hostI18n.t("errors.prompt.emptyMessage"));
+    // Idle-only by contract: a mid-stream resend would race the running turn
+    if (entry.session.isStreaming) {
+      ws.send(
+        JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.busyGenerating") }),
+      );
+      return;
+    }
+    try {
+      const result = await entry.session.navigateTree(entryId);
+      if (result.cancelled) {
+        ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.navigateCancelled") }));
+        return;
+      }
+      if (result.aborted) {
+        ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: hostI18n.t("errors.session.summaryAborted") }));
+        return;
+      }
+      // Same rebuild scope as navigate_tree: only the root→leaf path is active
+      entry.transcript = entriesToTranscript(entry.manager.getBranch());
+      // entryBus, not navigate_tree's requester-only ws.send: the rewind must
+      // drop the abandoned tail on every attached channel, and the user_message
+      // echo below then lands the new bubble on all of them (a sender-drawn
+      // optimistic bubble, if any, is deduped by text in the event handler).
+      entryBus(entry).send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
+      // Mirror the branch's own title into the header, same block as navigate_tree
+      if (readBranchTitles()) {
+        const own = readBranchTitle(entry.manager);
+        if (own && own.title !== entry.manager.getSessionName()) {
+          await entry.manager.setSessionName(own.title, "user");
+          entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
+        }
+      }
+      markSeen(entry);
+      entry.transcript.push({ role: "user", text, ...(images.length > 0 ? { images } : {}) });
+      entryBus(entry).send(
+        JSON.stringify(
+          stampEvent({ type: "event", sessionId: msg.sessionId, kind: "user_message", text, ...(images.length > 0 ? { images } : {}) }),
+        ),
+      );
+      // Fire-and-forget like handlePrompt: the turn output flows through the
+      // event stream; agentInvoked===false means the base consumed the input
+      // as an extension/file/custom command, so the bubble is retracted.
+      entry.session
+        .prompt(text, { ...(images.length > 0 ? { images } : {}), streamingBehavior: "followUp" })
+        .then((agentInvoked: boolean) => {
+          if (agentInvoked === false) {
+            const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === text && !t.entryId);
+            if (i >= 0) entry.transcript.splice(i, 1);
+            entryBus(entry).send(JSON.stringify({ type: "command_result", sessionId: msg.sessionId, text, consumed: true }));
+          }
+        })
+        .catch((err: unknown) => {
+          entryBus(entry).send(JSON.stringify(stampEvent({ type: "error", sessionId: msg.sessionId, message: String(err) })));
+        });
+      ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: true }));
+    } catch (err) {
+      ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }
   },
   async fork_session(ws, msg) {
@@ -864,7 +1085,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
           selectedText,
         }),
       );
-      await handleListSessions(ws); // Sidebar project tree refresh, same as branch_session
+      await refreshAllSessionLists(ws); // Sidebar project tree refresh, same as branch_session
     } catch (err) {
       ws.send(JSON.stringify({ type: "session_forked", sessionId: msg.sessionId, ok: false, error: String(err) }));
     }

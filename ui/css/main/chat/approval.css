@@ -1,6 +1,6 @@
 .approval-card {
   margin: 0;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-card);
   padding: 12px;
@@ -65,7 +65,7 @@
 .approval-slider-track {
   display: flex; align-items: center; gap: 2px; min-width: 0;
   padding: 2px; border-radius: var(--r-lg);
-  background: var(--panel-1);
+  background: var(--card); --hover-fill: var(--panel-2);
 }
 
 .approval-seg {
@@ -76,7 +76,7 @@
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
-.approval-seg:hover { background: var(--panel-2); color: var(--text); }
+.approval-seg:hover { background: var(--hover-fill); color: var(--text); }
 
 .approval-seg.on, .approval-seg.on:hover { background: var(--select); color: var(--text); }
 
@@ -94,7 +94,7 @@
   transition: background var(--dur-snap) var(--swift);
 }
 
-.approval-opt:hover { background: var(--panel-2); }
+.approval-opt:hover { background: var(--hover-fill); }
 
 .approval-opt.selected { background: var(--select); }
 
@@ -175,4 +175,4 @@
   cursor: pointer;
 }
 
-.approval-cancel:hover { background: var(--panel-2); color: var(--text); }
+.approval-cancel:hover { background: var(--hover-fill); color: var(--text); }

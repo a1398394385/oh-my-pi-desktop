@@ -1,3 +1,11 @@
+/* Conditional detail rows revealed under a master switch (ACP compaction, cache
+   keep-alive): they expand downward inside the same card, indented one step with a
+   left guide — the same language as pg-computer's .ext-rows. The rows stay direct
+   .set-card children, so only the wrapper takes the border/padding. */
+.exp-rows { border-top: 1px solid var(--line-soft); animation: popIn .3s ease-out; --pop-from: -4px; }
+
+.exp-rows > .srow { padding-left: 30px; }
+
 /* cache keep-alive model pill (.stag visuals + click-to-remove; clickable, so hover feedback is allowed) */
 .ka-targets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 

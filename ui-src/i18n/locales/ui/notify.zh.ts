@@ -10,17 +10,12 @@ export const notifyZh = {
   disconnected: "已断开",
   // Remote control (store/ws.ts, ConnBanner.tsx, KickedScreen.tsx — Spec §4.1)
   remoteNeedKey: "缺少访问密钥",
-  kickedBadge: "设备接管",
   kickedTitle: "已被其他设备接管",
-  kickedBody: "另一台远程控制设备已经接入，同一时间只能保留一个手机控制端。",
-  kickedNext: "下一步",
-  kickedStep1: "继续使用新接入的设备。",
   kickedStep2: "如果要使用本设备控制，请重新扫描桌面端二维码。",
   kickedRelay: "Relay 返回",
   kickedCode: "KICKED",
   kickedReclaim: "重新连接",
   remoteKeyTitle: "输入访问密钥",
-  remoteKeyPlaceholder: "访问密钥",
   remoteKeySubmit: "连接",
   // Working-state text (store/session.ts)
   working: "正在处理…",
@@ -58,6 +53,8 @@ export const notifyZh = {
   // Settings / config toasts (store/wsHandlers/settings.ts, config.ts)
   savedRestartHint: "已保存，部分网络设置建议重启应用后完全生效",
   profileActivated: "已激活 Profile: {{profile}}",
+  pluginInstalled: "已安装插件 {{name}}",
+  pluginInstallFailed: "插件安装失败",
   loginProgress: "{{provider}}：{{message}}",
   loginOk: "{{provider}} 登录成功，模型列表已刷新",
   loginCancelled: "登录已取消",

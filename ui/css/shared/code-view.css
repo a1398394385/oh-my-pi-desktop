@@ -3,7 +3,7 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
 
 .ldiff {
   overflow: auto;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   line-height: 1.6; /* ZCode leading-relaxed */
   /* no overscroll-behavior here: unconstrained .ldiff instances (right-panel diff detail) grow
      to content height, and contain on a non-scrollable scroll container would swallow vertical
@@ -22,7 +22,7 @@ html[data-code-wrap="on"] .chg-item .c-tx { white-space: pre-wrap; word-break: b
 .ldiff-gutter {
   position: sticky; left: 0; z-index: 1;
   width: 48px; flex: none; padding: 0 8px;
-  background: var(--bg); border-right: 1px solid var(--line);
+  background: var(--bg); --hover-fill: var(--panel-2); border-right: 1px solid var(--line);
   color: var(--faint); text-align: right; user-select: none;
   font-variant-numeric: tabular-nums;
 }

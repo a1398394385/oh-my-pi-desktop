@@ -57,9 +57,9 @@ import {
 	splitBlocks,
 	type AcpBlockInfo,
 	type AcpSourceMessage,
+	type CountImage,
 } from "./acp-projection.ts";
 import { appendAcpSummary, type AcpSummarySink } from "./acp-persist.ts";
-import { dispatchRecall, type RecallOutcome } from "./acp-recall-tool.ts";
 import { ACP_VIEW_PSEUDO_PREFIX, AcpRefBook, annotateView } from "./acp-refs.ts";
 import { renderEphemeralMessage, renderMilestoneMessage, renderStatusText, renderSyntheticStatusPair } from "./acp-status-tool.ts";
 import { safeStderr } from "./stderr.ts";
@@ -93,6 +93,8 @@ export type { CompressOutcome, CompressRejection } from "./acp-compress.ts";
 export interface AcpRuntimeDeps {
 	/** Token counter bound to the session model's Tokenizer (spec §8; byte-estimate fallback is built in). */
 	countTokens: (text: string) => number;
+	/** Image charge bound to the same Tokenizer (spec §8): block tokens must price images like the base counter. */
+	countImage?: CountImage;
 	/** Journal write channel for compaction blocks (SessionManager, spec §9). */
 	sink: AcpSummarySink;
 	/** Journal read for entry-id alignment (SessionManager.getEntries). */
@@ -257,29 +259,46 @@ export class AcpRuntimeState {
 	}
 
 	/**
-	 * Protected tail: min(last tailTurns turns, tailTokens) of the active zone —
-	 * walk backwards group by group and stop at whichever limit fires first
-	 * (spec §11). A group = one assistant message (all its #t/#x blocks) plus
-	 * every result block it owns; a user block is its own group and closes a
-	 * turn. Groups join atomically, so the cut always lands on a group boundary
-	 * and never separates a tool_use from its result (providers enforce pairing —
+	 * Protected tail: min(last tailTurns turns, tailTokens) of the active zone,
+	 * floored at the latest tailUserMessages real user inputs — walk backwards
+	 * group by group and stop at whichever limit fires first (spec §11). A group
+	 * = one assistant message (all its #t/#x blocks) plus every result block it
+	 * owns; a user block is its own group and closes a turn. Groups join
+	 * atomically, so the cut always lands on a group boundary and never
+	 * separates a tool_use from its result (providers enforce pairing —
 	 * Anthropic 400/2013) or splits one message's blocks apart.
+	 *
+	 * The user-message floor wins over the turn/token ceilings: a session whose
+	 * recent blocks are mostly synthetic auto-continues would otherwise satisfy
+	 * tailTurns before reaching N real user requests.
 	 */
 	protectedZone(active: readonly AcpBlockInfo[] = this.activeBlocks()): Set<string> {
 		const p = this.params;
 		const ids = new Set<string>();
-		if (p.tailTurns <= 0 && p.tailTokens <= 0) return ids;
+		const userFloor = p.tailUserMessages;
+		const ceilingsOff = p.tailTurns <= 0 && p.tailTokens <= 0;
+		if (ceilingsOff && userFloor <= 0) return ids;
 		let tokens = 0;
 		let turns = 0;
+		let userInputs = 0;
 		let i = active.length - 1;
-		// Whichever limit fires first ends the walk (min semantics); a zeroed
-		// parameter disables its limit.
-		while (i >= 0 && !(p.tailTurns > 0 && turns >= p.tailTurns) && !(p.tailTokens > 0 && tokens >= p.tailTokens)) {
+		// Keep walking while the user-message floor is unmet, then stop at
+		// whichever ceiling fires first (min semantics); a zeroed parameter
+		// disables its limit. With both ceilings off the floor alone ends it.
+		while (
+			i >= 0 &&
+			((userFloor > 0 && userInputs < userFloor) ||
+				(!ceilingsOff && !((p.tailTurns > 0 && turns >= p.tailTurns) || (p.tailTokens > 0 && tokens >= p.tailTokens))))
+		) {
 			const group: AcpBlockInfo[] = [];
 			while (i >= 0 && active[i].kind === "result") group.push(active[i--]);
 			if (i >= 0 && active[i].kind === "user") {
-				group.push(active[i--]);
+				const user = active[i--];
+				group.push(user);
 				turns++;
+				// View-only injections (base reminders) never reach the journal and
+				// must not spend the user-message floor on a non-candidate.
+				if (user.userInput && !user.id.startsWith(ACP_VIEW_PSEUDO_PREFIX)) userInputs++;
 			} else if (i >= 0) {
 				// assistant message head: pull in every block of the same source message
 				const sid = active[i].sourceId;
@@ -309,13 +328,15 @@ export class AcpRuntimeState {
 		this.#syncRefs();
 		const source = annotateView(view, this.#deps.getEntries());
 		this.lastSource = source;
-		this.lastBlocks = splitBlocks(source, this.#deps.countTokens, this.#tokenMemo);
+		this.lastBlocks = splitBlocks(source, this.#deps.countTokens, this.#tokenMemo, this.#deps.countImage);
 		// Retired context_status pairs leave the projection pair-wise: dropping the
 		// result block id from `kept` removes both the toolResult message and
 		// its tool_use body (the pair filter keys on the result id, spec §6 v10).
 		const dropped = this.#refs.droppedStatusResults;
 		const kept = new Set(this.lastBlocks.filter((b) => !this.compressed.has(b.id) && !dropped.has(b.id)).map((b) => b.id));
-		const out = projectContext(source, kept, this.zone, this.#deps.countTokens, (id) => this.#refs.label(id));
+		const out = projectContext(source, kept, this.zone, this.#deps.countTokens, (id) => this.#refs.label(id), (err) =>
+			safeStderr(`[ACP] projection pairing gap (passing through; the provider layer re-pairs the wire):`, err),
+		);
 		if (!this.#manifestOverride) this.#refreshRoundStatus(true);
 		if (this.roundStatus) this.#anchorRound(this.roundStatus);
 		if (this.degraded) return [...view]; // the relief check degraded mid-projection
@@ -458,9 +479,12 @@ export class AcpRuntimeState {
 	 * blocks dropped by truncation are exempt this round and re-enter the next
 	 * one. `adopt` swaps the returned manifest in as the current round's (an
 	 * context_status call adopts — voiding the previous round; a pinned test
-	 * manifest only reads).
+	 * manifest only reads). `maxManifestBytes` is the caller's inline byte
+	 * budget (the base tool-result spill threshold): the manifest must fit it
+	 * or the base stage head/tails the list in the middle, so the same
+	 * whole-line cut applies and the dropped tail is exempt this round too.
 	 */
-	#refreshRoundStatus(adopt: boolean): AcpRoundStatus {
+	#refreshRoundStatus(adopt: boolean, maxManifestBytes?: number): AcpRoundStatus {
 		const countTokens = this.#deps.countTokens;
 		const active = this.activeBlocks();
 		const protectedIds = this.protectedZone(active);
@@ -476,13 +500,17 @@ export class AcpRuntimeState {
 		const lines = candidates.map((b) => `${this.#refs.label(b.id)} | ${b.tokens} | ${b.intent}`);
 		const trailer = (n: number) => `… ${n} more (exempt this round, re-listed next round)`;
 		let keptCount = lines.length;
-		if (keptCount > 0 && countTokens(lines.join("\n")) > ACP_MANIFEST_RENDER_BUDGET) {
+		const fits = (n: number) =>
+			n === lines.length ? lines.join("\n") : [...lines.slice(0, n), trailer(lines.length - n)].join("\n");
+		if (keptCount > 0 && countTokens(fits(keptCount)) > ACP_MANIFEST_RENDER_BUDGET) {
 			do {
 				keptCount--;
-			} while (keptCount > 0 && countTokens([...lines.slice(0, keptCount), trailer(lines.length - keptCount)].join("\n")) > ACP_MANIFEST_RENDER_BUDGET);
+			} while (keptCount > 0 && countTokens(fits(keptCount)) > ACP_MANIFEST_RENDER_BUDGET);
 		}
-		const manifestText =
-			keptCount === lines.length ? lines.join("\n") : [...lines.slice(0, keptCount), trailer(lines.length - keptCount)].join("\n");
+		if (maxManifestBytes != null) {
+			while (keptCount > 0 && Buffer.byteLength(fits(keptCount), "utf-8") > maxManifestBytes) keptCount--;
+		}
+		const manifestText = fits(keptCount);
 		const manifestIds = candidates.slice(0, keptCount).map((b) => b.id);
 		if (adopt) this.manifest = { ids: manifestIds, consumed: false };
 		const zoneTokens = this.#zoneTokens();
@@ -510,7 +538,7 @@ export class AcpRuntimeState {
 		return this.zone.reduce((n, z) => {
 			let t = this.#zoneRenderTokens.get(z.id);
 			if (t === undefined) {
-				t = countTokens(renderCompactionBlock(z, countTokens, (id) => this.#refs.label(id)));
+				t = countTokens(renderCompactionBlock(z, (id) => this.#refs.label(id)));
 				this.#zoneRenderTokens.set(z.id, t);
 			}
 			return n + t;
@@ -523,9 +551,15 @@ export class AcpRuntimeState {
 	 * dashboard + manifest; the returned manifest is the compression scope
 	 * until the next call (the previous round's manifest is void). A pinned
 	 * test manifest renders without adopting. Degraded sessions reject at the
-	 * entry, same stance as compress/recall.
+	 * entry, same stance as compress.
+	 *
+	 * `maxBytes` is the caller's inline budget (the base tool-result spill
+	 * threshold): beyond it the base stage would head/tail the manifest in the
+	 * middle, so the round is re-derived with a whole-line cut that keeps the
+	 * list readable and the returned manifestIds in step with what the model
+	 * actually sees.
 	 */
-	status(): { ok: true; text: string } | { ok: false; error: string } {
+	status(maxBytes?: number): { ok: true; text: string } | { ok: false; error: string } {
 		this.#syncRefs();
 		if (this.degraded) {
 			return {
@@ -533,8 +567,18 @@ export class AcpRuntimeState {
 				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
 			};
 		}
-		const rs = this.#refreshRoundStatus(!this.#manifestOverride);
-		return { ok: true, text: renderStatusText(rs, this.params) };
+		const adopt = !this.#manifestOverride;
+		let rs = this.#refreshRoundStatus(adopt);
+		let text = renderStatusText(rs, this.params);
+		if (maxBytes != null) {
+			const overflow = Buffer.byteLength(text, "utf-8") - maxBytes;
+			if (overflow > 0) {
+				const manifestBytes = Buffer.byteLength(rs.manifestText, "utf-8") - overflow;
+				rs = this.#refreshRoundStatus(adopt, Math.max(0, manifestBytes));
+				text = renderStatusText(rs, this.params);
+			}
+		}
+		return { ok: true, text };
 	}
 
 	/**
@@ -588,7 +632,7 @@ export class AcpRuntimeState {
 		const plan = r.plan;
 		const written = appendAcpSummary(this.#deps.sink, plan.payload);
 		// The fresh block sits at the journal tail: take its short ref now so the
-		// outcome can name it the way the model will recall it (spec §3 v10).
+		// outcome can name it the way the model will see it (spec §3 v10).
 		const blockLabel = this.#refs.assign(written.id);
 		if (plan.method === "strong") this.zone = [written];
 		else this.zone.push(written);
@@ -618,24 +662,4 @@ export class AcpRuntimeState {
 		};
 	}
 
-	/**
-	 * recall_block entry (spec §6): bN decode, then the four-id-class dispatch
-	 * in acp-recall-tool.ts. The recalled text itself is a normal new
-	 * tool-result block: no exemption, next round's manifest picks it up like
-	 * any other. An old short ref of an already-compressed block still resolves
-	 * and returns the original journal content (spec §3 v10).
-	 */
-	recall(id: unknown): RecallOutcome {
-		if (this.degraded) {
-			return {
-				ok: false,
-				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
-			};
-		}
-		if (typeof id !== "string" || !id) return { ok: false, error: "recall_block requires a non-empty block id." };
-		this.#syncRefs();
-		return dispatchRecall(this.#refs.resolve(id), { getEntries: this.#deps.getEntries, countTokens: this.#deps.countTokens }, (id2) =>
-			this.#refs.label(id2),
-		);
-	}
 }

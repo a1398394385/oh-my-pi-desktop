@@ -11,7 +11,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-close",
     "dialog:allow-open",
-    "opener:allow-open-url",
+    { "identifier": "opener:allow-open-url", "allow": [{ "url": "file://*" }] },
     "opener:allow-default-urls",
     "notification:default",
     "updater:default"

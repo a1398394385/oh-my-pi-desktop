@@ -46,7 +46,7 @@
   width: 100%;
   height: 30px;
   padding: 0 10px 0 32px;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text);
@@ -108,7 +108,7 @@
 
 .skills-btn-new span { white-space: nowrap; }
 
-.skills-btn-new:hover { background: var(--panel-2); }
+.skills-btn-new:hover { background: var(--hover-fill); }
 
 .skills-btn-new:active { transform: scale(.95); }
 
@@ -118,7 +118,7 @@
 }
 
 .skills-card-list {
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--tint-white-80);
   border-radius: var(--r-card);
   box-shadow: 0 8px 26px var(--tint-black-350);
@@ -162,7 +162,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -186,10 +186,10 @@
 }
 
 .skill-provider-tag {
-  font-size: 10px;
+  font-size: var(--ui-fs-xs);
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   color: var(--faint);
   border: 1px solid var(--line-soft);
   text-transform: uppercase;
@@ -231,31 +231,6 @@
 /* list card nested in the expansion area: editor height tightened (the dialog-era 340px full-screen height no longer applies) */
 .mem-expand .sem-body { min-height: 0; }
 
-.mem-expand #skEditText { min-height: 260px; }
-
-/* editor textarea = the .inp language: --bg base + r9 + blue focus glow */
-#skEditText {
-  width: 100%;
-  flex: 1;
-  min-height: 340px;
-  background: var(--bg);
-  border: 1px solid var(--line-soft);
-  border-radius: 9px;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: var(--code-fs, 12px);
-  line-height: 1.6;
-  padding: 12px 14px;
-  resize: vertical;
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--line-soft);
-  transition: box-shadow var(--dur-snap) var(--swift);
-}
-
-#skEditText:focus {
-  box-shadow: inset 0 0 0 1px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130);
-}
-
 .sem-foot {
   display: flex;
   align-items: center;
@@ -268,12 +243,8 @@
 @media (min-resolution: 2dppx) {
   .skills-search-input { box-shadow: inset 0 0 0 .5px var(--line-soft); }
   .skills-search-input:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
-  #skEditText { box-shadow: inset 0 0 0 .5px var(--line-soft); }
-  #skEditText:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
 }
 @media (min-resolution: 3dppx) {
   .skills-search-input { box-shadow: inset 0 0 0 .33px var(--line-soft); }
   .skills-search-input:focus { box-shadow: inset 0 0 0 .33px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
-  #skEditText { box-shadow: inset 0 0 0 .33px var(--line-soft); }
-  #skEditText:focus { box-shadow: inset 0 0 0 .33px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
 }

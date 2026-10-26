@@ -1,0 +1,119 @@
+/* Advisor advice rows (AdvisorCard.tsx): one injected advice batch from the base's
+   advisor. Two shapes share this severity vocabulary —
+   - .adv-card: the turn-tail card (severity counts in the head, per-note T-n inside);
+   - .adv-inline: the blocking notes at their injection point inside a visible process,
+     folded by default (head row is the toggle);
+   Colors are tokens only (blocker --err, concern --orange, nit --faint), so both themes
+   follow without overrides. The card's left edge takes the highest severity it holds. */
+
+.adv-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: var(--mono);
+  font-size: var(--ui-fs-xs);
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.adv-chip.blocker {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+  border-color: color-mix(in srgb, var(--err) 34%, transparent);
+}
+.adv-chip.concern {
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 14%, transparent);
+  border-color: color-mix(in srgb, var(--orange) 32%, transparent);
+}
+.adv-chip.nit {
+  color: var(--faint);
+  background: color-mix(in srgb, var(--faint) 12%, transparent);
+  border-color: color-mix(in srgb, var(--faint) 26%, transparent);
+}
+
+.adv-dot {
+  flex: none;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.adv-src { flex: none; font-family: var(--mono); font-size: var(--code-fs); color: var(--faint); }
+.adv-who { flex: none; font-size: var(--ui-fs-sm); color: var(--dim); }
+.adv-age { flex: none; font-family: var(--mono); font-size: var(--ui-fs-xs); color: var(--faint); }
+
+/* ---------- turn-tail card ---------- */
+
+.adv-card {
+  margin: 16px 0;
+  background: var(--inset); --hover-fill: var(--menu-hl);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--faint);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.adv-card.tone-concern { border-left-color: var(--orange); }
+.adv-card.tone-blocker { border-left-color: var(--err); }
+.adv-card.tone-concern .adv-dot { background: var(--orange); }
+.adv-card.tone-blocker .adv-dot { background: var(--err); }
+
+.adv-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.adv-head:hover { background: var(--surface); }
+.adv-count { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.adv-chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--faint);
+  transition: transform var(--dur-snap) var(--swift);
+}
+.adv-card:not(.open) .adv-chev { transform: rotate(-90deg); }
+
+.adv-body { padding: 0 12px 4px; }
+.adv-note { padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.adv-note:first-child { border-top: 0; }
+.adv-note-head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.adv-tx { color: var(--dim); font-size: var(--ui-fs-base); white-space: pre-wrap; word-break: break-word; }
+
+/* ---------- inline blocking notes ---------- */
+
+.adv-inline { margin: 12px 0; }
+.adv-inline-item {
+  padding: 4px 0 4px 11px;
+  border-left: 2px solid var(--line);
+}
+.adv-inline-item.blocker { border-left-color: var(--err); }
+.adv-inline-item.concern { border-left-color: var(--orange); }
+.adv-inline-item + .adv-inline-item { margin-top: 8px; }
+/* The head doubles as the fold toggle (AdvisorInline): button reset + chevron rotation
+   mirrors .adv-head/.adv-card; single-note bodies indent to the item's old left edge. */
+.adv-inline-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin-bottom: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.adv-inline:not(.open) .adv-chev { transform: rotate(-90deg); }
+.adv-inline > .adv-tx { padding-left: 13px; }
+.adv-inline-item.blocker .adv-dot { background: var(--err); }
+.adv-inline-item.concern .adv-dot { background: var(--orange); }
+

@@ -7,7 +7,7 @@ export const compExtEn = {
   capWeb: "web",
   capImg: "image",
   // ApprovalCard.tsx ask multi-question paged form
-  askMultiHint: "↑/↓ to move (single-choice auto-advances, the last one submits) · Space checks multi · all questions need an answer to submit",
+  askMultiHint: "↑/↓ to move · Space checks multi",
   askPrev: "Previous",
   askNext: "Next",
   askSubmitAll: "Submit answers",

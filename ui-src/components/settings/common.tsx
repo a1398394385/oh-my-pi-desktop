@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { useAppStore, setBump, send } from "../../store";
+import { useAppStore, setBump, send, effZoom } from "../../store";
 import { t } from "../../i18n";
 import Icon from "../../Icon";
 import { claimDropdown, releaseDropdown } from "../../lib/dropdownExclusive";
@@ -33,7 +33,7 @@ export function confirmDialog({ title, message = "", confirmText, danger = false
     // Body sits outside the zoomed #settings subtree: carry the current zoom on
     // the host so the dialog matches the page (shortcut: zoom changes while the
     // dialog is open are not re-applied)
-    (host.style as CSSStyleDeclaration & { zoom: string }).zoom = String(useAppStore.getState().zoomLevel);
+    (host.style as CSSStyleDeclaration & { zoom: string }).zoom = String(effZoom());
     document.body.appendChild(host);
     const root = createRoot(host);
     const done = (val: boolean) => {
@@ -330,6 +330,55 @@ export function Srow({ title, desc, cls, dataKey, children }: {
         {desc != null && <span>{desc}</span>}
       </div>
       <div className="srow-ctl">{children}</div>
+    </div>
+  );
+}
+
+// ── Page-level asset editor window head (skills / MCP / hooks) ──
+// Skills, MCP and hooks all fold their create & edit flows into one window that replaces
+// the whole page body (same idea as the main-column automation editor): a back button, the
+// title/subtitle block (subtitle carries the file path or source), and the right-aligned
+// actions. The body is the page's own form card — <div className="set-card set-edit-card"> —
+// so each page keeps its field language while the window chrome stays identical.
+export function EditWindowHead({ title, sub, onBack, children }: {
+  title: ReactNode;
+  /** Second line under the title (path / source / hint); omitted when absent. */
+  sub?: string;
+  onBack: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="set-edit-head">
+      <button type="button" className="icon-btn set-edit-back" title={t("settingsPage.shared.back")} onClick={onBack}>
+        <span><Icon name="back" size={17} /></span>
+      </button>
+      <div className="set-edit-tt">
+        <div className="set-edit-title">{title}</div>
+        {sub ? <div className="set-edit-sub" title={sub}>{sub}</div> : null}
+      </div>
+      {children ? <div className="set-edit-actions">{children}</div> : null}
+    </div>
+  );
+}
+
+// ── Shared create/edit form row ──
+// One labelled row of the shared form language (css/shared/form-layout.css): the label
+// column carries the field name plus an optional short hint, the control column carries
+// the inputs. Every create page (MCP, subagent, hook, skill, SSH) uses these rows so the
+// forms read the same as the main-column automation editor.
+export function FormRow({ label, hint, children }: {
+  label: ReactNode;
+  /** Short line under the label; omitted when absent. */
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="frm-row">
+      <div className="frm-label">
+        <strong>{label}</strong>
+        {hint ? <span className="frm-hint">{hint}</span> : null}
+      </div>
+      <div className="frm-ctl">{children}</div>
     </div>
   );
 }

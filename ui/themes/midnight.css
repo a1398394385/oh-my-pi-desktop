@@ -11,6 +11,10 @@
   --card:      #445560;   /* middle/right cards (from openhanako --bg-card) */
   --inset:     #4B5A63;   /* input fields (from openhanako --jian-note-bg) */
   --select:    #515F69;   /* current session highlight (derived: card + 10% lighter) */
+  /* Dropdown option highlight: this theme's face is a cool blue-gray, so a
+     neutral gray reads as dirty; a lighter cool slate keeps the hue and
+     separates the row from the menu face. */
+  --menu-hl:   #56656E;
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);
@@ -38,6 +42,11 @@
   --blue:      #B9E2FF;   /* link color (from openhanako --link) */
   --bash:      var(--blue); /* bash mode uses link color in dark themes */
 
+  /* ── Composer ──────────────────────────────────────────────────────────── */
+  /* Idle send button: the global near-black base reads as a pure-black hole
+     on this slate surface — raise it to the panel+8% layer instead */
+  --send-idle: var(--panel-2);
+
   /* ── Status colors ─────────────────────────────────────────────────────── */
   --green:     #8CC790;   /* from openhanako --green */
   --green-soft:#7AB885;   /* derived: green - 10% saturation */
@@ -48,5 +57,5 @@
   --purple:    #C99AAF;   /* reuse accent (rose) for purple semantics */
 
   /* ── Control backgrounds ───────────────────────────────────────────────── */
-  --ctl-bg:    var(--panel-2);
+  --ctl-bg:    var(--inset);
 }

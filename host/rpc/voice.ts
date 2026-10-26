@@ -8,7 +8,7 @@
 // session-event subscription (host/voice.ts handleVoiceEvent) forwarding
 // tts_* frames the UI speaks through the system speechSynthesis.
 import { H } from "../state.ts";
-import { startDictation, stopDictation, pushVoiceStatus, downloadDictationModel } from "../voice.ts";
+import { startDictation, stopDictation, pushVoiceStatus, downloadDictationModel, speakOnce } from "../voice.ts";
 import { settingsGet } from "../settings-compat.ts";
 import type { RpcHandler } from "./types";
 
@@ -27,6 +27,9 @@ export const voiceHandlers: Record<string, RpcHandler> = {
   },
   voice_status(ws) {
     void pushVoiceStatus(ws);
+  },
+  speak_text(ws, msg) {
+    void speakOnce(ws, String(msg.sessionId ?? ""), String(msg.text ?? ""));
   },
   stt_download(ws) {
     void downloadDictationModel(ws);

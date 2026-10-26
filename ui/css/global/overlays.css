@@ -1,6 +1,6 @@
 .ring-pop {
   position: fixed; z-index: 200;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-popover);
@@ -13,7 +13,7 @@
 .ring-pop b { color: var(--text); font-weight: 500; }
 
 .confirm-box {
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-popover);
@@ -39,7 +39,7 @@
 
 /* OMP login paste-code dialog */
 .lp-mask { position: fixed; inset: 0; background: var(--tint-black-450); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.lp-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 380px; max-width: calc(100vw - 48px); }
+.lp-box { background: var(--panel); --hover-fill: var(--menu-hl); border: 1px solid var(--line); border-radius: 12px; padding: 16px; width: 380px; max-width: calc(100vw - 48px); }
 
 .lp-msg { font-size: var(--ui-fs-base); color: var(--text); margin-bottom: 10px; word-break: break-all; }
 
@@ -51,15 +51,15 @@
 
 /* ── Windows window control buttons (frameless window; WindowControls.tsx renders on Windows only)──
    Blended into existing card headers: on the top right of the middle column's .chat-head when the right sidebar is collapsed, or of the right sidebar's .sp-head when expanded.
-   Highlight uses the site-wide .icon-btn language (26x26, --r-sm, --panel-2); negative margins cancel the header padding to leave a 4px breathing room from the card edge.
+   Highlight uses the site-wide .icon-btn language (26x26, --r-sm, --panel-2); negative margins cancel the header padding to leave a 6px breathing room from the card edge — with the 8px --shell-gap card inset that puts the close button 14px from the window edge, exactly mirroring the sidebar toggle 14px from the left edge.
    .win-hot is a transparent fixed overlay over the window's literal top-right corner (the cards are inset by --shell-gap): hovering it highlights the close button via :has, clicking closes — the Windows muscle-memory slam corner.
    Dragging/double-click maximize is handled by the Tauri core via the header's data-tauri-drag-region. */
 .win-controls {
   display: flex; align-items: center; gap: 2px; flex: none;
-  margin-right: -2px; /* .sp-head padding (6px) minus the 4px card-edge breathing room */
+  margin-right: 0; /* .sp-head padding (6px) minus the 6px card-edge breathing room */
 }
 
-/* .chat-head padding (16px) minus 4px */
+/* 26x26 plates, 2px apart; the row's right edge is set by .win-controls' margin above */
 .win-controls .win-btn {
   width: 26px; height: 26px; border: 0; border-radius: var(--r-sm);
   background: transparent;
@@ -67,7 +67,7 @@
   color: var(--dim); cursor: default;
 }
 
-.win-controls .win-btn:hover { background: var(--panel-2); color: var(--text); }
+.win-controls .win-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 .win-controls .win-btn.win-close:hover { background: var(--window-close); color: var(--white); }
 /* .win-hot hover lights the close button exactly as hovering the button itself */
@@ -101,7 +101,7 @@
 .ctx-menu {
   position: fixed; z-index: 500;
   display: flex; flex-direction: column;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-popover);
@@ -116,9 +116,12 @@
   cursor: pointer; color: var(--text);
 }
 
-.ctx-menu button:hover { background: var(--panel-3); }
+.ctx-menu button:hover { background: var(--menu-hl); }
 .ctx-menu button:disabled { opacity: .45; cursor: default; }
 .ctx-menu button:disabled:hover { background: none; }
+
+/* Full-bleed divider (negative margin cancels the menu padding) slightly stronger than --line */
+.ctx-menu .sep { height: 1px; background: color-mix(in srgb, var(--line), var(--text) 20%); margin: 5px -5px; flex: none; }
 
 /* ── toast ── */
 #toast {

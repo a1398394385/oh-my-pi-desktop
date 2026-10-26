@@ -30,6 +30,27 @@ bun run ui:build            # build the frontend first (no HMR in the desktop ap
 OMP_DESKTOP_MODEL=deepseek/deepseek-flash bunx tauri dev   # the default model is a slow local one; overriding is recommended
 ```
 
+## Verification channels
+
+Never present `?preview=1` (a sample-only page that does not connect to a host) as real-host verification. Pick a channel by what you need to prove:
+
+- **`bun run dev:browser` (default channel)**: starts the host + Vite and prints `BROWSER_URL=http://localhost:<vite>/?ws=<port>`. The `?ws=` branch (`ui-src/store/ws.ts`) skips the Tauri `ws_url` and dials the main WS directly — no remote chapter, no write denylist; Tauri-only features (window controls, tray, native menu, audio, updates) no-op. Good for host protocol / UI logic / write paths, and it works headless.
+- **CDP against the Tauri dev window (platform and shell verification)**: Windows WebView2-specific bugs, window controls, tray and real rendering differences must use this — Chromium rendering from the browser channel is not evidence. Start with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333 bun run dev`, then attach the browser tool with `app.cdp_url: "http://127.0.0.1:9333"`. The Tauri dev window loads the `ui/dist` build (no devUrl, no HMR); run `bun run ui:watch` so rebuilt assets reload. This channel is **dev-only by design**: release builds ship no remote-inspect surface (`src-tauri/Cargo.toml` omits tauri's `devtools` feature, and the shell clears `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` in non-debug Windows builds), so a packaged app can never be driven by an external process — see RULE-015.
+- **Remote control is a different shape**: the LAN server in `host/remote.ts` (16800 + `?t=` key) serves the `ui/dist` build under a write denylist. It never substitutes for development debugging.
+- **Concurrency**: the main WS port is dynamic and Vite increments on collision, so instances do not clash on ports — but **one host per profile** (the session pool lives in process memory, the automations scheduler would double-fire, `omp-desktop.json` writes race). A second instance must use another `OMP_PROFILE` (e.g. `omp-desktop-dev-2`). The Tauri shell has a single-instance lock; the CDP / `dev:browser` channels do not, so they must not share the dev profile with `bun run dev`.
+
+## Profile isolation (highest-priority constraint)
+
+| Purpose | Profile | Entry point |
+|---|---|---|
+| All tests, smoke runs, probes, automation scripts | `omp-desktop-test` | `smokeEnv()` in `scripts/smoke-profile.ts` (SSOT) |
+| Local development (`bun run dev`) | `omp-desktop-dev` | the `dev` script sets `OMP_PROFILE=omp-desktop-dev` |
+| End users | `default` (`~/.omp/agent`) | installed app |
+
+- Smoke scripts must go through `omp-desktop-test`: `import { smokeEnv } from "./smoke-profile.ts"` and use it to spawn the host and resolve profile paths (`profileAgentPath()`). Never hand-write a profile string or hardcode `~/.omp/agent/...`; a literal `OMP_PROFILE=omp-desktop-test bun scripts/...` is only for `package.json` entry points. Missing profile directories are created by `host/bootstrap.ts`.
+- Development always uses `omp-desktop-dev`. It keeps its own `omp-desktop.json`, so its remote port/switch/accessKey are independent of `default` — a dev remote must avoid the `16800` that `default` may already hold.
+- Never let tests or development runs pollute the `default` profile. `host/bootstrap.ts` hard-fails (`errors.host.profileRequired`) when a source tree runs against `default`.
+
 ## Host smoke scripts
 
 The host can be verified standalone, without Tauri:
@@ -50,7 +71,7 @@ Full-repo checks:
 bun run check
 ```
 
-Covers: capabilities gate / host boundaries / style token gate / architecture ratchet / comment language / encoding gate / omp imports / version consistency / i18n keys / UI typecheck.
+Covers: capabilities gate / frame fan-out gate / host boundaries / style token gate / architecture ratchet / comment language / encoding gate / omp imports / version consistency / i18n keys / settings copy / UI typecheck.
 
 ## Releasing
 

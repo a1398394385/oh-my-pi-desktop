@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import Icon from "../../../Icon";
 import { fmtAgo } from "../sidebar/util";
-import { toast, useAppStore, type TimerHandle } from "../../../store";
+import { toast, effZoom, type TimerHandle } from "../../../store";
 import { t } from "../../../i18n";
 import type { EntryNode, StreamItem, StreamSection } from "./sessionTreeUtil";
 import {
@@ -81,7 +81,7 @@ export default function SessionTreeStream({
       // Ensure the area below the fork point fills at least the viewport's remaining space,
       // preventing short branches from shrinking the page height abruptly and pushing content up
       // (rect diff is visual; the min-height is layout px inside the zoomed subtree)
-      const z = useAppStore.getState().zoomLevel || 1;
+      const z = effZoom();
       const remaining = (scrollRect.bottom - hubRect.bottom) / z;
       if (remaining > 20) {
         setBranchMinHeights((prev) => {
@@ -113,7 +113,7 @@ export default function SessionTreeStream({
     const currentTop = hub.getBoundingClientRect().top;
     const diff = currentTop - target.top; // visual px
     if (Math.abs(diff) > 0.5) {
-      const z = useAppStore.getState().zoomLevel || 1;
+      const z = effZoom();
       scrollEl.scrollTop += diff / z; // scrollTop is layout px inside the zoomed subtree
     }
   }, [selectedBranches]);
@@ -169,7 +169,7 @@ export default function SessionTreeStream({
     if (!el || !scrollEl) return;
     const elRect = el.getBoundingClientRect();
     const boxRect = scrollEl.getBoundingClientRect();
-    const z = useAppStore.getState().zoomLevel || 1; // rect edges are visual; scrollTop is layout px
+    const z = effZoom(); // rect edges are visual; scrollTop is layout px
     if (elRect.top < boxRect.top + 8) {
       scrollEl.scrollTop -= (boxRect.top + 8 - elRect.top) / z;
     } else if (elRect.bottom > boxRect.bottom - 8) {
@@ -193,6 +193,10 @@ export default function SessionTreeStream({
   useEffect(() => {
     if (confirmNode) return;
     const onKey = (e: KeyboardEvent) => {
+      // A composer popup (model / mode menu, sigil panel) owns the arrows while open:
+      // this listener sits on window capture, so without the guard it swallows them
+      // before those components' own listeners ever run.
+      if (document.querySelector("#composer .menu.open")) return;
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();
@@ -322,7 +326,7 @@ export default function SessionTreeStream({
               <div className="detail-actions">
                 <button
                   type="button"
-                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded hover:bg-panel-2 cursor-pointer flex items-center gap-1"
+                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded hover:bg-hover-fill cursor-pointer flex items-center gap-1"
                   onClick={(e) => {
                     e.stopPropagation();
                     onCopyText(node.text || "");
@@ -333,7 +337,7 @@ export default function SessionTreeStream({
                 </button>
                 <button
                   type="button"
-                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded-md hover:bg-panel-2"
+                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded-md hover:bg-hover-fill"
                   disabled={navigating}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -407,14 +411,14 @@ export default function SessionTreeStream({
             <div className="lp-row flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
-                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-panel-2 cursor-pointer"
+                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-hover-fill cursor-pointer"
                 onClick={() => setConfirmNode(null)}
               >
                 {t("common.cancel")}
               </button>
               <button
                 type="button"
-                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-panel-2 cursor-pointer"
+                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-hover-fill cursor-pointer"
                 disabled={navigating}
                 onClick={() => {
                   const node = confirmNode;
@@ -506,7 +510,7 @@ function ForkSwitcher({
 
     const pillsRect = pills.getBoundingClientRect();
     const activeRect = activeEl.getBoundingClientRect();
-    const z = useAppStore.getState().zoomLevel || 1; // rect diff is visual; scrollLeft is layout px
+    const z = effZoom(); // rect diff is visual; scrollLeft is layout px
     const pillLeft = (activeRect.left - pillsRect.left) / z + pills.scrollLeft;
     const pillRight = pillLeft + activeEl.offsetWidth;
     const scrollLeft = pills.scrollLeft;
@@ -527,7 +531,6 @@ function ForkSwitcher({
             <Icon name="fork" size={13} />
             {t("chat.forkSwitch", { count: item.options.length })}
           </span>
-          <span className="fork-hint">{t("chat.forkHint")}</span>
         </div>
 
         <div ref={pillsRef} className="fork-pills">

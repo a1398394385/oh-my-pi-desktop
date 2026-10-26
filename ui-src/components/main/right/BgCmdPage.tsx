@@ -1,12 +1,16 @@
-// Background commands page: aggregates session items (hub start/stop pairing + running
-// bash/shell/eval) + list + inline expand cards.
+// Background commands page: aggregates session items (hub start/stop pairing + running and
+// settled bash/shell/eval) + the host's bg_jobs snapshot (auto-backgrounded jobs, which have
+// no live transcript row) + list + inline expand cards.
 // In the old version any global repaint collapsed expanded rows (DOM rebuild); in the React
 // version the expanded state is held by component state, so streaming updates keep rows open
 // and show the latest output (the liftEl collapse animation is skipped along with the
 // conditional rendering).
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../../store";
+import { bgJobsKey } from "../../../store/session";
+import type { BgJobEntry } from "../../../store/session";
+import { sendGetBgJobs } from "../../shared/agent/hubExt";
 import { t } from "../../../i18n";
 import Icon from "../../../Icon";
 import { Spin } from "../../chat/parts";
@@ -40,17 +44,25 @@ interface BgTask {
   statusText: string;
   cwd?: string;
   timeIndex: number;
-  rawItem: SessionItemLike;
+  // Snapshot-sourced rows have no transcript item behind them
+  rawItem?: SessionItemLike;
 }
 
 // Aggregate a session's background tasks: hub tool calls (start/stop/cancel paired by process
-// name) + running terminal commands
-function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | null | undefined): {
+// name) + terminal commands (running, plus the newest 10 settled ones) + bg_jobs snapshot rows
+// (auto-backgrounded jobs; the transcript rows only carry the stale "Backgrounded as job"
+// state, so the snapshot — pushed by the host on load and on each turn_start — is the source
+// of truth for them)
+function getBgTasksForSession(
+  s: { items?: SessionItemLike[]; cwd?: string } | null | undefined,
+  jobs: BgJobEntry[] | null | undefined,
+): {
   tasks: BgTask[];
   runningCount: number;
 } {
   if (!s || !Array.isArray(s.items)) return { tasks: [], runningCount: 0 };
   const tasks: BgTask[] = [];
+  const settled: BgTask[] = []; // finished terminal rows, oldest first (trimmed below)
   const liveProcesses = new Map<string, BgTask>(); // procName -> taskRef
 
   for (let i = 0; i < s.items.length; i++) {
@@ -110,8 +122,12 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
       }
 
       tasks.push(taskItem);
-    } else if (it.running && (name === "bash" || name === "shell" || name === "eval")) {
-      tasks.push({
+    } else if (name === "bash" || name === "shell" || name === "eval") {
+      // details.async marks an auto-backgrounded row: the bg_jobs snapshot owns those,
+      // so they are skipped here to avoid a duplicate row for the same command
+      const backgrounded = !!(it.details as { async?: unknown } | undefined)?.async;
+      if (backgrounded) continue;
+      const taskItem: BgTask = {
         id: it.toolCallId || `cmd_${i}`,
         toolCallId: it.toolCallId,
         op: "run",
@@ -120,13 +136,46 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
         args: it.args || {},
         output: it.output || "",
         details: it.details,
-        running: true,
-        statusText: t("right.bgRunning"),
+        // A settled transcript row stays listable: the tab is the only place a finished
+        // command can still be inspected, and the row already carries its output
+        running: it.running === true,
+        statusText: it.running === true ? t("right.bgRunning") : t("right.bgDone"),
         cwd: s.cwd,
         timeIndex: i,
         rawItem: it,
-      });
+      };
+      if (!taskItem.running) settled.push(taskItem);
+      tasks.push(taskItem);
     }
+  }
+
+  // Finished commands accumulate across the whole session; keep the newest 10 so the
+  // live rows and the bg_jobs snapshot are not buried under old history
+  for (const stale of settled.slice(0, -10)) tasks.splice(tasks.indexOf(stale), 1);
+
+  // Snapshot rows (auto-backgrounded jobs, newest last so the reverse below tops them):
+  // keyed entries carry command/cwd/exit-code inspection from the host; the transcript
+  // rows above have no live state, so snapshot rows always join the list.
+  // `task` jobs are excluded: async subagent spawns are registered in the same job
+  // manager, but a subagent is not a background command — it already has its own row
+  // in the chat stream and its own Subagent/Hub tabs.
+  const baseIndex = s.items.length;
+  let jobIndex = 0;
+  for (const job of jobs ?? []) {
+    if (job.type === "task") continue;
+    tasks.push({
+      id: `job_${job.id}`,
+      op: job.type,
+      procName: job.label || job.command || job.type,
+      command: job.command || job.label || "",
+      args: {},
+      output: "",
+      running: job.running,
+      statusText: job.running ? t("right.bgRunning") : t("right.bgDone"),
+      cwd: job.cwd || s.cwd,
+      timeIndex: baseIndex + jobIndex,
+    });
+    jobIndex++;
   }
 
   const runningCount = tasks.filter((t) => t.running).length;
@@ -137,11 +186,18 @@ function getBgTasksForSession(s: { items?: SessionItemLike[]; cwd?: string } | n
 export default function BgCmdPage() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const bgJobs = useAppStore((st) => st.bgJobs);
   const [openId, setOpenId] = useState<string | null>(null);
+  const sessionId = s?.sessionId ?? null;
+  // Opening the page refreshes the snapshot once (replies land through the canonical
+  // bg_jobs handler); afterwards host pushes (load backlog / turn_start) keep it current
+  useEffect(() => {
+    if (sessionId) sendGetBgJobs(sessionId);
+  }, [sessionId]);
   if (!s) {
     return <div className="py-3 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
-  const { tasks } = getBgTasksForSession(s);
+  const { tasks } = getBgTasksForSession(s, sessionId ? (bgJobs.get(bgJobsKey(sessionId)) ?? null) : null);
   if (tasks.length === 0) {
     return <div className="py-3 text-faint text-ui-base">{t("right.noBgCommands")}</div>;
   }
@@ -158,7 +214,7 @@ export default function BgCmdPage() {
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <b style={{ color: "var(--text)" }}>{task.op.toUpperCase()}</b>
                 <span className="path" title={task.command || task.procName || ""}>
-                  {task.procName || task.command || t("right.bgCommandFallback")}
+                  {task.command || task.procName || t("right.bgCommandFallback")}
                 </span>
               </div>
             </div>
@@ -174,23 +230,27 @@ export default function BgCmdPage() {
   );
 }
 
-// Expand card: meta row (op/name/status/collapse) + working directory + command or args + output
+// Expand card: head (cwd on line 1, name + collapse on line 2) + command or args + output
 function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="bgcmd-expand">
-      {/* 1. Card head / meta row */}
+      {/* 1. Card head: working dir on line 1 (it is the long, truncating field);
+          name + collapse on line 2 */}
+      {task.cwd && (
+        <div className="bgcmd-meta-row">
+          <b className="bgcmd-meta-lbl">{t("right.workDirLabel")}</b>
+          <span className="bgcmd-meta-item wd" title={task.cwd}>
+            {task.cwd}
+          </span>
+        </div>
+      )}
       <div className="bgcmd-meta-row">
-        <span>
-          <b>{t("right.opLabel")}</b> {task.op}
-        </span>
         {task.procName && (
-          <span>
+          <span className="bgcmd-meta-item name" title={task.procName}>
             <b>{t("right.nameLabel")}</b> {task.procName}
           </span>
         )}
-        <span className="flex-1"></span>
-        <span className={"bgcmd-meta-tag" + (task.running ? " running" : "")}>{task.statusText}</span>
         <button
           type="button"
           className="save-btn"
@@ -202,13 +262,6 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
           {t("right.collapse")}
         </button>
       </div>
-      {task.cwd && (
-        <div className="bgcmd-meta-row" style={{ fontSize: "var(--ui-fs-xs)" }}>
-          <span>
-            <b>{t("right.workDirLabel")}</b> <span className="path" title={task.cwd}>{task.cwd}</span>
-          </span>
-        </div>
-      )}
       {/* 2. Command line and args */}
       {task.command ? (
         <>

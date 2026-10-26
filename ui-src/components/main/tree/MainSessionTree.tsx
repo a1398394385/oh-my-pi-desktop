@@ -127,9 +127,8 @@ export default function MainSessionTree() {
           </button>
           <button
             type="button"
-            className="flex items-center gap-1 px-2.5 py-1 text-ui-xs rounded-md border border-line bg-panel hover:bg-panel-2 transition-colors text-dim hover:text-text cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1 text-ui-xs rounded-md border border-line bg-panel hover:bg-hover-fill transition-colors text-dim hover:text-text cursor-pointer"
             onClick={() => setMainViewMode("chat")}
-            title={t("chat.backToStream")}
           >
             <Icon name="messagePlus" size={12} />
             <span>{t("chat.backToChat")}</span>

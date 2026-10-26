@@ -14,16 +14,9 @@ export default function KickedScreen() {
       <div className="kicked-card">
         <div className="kicked-head">
           <span className="kicked-ic"><Icon name="toastErr" size={18} /></span>
-          <span className="kicked-badge">{t("notify.kickedBadge")}</span>
+          <span className="kicked-title">{t("notify.kickedTitle")}</span>
         </div>
-        <div className="kicked-title">{t("notify.kickedTitle")}</div>
-        <p className="kicked-desc">{t("notify.kickedBody")}</p>
-        <div className="kicked-sep"></div>
-        <div className="kicked-next">{t("notify.kickedNext")}</div>
-        <ol className="kicked-steps">
-          <li><span className="kicked-num">1</span><span>{t("notify.kickedStep1")}</span></li>
-          <li><span className="kicked-num">2</span><span>{t("notify.kickedStep2")}</span></li>
-        </ol>
+        <p className="kicked-desc">{t("notify.kickedStep2")}</p>
         <div className="kicked-status">
           <span>{t("notify.kickedRelay")}</span>
           <span className="kicked-code">{t("notify.kickedCode")}</span>

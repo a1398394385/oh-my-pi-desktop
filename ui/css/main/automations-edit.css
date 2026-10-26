@@ -1,19 +1,21 @@
 /* Main-column automation editor. The page uses the same surfaces and control language as the main chat. */
 
 /* Boxed dropdown used by the editor's project and schedule controls. */
+/* Edge = inset ring (not a border) so the HiDPI hairline rules can halve it. */
 .sel.auto-sel {
   position: relative;
   display: flex;
   min-height: 31px;
   max-width: 340px;
   padding: 0;
-  border: 1px solid var(--line-soft);
+  border: 1px solid transparent;
   border-radius: 9px;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
 }
 
 .sel.auto-sel:hover,
-.sel.auto-sel.open { background: var(--panel-2); }
+.sel.auto-sel.open { background: var(--hover-fill); }
 
 .sel.auto-sel.open .caret-svg { transform: rotate(180deg); }
 
@@ -52,31 +54,18 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
+  box-shadow: none;
 }
 
 /* .plain sits above and re-kills the base :hover/:open background — restore the
    highlight with higher specificity (mirrors the .aued-tools .mp-role-sel pair below). */
 .sel.auto-sel.plain:hover,
-.sel.auto-sel.plain.open { background: var(--panel-2); }
+.sel.auto-sel.plain.open { background: var(--hover-fill); }
 
 .sel.auto-sel.plain .auto-sel-btn { padding: 3px 8px; }
 
-/* The page-level create/save action also appears on the list page. */
-.al-primary {
-  flex: none;
-  height: 31px;
-  padding: 0 14px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--white);
-  font-size: var(--ui-fs-sm);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.al-primary:hover:not(:disabled) { filter: brightness(1.1); }
-.al-primary:disabled { opacity: .45; cursor: default; }
+/* The page-level create/save action: the shared .frm-primary button
+   (css/shared/form-layout.css) also carries it on the list page. */
 
 /* Page scaffold. The outer automation card owns the page edge and this view owns its content. */
 .aued {
@@ -102,7 +91,7 @@
 .aued-sub { overflow: hidden; color: var(--faint); font-size: var(--ui-fs-sm); text-overflow: ellipsis; white-space: nowrap; }
 
 /* Header save action: one size up from body text, bold, vertically centered with the title. */
-.aued-head .al-primary { font-size: var(--ui-fs-lg); font-weight: 600; }
+.aued-head .frm-primary { font-size: var(--ui-fs-lg); font-weight: 600; }
 
 /* Settings/history tabs keep the main page underline language. */
 .aued-tabrow {
@@ -130,6 +119,19 @@
 .aued-tab.on { border-bottom-color: var(--accent); color: var(--text); font-weight: 500; }
 
 /* B layout: a sticky summary card beside dense labelled form rows. */
+/* Delivery automations are read-only here (the host rejects automations_update for
+   them): the notice explains why the save button stays disabled. */
+.aued-delivery-lock {
+  grid-column: 1 / -1;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+}
+
 .aued-layout {
   display: grid;
   grid-template-columns: minmax(190px, .36fr) minmax(0, 1fr);
@@ -147,7 +149,7 @@
   padding: 16px;
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  background: var(--surface);
+  background: var(--surface); --hover-fill: var(--panel-2);
 }
 
 .aued-summary-head { display: grid; gap: 8px; min-width: 0; }
@@ -163,17 +165,11 @@
 .aued-summary-meta strong.is-error { color: var(--err); }
 .aued-run-now { width: 100%; text-align: center; }
 
-/* Dense form rows. */
+/* Dense form rows: the row grid itself lives in the shared form language
+   (css/shared/form-layout.css) so every create page uses the same rhythm. */
 .aued-form { display: grid; min-width: 0; }
-.aued-row { display: grid; grid-template-columns: 140px minmax(0, 1fr); align-items: start; gap: 20px; padding: 18px 0; border-top: 1px solid var(--line-soft); }
-.aued-row:first-child { padding-top: 0; border-top: 0; }
-.aued-row-label { min-width: 0; }
-.aued-row-label strong { display: block; font-size: var(--ui-fs-base); font-weight: 500; }
-.aued-row-label span { display: block; margin-top: 4px; color: var(--faint); font-size: var(--ui-fs-xs); line-height: 1.45; }
-.aued-row-content { display: grid; gap: 11px; min-width: 0; }
 .aued-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
 .aued-fl { flex: none; color: var(--dim); font-size: var(--ui-fs-sm); }
-.aued-form .inp { width: 100%; min-width: 0; background: var(--inset); }
 .aued-field-inline { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .aued-inp-sm { width: 72px !important; text-align: center; }
 .aued-grow { flex: 1 1 240px; min-width: 160px; }
@@ -193,7 +189,7 @@
 .aued-schedule-note { display: grid; align-content: center; gap: 5px; min-width: 0; padding-left: 12px; border-left: 2px solid var(--accent); }
 .aued-schedule-note strong { overflow: hidden; color: var(--text); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .aued-schedule-note span { color: var(--faint); font-size: var(--ui-fs-xs); line-height: 1.45; }
-.aued-sched { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; padding: 6px 8px 6px 0; border-radius: var(--r-lg); background: var(--inset); }
+.aued-sched { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; padding: 6px 8px 6px 0; border-radius: var(--r-lg); background: var(--inset); --hover-fill: var(--menu-hl); }
 .aued-sched .inp { width: 40px; padding: 4px 2px; background: transparent; text-align: center; }
 
 /* Weekday and end-condition capsule groups. */
@@ -209,21 +205,21 @@
 /* Boundary row: the only single-control row — center the label block with the pills,
    keep it slim, and drop the bottom padding: the card's own padding is the row's bottom
    breathing room, so the pair reads vertically centered inside the card. */
-.aued-form .aued-row:last-child { align-items: center; padding: 12px 0 0; }
+.aued-form .frm-row:last-child { align-items: center; padding: 12px 0 0; }
 
 /* Prompt surface keeps project and model selectors attached to the instruction field. */
-.aued-promptwrap { display: flex; min-width: 0; flex-direction: column; border-radius: var(--r-lg); background: var(--inset); }
+.aued-promptwrap { display: flex; min-width: 0; flex-direction: column; border-radius: var(--r-lg); background: var(--inset); --hover-fill: var(--menu-hl); }
 .aued-prompt { width: 100%; min-height: 189px; box-sizing: border-box; padding: 10px 12px; border: 0; background: transparent; color: var(--text); font: inherit; line-height: 1.6; resize: vertical; }
 .aued-prompt:focus { outline: none; }
 .aued-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; padding: 4px 6px; border-top: 1px solid var(--line-soft); }
 .aued-tools .mp-role-sel { min-height: 26px; margin-left: auto; border: 0; border-radius: 7px; background: transparent; }
 .aued-tools .mp-role-sel:hover,
-.aued-tools .mp-role-sel:has(.menu.open) { background: var(--panel-2); }
+.aued-tools .mp-role-sel:has(.menu.open) { background: var(--hover-fill); }
 
 /* Per-run computer-control toggle in the toolbar (icon + label + mini switch), same
    geometry language as the toolbar's other controls. */
 .aued-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; white-space: nowrap; }
-.aued-toggle:hover { background: var(--panel-2); }
+.aued-toggle:hover { background: var(--hover-fill); }
 .aued-toggle.on { color: var(--text); }
 .aued-toggle-k { position: relative; flex: none; width: 26px; height: 15px; border-radius: 999px; background: var(--panel-3); transition: background var(--dur-base) var(--swift); }
 .aued-toggle-k::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--toggle-thumb); transition: transform var(--dur-base) var(--swift); }
@@ -245,7 +241,7 @@
 .aued-runs th { padding: 6px 12px; border-bottom: 1px solid var(--line-soft); background: var(--panel-2); color: var(--faint); font-weight: 400; text-align: left; }
 .aued-runs td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); color: var(--text); vertical-align: middle; }
 .aued-runs tr:last-child td { border-bottom: 0; }
-.aued-runs tr:hover td { background: var(--panel-2); }
+.aued-runs tr:hover td { background: var(--hover-fill); }
 .aued-runs .aued-runs-sess { text-align: right; white-space: nowrap; }
 .aued-run-time { color: var(--dim); font-family: var(--mono); font-size: var(--ui-fs-xs); white-space: nowrap; }
 .aued-run-dim { color: var(--dim); white-space: nowrap; }
@@ -258,24 +254,31 @@
 .aued-run-st.st-skipped { color: var(--faint); }
 .aued-run-sid { color: var(--faint); font-family: var(--mono); font-size: var(--ui-fs-xs); }
 .aued-open { padding: 2px 6px; border: 0; border-radius: 4px; background: none; color: var(--accent); font-size: var(--ui-fs-sm); cursor: pointer; }
-.aued-open:hover { background: var(--panel-2); }
+.aued-open:hover { background: var(--hover-fill); }
 
 /* History pager. */
 .aued-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .aued-page-btn { padding: 4px 8px; border: 0; border-radius: 6px; background: none; color: var(--dim); font-size: var(--ui-fs-sm); cursor: pointer; }
-.aued-page-btn:hover:not(:disabled) { background: var(--panel-2); color: var(--text); }
+.aued-page-btn:hover:not(:disabled) { background: var(--hover-fill); color: var(--text); }
 .aued-page-btn:disabled { opacity: .4; cursor: default; }
 .aued-pages { display: inline-flex; align-items: center; gap: 2px; }
 .aued-page-num { min-width: 26px; height: 26px; border: 0; border-radius: 6px; background: none; color: var(--dim); font-size: var(--ui-fs-sm); cursor: pointer; }
-.aued-page-num:hover { background: var(--panel-2); color: var(--text); }
+.aued-page-num:hover { background: var(--hover-fill); color: var(--text); }
 .aued-page-num.on { background: var(--panel-3); color: var(--text); font-weight: 600; }
 .aued-page-ellipsis { min-width: 26px; color: var(--faint); text-align: center; }
 
 @media (max-width: 780px) {
   .aued-layout { grid-template-columns: 1fr; gap: 16px; }
   .aued-summary { position: static; }
-  .aued-row { grid-template-columns: 1fr; gap: 10px; }
   .aued-schedule-grid { grid-template-columns: 1fr; }
+}
+
+/* Hairline: halve the converted inset ring on HiDPI */
+@media (min-resolution: 2dppx) {
+  .sel.auto-sel { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+}
+@media (min-resolution: 3dppx) {
+  .sel.auto-sel { box-shadow: inset 0 0 0 .33px var(--line-soft); }
 }
 
 @media (max-width: 520px) {

@@ -219,16 +219,32 @@ mod mac {
 
 #[cfg(target_os = "macos")]
 mod sound {
-    #[link(name = "AudioToolbox", kind = "framework")]
-    extern "C" {
-        fn AudioServicesPlayAlertSound(id: u32);
+    use std::cell::OnceCell;
+
+    use objc2::rc::Retained;
+    use objc2_app_kit::NSSound;
+    use objc2_foundation::NSString;
+
+    /// System alert sound as a file. AudioServicesPlayAlertSound(kSystemSoundID_UserPreferredAlert)
+    /// was the previous path, but on macOS 27 every system sound ID fails in CoreAudio with
+    /// `Failure to setup sound, err = -50`, so the alert is played through NSSound instead
+    /// (AudioQueue-backed file playback, honours the output volume).
+    const ALERT_SOUND: &str = "Glass";
+
+    thread_local! {
+        /// Loaded once per calling thread and kept alive: NSSound stops when its object is
+        /// released mid-playback, and Retained<NSSound> is neither Send nor Sync.
+        static ALERT: OnceCell<Option<Retained<NSSound>>> = const { OnceCell::new() };
     }
 
-    /// kSystemSoundID_UserPreferredAlert: the alert sound chosen in System Settings ▸ Sound.
-    const USER_PREFERRED_ALERT: u32 = 0x1007;
-
     pub fn play() {
-        unsafe { AudioServicesPlayAlertSound(USER_PREFERRED_ALERT) };
+        ALERT.with(|cell| {
+            if let Some(s) = cell.get_or_init(|| NSSound::soundNamed(&NSString::from_str(ALERT_SOUND))) {
+                // Back-to-back alerts: play() on a playing sound is a no-op, restart instead.
+                s.stop();
+                s.play();
+            }
+        });
     }
 }
 

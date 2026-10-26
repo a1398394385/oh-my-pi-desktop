@@ -16,8 +16,8 @@ import { hostI18n } from "./i18n/host.ts";
 // the single source shared with the UI; re-exported here so the existing host
 // import surface (translate/session-lifecycle/rpc domains) stays untouched.
 // The wire version is the field superset (adds role "error" + the `intent` field).
-import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
-export type { TranscriptItem, TurnUsage };
+import type { TranscriptItem, TurnUsage, AdvisorNote } from "./wire/payloads.ts";
+export type { TranscriptItem, TurnUsage, AdvisorNote };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
   sessionResult: Awaited<ReturnType<typeof createAgentSession>>; // Host injection points such as setToolUIContext
@@ -25,8 +25,9 @@ export type PoolEntry = {
   // Every UI socket subscribed to this session's events. Local desktop and
   // remote control coexist: a session can be watched from both at once, so
   // per-session frames fan out over this set instead of a single attached ws.
-  // handleLoadSession attaches a ws only when absent; ws-shared's close handler
-  // removes it (and tears the core subscriptions down when the set empties).
+  // handleLoadSession attaches a ws only when absent; ws-shared's close handler and
+  // the frontend's mcp_detach (LRU eviction) remove it — detachEntryUi — and the
+  // core subscriptions are torn down when the set empties.
   uiSockets: Set<{ send(data: string): unknown }>;
   // Per-socket subagent roster subscription (createSubagentView), keyed by the
   // same socket object as uiSockets; detached individually on socket close.
@@ -87,12 +88,10 @@ export type PoolEntry = {
   // from 0 (matching the TUI meter, no disk backfill)
   activeMs: number;
   activeStartedAt: number | null;
-  // When the last session_stats frame was pushed (live refresh; see
-  // maybePushSessionStats in session-lifecycle). message_end /
-  // tool_execution_end fire many times per turn, so they are coalesced by a
-  // minimum interval to keep the stats frames off the wire in floods.
-  // null = this session has not pushed a live frame yet
-  statsPushedAt: number | null;
+  // N2 idle-eviction clock (see sweepIdlePoolSessions in rpc/session.ts):
+  // stamped at creation, at every agent lifecycle event, and at core teardown
+  // (last socket detach), so a session nobody watches ages out of the pool.
+  lastActiveAt: number;
   path: string; // Session file path (on-disk identity)
   cwd: string;
   isGit: boolean;
@@ -145,6 +144,13 @@ export type PoolEntry = {
   // session_list rows (sidebar clock badge) and echoed as a live user-message
   // event (automation sessions have no local composer send to draw the bubble)
   automation?: { id: string; title: string };
+  // Automation-run dialog deadline (seconds, spawn-time snapshot of the
+  // automation settings page's approvalTimeoutSec): permission approvals in
+  // this session auto-deny after it. Ask dialogs are bounded by the page's
+  // askTimeoutSec instead, which the spawn writes into the session's
+  // `ask.timeout` override (the base ask tool reads it). Absent = follow the
+  // global ask.timeout.
+  approvalTimeoutSec?: number;
   // fileMention read-back cursor: at agent_end, re-reads manager.getEntries()
   // and turns fileMention entries added since this index into mention frames
   // (the base persists them inside prompt() with no matching event)
@@ -174,11 +180,32 @@ export type PoolEntry = {
 export const sessions = new Map<string, PoolEntry>();
 
 /**
+ * Resolve a pooled session by FILE PATH — the only stable address. The pool key
+ * is a runtime UUID and the on-disk id is re-minted over a session's life (see
+ * "Host-side runtime identity" in session-lifecycle.ts), so callers holding
+ * disk-derived addresses (sidebar rows) must go through the path. `previousPaths`
+ * covers a persistence move, which leaves the frontend holding the old path.
+ */
+export function findPooledSession(path: string): PoolEntry | undefined {
+  for (const entry of sessions.values()) {
+    if (entry.path === path || entry.previousPaths.includes(path)) return entry;
+  }
+  return undefined;
+}
+
+/**
  * Pool residency snapshot (sidebar "active tasks" list): every session the host
  * still holds in memory, disk rows or not. Pushed on attach / release and with
  * every session_list refresh — the frontend slot map (openSessions) has an LRU
  * cap, so it is not the pool truth. Subagents are filtered out: they are child
  * threads of a task already listed, not tasks themselves.
+ *
+ * busy = SDK isStreaming, the authoritative live-run flag: it settles
+ * synchronously BEFORE the agent_start / agent_end events reach the host
+ * subscription (agent.ts resets it in the consume loop before emitting), so a
+ * snapshot taken inside those handlers reads the post-event truth. The host-side
+ * activeStartedAt window is NOT used — it can stay open forever after a
+ * re-tagged isTerminal:false agent_end (see sessionBusy).
  */
 export function pushPoolSnapshot(ws: unknown): void {
   const send = (ws as { send?: (data: string) => unknown } | null | undefined)?.send;
@@ -187,9 +214,55 @@ export function pushPoolSnapshot(ws: unknown): void {
     ws,
     JSON.stringify({
       type: "pool_sessions",
-      sessions: [...sessions.entries()].filter(([, e]) => !e.isSubagent).map(([id, e]) => ({ id, path: e.path, cwd: e.cwd, title: e.title ?? null })),
+      sessions: [...sessions.entries()].filter(([, e]) => !e.isSubagent).map(([id, e]) => ({ id, path: e.path, cwd: e.cwd, title: e.title ?? null, busy: e.session.isStreaming })),
     }),
   );
+}
+
+/**
+ * Session active-duration accounting (same as the TUI status-line time_spent)
+ * for the agent_start / agent_end events, plus the cross-channel pool busy
+ * broadcast: a channel that never loaded the running session (remote control
+ * vs desktop, or an automation-spawned run) has no openSessions slot for it,
+ * so its sidebar spinner reads the pool snapshot's busy flag instead.
+ *
+ * agent_end can be re-tagged isTerminal:false (a queued continuation might
+ * resume) while the run is still live: the immediate republish confirms the
+ * busy=true read, and the post-settle republish (waitForIdle resolves from the
+ * run's unwind, after isStreaming was already reset) is what flips it to false.
+ * A late false can never land on top of a live run's true — a resumed
+ * continuation re-broadcasts true via its own agent_start.
+ */
+export function handleRunLifecycleEvent(
+  entry: PoolEntry,
+  ev: { type: "agent_start" } | { type: "agent_end"; isTerminal?: boolean },
+): void {
+  entry.lastActiveAt = Date.now();
+  if (ev.type === "agent_start") {
+    if (entry.activeStartedAt === null) entry.activeStartedAt = Date.now();
+  } else {
+    if (ev.isTerminal !== false && entry.activeStartedAt !== null) {
+      entry.activeMs += Math.max(0, Date.now() - entry.activeStartedAt);
+      entry.activeStartedAt = null;
+    }
+    void entry.session.waitForIdle().then(publishPoolIfBusyChanged);
+  }
+  publishPoolIfBusyChanged();
+}
+
+// N2: agent_start/agent_end used to restringify the whole pool (plus a
+// post-idle republish) on every turn even when the busy set was identical.
+// The busy set only transitions through handleRunLifecycleEvent (unload /
+// delete RPCs refuse while busy), so a stable key safely skips the push.
+let lastPoolBusyKey: string | null = null;
+function publishPoolIfBusyChanged(): void {
+  const busy: string[] = [];
+  for (const e of sessions.values()) if (!e.isSubagent && e.session.isStreaming) busy.push(e.path);
+  busy.sort();
+  const key = busy.join("\n");
+  if (key === lastPoolBusyKey) return;
+  lastPoolBusyKey = key;
+  eachUiWs(pushPoolSnapshot);
 }
 
 // Connected UI slots, one per channel (spec §3.4): the local desktop client
@@ -213,9 +286,98 @@ export function eachUiWs(fn: (ws: { send(data: string): unknown }) => void): voi
 export function entryBus(entry: PoolEntry): { send(data: string): unknown } {
   return {
     send(data: string) {
-      for (const w of entry.uiSockets) w.send(data);
+      for (const w of entry.uiSockets) {
+        // 3b: a slow consumer (LAN remote) grows bufferedAmount without bound
+        // while deltas stream. Park frames past the high-water mark instead of
+        // buffering them inside the socket: deltas must never be dropped (the
+        // frontend concatenates them — a lost middle segment is lost text) and
+        // must never be reordered, so the park is an ordered FIFO that delays
+        // non-delta frames too (sending those directly would jump them ahead
+        // of parked deltas and corrupt the transcript order).
+        if (socketBufferedBytes(w) > BACKPRESSURE_HIGH_BYTES) parkStalledFrame(w, data);
+        else w.send(data);
+      }
     },
   };
+}
+
+// 3b backpressure parking lot, per socket (WeakMap: closed sockets drop out
+// with the object). Drained by timer: Bun WS has no writable/drain callback.
+const BACKPRESSURE_HIGH_BYTES = 1_000_000;
+const BACKPRESSURE_LOW_BYTES = 256_000;
+const BACKPRESSURE_DRAIN_MS = 100;
+type StalledFrame = { raw: string; kind?: unknown };
+type Stalled = { frames: StalledFrame[]; timer: Timer | null };
+const stalledSockets = new WeakMap<object, Stalled>();
+
+// Bun WS exposes bufferedAmount; the plain { send } fan-out adapters do not
+// (they read as 0 — direct send, no parking).
+function socketBufferedBytes(w: { send(data: string): unknown }): number {
+  if (w !== null && typeof w === "object" && "bufferedAmount" in w) {
+    const v = w.bufferedAmount;
+    if (typeof v === "number") return v;
+  }
+  return 0;
+}
+
+function parkStalledFrame(w: { send(data: string): unknown }, data: string): void {
+  let st = stalledSockets.get(w);
+  if (!st) {
+    st = { frames: [], timer: null };
+    stalledSockets.set(w, st);
+  }
+  let kind: unknown;
+  try {
+    const parsed: unknown = JSON.parse(data);
+    kind = parsed !== null && typeof parsed === "object" && "kind" in parsed ? parsed.kind : undefined;
+  } catch {
+    kind = undefined; // unparseable frames still ride the FIFO, just never merge
+  }
+  st.frames.push({ raw: data, kind });
+  if (st.timer === null) st.timer = setTimeout(() => drainStalled(w), BACKPRESSURE_DRAIN_MS);
+}
+
+function drainStalled(w: { send(data: string): unknown }): void {
+  const st = stalledSockets.get(w);
+  if (!st) return;
+  st.timer = null;
+  if (socketBufferedBytes(w) > BACKPRESSURE_LOW_BYTES) {
+    st.timer = setTimeout(() => drainStalled(w), BACKPRESSURE_DRAIN_MS);
+    return;
+  }
+  while (st.frames.length > 0) {
+    const head = st.frames.shift()!;
+    // Merge the leading run of same-kind delta frames into one: deltas parked
+    // over a slow window collapse to a single concatenated frame on release.
+    if (head.kind === "text_delta" || head.kind === "thinking_delta") {
+      while (st.frames.length > 0 && st.frames[0]!.kind === head.kind) {
+        const next = st.frames.shift()!;
+        head.raw = mergeDeltaFrames(head.raw, next.raw);
+      }
+    }
+    try {
+      w.send(head.raw);
+    } catch {
+      // Socket died while parked: the queue is undeliverable, drop it (the
+      // frontend rebuilds its view from the journal on reconnect anyway).
+      st.frames.length = 0;
+      break;
+    }
+    if (socketBufferedBytes(w) > BACKPRESSURE_LOW_BYTES) break;
+  }
+  if (st.frames.length > 0) st.timer = setTimeout(() => drainStalled(w), BACKPRESSURE_DRAIN_MS);
+  else stalledSockets.delete(w);
+}
+
+function mergeDeltaFrames(a: string, b: string): string {
+  try {
+    const oa: Record<string, unknown> = JSON.parse(a);
+    const ob: Record<string, unknown> = JSON.parse(b);
+    oa.text = String(oa.text ?? "") + String(ob.text ?? "");
+    return JSON.stringify(oa);
+  } catch {
+    return b; // parse failure (never expected for host-built deltas): keep the later frame
+  }
 }
 
 export const defaultCwd = os.homedir();
@@ -364,9 +526,17 @@ export function requestApproval(
   // with no questions on the frame — keepalive's blockState probes the two
   // families through different toggles, so the classification must stay exact.
   blockKind?: "approval" | "ask",
+  // Deadline for this wait (automation-run dialogs, the base's ask.timeout).
+  // `answer` is what the wait settles with — the ask dialog passes its
+  // serialized recommended-option submit; permission approvals leave it out so
+  // the wait resolves undefined = deny (the base treats anything but an
+  // explicit approval as denied). The deadline also pushes approval_resolved so
+  // every attached UI drops the card, which an abort alone does not do.
+  deadline?: { ms: number; answer?: string },
 ): Promise<string | undefined> {
   const requestId = crypto.randomUUID();
   const { promise, resolve } = Promise.withResolvers<string | undefined>();
+  let timer: Timer | undefined;
   // Presentation fields ride the frame verbatim (slider / disabledIndices /
   // keepContextTokens / editable* / prefill / intent): the UI renders or
   // consumes each when present. They
@@ -383,6 +553,7 @@ export function requestApproval(
     ...(presentation ?? {}),
   };
   const settle = (v: string | undefined) => {
+    clearTimeout(timer);
     pendingApprovals.delete(requestId);
     resolve(v);
   };
@@ -400,6 +571,14 @@ export function requestApproval(
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });
   ws.send(JSON.stringify(stampEvent(frame)));
+  // Counted from presentation (the frame went out), earliest answer wins: a
+  // response landing first cancels the deadline inside settle.
+  if (deadline && deadline.ms > 0) {
+    timer = setTimeout(() => {
+      settle(deadline.answer);
+      ws.send(JSON.stringify(stampEvent({ type: "approval_resolved", requestId })));
+    }, deadline.ms);
+  }
   return promise;
 }
 
@@ -423,4 +602,14 @@ export function settleApprovalResponse(
   // ExtensionAskDialogSubmitResult itself, so this stays pass-through.
   pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
   ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
+}
+
+/** Send one session-state frame to the requesting socket AND every other UI attached to the
+ *  session. The other channel renders the same composer state (model badge, thinking level,
+ *  computer/plan toggles), so a receipt only the requester sees leaves its control stale until
+ *  reload. Deduplicated: the requester is usually an attached socket, and receipts that toast
+ *  (cycle_model) must not fire twice. */
+export function sendSessionState(ws: { send(data: string): unknown }, entry: PoolEntry, data: string): void {
+  ws.send(data);
+  for (const w of entry.uiSockets) if (w !== ws) w.send(data);
 }

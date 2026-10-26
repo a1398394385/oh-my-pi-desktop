@@ -1,0 +1,87 @@
+/* Shared create/edit form language.
+   One surface stack, one row grid, one hairline rhythm, one primary action — used by
+   the main-column automation editor and by every settings create/edit window (MCP,
+   subagent, hook, skill, SSH, plugin install, provider wizard, shell rules).
+
+   Surface stack, taken from the automation editor (VSCode Dark+ parity: the field is
+   one step above the panel it sits on):
+     form face  = --card   (the panel the form sits on)
+     field face = --inset  (inputs, selects, textareas)
+     hairline   = --line-soft between rows, --line around the panel
+   Rows are separated by a hairline instead of loose margins, so a form reads as an
+   ordered list of labelled parts rather than a flat pile of fields. */
+
+.frm-rows { display: grid; min-width: 0; }
+
+.frm-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.frm-row:first-child { padding-top: 0; border-top: 0; }
+/* Related short fields share one logical row. Auto-fit collapses the pair before
+   either control becomes too narrow; the wrapper owns the hairline in both layouts. */
+.frm-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  gap: 18px 24px;
+  padding: 18px 0;
+  border-top: 1px solid var(--line-soft);
+}
+.frm-pair:first-child { padding-top: 0; border-top: 0; }
+.frm-pair > .frm-row,
+.frm-pair > .frm-row:first-child { padding: 0; border-top: 0; }
+
+/* Label column: title line plus an optional short hint line. */
+.frm-label { min-width: 0; }
+.frm-label strong { display: block; font-size: var(--ui-fs-base); font-weight: 500; }
+.frm-label .frm-hint { display: block; margin-top: 4px; color: var(--faint); font-size: var(--ui-fs-xs); line-height: 1.45; }
+.frm-label .req { margin-left: 2px; color: var(--err); font-weight: 400; }
+
+/* Control column. */
+.frm-ctl { display: grid; align-content: start; gap: 11px; min-width: 0; }
+.frm-ctl > .frm-compact { width: 320px; max-width: 100%; }
+
+/* Field face: one step above the form face, identical on every create page. */
+.frm-ctl .inp,
+.frm-ctl .mcp-form-input,
+.frm-ctl .mcp-form-textarea,
+.frm-ctl .sel.mcp-form-sel { width: 100%; min-width: 0; background: var(--inset); --hover-fill: var(--menu-hl); }
+
+/* Long explanatory copy sits under the control, not in the narrow label column. */
+.frm-ctl .frm-hint,
+.frm-ctl .mcp-form-hint { color: var(--faint); font-size: var(--ui-fs-sm); line-height: 1.45; }
+
+/* Inline form bodies (provider wizard, shell rules) sit inside a list card: give them
+   the same face + border the page-level editor windows use, so every create form
+   looks like the same object. */
+.sem-body.form { background: var(--card); --hover-fill: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.sem-body.form .inp,
+.sem-body.form .mcp-form-input,
+.sem-body.form .mcp-form-textarea,
+.sem-body.form .sel.mcp-form-sel { background: var(--inset); --hover-fill: var(--menu-hl); }
+
+/* Primary action: the accent button every create page commits with. */
+.frm-primary {
+  flex: none;
+  height: 31px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--white);
+  font-size: var(--ui-fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.frm-primary:hover:not(:disabled) { filter: brightness(1.1); }
+.frm-primary:disabled { opacity: .45; cursor: default; }
+
+/* Narrow form: the label column leaves no room for the control, so stack them. */
+@media (max-width: 780px) {
+  .frm-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}

@@ -4,14 +4,14 @@
 .dock {
   flex: none;
   width: 100%;
-  /* Same four-stage shrink logic as chat messages (see the shared rule comment above); stops narrowing at the floor (260px, matching #composer's min-width) */
-  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  /* Same four-stage shrink logic as chat messages (via --col-w, see center.css); stops narrowing at the floor (260px, matching #composer's min-width) */
+  max-width: var(--col-w);
   min-width: 260px;
 }
 
 .dock {
   margin: 8px auto 12px;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 0;
   border-radius: 16px;
   /* Ring color per state. Idle is fully neutral — no tint survives the pointer leaving.
@@ -118,19 +118,20 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
 .dock.approval-active:focus-within { box-shadow: none; }
 
 /* Session stats: ONE line on the desktop (the two narrow-only row containers dissolve via
-   display:contents); display-only with no click behavior, no hover highlight. */
+   display:contents); display-only with no click behavior, no hover highlight.
+   Two stacked layers (stats / cache-miss notice) share one grid cell and slide vertically
+   past each other, so the bar keeps a stable height and nothing around it shifts. */
 .stats-bar {
   flex: none;
-  /* Same four-stage max-width as the input dock (see .dock): the row is
+  /* Same four-stage max-width as the input dock (via --col-w, see center.css): the row is
      width-aligned with the composer card */
   width: 100%;
-  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+  max-width: var(--col-w);
   min-width: 0;
   margin: 0 auto 10px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 3px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
   padding: 0 6px;
   font-size: var(--ui-fs-sm);
   color: var(--faint);
@@ -138,6 +139,18 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
   /* Size container: the low-priority parts below are trimmed by the row's own
      width, not the window's (the main column also shrinks with the side panels) */
   container-type: inline-size;
+}
+
+/* One of the two stacked layers; the layout lives here now, not on the grid container.
+   The swap animations are below (sbUpIn / sbUpOut). */
+.sb-layer {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 3px 16px;
+  min-width: 0;
 }
 
 /* Narrow-only row wrapper (see remote.css); the desktop renders the groups directly */
@@ -170,24 +183,30 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
    the first line): tuned to the measured part widths at the 11.44px row font (cache hit +
    break counter 82px, cache read 53px, cache write 46px, input 58px, output 58px, cost
    124px, speed 80px, TTFT 49px, duration 93px): the full row needs 852px, and each stage
-   below drops one optional part once the row no longer fits (794px without TTFT, 677px
-   without the cache split, 544px without cost, 442px without duration) — the numbers stay
-   a few px under those sums so the row never wraps. */
+   below drops one optional part once the row no longer fits (744px without the cache
+   split, 611px without cost, 509px without duration, 451px without TTFT) — the numbers
+   stay a few px under those sums so the row never wraps.
+
+   Drop order is by value per pixel, not by position: the cache read/write split goes
+   first (two verbose numbers), then cost, then active time, and only a column too
+   narrow for anything meaningful loses the average TTFT. TTFT used to be the FIRST
+   casualty at 850px, so opening the right panel or narrowing the window below ~1260px
+   made it silently disappear mid-session — the one latency figure people hover for. */
 @media (min-width: 769px) {
   @container (max-width: 850px) {
-    .sb-opt-ttft { display: none; }
-  }
-
-  @container (max-width: 790px) {
     .sb-opt-cachetok { display: none; }
   }
 
-  @container (max-width: 675px) {
+  @container (max-width: 740px) {
     .sb-opt-cost { display: none; }
   }
 
-  @container (max-width: 540px) {
+  @container (max-width: 605px) {
     .sb-opt-duration { display: none; }
+  }
+
+  @container (max-width: 505px) {
+    .sb-opt-ttft { display: none; }
   }
 }
 
@@ -206,6 +225,31 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
 }
 
 .sb-break .pi-ic { margin-right: 2px; }
+
+/* Cache-miss flash: replaces the whole row for 3s when a prefix invalidation is
+   reported (SessionStatsBar). Yellow = the row lost billed money, not just a
+   counter tick. Centered + nowrap so the swap keeps one line on both layouts. */
+.sb-miss {
+  color: var(--yellow);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: center;
+  align-self: center;
+}
+
+/* Vertical carousel (SessionStatsBar): the incoming line rides up from below, the outgoing
+   one leaves through the top — same direction both legs, like an ad carousel. The layer is
+   remounted on each swap, which is what restarts the animation. */
+.sb-prev { animation: sbUpOut var(--dur-sheet) ease both; }
+.sb-next.sliding { animation: sbUpIn var(--dur-sheet) ease; }
+@keyframes sbUpIn {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes sbUpOut {
+  from { transform: none; opacity: 1; }
+  to { transform: translateY(-100%); opacity: 0; }
+}
 
 #composer {
   flex: none;
@@ -227,7 +271,7 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
 #statusCard, #capsule { pointer-events: auto; }
 
 #statusCard {
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 0;
   border-radius: var(--r-lg);
   padding: 10px 12px 6px;
@@ -308,7 +352,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
    constrains; missing either reverts that range to the input card's width */
 #main .goal-card {
   width: calc(100% - 20px);
-  max-width: calc(min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))) - 20px);
+  max-width: calc(var(--col-w) - 20px);
 }
 
 .goal-card {
@@ -316,7 +360,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   z-index: 0;
   margin: 8px auto -28px;
   padding: 3px 3px 28px;
-  background: var(--surface);
+  background: var(--surface); --hover-fill: var(--panel-2);
   border: 1px solid var(--line-soft);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
@@ -347,7 +391,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   z-index: 1; /* above .goal-card (z-0): the goal bar's bottom edge is covered by the queue card, never the other way around */
   margin: 8px auto -28px;
   padding: 3px 3px 28px;
-  background: var(--surface);
+  background: var(--surface); --hover-fill: var(--panel-2);
   border: 1px solid var(--line-soft);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
@@ -418,10 +462,10 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   display: block;
 }
 
-.q-btn:hover { background: var(--panel-2); color: var(--text); }
+.q-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 .turn-acts {
-  margin-top: 0; /* zero top gap, pixel-tight against the turn-body bottom edge */
+  margin-top: 6px; /* 6px gap to the turn's output above (was flush); the reserved slot keeps the turn height stable */
   margin-bottom: 33px; /* 5px more spacing to the agent process flow before it (28px -> 33px) */
   padding-top: 0;
   height: 1.4em;
@@ -485,7 +529,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .qk-acts {
   position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
   display: none; gap: 2px; align-items: center;
-  background: var(--ctl-bg); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line); border-radius: 8px;
   padding: 2px; box-shadow: 0 4px 14px var(--tint-black-350);
 }
 
@@ -518,7 +562,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   width: 15px; height: 15px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%; border: 1px solid var(--line-soft);
-  background: var(--panel); color: var(--dim);
+  background: var(--panel); --hover-fill: var(--menu-hl); color: var(--dim);
   cursor: pointer; font-size: 10px; line-height: 1;
 }
 
@@ -543,7 +587,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 .cbar > .sp { min-width: 0; }
 
-#modeBtn, #modelBtn, #thinkBtn { font-weight: 500; }
+#modeBtn, #modelBtn { font-weight: 500; }
 
 /* model names vary in length; the model button flexes with its content, exempt from the shared 180px cap */
 #modelBtn { max-width: none; }
@@ -551,14 +595,14 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 /* model provider icon (same glyph as the settings page): shown only when the model button shrinks to icon-only */
 #modelIcon { display: none; }
 
-/* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> icon-only -> thinking level -> icon-only -> model -> icon-only -> hide subagents -> hide background tasks -> three pills icon-only + tight padding -> hide plan pill, mic and screen buttons */
-#composer.bar-1 #modeLabel, #composer.bar-1 #modeBtn .caret-svg { display: none; }
+/* bottom-bar tiered shrink: as width runs out, JS (fitComposerBar) adds .bar-N tiers by overflow severity. order: permission mode -> (bar-2 reserved: no rule since the thinking pill merged into the model pill) -> model -> icon-only -> hide subagents -> hide background tasks -> pills icon-only + tight padding -> hide plan pill, mic and screen buttons */
+/* Scope is .cbar on purpose: narrow moves the three pills into the pill bar below the input,
+   where they must keep their full labels -- an unscoped rule would collapse them there too. */
+#composer.bar-1 .cbar #modeLabel, #composer.bar-1 .cbar #modeBtn .caret-svg { display: none; }
 
-#composer.bar-2 #thinkLabel, #composer.bar-2 #thinkBtn .caret-svg { display: none; }
+#composer.bar-3 .cbar #modelLabel, #composer.bar-3 .cbar #modelBtn .caret-svg { display: none; }
 
-#composer.bar-3 #modelLabel, #composer.bar-3 #modelBtn .caret-svg { display: none; }
-
-#composer.bar-3 #modelIcon { display: inline; }
+#composer.bar-3 .cbar #modelIcon { display: inline; }
 
 #composer.bar-4 #bgSubagentBtn { display: none; }
 
@@ -566,12 +610,12 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 /* bar-6: the three selector pills are all icon-only now (bar-1/2/3 already hid
    the labels); shed the text-side padding so each pill collapses to icon width */
-#composer.bar-6 #modeBtn, #composer.bar-6 #thinkBtn, #composer.bar-6 #modelBtn { padding: 5px; }
+#composer.bar-6 .cbar #modeBtn, #composer.bar-6 .cbar #modelBtn { padding: 5px; }
 
-/* bar-7: hide the plan pill + its separator and the mic/screen icon buttons;
+/* bar-7: hide the plan pill + its separator and the screen icon button;
    the floor row is +, icon-only pills, ctxRing, send */
 #composer.bar-7 #planBtn, #composer.bar-7 #planSep,
-#composer.bar-7 #voiceBtn, #composer.bar-7 #computerBtn { display: none; }
+#composer.bar-7 #computerBtn { display: none; }
 
 /* background task terminal button */
 .bg-task-btn {
@@ -594,7 +638,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .bg-task-btn:hover,
 .bg-task-btn.active,
 .bg-task-btn.on {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   color: var(--text);
 }
 
@@ -626,24 +670,14 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 .plan-btn:hover .plan-ic > span:nth-child(2) { display: inline-flex; }
 
-.plan-btn:hover { background: var(--panel-2); color: var(--text); }
+.plan-btn:hover { background: var(--hover-fill); color: var(--text); }
 
-/* computer-use toggle: screen icon between the plan button and background tasks; lit (accent) = the per-session opt-in is on */
+/* computer-use toggle: screen icon between the plan button and background tasks; lit = the
+   per-session opt-in is on, in the session accent (the input ring's color — falls back to
+   the plain accent until the session has a title to derive one from) */
 .computer-btn { padding: 5px 7px; }
 
-.computer-btn.on, .computer-btn.on:hover { color: var(--accent); }
-/* voice-conversation mic toggle: left of send; lit (accent) = synthesis +
-   dictation mode; .rec pulses while a push-to-talk capture is live */
-.mic-btn { padding: 5px 7px; }
-
-.mic-btn.on, .mic-btn.on:hover { color: var(--accent); }
-
-.mic-btn.rec, .mic-btn.rec:hover { color: var(--err); animation: mic-pulse 1.2s ease-in-out infinite; }
-
-@keyframes mic-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
+.computer-btn.on, .computer-btn.on:hover { color: var(--session-accent, var(--accent)); }
 
 /* context usage ring: grows clockwise from the top, temperature-colored; hover shows the detail card */
 .ctx-ring {
@@ -651,7 +685,8 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   padding: 4px; border-radius: 7px; /* reserve at rest; the hover plate appears without shifting layout (border-box: 24 = 16 ring + 4x2 padding) */
 }
 
-.ctx-ring:hover { background: var(--context-ring-hover); }
+/* hover plate = --panel-2, the same fill as every other composer-toolbar button */
+.ctx-ring:hover { background: var(--hover-fill); }
 
 /* hover-highlight rounded square plate */
 .ctx-ring svg { display: block; }
@@ -671,12 +706,18 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 /* send button: neutral base by default (no content); .ready blue highlight with a draft; stop states (.stop / .stopping) keep a persistent red highlight */
 .send {
   width: 30px; height: 30px; border-radius: 50%;
-  border: 0; background: var(--send-idle); color: var(--white);
+  border: 0; background: var(--send-idle); color: var(--send-idle-fg, var(--white));
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   padding: 0; line-height: 0;
   flex: none;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), filter var(--dur-snap) var(--swift), opacity var(--dur-snap) var(--swift);
 }
+
+/* Idle button: the fixed near-black base reads as a black hole on light
+   surfaces; there use a dark veil (consistent gray across light themes,
+   translucent --line values included) with a dark icon. Midnight re-skins
+   --send-idle in ui/themes/midnight.css */
+:is([data-theme="light"], [data-theme-mode="light"]) .send { --send-idle: var(--tint-black-120); --send-idle-fg: var(--black); }
 
 .send > span {
   width: 16px; height: 16px;
@@ -694,6 +735,19 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .send.stop, .send.stopping { background: var(--send-stop); color: var(--white); }
 .send.stop:hover:not(:disabled), .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
 
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* dictation form (.rec = a push-to-talk capture is live): the button pulses like
+   the old mic toggle; the icon swap itself is state-driven in Composer. The stop
+   form keeps its white icon on the red fill (--err on --send-stop is invisible). */
+.send.rec, .send.rec:hover:not(:disabled) { animation: mic-pulse 1.2s ease-in-out infinite; }
+
+.send.rec:not(.stop):not(.stopping),
+.send.rec:not(.stop):not(.stopping):hover:not(:disabled) { color: var(--err); }
+
 .highlight-mode {
   color: var(--orange) !important;
 }
@@ -709,7 +763,8 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   border-radius: 12px;
   background: var(--ctl-bg, var(--project-menu-surface));
   border: 1px solid var(--line);
-  box-shadow: 0 16px 36px var(--tint-black-500);
+  /* No drop shadow: the 1px border is the edge, a halo read as a fuzzy ring. */
+  box-shadow: none;
   display: none;
   flex-direction: column;
   overflow: hidden;
@@ -725,7 +780,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 :is([data-theme="light"], [data-theme-mode="light"]) #wbProjectMenu.wb-project-menu {
   background: var(--panel, var(--white));
   border-color: var(--line);
-  box-shadow: 0 12px 32px var(--tint-black-150);
+  box-shadow: none;
 }
 
 .wb-proj-search {
@@ -764,12 +819,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 .wb-proj-item:hover,
 .wb-proj-item.selected {
-  background: var(--tint-white-80);
-}
-
-:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-item:hover,
-:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-item.selected {
-  background: var(--tint-black-60);
+  background: var(--menu-hl);
 }
 
 .wb-proj-actions {
@@ -800,11 +850,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 }
 
 .wb-proj-action-item:hover {
-  background: var(--tint-white-80);
-}
-
-:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-action-item:hover {
-  background: var(--tint-black-60);
+  background: var(--menu-hl);
 }
 
 #wbBranchMenu {
@@ -835,6 +881,51 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 /* placeholder overlay: ContentEditable's placeholder host has no positioning, so it hangs on .lex-wrap (relative) to align with the #input text origin (#input has no padding; the padding lives on #composer), rendered only when content is empty */
 .lex-wrap { position: relative; }
+
+/* Consumed slash-command echo (.cmdf): for ~1s the whole composer card — editor
+   AND toolbar — is replaced by a card holding the typed command above and its
+   return value below. Siblings are hidden rather than unmounted: the draft and
+   caret survive and the card keeps its exact size (the overlay spans #composer's
+   padding box, itself inheriting the parent padding so the text lines up with
+   where the editor text was). */
+#composer.flash-on > *:not(.cmdf) { visibility: hidden; }
+
+.cmdf {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  padding: inherit;
+  overflow: hidden;
+  font-family: var(--mono); font-size: var(--code-fs, 12px); line-height: 1.5;
+  /* Page flip around the card's HORIZONTAL centre axis (rotateX): the card
+     turns up/down like a flip calendar tile, not left/right like a door. */
+  animation: cmdfFlip 0.42s cubic-bezier(0.2, 0.8, 0.25, 1) both;
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+@keyframes cmdfFlip {
+  from { transform: perspective(1000px) rotateX(-90deg); opacity: 0; }
+  45%  { opacity: 1; }
+  to   { transform: perspective(1000px) rotateX(0deg); opacity: 1; }
+}
+
+/* Exit half of the flip: the card keeps turning the same way (top edge away)
+   while the composer content flips back in behind it, so the hand-over reads as
+   one continuous page turn instead of a hard cut. */
+.cmdf.is-out { animation: cmdfFlipOut 0.22s cubic-bezier(0.4, 0, 0.8, 0.2) both; }
+
+@keyframes cmdfFlipOut {
+  from { transform: perspective(1000px) rotateX(0deg); opacity: 1; }
+  to   { transform: perspective(1000px) rotateX(90deg); opacity: 0; }
+}
+
+/* Composer flips back in when the echo card unmounts (one-shot class added by
+   the Composer effect; skipped when motion is off). */
+#composer.flash-return { animation: cmdfFlip 0.24s cubic-bezier(0.2, 0.8, 0.25, 1) both; transform-origin: 50% 50%; }
+
+.cmdf-c { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.cmdf-o { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .lex-ph {
   position: absolute;
@@ -875,9 +966,68 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 @media (max-width: 768px) {
   #composer { padding: 8px 8px 6px; }
 
-  #input { font-size: 16px; }
+  /* 16px is iOS Safari's focus-zoom floor, but WebKit measures the RENDERED size and the
+     narrow baseline zooms #main to 0.8 — a literal 16px renders at 12.8px, so iOS still
+     zooms the page on focus (viewport jumps up, field centered). Divide the baseline back
+     out; max() keeps native 16px when the zoom level is above 100%. */
+  #input { font-size: max(16px, calc(16px / var(--ui-zoom, 1))); }
 
   .cbar { flex-wrap: wrap; }
+
+  /* Selector pill bar: narrow moves permission / model / thinking out of .cbar into this bar
+     that extends below the input card (full labels, no tiered collapse). The negative side and
+     bottom margins cancel #composer's own padding so the bar spans the whole card width and
+     closes it with the card's bottom corners. */
+  #composer .pill-fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-snap) var(--swift); }
+
+  #composer .pill-bar {
+    min-height: 0;
+    display: flex;
+    /* One row only: wrapping would drop the permission pill onto a second line and
+       hand the left corner back to nothing; the model pill shrinks with an ellipsis
+       instead */
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    /* -7px (not -8px) against #composer's 8px narrow padding: under #main's zoom:0.8
+       WebKit rounds the negative margin and the padding in opposite directions, which let
+       the bar's opaque background paint over the dock's 1px inset ring on the left/right
+       edges. The extra 1px keeps the outline closed. */
+    margin: 8px -7px -6px;
+    padding: 8px;
+    background: var(--panel-2);
+    /* 1px transparent border + padding-box clip: the bar's opaque background must not
+       repaint over the dock's 1px inset ring, or the card outline (and the traveling
+       band's base) visibly stops at the divider instead of closing around the band */
+    border: 1px solid transparent;
+    border-top-color: var(--line-soft);
+    background-clip: padding-box;
+    border-radius: 0 0 15px 15px;
+    overflow: hidden;
+    transition: opacity var(--dur-snap) var(--swift), margin-top var(--dur-snap) var(--swift), padding-top var(--dur-snap) var(--swift), padding-bottom var(--dur-snap) var(--swift), visibility 0s var(--dur-snap);
+  }
+
+  /* Model selector owns the bar's right corner; the permission pill parks against the
+     left edge so the two never sit shoulder to shoulder. The model pill absorbs the
+     shrink (min-width:0) and clips its label instead of forcing a second row. */
+  #composer .pill-bar #modelBtn { margin-left: auto; min-width: 0; }
+
+  /* block (not the shared inline-flex): text-overflow only ellipsizes in a block container */
+  #composer .pill-bar #modelLabel { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+  /* bash mode folds the whole toolbar away (see composer-bash.css); the pill bar is part of it.
+     The padding and the divider must collapse too: on a 0fr track the box would otherwise keep
+     its 16px padding + 1px border as a leftover strip. */
+  #composer.bash-mode .pill-fold { grid-template-rows: 0fr; }
+
+  #composer.bash-mode .pill-bar {
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-top-color: transparent;
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 
 /* ghost inline completion (GhostNode) + model capability badges (18.5) */

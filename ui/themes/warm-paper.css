@@ -12,6 +12,7 @@
   --card:      #FCFAF5;   /* middle/right cards (from openhanako --bg-card) */
   --inset:     #FAF5E9;   /* input fields (from openhanako --jian-note-bg) */
   --select:    #F0EBE3;   /* current session highlight (derived: card - 5% darker) */
+  --menu-hl:   #F2EDE5;   /* dropdown option highlight (this theme's warm plate step) */
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);

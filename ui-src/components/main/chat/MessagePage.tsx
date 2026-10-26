@@ -2,8 +2,11 @@
 // (msgRail) + "working Ns" row (WorkSec) + in-session find (⌘F). The streaming status row
 // (spinner + dynamic text) lives in ChatLoading.
 // Migrated from renderChat in ui/chat.js + the scroll handling of markdown.js:
-// - Scroll following (stickBottom semantics, CDS useClaudeScrollPinning): switching sessions
-//   jumps to the latest content; when pinned (within 40px of the bottom), any re-render
+// - Scroll restore per session: switching back to a session restores the position saved
+//   by its last scroll (positions at the bottom restore to the latest content, so resumed
+//   at-bottom viewers keep following); a session first loaded into the pool this client
+//   runtime opens at the latest content. Records are keyed per client channel
+//   (desktop vs remote). When pinned (within 40px of the bottom), any re-render
 //   (streaming append / expand body) stays pinned. Bottom proximity is judged in the layout
 //   effect from the CURRENT scrollTop (readback is synchronous, so it sees compositor wheel
 //   scrolls whose scroll event has not been delivered yet), minus the scrollHeight growth
@@ -11,14 +14,22 @@
 //   would otherwise read as "user scrolled up" and break following for pinned viewers on
 //   large single-render growth. A user-initiated scroll additionally arms a 150ms latch
 //   (performance.now): while active, programmatic bottom-follows are skipped, so a token
-//   landing mid-flick cannot yank the view back down. The target itself is latestScrollTop()
-//   — see its comment for why the plain scrollHeight target is wrong.
+//   landing mid-flick cannot yank the view back down. Only a real gesture counts as one: the
+//   stream keeps settling for a frame or two after a switch (late image/highlight sizing,
+//   per-session dock/composer mounting) and the browser then moves scrollTop by itself, so
+//   scroll events stay attributed to the restore until real input arrives or
+//   SWITCH_SETTLE_MS passes. Otherwise that transient offset was both remembered as the
+//   session's position and read as a gesture (latch armed), which is what made a resumed
+//   session sit at a stale offset instead of the latest content. The
+//   target itself is latestScrollTop() — see its comment for why the plain scrollHeight
+//   target is wrong.
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
 //   visibility toggled imperatively from scroll events; shown only when the latest content
 //   sits more than 120px below the viewport (high-frequency scrolling stays out of React state).
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, isJunkPlaceholder, send } from "../../../store";
+import { useAppStore, isJunkPlaceholder, send, effZoom } from "../../../store";
+import { REMOTE } from "../../../store/layout";
 import Icon from "../../../Icon";
 import TodoCard from "../../chat/TodoCard";
 import { WorkSec } from "../../chat/WorkLine";
@@ -28,6 +39,7 @@ import MsgRail from "../../chat/MsgRail";
 import FindBar from "../../chat/FindBar";
 import { renderItems } from "../../chat/items";
 import type { RailEntry } from "../../chat/chat-types";
+import { computeBranchNav, getPendingBranchScroll, clearPendingBranchScroll } from "../../chat/branch-nav";
 import { motionEnabled, updateRailVisibility } from "../../../shell";
 
 // Bottom fade reserve: #stream::after (main-composer.css) is a sticky 36px spacer that
@@ -42,6 +54,10 @@ const FADE_RESERVE = 36;
 const PIN_TOLERANCE = 40;
 const FOLLOW_LATCH_MS = 150;
 const BTN_SHOW_TOLERANCE = 120;
+// How long after a session switch the stream may still be settling (late image/highlight
+// sizing, the per-session dock/composer mounting) — scroll events in this window are the
+// restore's own and must not be read as gestures.
+const SWITCH_SETTLE_MS = 1000;
 
 // Scroll-gesture ownership across wheel-eating overlays. Two mechanisms:
 // 1. Inline expand cards (.ed-brief/.chg-body/... inside the stream): while a wheel-driven
@@ -78,6 +94,14 @@ const INLINE_CARD_SELECTOR = ".ed-brief, .cmd-card, .bash-out, .think-body, .chg
 // Both selectors ARE part of the .wheel-through CSS transparency list (superset).
 const SCROLL_OWNER_SELECTOR = `${INLINE_CARD_SELECTOR}, .md-code-block-frame [data-streamdown="code-block-body"], .sticky-user-wrap .user-msg-text`;
 
+// Per-session scroll restore (survives across sessions because the stream node is reused,
+// not remounted): positions saved from scroll events, keyed "<channel>:<activePath>".
+// seenPaths tracks sessions whose items rendered at least once this client runtime — an
+// unseen session is a fresh pool load and opens at the latest content.
+const savedScrollPos = new Map<string, { top: number; max: number }>();
+const seenPaths = new Set<string>();
+const scrollKey = (path: string) => `${REMOTE ? "r" : "d"}:${path}`;
+
 // "Show the latest" scroll target. The plain scrollHeight target overshoots the newest
 // turn by the sticky spacer's height whenever that turn fits the viewport (fresh send /
 // short turn), which pins the sticky user bubble 36px above its flow position and drags
@@ -98,8 +122,14 @@ function latestScrollTop(el: HTMLElement): number {
     return Math.min(max, Math.max(last.offsetTop, end + FADE_RESERVE - el.clientHeight));
   }
   // Top-level node after the sections (pending steer bubble): keep it above the fade at the
-  // stream end; a stream shorter than the viewport just pins to its top
-  return Math.min(max, Math.max(0, last.offsetTop + last.offsetHeight + FADE_RESERVE - el.clientHeight));
+  // stream end; a stream shorter than the viewport just pins to its top. The node's bottom
+  // margin sits below offsetTop+offsetHeight but still counts as scrollable height (sibling
+  // margin collapse with the in-flow #stream::after spacer), so without it max overshoots
+  // the follow target by that margin: the reader wheels down into the bogus band and the
+  // pinned follow yanks the view back on the next render — the stream visibly bounces
+  // whenever a pending steer bubble is the stream's last node.
+  const mb = parseFloat(getComputedStyle(last).marginBottom) || 0;
+  return Math.min(max, Math.max(0, last.offsetTop + last.offsetHeight + mb + FADE_RESERVE - el.clientHeight));
 }
 
 // Button visibility: shown while the latest content sits more than BTN_SHOW_TOLERANCE px
@@ -112,16 +142,56 @@ function updateScrollBottomVis(el: HTMLElement | null, btn: HTMLElement | null) 
 
 export default function MessagePage() {
   const { t } = useTranslation();
-  // Current session subscription: all session writes go through updateSession swapping the
-  // reference (items/draft/streaming changes re-render)
-  const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  // Field-level subscriptions (Batch 1): the whole-session selector re-rendered this page on
+  // every updateSession of the active session; scalars re-render only when a read field flips.
+  // T7: after LRU eviction the getters return undefined/false — same fallbacks as before.
+  const hasSession = useAppStore((st) => (st.activePath ? st.openSessions.has(st.activePath) : false));
+  const items = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.items : undefined));
+  const draft = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.assistantDraft : ""));
+  const streaming = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.streaming : false));
+  const externalWrite = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.externalWrite ?? false : false));
+  const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
   const activePath = useAppStore((st) => st.activePath);
+  // Branch pager data source (entry-tree slice; fetched below so the pagers work
+  // without ever opening the /tree page)
+  const entryTree = useAppStore((st) => st.entryTree);
   const streamRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const prevPath = useRef<string | null>(null);
   const prevItemsLen = useRef(0);
   // scrollHeight at the last follow-check/scroll event, for the growth correction below
   const lastScrollHeight = useRef(0);
+  // Switch restore in flight: it wrote its target, but the post-switch layout can still
+  // settle (late image/highlight sizing, dock/composer resize load after the commit) and the
+  // browser then moves scrollTop on its own. Until a real gesture arrives (or the window
+  // expires) scroll events belong to the restore, not to the reader.
+  const switching = useRef<{ at: number; toLatest: boolean; sh: number } | null>(null);
+  // Reading-position anchor for stream WIDTH reflow (side-panel collapse/expand, gutter
+  // drag; the message column is a percentage of #main, so widening the card re-wraps every
+  // message and the content above the viewport shrinks by hundreds of px). WKWebView has no
+  // CSS scroll anchoring (Chromium-only) — without this the reader's content slides away and
+  // the scrollbar thumb jumps. Entry point is sampled on scroll/render, restored per layout.
+  const scrollAnchor = useRef<{ el: Element; top: number } | null>(null);
+  const sampleAnchor = (el: HTMLElement) => {
+    // children are in flow order, so the first one reaching below scrollTop is the first visible
+    let first: Element | null = null;
+    for (const c of el.children) {
+      const h = c as HTMLElement;
+      if (h.offsetTop + h.offsetHeight > el.scrollTop) {
+        first = c;
+        break;
+      }
+    }
+    scrollAnchor.current = first ? { el: first, top: first.getBoundingClientRect().top } : null;
+  };
+  const restoreAnchor = (el: HTMLElement) => {
+    const a = scrollAnchor.current;
+    if (!a || !a.el.isConnected) return;
+    const delta = a.el.getBoundingClientRect().top - a.top;
+    if (Math.abs(delta) < 1) return;
+    programmaticScroll.current = true;
+    el.scrollTop += delta;
+  };
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Scroll pin latch (CDS useClaudeScrollPinning): performance.now() of the last
   // USER-initiated scroll; programmatic writes tag themselves so their async scroll event
@@ -140,10 +210,32 @@ export default function MessagePage() {
   const onScroll = () => {
     const el = streamRef.current;
     if (!el) return;
+    const wasProg = programmaticScroll.current;
     if (programmaticScroll.current) programmaticScroll.current = false;
-    else lastUserScrollAt.current = performance.now();
+    // Right after a switch the stream is still settling (late image/highlight sizing, the
+    // per-session dock/composer mounting) and the browser adjusts scrollTop on its own: those
+    // scroll events are the restore's own write and its settles, not gestures. Counting them
+    // as gestures armed the follow latch and remembered that transient offset as the
+    // session's position — the next visit restored the same wrong offset and never re-pinned.
+    const sw = switching.current;
+    const inSwitch = sw !== null && performance.now() - sw.at < SWITCH_SETTLE_MS;
+    if (!wasProg && !inSwitch) {
+      lastUserScrollAt.current = performance.now();
+      switching.current = null;
+    }
     lastScrollHeight.current = el.scrollHeight;
     updateScrollBottomVis(el, btnRef.current);
+    // Record the position for the session currently on screen (getState, not the render
+    // closure: the event can outlive the switch that re-rendered this handler)
+    const path = useAppStore.getState().activePath;
+    if (path && !inSwitch) savedScrollPos.set(scrollKey(path), { top: el.scrollTop, max: el.scrollHeight - el.clientHeight });
+    // A switch restore that targeted the latest content measured it before the settle: the
+    // old height is not the real bottom anymore, so re-target the settled layout.
+    if (inSwitch && sw.toLatest && el.scrollHeight !== sw.sh) {
+      scrollToLatest(el);
+      sw.sh = el.scrollHeight;
+    }
+    sampleAnchor(el);
 
     // Light up the right scrollbar while scrolling, fade out smoothly after it stops
     el.classList.add("scrolling");
@@ -153,19 +245,23 @@ export default function MessagePage() {
     }, 800);
   };
 
-  // Force bottom on session switch + top on new outgoing message + follow during streaming
-  // while pinned (useLayoutEffect finishes before paint, no flash of the old position)
+  // Session switch restores the saved position (first load of a pool session has no
+  // record and opens at the latest content) + top on new outgoing message + follow during
+  // streaming while pinned (useLayoutEffect finishes before paint, no flash of the old position)
   useLayoutEffect(() => {
     const el = streamRef.current;
-    if (!el || !s) return;
+    if (!el || !items || !activePath) return;
     const switched = prevPath.current !== activePath;
     prevPath.current = activePath;
-    const currentLen = s.items.length;
-    const isNewUserMsg = currentLen > prevItemsLen.current && s.items[currentLen - 1]?.role === "user";
+    const currentLen = items.length;
+    const isNewUserMsg = currentLen > prevItemsLen.current && items[currentLen - 1]?.role === "user";
     prevItemsLen.current = currentLen;
 
-    // On session switch the stream node is reused, and the old session's scrollTop is
-    // meaningless for the new one;
+    // On session switch restore the position recorded by that session's last scroll:
+    // a record taken within PIN_TOLERANCE of the bottom counts as "was following" and
+    // re-targets the latest content (which may have grown), everything else restores the
+    // saved offset (clamp if the content shrank below it); a session whose items never
+    // rendered this runtime is a fresh pool load and opens at the latest content;
     // on a new outgoing message jump to the newest-content position (the last turn's
     // min-height:100% puts the new message right at the top; a turn that fits the viewport
     // top-aligns, so its flow content stays clear of the sticky bubble's fade mask);
@@ -184,7 +280,18 @@ export default function MessagePage() {
     // mid-flick, streaming appends must not steal the gesture. Session switches and fresh
     // outgoing messages are deliberate user navigation and bypass the latch.
     const latchActive = performance.now() - lastUserScrollAt.current < FOLLOW_LATCH_MS;
-    if (switched || isNewUserMsg || (pinned && !latchActive)) {
+    if (switched) {
+      const saved = seenPaths.has(activePath) ? savedScrollPos.get(scrollKey(activePath)) : undefined;
+      if (saved && saved.max - saved.top > PIN_TOLERANCE) {
+        programmaticScroll.current = true;
+        el.scrollTop = saved.top;
+        switching.current = { at: performance.now(), toLatest: false, sh: el.scrollHeight };
+      } else {
+        scrollToLatest(el);
+        switching.current = { at: performance.now(), toLatest: true, sh: el.scrollHeight };
+      }
+      seenPaths.add(activePath);
+    } else if (isNewUserMsg || (pinned && !latchActive)) {
       scrollToLatest(el);
     }
     // Session switch slide: the stream node is reused across sessions (no remount), so the
@@ -200,7 +307,8 @@ export default function MessagePage() {
       });
     }
     updateScrollBottomVis(el, btnRef.current);
-  }, [s?.items, s?.assistantDraft]);
+    sampleAnchor(el);
+  }, [items, draft]);
 
   // Rail visibility init: .dock mounts in the same frame as the chat area, #main's size does
   // not change from inner mounting, so the ResizeObserver does not fire; the dock may not
@@ -211,7 +319,90 @@ export default function MessagePage() {
     updateRailVisibility();
   }, []);
 
+  // Scrollport resize: two cases share this observer.
+  // 1. Phone soft keyboard — the shell shrinks to the visual viewport (--app-h, shell.ts), so
+  //    the scrollport resizes under a reader who was following the bottom. Without a re-pin the
+  //    newest content slides out of view and the page reads as jumping while typing. Judge
+  //    against the PREVIOUS height — by the time the callback runs, the smaller clientHeight
+  //    already looks like "scrolled up".
+  // 2. WIDTH reflow (side-panel collapse/expand, gutter drag): the column re-wraps and the
+  //    content above the viewport changes height, so a reader who is not pinned gets their
+  //    place back from the anchor (WKWebView has no scroll anchoring of its own).
+  // Keyed on hasSession because the empty-state and session trees render two different #stream nodes.
+  useLayoutEffect(() => {
+    const el = streamRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let lastH = el.clientHeight;
+    const ro = new ResizeObserver(() => {
+      const wasPinned = el.scrollHeight - el.scrollTop - lastH < PIN_TOLERANCE;
+      lastH = el.clientHeight;
+      if (wasPinned) scrollToLatest(el);
+      else restoreAnchor(el);
+      sampleAnchor(el); // the restore moved the viewport; re-anchor to what is visible now
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasSession]);
+
+  // Branch pager data: the entry tree starts null and is normally only fetched
+  // by the /tree page; the chat view needs it for the fork pagers, so refetch
+  // whenever it is stale for the active session (mount, and after the
+  // turn_end / session_navigated invalidations) — same guards as the tree
+  // page's own mount fetch.
+  useEffect(() => {
+    if (!sessionId) return;
+    const st = useAppStore.getState();
+    if (st.entryTree?.sessionId === sessionId || st.entryTreePending) return;
+    useAppStore.setState({ entryTreePending: true, entryTreeFor: sessionId });
+    send({ type: "get_entry_tree", sessionId });
+  }, [sessionId, entryTree]);
+
+  // Branch-pager scroll: a pager click records the fork point; the receipt
+  // invalidates the tree, the effect above refetches it, and once the new map
+  // lands this scrolls to the new branch's host bubble of the SAME fork
+  // (data-eid anchor). Rect diff is visual px, scrollTop is layout px inside
+  // the zoomed subtree — same conversion as the tree page.
+  const branchNav = useMemo(
+    () => (entryTree && entryTree.sessionId === sessionId ? computeBranchNav(entryTree.roots ?? [], entryTree.leafId) : null),
+    [entryTree, sessionId],
+  );
+  useLayoutEffect(() => {
+    const pend = getPendingBranchScroll();
+    if (!pend || useAppStore.getState().entryTreeNav) return;
+    if (entryTree === pend.treeRef) {
+      clearPendingBranchScroll(); // receipt left the tree untouched → navigation failed
+      return;
+    }
+    if (!entryTree || entryTree.sessionId !== pend.sessionId || !branchNav) return; // refetch still in flight
+    clearPendingBranchScroll();
+    let hostId: string | null = null;
+    for (const [id, info] of branchNav) {
+      if (info.forkId === pend.forkId) {
+        hostId = id;
+        break;
+      }
+    }
+    const stream = streamRef.current;
+    const host = hostId ? stream?.querySelector<HTMLElement>(`[data-eid="${CSS.escape(hostId)}"]`) : null;
+    if (!stream || !host) return; // fork has no visible host bubble on the new branch → no scroll
+    programmaticScroll.current = true;
+    stream.scrollTop += (host.getBoundingClientRect().top - stream.getBoundingClientRect().top - 12) / effZoom();
+  }, [entryTree, branchNav, items]);
+
   useEffect(() => () => clearTimeout(scrollTimer.current), []);
+
+  // Any real input ends the post-switch settle window (see switching): the stream's own
+  // settles never come with one, so a gesture inside that window must not be swallowed.
+  useEffect(() => {
+    const end = () => {
+      switching.current = null;
+    };
+    const types = ["wheel", "touchstart", "pointerdown", "keydown"] as const;
+    for (const type of types) document.addEventListener(type, end, { capture: true, passive: true });
+    return () => {
+      for (const type of types) document.removeEventListener(type, end, { capture: true });
+    };
+  }, []);
 
   // Block scroll bleed-through from tab popups / inline expand cards into the outer message
   // stream (no chained propagation outward at the boundary).
@@ -392,7 +583,64 @@ export default function MessagePage() {
     </button>
   );
 
-  if (!s) {
+  // Concise style's live view (ui.prefs.agentProcessStyle === "concise"): while the turn
+  // runs only the working row, the spinner+intent and the assistant outputs stay on
+  // screen; liveStart is that turn's user row, liveProcess tells whether there is a
+  // process to reveal behind the working row's chevron. Finished turns and the post-turn
+  // layout are untouched, so the toggle state resets per turn (and per session).
+  const turnStartAt = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.turnStartAt : null));
+  const processStyle = useAppStore((st) => st.uiPrefs.agentProcessStyle);
+  const [conciseOpen, setConciseOpen] = useState(false);
+  useEffect(() => {
+    setConciseOpen(false);
+  }, [sessionId, turnStartAt]);
+  const conciseLive = processStyle === "concise" && streaming;
+  const list = items ?? [];
+  let liveStart = -1;
+  let liveProcess = false;
+  if (conciseLive) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (list[i].role === "user") {
+        liveStart = i;
+        break;
+      }
+    }
+    for (let i = liveStart + 1; i < list.length && !liveProcess; i++) liveProcess = list[i].role !== "assistant";
+  }
+  const hideProcessFrom = conciseLive && !conciseOpen && liveStart >= 0 ? liveStart : undefined;
+
+  const streamTail =
+    streaming || draft ? (
+      <>
+        <WorkSec
+          onToggle={liveProcess ? () => setConciseOpen((v) => !v) : undefined}
+          open={conciseOpen}
+        />
+        {/* Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown):
+            the engine memoizes per block, so appending to the growing draft only re-parses
+            the last incomplete block — NOT the full-text-per-frame re-parse that froze the
+            app in BUG-007 round 3 (that was the old custom pipeline, pre-streamdown). */}
+        {draft && !isJunkPlaceholder(draft) && (
+          <AssistantMsg text={draft} streaming />
+        )}
+        {streaming && <ChatLoading />}
+      </>
+    ) : null;
+  // Message rail data + row elements in one memo (Batch 2): renderItems fills the rail
+  // entries as a side effect of the traversal, so both come from the same pass; the memo
+  // keys on items/draft/streamTail (streamTail covers the streaming flip) and the row
+  // components further below compare scalar props, so a 100ms delta flush re-renders only
+  // the rows whose own data changed. Runs before the no-session early return (hooks must
+  // stay unconditional); with no session items is undefined and the pass is trivially empty.
+  // processStyle is a dep of its own: renderItems reads the fold style from the store
+  // (non-reactive), so the subscription is what re-lays out messages when it changes.
+  const { nodes, railEntries } = useMemo(() => {
+    const entries: RailEntry[] = [];
+    const out = renderItems(items ?? [], "", entries, streamTail, { hideProcessFrom, branchNav });
+    return { nodes: out, railEntries: entries };
+  }, [items, draft, streamTail, processStyle, hideProcessFrom, branchNav]);
+
+  if (!hasSession) {
     return (
       <>
         <div id="statusWrap" />
@@ -403,31 +651,12 @@ export default function MessagePage() {
       </>
     );
   }
-
-  // Message rail data: collected during render along the items traversal (key shares the
-  // same source as the data-fk anchors)
-  const railEntries: RailEntry[] = [];
-  const streamTail =
-    s.streaming || s.assistantDraft ? (
-      <>
-        {(s.streaming || s.assistantDraft) && <WorkSec />}
-        {/* Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown):
-            the engine memoizes per block, so appending to the growing draft only re-parses
-            the last incomplete block — NOT the full-text-per-frame re-parse that froze the
-            app in BUG-007 round 3 (that was the old custom pipeline, pre-streamdown). */}
-        {s.assistantDraft && !isJunkPlaceholder(s.assistantDraft) && (
-          <AssistantMsg text={s.assistantDraft} streaming />
-        )}
-        {s.streaming && <ChatLoading />}
-      </>
-    ) : null;
-  const nodes = renderItems(s.items, "", railEntries, streamTail);
   return (
     <>
       <TodoCard />
       {/* External-process write notice bar: set by the host's session_external_write frame;
           cleared when a reload rebuilds from disk */}
-      {s.externalWrite && (
+      {externalWrite && (
         <div className="extw-bar">
           <Icon name="info" />
           <span className="extw-tx">{t("chat.externalWriteNotice")}</span>
@@ -437,8 +666,8 @@ export default function MessagePage() {
           <button
             type="button"
             className="save-btn"
-            disabled={!!s.streaming}
-            title={s.streaming ? t("chat.reloadRunning") : undefined}
+            disabled={streaming}
+            title={streaming ? t("chat.reloadRunning") : undefined}
             onClick={() => send({ type: "reload_session", path: activePath })}
           >
             {t("chat.reload")}
@@ -450,7 +679,7 @@ export default function MessagePage() {
         {nodes.length === 0 && streamTail}
         {scrollBottomBtn}
       </div>
-      <MsgRail entries={railEntries} sessionId={s.sessionId} streamRef={streamRef} />
+      <MsgRail entries={railEntries} sessionId={sessionId ?? ""} streamRef={streamRef} />
       <FindBar streamRef={streamRef} />
     </>
   );

@@ -52,7 +52,7 @@ export default function ConnBanner() {
         <input
           className="inp"
           value={keyInput}
-          placeholder={t("notify.remoteKeyPlaceholder")}
+          aria-label={t("notify.remoteKeyTitle")}
           onChange={(e) => setKeyInput(e.target.value)}
         />
         <button className="save-btn" type="submit" disabled={!keyInput.trim()}>

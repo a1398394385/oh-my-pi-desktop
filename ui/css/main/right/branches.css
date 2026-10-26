@@ -9,7 +9,7 @@
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);
 }
 
-.bt-row:hover { background: var(--panel-2); color: var(--text); }
+.bt-row:hover { background: var(--hover-fill); color: var(--text); }
 
 /* current-branch marker as inset ring: same on-screen position as the old border-color, no reflow */
 .bt-row.cur { box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); cursor: default; }

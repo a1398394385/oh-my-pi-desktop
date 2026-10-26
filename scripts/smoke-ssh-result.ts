@@ -89,6 +89,11 @@ const dialogTitle = Array.from(document.querySelectorAll("[data-slot='dialog-tit
 ok("远程连接对话框已打开", !!dialogTitle);
 
 const panel = () => document.querySelector(".rd-result");
+// The path-section input is identified by its stable placeholder (the old
+// .rd-path-wrap wrapper class is gone): the section is gated by probe state,
+// so "input exists" IS "workspace section visible".
+const pathInputEl = () =>
+  Array.from(document.querySelectorAll(".confirm-box input")).find((el) => el.getAttribute("placeholder") === "/home/user/project") ?? null;
 ok("探测前无结果面板", !panel());
 
 // Land the failing frame the host sends on a failed probe.
@@ -117,11 +122,14 @@ await sleep(150);
 ok("复制内容与面板文本逐字一致", clipboard.at(-1) === EXPECTED);
 ok("复制成功提示", !!document.querySelector("#toast")?.textContent?.includes("已复制"));
 
-// A successful probe clears the failure panel into a green-stated one.
+// A successful probe replaces the failure panel: .rd-result is a failure-only
+// diagnostic now (ResultPanel renders when result && !result.ok); success
+// surfaces on the test button (rd-test-ok + title) and unlocks the
+// test → save → connect flow asserted below.
 dbg.useAppStore.setState({ sshTestResult: { name: null, ok: true, latencyMs: 87, ts: Date.now() + 1 } });
 await sleep(200);
-ok("成功探测渲染成功态", (panel()?.getAttribute("data-ok") ?? "") === "true" && (panel()?.textContent ?? "").includes("87ms"));
-ok("成功态同样可选中", selectable(panel()?.querySelector(".rd-result-body") ?? null));
+ok("成功探测清除失败诊断面板", !panel());
+ok("失败诊断文本不残留", !(document.body.textContent ?? "").includes("Permission denied"));
 
 // ---- New flow: form mode is gated on a green probe (test → save → connect) ----
 const findBtn = (txt: string) => Array.from(document.querySelectorAll("button")).find((b) => (b.textContent ?? "").includes(txt));
@@ -133,17 +141,17 @@ clickBtn(findBtn("新建主机"));
 await sleep(250);
 let saveHostBtn = findBtn("保存主机");
 ok("表单态保存按钮默认禁用", isDisabled(saveHostBtn));
-ok("测试成功前不显示远程工作区区", !document.querySelector(".rd-path-wrap"));
+ok("测试成功前不显示远程工作区区", !pathInputEl());
 ok("编辑态底部连接按钮禁用", isDisabled(footerConnect()));
 
 // Green probe unlocks save + reveals the workspace section.
 dbg.useAppStore.setState({ sshTestResult: { name: null, ok: true, latencyMs: 55, ts: Date.now() + 2 } });
 await sleep(200);
 ok("测试成功后保存按钮亮起", !isDisabled(saveHostBtn));
-ok("测试成功后显示远程工作区区", !!document.querySelector(".rd-path-wrap"));
+ok("测试成功后显示远程工作区区", !!pathInputEl());
 
 // Any form edit invalidates the verdict (typing over a green must not save).
-const addressInput = Array.from(document.querySelectorAll(".rd-path-wrap ~ *, .confirm-box input")).find(
+const addressInput = Array.from(document.querySelectorAll(".confirm-box input")).find(
   (el) => (el as Element).getAttribute?.("placeholder")?.includes("10.0.0.1") ?? false,
 ) as Element | undefined;
 const nativeSet = (input: Element, value: string) => {
@@ -153,14 +161,14 @@ const nativeSet = (input: Element, value: string) => {
 if (addressInput) nativeSet(addressInput, "10.147.17.245");
 await sleep(200);
 ok("修改表单后保存按钮重新禁用", isDisabled(saveHostBtn));
-ok("修改表单后远程工作区区隐藏", !document.querySelector(".rd-path-wrap"));
+ok("修改表单后远程工作区区隐藏", !pathInputEl());
 
 // Probe again, then the directory picker: focus + type → debounced ssh_list_dirs → picker renders → click backfills.
 dbg.useAppStore.setState({ sshTestResult: { name: null, ok: true, latencyMs: 40, ts: Date.now() + 3 } });
 await sleep(150);
 const sentFrames: Array<Record<string, unknown>> = [];
 dbg.useAppStore.setState({ send: (o: Record<string, unknown>) => sentFrames.push(o) });
-const pathInput = document.querySelector(".rd-path-wrap input");
+const pathInput = pathInputEl();
 ok("远程路径输入框存在", !!pathInput);
 if (pathInput) {
   pathInput.focus();
@@ -171,12 +179,12 @@ if (pathInput) {
   ok("输入触发 ssh_list_dirs（base=/）", listReq?.path === "/" && typeof listReq.host === "string");
   dbg.useAppStore.setState({ sshDirs: { ok: true, path: "/", dirs: ["home", "usr", "var", "etc"], ts: Date.now() } });
   await sleep(200);
-  const picker = document.querySelector(".rd-path-wrap .menu.rd-dirs");
+  const picker = document.querySelector("body > .menu.rd-dirs");
   const items = Array.from(picker?.querySelectorAll(".mi") ?? []).map((mi) => (mi.textContent ?? "").trim());
   ok("目录弹层按前缀过滤（ho→仅 home）", items.length === 1 && items[0] === "home");
   clickBtn(items.length ? (picker?.querySelector(".mi") as Element) : undefined);
   await sleep(150);
-  ok("点击候选回填路径并带尾斜杠", (document.querySelector(".rd-path-wrap input") as unknown as { value: string })?.value === "/home/");
+  ok("点击候选回填路径并带尾斜杠", (pathInputEl() as unknown as { value: string })?.value === "/home/");
   // Picking appends "/" so the next debounce lists the picked directory (tree walk).
   await sleep(400);
   const nextReq = [...sentFrames].reverse().find((f) => f.type === "ssh_list_dirs");

@@ -4,9 +4,9 @@
 // new-session ＋, "⋯" remove). Expansion state is shared with the project view (same
 // expandedProjects set + the same set_project_expanded persistence), so a project stays
 // expanded/collapsed across both views.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, pathBase } from "../../../store";
+import { useAppStore, send, pathBase, type TimerHandle } from "../../../store";
 import { REMOTE } from "../../../store/ws";
 import Icon from "../../../Icon";
 import { ProjKids, projectIconName } from "./ProjGroup";
@@ -26,18 +26,28 @@ export default function ArchiveGroup({ p, rowProps, renaming, shortcuts, ctxKey 
   const [showKids, setShowKids] = useState(expanded); // render immediately on first mount without animation (mirrors ProjGroup)
   const [closing, setClosing] = useState(false);
 
-  // Mount kids on expand / delay unmount on collapse (remove only after the 0.3s collapse animation finishes)
+  // Mount kids on expand / delay unmount on collapse (remove only after the 0.3s collapse
+  // animation finishes). Same ref-owned timer as ProjGroup: the effect re-runs when
+  // setClosing(true) lands, and a cleanup clearTimeout would strand .closing (an ~8px box)
+  // between the collapsed row and the next group.
+  const closeTimer = useRef<TimerHandle | null>(null);
   useEffect(() => {
-    if (expanded && (!showKids || closing)) {
-      setClosing(false);
-      setShowKids(true);
-    } else if (!expanded && showKids && !closing) {
+    if (expanded) {
+      if (closeTimer.current) {
+        clearTimeout(closeTimer.current);
+        closeTimer.current = null;
+      }
+      if (!showKids || closing) {
+        setClosing(false);
+        setShowKids(true);
+      }
+    } else if (showKids && !closing && !closeTimer.current) {
       setClosing(true);
-      const t = setTimeout(() => {
+      closeTimer.current = setTimeout(() => {
+        closeTimer.current = null;
         setShowKids(false);
         setClosing(false);
       }, 310);
-      return () => clearTimeout(t);
     }
   }, [expanded, showKids, closing]);
 

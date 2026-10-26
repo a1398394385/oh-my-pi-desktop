@@ -61,6 +61,7 @@ const hardTimeout = setTimeout(() => fail("120s 内未完成断言"), 120_000);
 
 let parentPath = "";
 let childPath: string | null = null;
+let childSubId: string | null = null;
 let litChecked = false;
 let clearedChecked = false;
 
@@ -89,6 +90,11 @@ ws.onmessage = (ev) => {
   }
   onMessage(msg);
   if (msg.type === "error") fail(`收到 error: ${String(msg.message)}`);
+  // BUG-093 guard: the poll must never flag the child jsonl this host's own task runtime is
+  // still appending — otherwise every live subagent page shows the "another process is
+  // writing" bar. Scope to the opened child's sessionId; the parent is never flagged here.
+  if (msg.type === "session_created" && msg.path === childPath) childSubId = String(msg.sessionId);
+  if (msg.type === "session_external_write" && msg.sessionId === childSubId) fail("运行中子代理页面收到 session_external_write（宿主把自己对 child jsonl 的追加判成外部进程）");
   if (msg.type === "session_created" && !parentPath) {
     parentPath = String(msg.path);
     createdFile = parentPath;

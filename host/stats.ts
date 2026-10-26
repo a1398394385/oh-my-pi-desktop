@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { SessionManager } from "./bootstrap.ts";
 import { safeStderr } from "./stderr.ts";
+import { acpSavedBytes, collectAcpGain } from "./acp-gain.ts";
 
 export function streakFromDays(days: string[]): { current: number; longest: number } {
   const uniq = [...new Set(days)].sort();
@@ -162,10 +163,16 @@ export async function handleStatsHttp(req: Request, srv?: { timeout: (req: Reque
       },
     });
   }
-
   try {
     const { handleApi } = await import("@oh-my-pi/omp-stats/server");
-    const res = await handleApi(req);
+    let res = await handleApi(req);
+    // Gain dashboard: the base only knows snapcompact; ACP compaction benefit
+    // (host/acp-gain.ts) is merged on top so both sources show up. The base
+    // payload is read and re-serialized only for this one endpoint.
+    if (new URL(req.url).pathname === "/api/stats/gain" && res.ok) {
+      const merged = await mergeAcpGain(res, new URL(req.url));
+      if (merged) res = merged;
+    }
     const headers = new Headers(res.headers);
     for (const [k, v] of Object.entries(corsHeaders(req))) {
       headers.set(k, v);
@@ -174,5 +181,41 @@ export async function handleStatsHttp(req: Request, srv?: { timeout: (req: Reque
   } catch (err: unknown) {
     return Response.json({ error: String(err) }, { status: 500, headers: corsHeaders(req) });
   }
+}
+
+/** Fold ACP compaction totals into the base gain payload (same shape, plus the "acp" source). */
+async function mergeAcpGain(base: Response, url: URL): Promise<Response | null> {
+  const { GainSourceTotals } = {} as never; // type-only import below; keep runtime imports lazy
+  void GainSourceTotals;
+  const payload = (await base.json()) as {
+    overall?: { savedTokens?: number; savedBytes?: number; hits?: number; outputBytes?: number; originalBytes?: number; reductionPercent?: number | null };
+    bySource?: Record<string, { savedTokens?: number; savedBytes?: number; hits?: number; outputBytes?: number; originalBytes?: number; reductionPercent?: number | null }>;
+    timeSeries?: Array<{ date: string; snapcompact?: number; total?: number }>;
+    projects?: string[];
+    project?: string | null;
+  };
+  const acp = await collectAcpGain(url.searchParams.get("range"), url.searchParams.get("project"));
+  const acpTotals = {
+    savedTokens: acp.savedTokens,
+    savedBytes: acpSavedBytes(acp.savedTokens),
+    hits: acp.hits,
+    outputBytes: 0,
+    originalBytes: 0,
+    reductionPercent: null,
+  };
+  payload.bySource = { ...(payload.bySource ?? {}), acp: acpTotals };
+  const overall = payload.overall ?? (payload.overall = {});
+  for (const k of ["savedTokens", "savedBytes", "hits"] as const) {
+    overall[k] = (overall[k] ?? 0) + acpTotals[k];
+  }
+  const byDay = new Map(payload.timeSeries?.map((p) => [p.date, p]) ?? []);
+  for (const [day, tokens] of Object.entries(acp.byDay)) {
+    const point = byDay.get(day) ?? { date: day, snapcompact: 0, total: 0 };
+    point.total = (point.total ?? 0) + tokens;
+    byDay.set(day, point);
+  }
+  payload.timeSeries = [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  payload.projects = [...new Set([...(payload.projects ?? []), ...acp.projects])];
+  return Response.json(payload);
 }
 

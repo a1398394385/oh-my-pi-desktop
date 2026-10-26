@@ -24,8 +24,10 @@
 @import "./css/main/head-chips.css";
 @import "./css/main/chat/messages.css";
 @import "./css/main/chat/readonly-group.css";
+@import "./css/main/chat/advisor.css";
 @import "./css/shared/markdown.css";
 @import "./css/shared/code-blocks.css";
+@import "./css/shared/form-layout.css";
 @import "./css/main/chat/approval.css";
 @import "./css/main/chat/approval-collapse.css";
 @import "./css/main/chat/ask.css";
@@ -42,11 +44,11 @@
 @import "./css/main/hub.css";
 @import "./css/main/automations-list.css";
 @import "./css/main/automations-edit.css";
+@import "./css/main/git-page.css";
 @import "./css/shared/agent.css";
 @import "./css/main/right/hub-detail.css";
 @import "./css/main/welcome.css";
 @import "./css/main/chat/status-find.css";
-@import "./css/main/chat/caps-card.css";
 @import "./css/main/right/common.css";
 @import "./css/main/right/files.css";
 @import "./css/main/right/background.css";
@@ -72,12 +74,15 @@
 @import "./css/settings/hooks.css";
 @import "./css/settings/plugins.css";
 @import "./css/settings/mcp.css";
+@import "./css/settings/ssh.css";
 @import "./css/settings/forms.css";
 @import "./css/settings/shell.css";
 @import "./css/settings/font-picker.css";
 @import "./css/settings/permissions.css";
 @import "./css/settings/stats.css";
 @import "./css/settings/stats-port.css";
+@import "./css/settings/stats-pages.css";
+@import "./css/settings/stats-overlays.css";
 
 /* Keep the previously effective theme overrides at the end. */
 @import "./themes/midnight.css";

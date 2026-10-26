@@ -15,42 +15,6 @@ import { getThemeById } from "../theme-registry";
 import darkPlus from "shiki/themes/dark-plus.mjs";
 import lightPlus from "shiki/themes/light-plus.mjs";
 import nord from "shiki/themes/nord.mjs";
-import langJs from "shiki/langs/javascript.mjs";
-import langTs from "shiki/langs/typescript.mjs";
-import langJsx from "shiki/langs/jsx.mjs";
-import langTsx from "shiki/langs/tsx.mjs";
-import langJson from "shiki/langs/json.mjs";
-import langCss from "shiki/langs/css.mjs";
-import langHtml from "shiki/langs/html.mjs";
-import langXml from "shiki/langs/xml.mjs";
-import langMarkdown from "shiki/langs/markdown.mjs";
-import langPython from "shiki/langs/python.mjs";
-import langRust from "shiki/langs/rust.mjs";
-import langGo from "shiki/langs/go.mjs";
-import langC from "shiki/langs/c.mjs";
-import langCpp from "shiki/langs/cpp.mjs";
-import langCsharp from "shiki/langs/csharp.mjs";
-import langJava from "shiki/langs/java.mjs";
-import langRuby from "shiki/langs/ruby.mjs";
-import langPhp from "shiki/langs/php.mjs";
-import langShell from "shiki/langs/shellscript.mjs";
-import langYaml from "shiki/langs/yaml.mjs";
-import langToml from "shiki/langs/toml.mjs";
-import langSql from "shiki/langs/sql.mjs";
-import langLua from "shiki/langs/lua.mjs";
-import langSwift from "shiki/langs/swift.mjs";
-import langKotlin from "shiki/langs/kotlin.mjs";
-import langDiff from "shiki/langs/diff.mjs";
-import langDocker from "shiki/langs/docker.mjs";
-import langMake from "shiki/langs/make.mjs";
-import langIni from "shiki/langs/ini.mjs";
-import langVue from "shiki/langs/vue.mjs";
-import langSvelte from "shiki/langs/svelte.mjs";
-import langBash from "shiki/langs/bash.mjs";
-import langScss from "shiki/langs/scss.mjs";
-import langLess from "shiki/langs/less.mjs";
-import langGraphql from "shiki/langs/graphql.mjs";
-import langTex from "shiki/langs/latex.mjs";
 
 // Inline highlighting token: when color is absent (empty string/undefined) the
 // caller falls back to the inherited color
@@ -120,20 +84,51 @@ export function currentCodeTheme(): string {
 }
 
 // The default export of shiki/langs/*.mjs is already a LanguageRegistration
-// array (static imports are the unwrapped arrays; the previous typing marked
-// the module as { default: [...] } and read mod.default = undefined at runtime,
-// so loadLanguage never received the registration, lazy registration silently
-// failed and fell back to plain text -- fixed here by passing the array directly)
-const LANG_MODULES: Record<string, LanguageRegistration[]> = {
-  javascript: langJs, typescript: langTs, jsx: langJsx, tsx: langTsx,
-  json: langJson, css: langCss, html: langHtml, xml: langXml,
-  markdown: langMarkdown, python: langPython, rust: langRust, go: langGo,
-  c: langC, cpp: langCpp, csharp: langCsharp, java: langJava, ruby: langRuby,
-  php: langPhp, shellscript: langShell, bash: langBash, yaml: langYaml,
-  toml: langToml, sql: langSql, lua: langLua, swift: langSwift,
-  kotlin: langKotlin, diff: langDiff, docker: langDocker, make: langMake,
-  ini: langIni, vue: langVue, svelte: langSvelte, scss: langScss, less: langLess,
-  graphql: langGraphql, latex: langTex,
+// array -- the loaders below resolve to that array directly and must not wrap
+// it again (an earlier { default: [...] } typing read mod.default = undefined
+// at runtime, so registration silently fell back to plain text).
+// Loaders are dynamic imports: statically bundling all 36 grammars shipped
+// ~2.6MB of shiki data (40% of the startup closure) through the parse path,
+// while a session usually touches only a handful of languages. Transitive
+// grammar deps (cpp -> cpp-macro, latex -> tex, ...) stay correct because they
+// are static imports inside each lazily loaded chunk.
+const LANG_MODULES: Record<string, () => Promise<LanguageRegistration[]>> = {
+  javascript: () => import("shiki/langs/javascript.mjs").then((m) => m.default),
+  typescript: () => import("shiki/langs/typescript.mjs").then((m) => m.default),
+  jsx: () => import("shiki/langs/jsx.mjs").then((m) => m.default),
+  tsx: () => import("shiki/langs/tsx.mjs").then((m) => m.default),
+  json: () => import("shiki/langs/json.mjs").then((m) => m.default),
+  css: () => import("shiki/langs/css.mjs").then((m) => m.default),
+  html: () => import("shiki/langs/html.mjs").then((m) => m.default),
+  xml: () => import("shiki/langs/xml.mjs").then((m) => m.default),
+  markdown: () => import("shiki/langs/markdown.mjs").then((m) => m.default),
+  python: () => import("shiki/langs/python.mjs").then((m) => m.default),
+  rust: () => import("shiki/langs/rust.mjs").then((m) => m.default),
+  go: () => import("shiki/langs/go.mjs").then((m) => m.default),
+  c: () => import("shiki/langs/c.mjs").then((m) => m.default),
+  cpp: () => import("shiki/langs/cpp.mjs").then((m) => m.default),
+  csharp: () => import("shiki/langs/csharp.mjs").then((m) => m.default),
+  java: () => import("shiki/langs/java.mjs").then((m) => m.default),
+  ruby: () => import("shiki/langs/ruby.mjs").then((m) => m.default),
+  php: () => import("shiki/langs/php.mjs").then((m) => m.default),
+  shellscript: () => import("shiki/langs/shellscript.mjs").then((m) => m.default),
+  bash: () => import("shiki/langs/bash.mjs").then((m) => m.default),
+  yaml: () => import("shiki/langs/yaml.mjs").then((m) => m.default),
+  toml: () => import("shiki/langs/toml.mjs").then((m) => m.default),
+  sql: () => import("shiki/langs/sql.mjs").then((m) => m.default),
+  lua: () => import("shiki/langs/lua.mjs").then((m) => m.default),
+  swift: () => import("shiki/langs/swift.mjs").then((m) => m.default),
+  kotlin: () => import("shiki/langs/kotlin.mjs").then((m) => m.default),
+  diff: () => import("shiki/langs/diff.mjs").then((m) => m.default),
+  docker: () => import("shiki/langs/docker.mjs").then((m) => m.default),
+  make: () => import("shiki/langs/make.mjs").then((m) => m.default),
+  ini: () => import("shiki/langs/ini.mjs").then((m) => m.default),
+  vue: () => import("shiki/langs/vue.mjs").then((m) => m.default),
+  svelte: () => import("shiki/langs/svelte.mjs").then((m) => m.default),
+  scss: () => import("shiki/langs/scss.mjs").then((m) => m.default),
+  less: () => import("shiki/langs/less.mjs").then((m) => m.default),
+  graphql: () => import("shiki/langs/graphql.mjs").then((m) => m.default),
+  latex: () => import("shiki/langs/latex.mjs").then((m) => m.default),
 };
 
 
@@ -227,9 +222,9 @@ export function highlightCode(
     getHighlighter()
       .then(async (h) => {
         if (!h.getLoadedLanguages().includes(lang)) {
-          const mod = LANG_MODULES[lang];
-          if (!mod) return; // unregistered languages are not highlighted (caller falls back to plain text)
-          await h.loadLanguage(mod);
+          const load = LANG_MODULES[lang];
+          if (!load) return; // unregistered languages are not highlighted (caller falls back to plain text)
+          await h.loadLanguage(await load());
         }
         // Move the costly tokenize onto a macrotask, leaving render gaps for UI
         // interaction and scrolling
@@ -300,9 +295,9 @@ export function warmupHighlighter(langs: string[]): void {
     void getHighlighter()
       .then(async (h) => {
         for (const lang of langs) {
-          const mod = LANG_MODULES[lang];
-          if (!mod || h.getLoadedLanguages().includes(lang)) continue;
-          await h.loadLanguage(mod);
+          const load = LANG_MODULES[lang];
+          if (!load || h.getLoadedLanguages().includes(lang)) continue;
+          await h.loadLanguage(await load());
         }
         h.codeToTokens("const x = 1;", { lang: langs[0], theme: currentCodeTheme() });
       })

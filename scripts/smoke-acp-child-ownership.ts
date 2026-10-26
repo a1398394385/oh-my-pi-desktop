@@ -9,7 +9,7 @@
 // ownership check a `task` subagent receives the parent's compaction blocks as synthetic
 // user turns and is told it did work it never did. Fingerprint-based detection is not a
 // substitute: a child can legitimately match a parent message (same system reminder, same
-// recall result), and one match is enough to re-enter the full projection path.
+// tool result), and one match is enough to re-enter the full projection path.
 //
 // This drives the real rebind path — a child session built with preloadedPreparedExtensions,
 // exactly what task/structured-subagent.ts:609 hands its executor — so a regression in the
@@ -22,9 +22,10 @@
 //   C  discrimination is real: the two sessions carry different ids, so B is not passing
 //      for the trivial reason that every session somehow matches
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only; the smoke
-// deletes its own session directories at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-child-ownership.ts
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only; the
+// smoke deletes its own session directories at the end.
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-child-ownership.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,7 +36,7 @@ import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import { AcpRuntimeState, createAcpProjectionExtension } from "../host/acp-runtime.ts";
 import type { AcpParams } from "../host/acp-plan.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (same precedent as
 // every other acp smoke).
@@ -117,7 +118,7 @@ async function build(cwd: string, sessionManager: SessionManager, extra: Record<
 const cwdOwner = scratch("owner");
 const ownerMgr = SessionManager.create(cwdOwner);
 const ownerFile = ownerMgr.getSessionFile()!;
-assert.ok(ownerFile.startsWith(getAgentDir()), `owner session must stay inside the acp-probe agentDir, got ${ownerFile}`);
+assert.ok(ownerFile.startsWith(getAgentDir()), `owner session must stay inside the smoke profile agentDir, got ${ownerFile}`);
 roots.push(dirname(ownerFile));
 
 const state = new AcpRuntimeState({
@@ -144,7 +145,7 @@ await owner.prompt("owner second turn");
 await waitForCall(calls, mark++);
 
 // Seed the zone directly: projectView renders `state.zone` (acp-runtime), and a block's
-// rendered text carries `summary` + the index intents (renderCompactionBlock), so the marker
+// rendered text carries the summary (renderCompactionBlock), so the marker
 // has to live there for "the zone was projected" to be observable on the wire.
 state.zone = [
 	{
@@ -211,8 +212,18 @@ console.log("  A owner projects its own zone");
 console.log("  B inherited closure passes a child session through untouched");
 console.log("  C the two sessions carry distinct ids (the check discriminates)");
 
+// Release the session + manager handles before removing anything: Windows keeps
+// the session dir (and its lock sidecar) busy while a handle is open, so the
+// cleanup below silently leaked the mapping dir into the profile.
+await owner.dispose();
+await child.dispose();
+await ownerMgr.close();
+await childMgr.close();
+
 for (const dir of roots) {
 	try {
 		rmSync(dir, { recursive: true, force: true });
-	} catch {}
+	} catch {
+		// Windows lock window; the temp dirs are disposable
+	}
 }

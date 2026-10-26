@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>第 1 层 · 纯重复（零信息损失）</title>
+<link rel="stylesheet" href="../dist/assets/index-CxCHg-mi.css" onerror="document.documentElement.dataset.cssMissing='1'" />
+<link rel="stylesheet" href="cull-shell.css" />
+</head>
+<body>
+<div class="cv-bar">
+  <b>第 1 层 · 纯重复（零信息损失）</b>
+  <span class="cv-note">左「现状」右「改后」。图标以单字符占位（真实页面注入注册表 SVG）。</span>
+</div>
+<div class="cv-wrap">
+
+<!-- ============ 1 ============ -->
+<section class="cmp">
+  <div class="cmp-h">
+    <code>ui-src/components/chat/ToolRow.tsx:112 · :67</code>
+    <span class="cv-tag">组头已写类别词，组内每行再写一次</span>
+    <span class="cv-why">「终端」是组头的类别，行内它只挤掉命令可见宽度</span>
+  </div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="act read">
+        <span class="cv-ic">▸</span><span class="lbl">终端 · 3 条命令</span><span class="ed-arrow open">▸</span>
+      </div>
+      <div class="chg-body drop">
+        <div class="chg-item"><span class="lbl cv-mark">终端</span><span class="c-tx">bun run check</span><span class="ed-arrow">▸</span></div>
+        <div class="chg-item"><span class="lbl cv-mark">终端</span><span class="c-tx">git status</span><span class="ed-arrow">▸</span></div>
+        <div class="chg-item"><span class="lbl cv-mark">终端</span><span class="c-tx">ls ui</span><span class="ed-arrow">▸</span></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="act read">
+        <span class="cv-ic">▸</span><span class="lbl">终端 · 3 条命令</span><span class="ed-arrow open">▸</span>
+      </div>
+      <div class="chg-body drop">
+        <div class="chg-item"><span class="c-tx">bun run check</span><span class="ed-arrow">▸</span></div>
+        <div class="chg-item"><span class="c-tx">git status</span><span class="ed-arrow">▸</span></div>
+        <div class="chg-item"><span class="c-tx">ls ui</span><span class="ed-arrow">▸</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="cmp">
+  <div class="cmp-h">
+    <code>ui-src/components/chat/ReadonlyGroup.tsx:20 · :81</code>
+    <span class="cv-tag">折叠头罗列三项，展开后各有分组头</span>
+    <span class="cv-why">任务/命令计数展开后就在眼前，折叠态只需文件规模</span>
+  </div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="act ro">
+        <span class="cv-ic">◎</span><span class="lbl">探索了 29 份文件<span class="cv-mark">、3 项任务、14 条命令</span></span><span class="ed-arrow open">▸</span>
+      </div>
+      <div class="ro-body drop">
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">查阅 · 29 个文件</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">联网搜索</span><span class="path">omp remote takeover spec</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">查找</span><span class="path">roSummaryText</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">匹配</span><span class="path">ui/css/**/*.css</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">▸</span><span class="lbl">终端 · 14 条命令</span><span class="ed-arrow">▸</span></div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="act ro">
+        <span class="cv-ic">◎</span><span class="lbl">探索了 29 份文件</span><span class="ed-arrow open">▸</span>
+      </div>
+      <div class="ro-body drop">
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">查阅 · 29 个文件</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">联网搜索</span><span class="path">omp remote takeover spec</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">查找</span><span class="path">roSummaryText</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">◇</span><span class="lbl">匹配</span><span class="path">ui/css/**/*.css</span><span class="ed-arrow">▸</span></div>
+        <div class="act read"><span class="cv-ic">▸</span><span class="lbl">终端 · 14 条命令</span><span class="ed-arrow">▸</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="cmp">
+  <div class="cmp-h">
+    <code>ui-src/components/main/KickedScreen.tsx:17 · :22</code>
+    <span class="cv-tag">徽章与小标题都是标签</span>
+    <span class="cv-why">徽章与下一行标题说同一件事；编号列表本身就是步骤</span>
+  </div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="kicked-card">
+        <div class="kicked-head">
+          <span class="kicked-ic"><span class="cv-ic">!</span></span>
+          <span class="kicked-badge cv-mark">设备接管</span>
+        </div>
+        <div class="kicked-title">已被其他设备接管</div>
+        <p class="kicked-desc">另一台远程控制设备已经接入，同一时间只能保留一个手机控制端。</p>
+        <div class="kicked-sep"></div>
+        <div class="kicked-next cv-mark">下一步</div>
+        <ol class="kicked-steps">
+          <li><span class="kicked-num">1</span><span>继续使用新接入的设备。</span></li>
+          <li><span class="kicked-num">2</span><span>如果要使用本设备控制，请重新扫描桌面端二维码。</span></li>
+        </ol>
+        <div class="kicked-status"><span>Relay 返回</span><span class="kicked-code">KICKED</span></div>
+        <button class="kicked-btn" type="button">重新连接</button>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="kicked-card">
+        <div class="kicked-head">
+          <span class="kicked-ic"><span class="cv-ic">!</span></span>
+        </div>
+        <div class="kicked-title">已被其他设备接管</div>
+        <p class="kicked-desc">另一台远程控制设备已经接入，同一时间只能保留一个手机控制端。</p>
+        <div class="kicked-sep"></div>
+        <ol class="kicked-steps">
+          <li><span class="kicked-num">1</span><span>继续使用新接入的设备。</span></li>
+          <li><span class="kicked-num">2</span><span>如果要使用本设备控制，请重新扫描桌面端二维码。</span></li>
+        </ol>
+        <div class="kicked-status"><span>Relay 返回</span><span class="kicked-code">KICKED</span></div>
+        <button class="kicked-btn" type="button">重新连接</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="cmp">
+  <div class="cmp-h">
+    <code>BtwPage.tsx:237 · ConnBanner.tsx:47</code>
+    <span class="cv-tag">页内标题复述 tab；label 复述 placeholder</span>
+    <span class="cv-why">两处都是「外层已经说过一遍，内层又说一遍」</span>
+  </div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="cv-frame">
+        <div class="cv-muted">右栏 tab 条</div>
+        <div class="cv-keys"><span>侧边聊天</span></div>
+        <div class="btw-page">
+          <div class="btw-top">
+            <span class="btw-top-t cv-mark">侧边聊天</span>
+            <button class="icon-btn" type="button" title="刷新"><span class="cv-ic">⟳</span></button>
+          </div>
+          <div class="btw-list">
+            <div class="btw-item">
+              <span class="btw-dot"></span>
+              <span class="btw-title">这一层到底删了哪些重复</span>
+              <span class="btw-meta"><span class="btw-n">3 轮</span></span>
+            </div>
+            <div class="btw-item">
+              <span class="btw-dot running"></span>
+              <span class="btw-title">只读组的计数怎么收</span>
+              <span class="btw-meta"><span class="btw-n">1 轮</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cv-frame">
+        <form class="conn-banner">
+          <span class="conn-banner-text cv-mark">输入访问密钥</span>
+          <span class="sp"></span>
+          <input class="inp" placeholder="访问密钥" />
+          <button class="save-btn" type="button">连接</button>
+        </form>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="cv-frame">
+        <div class="cv-muted">右栏 tab 条</div>
+        <div class="cv-keys"><span>侧边聊天</span></div>
+        <div class="btw-page">
+          <div class="btw-top">
+            <button class="icon-btn" type="button" title="刷新"><span class="cv-ic">⟳</span></button>
+          </div>
+          <div class="btw-list">
+            <div class="btw-item">
+              <span class="btw-dot"></span>
+              <span class="btw-title">这一层到底删了哪些重复</span>
+              <span class="btw-meta"><span class="btw-n">3 轮</span></span>
+            </div>
+            <div class="btw-item">
+              <span class="btw-dot running"></span>
+              <span class="btw-title">只读组的计数怎么收</span>
+              <span class="btw-meta"><span class="btw-n">1 轮</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="cv-frame">
+        <form class="conn-banner">
+          <span class="sp"></span>
+          <input class="inp" placeholder="访问密钥" />
+          <button class="save-btn" type="button">连接</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Listing table -->
+<section class="cmp">
+  <div class="cmp-h">
+    <code>另四处同类型重复</code>
+    <span class="cv-tag">清单（不做 DOM 对照）</span>
+    <span class="cv-why">都是可见文字已足够，title / 分组头又写一遍</span>
+  </div>
+  <div class="cv-frame">
+    <table class="md-table">
+      <thead>
+        <tr><th>文件:行</th><th>重复了什么</th><th>改法</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>ProjectMenu.tsx:139/141</code></td>
+          <td>title「打开文件夹」与可见文字「打开文件夹」逐字相同（146/154 的「远程连接」同理）</td>
+          <td>删 title；可见文字自己就是标签</td>
+        </tr>
+        <tr>
+          <td><code>MainSessionTree.tsx:132/135</code></td>
+          <td>title「返回对话流」与按钮「返回对话」是同一动作的两种说法</td>
+          <td>title 与按钮统一为「返回对话」</td>
+        </tr>
+        <tr>
+          <td><code>MainHeader.tsx:141</code></td>
+          <td>title「Git 分支: main」只是给 chip 里已有的 main 加前缀</td>
+          <td>删 title；分支名本身已可读</td>
+        </tr>
+        <tr>
+          <td><code>SearchPalette.tsx:318</code></td>
+          <td>分组头「会话」与上方 tab「会话」同字（设置档的「设置项」同样）</td>
+          <td>这两档不渲染分组头；「最近」档才有新信息</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

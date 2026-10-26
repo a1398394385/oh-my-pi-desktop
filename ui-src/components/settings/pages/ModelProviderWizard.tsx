@@ -13,6 +13,7 @@ import { useAppStore, setBump, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import type { ManualProbeModel } from "../../../types/frames";
 import ModelMetaEditor, { EMPTY_EDIT, buildRow, thinkingIncomplete, type ModelEdit } from "../ModelMetaEditor";
+import { FormRow } from "../common";
 
 // Request protocols offered by the wizard (host side keeps the same trio)
 type WizardApi = "openai-completions" | "openai-responses" | "anthropic-messages";
@@ -124,12 +125,11 @@ export default function ModelProviderWizard() {
       </div>
       <div className="set-group-desc">{t("settingsPage.model.wizardDesc")}</div>
 
-      {/* Connection form (mcp-form-* shared classes keep settings-page form language) */}
+      {/* Connection form (shared .frm-rows / FormRow form language) */}
       <div className="mp-ml"><span>{t("settingsPage.model.wizardSectionConn")}</span></div>
       <div className="sem-body form">
-        <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half">
-            <label className="mcp-form-label">{t("settingsPage.model.wizardProviderName")} <span className="req">*</span></label>
+        <div className="frm-rows">
+          <FormRow label={<>{t("settingsPage.model.wizardProviderName")} <span className="req">*</span></>}>
             <input
               type="text"
               className="mcp-form-input"
@@ -138,11 +138,12 @@ export default function ModelProviderWizard() {
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
             />
-          </div>
-          <div className="mcp-form-group mcp-form-half">
-            <label className="mcp-form-label">{t("settingsPage.model.wizardApi")}</label>
-            <div className="sel mpw-sel" onClick={(e) => { e.stopPropagation(); setApiOpen(!apiOpen); }}>
-              {apiLabel(api)} <Icon name="caret" size={14} className="caret-svg" />
+          </FormRow>
+          <FormRow label={t("settingsPage.model.wizardApi")}>
+            <div className="sel mcp-form-sel" onClick={(e) => { e.stopPropagation(); setApiOpen(!apiOpen); }}>
+              <button type="button" className="mcp-form-sel-btn">
+                {apiLabel(api)} <Icon name="caret" size={14} className="caret-svg" />
+              </button>
               <div className={"menu" + (apiOpen ? " open" : "")}>
                 {WIZARD_APIS.map((a) => (
                   <div key={a.v} className="mi" data-v={a.v} onClick={() => setApi(a.v)}>
@@ -152,11 +153,8 @@ export default function ModelProviderWizard() {
                 ))}
               </div>
             </div>
-          </div>
-        </div>
-        <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half">
-            <label className="mcp-form-label">{t("settingsPage.model.wizardBaseUrl")} <span className="req">*</span></label>
+          </FormRow>
+          <FormRow label={<>{t("settingsPage.model.wizardBaseUrl")} <span className="req">*</span></>}>
             <input
               type="text"
               className="mcp-form-input mcp-form-code"
@@ -165,9 +163,8 @@ export default function ModelProviderWizard() {
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
             />
-          </div>
-          <div className="mcp-form-group mcp-form-half">
-            <label className="mcp-form-label">{t("settingsPage.model.wizardApiKey")}</label>
+          </FormRow>
+          <FormRow label={t("settingsPage.model.wizardApiKey")}>
             <input
               type="password"
               className="mcp-form-input mcp-form-code"
@@ -177,9 +174,9 @@ export default function ModelProviderWizard() {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
             />
-          </div>
+          </FormRow>
         </div>
-        <div className="mcp-form-group mpw-probe-row">
+        <div className="mpw-probe-row">
           <button type="button" className="save-btn" disabled={probing} onClick={onProbe}>
             {probing ? t("settingsPage.model.wizardProbing") : t("settingsPage.model.wizardProbe")}
           </button>
@@ -266,7 +263,7 @@ export default function ModelProviderWizard() {
           {t("settingsPage.model.wizardSelected", { count: ticked.size })}
         </span>
         <span className="sp" />
-        <button type="button" className="confirm-btn" disabled={saving} onClick={onSave}>
+        <button type="button" className="frm-primary" disabled={saving} onClick={onSave}>
           {saving ? t("settingsPage.model.wizardSaving") : t("settingsPage.model.wizardSave")}
         </button>
       </div>

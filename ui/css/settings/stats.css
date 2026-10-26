@@ -1,4 +1,4 @@
-#pg-stats {
+:is(#pg-stats, .stats-scope) {
   /* Token bridge: map stats variables to omp-desktop system design tokens */
   --bg: var(--base);
   --panel: var(--panel-2);
@@ -64,44 +64,51 @@
   --st-dur-3: 360ms;
   --stagger: 40ms;
 
+  color: var(--text);
+}
+
+/* The page root is a flex column. The portal wrapper (.stats-scope) is a direct
+   child of <body>, which lays its children out as a row — giving the wrapper
+   the same 100%-wide column basis would steal the shell's width and collapse
+   the app behind the overlay, so the layout stays on the page root only. */
+#pg-stats {
   display: flex;
   flex-direction: column;
   gap: 16px;
   width: 100%;
-  color: var(--text);
 }
 
 /* Container & Topbar */
-#pg-stats .stats-container {
+:is(#pg-stats, .stats-scope) .stats-container {
   display: flex;
   flex-direction: column;
   gap: 20px;
   width: 100%;
 }
 
-#pg-stats .stats-top-actions {
+:is(#pg-stats, .stats-scope) .stats-top-actions {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   gap: 12px;
 }
 
-#pg-stats .stats-range-row {
+:is(#pg-stats, .stats-scope) .stats-range-row {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
 /* Two-column layout: left sub-navigation + right main content */
-#pg-stats .stats-layout {
+:is(#pg-stats, .stats-scope) .stats-layout {
   display: flex;
   gap: 20px;
   align-items: flex-start;
   width: 100%;
 }
 
-#pg-stats .stats-nav {
-  width: 200px;
+:is(#pg-stats, .stats-scope) .stats-nav {
+  width: 150px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -112,13 +119,13 @@
   padding: 12px 8px;
 }
 
-#pg-stats .stats-nav-group {
+:is(#pg-stats, .stats-scope) .stats-nav-group {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-#pg-stats .stats-nav-heading {
+:is(#pg-stats, .stats-scope) .stats-nav-heading {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -127,7 +134,7 @@
   padding: 4px 8px;
 }
 
-#pg-stats .stats-nav-item {
+:is(#pg-stats, .stats-scope) .stats-nav-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -143,22 +150,22 @@
   width: 100%;
 }
 
-#pg-stats .stats-nav-item:hover {
-  background: var(--panel-2);
+:is(#pg-stats, .stats-scope) .stats-nav-item:hover {
+  background: var(--hover-fill);
   color: var(--text);
 }
 
-#pg-stats .stats-nav-item.on {
+:is(#pg-stats, .stats-scope) .stats-nav-item.on {
   background: var(--panel-2);
   color: var(--accent);
   font-weight: 500;
 }
 
-#pg-stats .stats-nav-icon {
+:is(#pg-stats, .stats-scope) .stats-nav-icon {
   flex-shrink: 0;
 }
 
-#pg-stats .stats-nav-label {
+:is(#pg-stats, .stats-scope) .stats-nav-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -166,13 +173,7 @@
   white-space: nowrap;
 }
 
-#pg-stats .stats-nav-hotkey {
-  font-size: 10px;
-  color: var(--faint);
-  font-family: var(--font-mono);
-}
-
-#pg-stats .stats-main-panel {
+:is(#pg-stats, .stats-scope) .stats-main-panel {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -180,7 +181,7 @@
   gap: 28px;
 }
 
-#pg-stats .stats-route-container {
+:is(#pg-stats, .stats-scope) .stats-route-container {
   display: flex;
   flex-direction: column;
   gap: 28px;
@@ -189,79 +190,79 @@
 
 /* The keep-alive route mount sets `hidden` on inactive sections; an author-level
    display rule would override the UA [hidden] style and stack every section. */
-#pg-stats .stats-route-container[hidden] {
+:is(#pg-stats, .stats-scope) .stats-route-container[hidden] {
   display: none;
 }
 
 /* The stats dashboard wants the full settings body width: 30px gutters instead
    of the generic centered .set-page column. */
-#pg-stats.set-page {
+:is(#pg-stats, .stats-scope).set-page {
   max-width: none;
   margin-left: 30px;
   margin-right: 30px;
 }
 
 /* Page Header & Common Stacks */
-#pg-stats .page-header {
+:is(#pg-stats, .stats-scope) .page-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
 }
 
-#pg-stats .page-title {
+:is(#pg-stats, .stats-scope) .page-title {
   font-size: calc(var(--ui-fs) * 1.35);
   font-weight: 600;
   color: var(--text);
   margin: 0;
 }
 
-#pg-stats .page-description {
+:is(#pg-stats, .stats-scope) .page-description {
   font-size: var(--ui-fs-sm);
   color: var(--dim);
   margin-top: 4px;
 }
 
-#pg-stats .page-actions {
+:is(#pg-stats, .stats-scope) .page-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-#pg-stats .stack {
+:is(#pg-stats, .stats-scope) .stack {
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
-#pg-stats .row {
+:is(#pg-stats, .stats-scope) .row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-#pg-stats .grid {
+:is(#pg-stats, .stats-scope) .grid {
   display: grid;
   gap: 20px;
 }
 
-#pg-stats .grid-2 {
+:is(#pg-stats, .stats-scope) .grid-2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-#pg-stats .grid-main-side {
+:is(#pg-stats, .stats-scope) .grid-main-side {
   grid-template-columns: 2fr 1fr;
 }
 
 @media (max-width: 900px) {
-  #pg-stats .grid-2,
-  #pg-stats .grid-main-side {
+  :is(#pg-stats, .stats-scope) .grid-2,
+  :is(#pg-stats, .stats-scope) .grid-main-side {
     grid-template-columns: 1fr;
   }
 }
 
 /* Cards & Stats */
-#pg-stats .card {
+:is(#pg-stats, .stats-scope) .card {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -271,23 +272,7 @@
   gap: 14px;
 }
 
-#pg-stats .card[data-flush="true"] {
-  padding: 0;
-}
-
-#pg-stats .card[data-flush="true"] .card-head {
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line-1);
-}
-
-#pg-stats .card-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-}
-
-#pg-stats .card-title {
+:is(#pg-stats, .stats-scope) .card-title {
   font-size: var(--ui-fs-base);
   font-weight: 600;
   color: var(--text);
@@ -297,25 +282,25 @@
   gap: 8px;
 }
 
-#pg-stats .card-description {
+:is(#pg-stats, .stats-scope) .card-description {
   font-size: var(--ui-fs-sm);
   color: var(--dim);
   margin-top: 2px;
 }
 
-#pg-stats .card-actions {
+:is(#pg-stats, .stats-scope) .card-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-#pg-stats .stat-grid {
+:is(#pg-stats, .stats-scope) .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(var(--min-width, 180px), 1fr));
   gap: 12px;
 }
 
-#pg-stats .stat {
+:is(#pg-stats, .stats-scope) .stat {
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -325,7 +310,7 @@
   gap: 4px;
 }
 
-#pg-stats .stat-label {
+:is(#pg-stats, .stats-scope) .stat-label {
   font-size: 11px;
   font-weight: 500;
   color: var(--dim);
@@ -333,36 +318,99 @@
   letter-spacing: 0.04em;
 }
 
-#pg-stats .stat-value {
+:is(#pg-stats, .stats-scope) .stat-value {
   font-size: calc(var(--ui-fs) * 1.5);
   font-weight: 600;
   color: var(--text);
   font-family: var(--font-mono);
 }
 
-#pg-stats .stat-hint {
+:is(#pg-stats, .stats-scope) .stat-hint {
   font-size: var(--ui-fs-xs);
   color: var(--faint);
 }
 
-#pg-stats .stat-spark {
+:is(#pg-stats, .stats-scope) .stat-spark {
   margin-top: 4px;
 }
 
+/* Cards whose body is one stack (cost breakdown, token mix): the body takes the
+   height the taller sibling card sets, so the detail rows spread instead of
+   hugging the top. */
+:is(#pg-stats, .stats-scope) .stats-fill-card .card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+:is(#pg-stats, .stats-scope) .stats-fill-card .card-body > .stack {
+  flex: 1;
+}
+
+:is(#pg-stats, .stats-scope) .costs-components {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+:is(#pg-stats, .stats-scope) .costs-component-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 56px;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-height: 34px;
+  border-bottom: 1px solid var(--line-1);
+}
+
+:is(#pg-stats, .stats-scope) .costs-component-row > .row {
+  min-width: 0;
+}
+
+:is(#pg-stats, .stats-scope) .costs-component-row > .stats-num {
+  text-align: right;
+}
+
+:is(#pg-stats, .stats-scope) .costs-component-total {
+  flex: 0 0 auto;
+  border-bottom: none;
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+}
+
+/* Token mix card: the per-agent rows spread over the remaining card height. */
+:is(#pg-stats, .stats-scope) .token-agent-stack {
+  flex: 1;
+}
+
+:is(#pg-stats, .stats-scope) .token-agent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 56px;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-height: 30px;
+}
+
+:is(#pg-stats, .stats-scope) .token-agent-row > .stats-num {
+  text-align: right;
+}
+
 /* Tables */
-#pg-stats .table-wrap {
+:is(#pg-stats, .stats-scope) .table-wrap {
   width: 100%;
   overflow-x: auto;
 }
 
-#pg-stats .table {
+:is(#pg-stats, .stats-scope) .table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
   font-size: var(--ui-fs-sm);
 }
 
-#pg-stats .table th {
+:is(#pg-stats, .stats-scope) .table th {
   padding: 8px 12px;
   font-size: 11px;
   font-weight: 600;
@@ -371,28 +419,46 @@
   letter-spacing: 0.03em;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
+  white-space: nowrap;
 }
 
-#pg-stats .table td {
+:is(#pg-stats, .stats-scope) .table td {
   padding: 9px 12px;
   border-bottom: 1px solid var(--line-1);
   color: var(--text);
+  white-space: nowrap;
 }
 
-#pg-stats .table tbody tr:hover {
-  background: var(--panel-2);
+/* Only the detail row (and columns that opt in) may wrap. */
+:is(#pg-stats, .stats-scope) .table td[data-wrap="true"] {
+  white-space: normal;
 }
 
-#pg-stats .table tbody tr.selected {
+/* Header and body cells share the column alignment, so a right-aligned
+   column reads as one block instead of a left header over right-aligned
+   figures. */
+:is(#pg-stats, .stats-scope) .table [data-align="right"] {
+  text-align: right;
+}
+
+:is(#pg-stats, .stats-scope) .table [data-align="center"] {
+  text-align: center;
+}
+
+:is(#pg-stats, .stats-scope) .table tbody tr:hover {
+  background: var(--hover-fill);
+}
+
+:is(#pg-stats, .stats-scope) .table tbody tr.selected {
   background: var(--panel-3);
 }
 
-#pg-stats .table-dense td {
+:is(#pg-stats, .stats-scope) .table-dense td {
   padding: 6px 12px;
 }
 
 /* Badges & Dots */
-#pg-stats .badge {
+:is(#pg-stats, .stats-scope) .badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -404,25 +470,25 @@
   border: 1px solid var(--line-1);
 }
 
-#pg-stats .badge[data-tone="ok"] {
+:is(#pg-stats, .stats-scope) .badge[data-tone="ok"] {
   background: color-mix(in srgb, var(--green) 12%, transparent);
   color: var(--green);
   border-color: color-mix(in srgb, var(--green) 25%, transparent);
 }
 
-#pg-stats .badge[data-tone="warn"] {
+:is(#pg-stats, .stats-scope) .badge[data-tone="warn"] {
   background: color-mix(in srgb, var(--orange) 12%, transparent);
   color: var(--orange);
   border-color: color-mix(in srgb, var(--orange) 25%, transparent);
 }
 
-#pg-stats .badge[data-tone="bad"] {
+:is(#pg-stats, .stats-scope) .badge[data-tone="bad"] {
   background: color-mix(in srgb, var(--err) 12%, transparent);
   color: var(--err);
   border-color: color-mix(in srgb, var(--err) 25%, transparent);
 }
 
-#pg-stats .dot {
+:is(#pg-stats, .stats-scope) .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -430,25 +496,25 @@
   background: var(--faint);
 }
 
-#pg-stats .dot[data-tone="ok"],
-#pg-stats .dot[data-tone="live"] {
+:is(#pg-stats, .stats-scope) .dot[data-tone="ok"],
+:is(#pg-stats, .stats-scope) .dot[data-tone="live"] {
   background: var(--green);
 }
 
-#pg-stats .dot[data-tone="warn"] {
+:is(#pg-stats, .stats-scope) .dot[data-tone="warn"] {
   background: var(--orange);
 }
 
-#pg-stats .dot[data-tone="bad"] {
+:is(#pg-stats, .stats-scope) .dot[data-tone="bad"] {
   background: var(--err);
 }
 
-#pg-stats .dot[data-pulse="true"] {
+:is(#pg-stats, .stats-scope) .dot[data-pulse="true"] {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 30%, transparent);
 }
 
 /* Meters */
-#pg-stats .meter {
+:is(#pg-stats, .stats-scope) .meter {
   height: 6px;
   border-radius: 3px;
   background: var(--panel-3);
@@ -457,28 +523,34 @@
   width: 100%;
 }
 
-#pg-stats .meter-fill {
+:is(#pg-stats, .stats-scope) .meter-fill {
   height: 100%;
   border-radius: 3px;
   background: var(--accent);
   transition: width var(--dur-base) var(--swift);
 }
 
-#pg-stats .meter-cell {
+/* Figure beside the bar, not above it (upstream layout). */
+:is(#pg-stats, .stats-scope) .meter-cell {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 80px;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
-#pg-stats .meter-cell-text {
+:is(#pg-stats, .stats-scope) .meter-cell .meter {
+  width: 64px;
+  flex: none;
+}
+
+:is(#pg-stats, .stats-scope) .meter-cell-text {
   font-family: var(--font-mono);
   font-size: var(--ui-fs-sm);
   text-align: right;
 }
 
 /* Swatches & Labels */
-#pg-stats .swatch {
+:is(#pg-stats, .stats-scope) .swatch {
   width: 8px;
   height: 8px;
   border-radius: 2px;
@@ -486,40 +558,40 @@
   flex-shrink: 0;
 }
 
-#pg-stats .label-cell {
+:is(#pg-stats, .stats-scope) .label-cell {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-#pg-stats .label-cell-body {
+:is(#pg-stats, .stats-scope) .label-cell-body {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-#pg-stats .label-cell-primary {
+:is(#pg-stats, .stats-scope) .label-cell-primary {
   font-weight: 500;
   color: var(--text);
 }
 
-#pg-stats .label-cell-secondary {
+:is(#pg-stats, .stats-scope) .label-cell-secondary {
   font-size: var(--ui-fs-xs);
   color: var(--faint);
 }
 
 /* Charts & Tooltips */
-#pg-stats .chart-wrap {
+:is(#pg-stats, .stats-scope) .chart-wrap {
   width: 100%;
   position: relative;
 }
 
-#pg-stats .chart-svg {
+:is(#pg-stats, .stats-scope) .chart-svg {
   width: 100%;
   overflow: visible;
 }
 
-#pg-stats .chart-tooltip {
+:is(#pg-stats, .stats-scope) .chart-tooltip {
   position: absolute;
   pointer-events: none;
   background: var(--overlay);
@@ -531,14 +603,14 @@
   z-index: 20;
 }
 
-#pg-stats .chart-tooltip-row {
+:is(#pg-stats, .stats-scope) .chart-tooltip-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   font-size: 11px;
 }
 
-#pg-stats .legend {
+:is(#pg-stats, .stats-scope) .legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -547,18 +619,18 @@
   color: var(--dim);
 }
 
-#pg-stats .legend-item {
+:is(#pg-stats, .stats-scope) .legend-item {
   display: flex;
   align-items: center;
   gap: 6px;
   cursor: pointer;
 }
 
-#pg-stats .legend-item[data-hidden="true"] {
+:is(#pg-stats, .stats-scope) .legend-item[data-hidden="true"] {
   opacity: 0.35;
 }
 
-#pg-stats .share-bar {
+:is(#pg-stats, .stats-scope) .share-bar {
   display: flex;
   height: 8px;
   border-radius: 4px;
@@ -567,13 +639,13 @@
   width: 100%;
 }
 
-#pg-stats .bar-list {
+:is(#pg-stats, .stats-scope) .bar-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-#pg-stats .bar-list-row {
+:is(#pg-stats, .stats-scope) .bar-list-row {
   position: relative;
   isolation: isolate;
   display: flex;
@@ -589,12 +661,12 @@
   width: 100%;
 }
 
-#pg-stats .bar-list-row:hover {
-  background: var(--panel-2);
+:is(#pg-stats, .stats-scope) .bar-list-row:hover {
+  background: var(--hover-fill);
 }
 
 /* LiveChip */
-#pg-stats .live-chip {
+:is(#pg-stats, .stats-scope) .live-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -609,28 +681,28 @@
   transition: box-shadow var(--dur-snap) var(--swift), background var(--dur-snap) var(--swift);
 }
 
-#pg-stats .live-chip:hover:not(:disabled) {
+:is(#pg-stats, .stats-scope) .live-chip:hover:not(:disabled) {
   background: var(--panel-3);
   box-shadow: inset 0 0 0 1px var(--line-3);
   color: var(--text);
 }
 
-#pg-stats .live-chip-count {
+:is(#pg-stats, .stats-scope) .live-chip-count {
   font-size: 11px;
   color: var(--faint);
   font-family: var(--font-mono);
 }
 
 /* Drawers & Modals */
-#pg-stats .drawer-scrim,
-#pg-stats .modal-scrim {
+:is(#pg-stats, .stats-scope) .drawer-scrim,
+:is(#pg-stats, .stats-scope) .modal-scrim {
   position: fixed;
   inset: 0;
   background: var(--tint-black-450);
   z-index: 120;
 }
 
-#pg-stats .drawer-panel {
+:is(#pg-stats, .stats-scope) .drawer-panel {
   position: fixed;
   top: 0;
   right: 0;
@@ -644,7 +716,7 @@
   flex-direction: column;
 }
 
-#pg-stats .modal-panel {
+:is(#pg-stats, .stats-scope) .modal-panel {
   position: fixed;
   top: 50%;
   left: 50%;
@@ -661,8 +733,8 @@
 }
 
 /* Json & Code blocks */
-#pg-stats .json-block,
-#pg-stats .code-block {
+:is(#pg-stats, .stats-scope) .json-block,
+:is(#pg-stats, .stats-scope) .code-block {
   font-family: var(--font-mono);
   font-size: 12px;
   background: var(--panel-2);
@@ -674,56 +746,56 @@
 }
 
 /* Utility Helpers */
-#pg-stats .num {
+:is(#pg-stats, .stats-scope) .stats-num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-#pg-stats .mono {
+:is(#pg-stats, .stats-scope) .mono {
   font-family: var(--font-mono);
 }
 
-#pg-stats .truncate {
+:is(#pg-stats, .stats-scope) .truncate {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#pg-stats .dim {
+:is(#pg-stats, .stats-scope) .dim {
   color: var(--dim);
 }
 
-#pg-stats .muted {
+:is(#pg-stats, .stats-scope) .muted {
   color: var(--faint);
 }
 
-#pg-stats .micro {
+:is(#pg-stats, .stats-scope) .micro {
   font-size: 11px;
 }
 
-#pg-stats .tone-ok {
+:is(#pg-stats, .stats-scope) .tone-ok {
   color: var(--green);
 }
 
-#pg-stats .tone-warn {
+:is(#pg-stats, .stats-scope) .tone-warn {
   color: var(--orange);
 }
 
-#pg-stats .tone-bad {
+:is(#pg-stats, .stats-scope) .tone-bad {
   color: var(--err);
 }
 
-#pg-stats .spin {
+:is(#pg-stats, .stats-scope) .spin {
   animation: spin 1s linear infinite;
 }
 
 
 /* Hairline: halve the converted inset rings on HiDPI */
 @media (min-resolution: 2dppx) {
-  #pg-stats .live-chip { box-shadow: inset 0 0 0 .5px var(--line); }
-  #pg-stats .live-chip:hover:not(:disabled) { box-shadow: inset 0 0 0 .5px var(--line-3); }
+  :is(#pg-stats, .stats-scope) .live-chip { box-shadow: inset 0 0 0 .5px var(--line); }
+  :is(#pg-stats, .stats-scope) .live-chip:hover:not(:disabled) { box-shadow: inset 0 0 0 .5px var(--line-3); }
 }
 @media (min-resolution: 3dppx) {
-  #pg-stats .live-chip { box-shadow: inset 0 0 0 .33px var(--line); }
-  #pg-stats .live-chip:hover:not(:disabled) { box-shadow: inset 0 0 0 .33px var(--line-3); }
+  :is(#pg-stats, .stats-scope) .live-chip { box-shadow: inset 0 0 0 .33px var(--line); }
+  :is(#pg-stats, .stats-scope) .live-chip:hover:not(:disabled) { box-shadow: inset 0 0 0 .33px var(--line-3); }
 }

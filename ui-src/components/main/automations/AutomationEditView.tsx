@@ -221,8 +221,16 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
           <div className="aued-title-row">
             <div className="aued-title">{isNew ? t("autoEdit.titleCreate") : t("autoEdit.titleEdit")}</div>
             <span className="sp" />
+            {/* Delivery automations are agent-owned: the host rejects automations_update for
+                them, so the editor must not offer a save that would silently fail */}
             {tab === "settings" && (
-              <button type="button" className="al-primary aued-save" disabled={!canSave} onClick={save}>
+              <button
+                type="button"
+                className="frm-primary aued-save"
+                disabled={!canSave || !!initial?.deliverTo}
+                title={initial?.deliverTo ? t("autoEdit.deliveryLocked") : undefined}
+                onClick={save}
+              >
                 {t("common.save")}
               </button>
             )}
@@ -244,6 +252,9 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
 
       {tab === "settings" ? (
         <div className="aued-layout">
+          {initial?.deliverTo ? (
+            <div className="aued-delivery-lock">{t("autoEdit.deliveryLocked")}</div>
+          ) : null}
           <aside className="aued-summary">
             <div className="aued-summary-head">
               {!isNew && stKind && (
@@ -277,25 +288,25 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
             )}
           </aside>
 
-          <div className="aued-form">
-            <section className="aued-row">
-              <div className="aued-row-label">
+          <div className="aued-form frm-rows">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.basicInfo")}</strong>
-                <span>{t("autoEdit.basicInfoHint")}</span>
+                <span className="frm-hint">{t("autoEdit.basicInfoHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <input id="auedTitle" className="inp" spellCheck={false} maxLength={200} value={draft.title}
                   placeholder={t("settingsPage.automations.titlePlaceholder")}
                   onChange={(e) => patch({ title: e.target.value })} />
               </div>
             </section>
 
-            <section className="aued-row">
-              <div className="aued-row-label">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.scheduleSection")}</strong>
-                <span>{t("autoEdit.scheduleSectionHint")}</span>
+                <span className="frm-hint">{t("autoEdit.scheduleSectionHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <div className="aued-schedule-grid">
                   <div className="aued-schedule-note">
                     <strong>{schedSummary || t("settingsPage.automations.descNone")}</strong>
@@ -378,12 +389,12 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
               </div>
             </section>
 
-            <section className="aued-row">
-              <div className="aued-row-label">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.contentSection")}</strong>
-                <span>{t("autoEdit.contentSectionHint")}</span>
+                <span className="frm-hint">{t("autoEdit.contentSectionHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <div className="aued-promptwrap">
                   <textarea id="auedPrompt" className="aued-prompt" spellCheck={false} value={draft.prompt}
                     placeholder={t("settingsPage.automations.promptPlaceholder")}
@@ -425,12 +436,12 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
               </div>
             </section>
 
-            <section className="aued-row">
-              <div className="aued-row-label">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.boundarySection")}</strong>
-                <span>{t("autoEdit.boundarySectionHint")}</span>
+                <span className="frm-hint">{t("autoEdit.boundarySectionHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <div className="aued-endrow">
                   <span className="aued-pills">
                     {["never", "count", "date"].map((m) => (

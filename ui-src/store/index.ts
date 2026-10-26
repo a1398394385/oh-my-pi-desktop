@@ -13,8 +13,9 @@ import { createEntryTreeSlice, type EntryTreeSlice } from "./entry-tree";
 import { createWsSlice, type WsSlice } from "./ws";
 import { createBtwSlice, type BtwSlice } from "./btw";
 import { createLayoutSlice, type LayoutSlice } from "./layout";
+import { createCollabSlice, type CollabSlice } from "./collab";
 
-export interface AppStore extends UiSlice, SessionSlice, ProjectsSlice, RightSlice, SettingsSlice, ModelsSlice, EntryTreeSlice, WsSlice, BtwSlice, LayoutSlice {}
+export interface AppStore extends UiSlice, SessionSlice, ProjectsSlice, RightSlice, SettingsSlice, ModelsSlice, EntryTreeSlice, WsSlice, BtwSlice, LayoutSlice, CollabSlice {}
 
 export const useAppStore = create<AppStore>()((...a) => ({
   ...createUiSlice(...a),
@@ -27,7 +28,12 @@ export const useAppStore = create<AppStore>()((...a) => ({
   ...createWsSlice(...a),
   ...createBtwSlice(...a),
   ...createLayoutSlice(...a),
+  ...createCollabSlice(...a),
 }));
+
+// Effective zoom factor + its narrow baseline live next to the layout slice (they depend on
+// `narrow`); re-exported here so consumers keep importing zoom helpers from the store entry.
+export { effZoom, useEffZoom, NARROW_ZOOM_BASE } from "./layout";
 
 /** Write helper (a passthrough alias of zustand setState; kept as a named entry for component ergonomics and later convergence) */
 export function setBump(partial: Partial<AppStore>): void {

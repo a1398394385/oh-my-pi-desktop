@@ -190,14 +190,14 @@ export function WindowUtilizationCard({
         header: t("settingsPage.stats.providers.colPeakInRange"),
         align: "right",
         sort: r => r.peak ?? -1,
-        render: r => <span className="num">{r.peak === null ? "–" : formatPercent(r.peak, 0)}</span>,
+        render: r => <span className="stats-num">{r.peak === null ? "–" : formatPercent(r.peak, 0)}</span>,
       },
       {
         key: "samples",
         header: t("settingsPage.stats.providers.colSnapshots"),
         align: "right",
         sort: r => r.samples,
-        render: r => <span className="num muted">{formatInteger(r.samples)}</span>,
+        render: r => <span className="stats-num muted">{formatInteger(r.samples)}</span>,
       },
       {
         key: "recorded",

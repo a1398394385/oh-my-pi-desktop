@@ -18,6 +18,10 @@ export interface WsSlice {
   connFailSince: number | null;
   /** Remote-control takeover: the host kicked this connection (kicked frame or close code 4001). Gates all auto-reconnect — reconnect only via the manual "reclaim" action (Spec §7: any auto retry here revives the kick-fight loop) */
   kickedByOther: boolean;
+  /** Bumped on every successful socket open. The host drops a closed socket's per-entry UI
+      subscriptions, so resident session slots bled dry with the previous socket carry an older
+      epoch and must remount (load_session) before they can see frames again. */
+  connEpoch: number;
   send(obj: HostRequest): void;
   setConnected(ok: boolean, text: string): void;
   connect(): Promise<void>;
@@ -32,6 +36,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
   connText: t("notify.connecting"),
   connFailSince: null,
   kickedByOther: false,
+  connEpoch: 0,
 
   send(obj: HostRequest): void {
     const ws = get().ws;
@@ -53,6 +58,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
   async connect(): Promise<void> {
     get().setConnected(false, t("notify.connecting"));
     let url: string;
+    const devPort = devWsPort();
     if (REMOTE) {
       // Remote control: hit this origin's remote service directly; no key parks on the key-entry
       // placeholder instead of burning the retry ladder on guaranteed-401 connects
@@ -62,6 +68,10 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
         return;
       }
       url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?t=${encodeURIComponent(key)}`;
+    } else if (!invoke && devPort) {
+      // Browser dev direct-connect (?ws=<port>): loopback to the manually started host's
+      // main WS server; local channel — no remote stamp, no write denylist.
+      url = `ws://127.0.0.1:${devPort}`;
     } else {
       if (!invoke) {
         get().setConnected(false, t("notify.noHost"));
@@ -81,11 +91,23 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     let everOpened = false;
     const ws = new WebSocket(url);
     set({ ws });
-    ws.onmessage = (ev) => onMessage(JSON.parse(ev.data));
+    // Stale-socket guard (`get().ws === ws` on every callback): once a newer connect() has
+    // replaced this socket in the store, any late events must not touch shared state. Without
+    // this, the host-side kick of a half-open predecessor (close 4001 sent when our own
+    // reconnect takes the slot) fires the DEAD socket's onclose here and latches
+    // kickedByOther — a full-page "taken over by another device" screen where the takeover
+    // is our own healthy reconnect.
+    ws.onmessage = (ev) => { if (get().ws === ws) onMessage(JSON.parse(ev.data)); };
     ws.onopen = () => {
+      if (get().ws !== ws) return;
       everOpened = true;
       reconnectAttempt = 0;
       get().setConnected(true, t("notify.connected"));
+      // Reconnect: the host detached every pool entry's UI subscription when the previous socket
+      // closed, so resident slots would sit frozen (no events, abort replies lost). Bump the epoch
+      // (every resident slot is now stale) and remount the session on screen; the others remount
+      // lazily in activateSession when the user switches to them.
+      set((s) => ({ connEpoch: s.connEpoch + 1 }));
       get().send({ type: "list_sessions" });
       // At startup the welcome page renders before the connection; get_git_branches was once dropped by send — refetch once connected
       if (get().isCreatingNew && get().newSessionProject) get().send({ type: "get_git_branches", cwd: get().newSessionProject });
@@ -93,6 +115,9 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       const activePath = get().activePath;
       const activeCwd = activePath ? get().openSessions.get(activePath)?.cwd : undefined;
       if (activeCwd) get().send({ type: "get_git_branches", cwd: activeCwd });
+      if (activePath && get().openSessions.get(activePath)?.connEpoch !== get().connEpoch) {
+        get().send({ type: "load_session", path: activePath });
+      }
       // If the settings page opened before the connection was ready, its data requests were dropped by send — refetch once connected
       if (get().settingsOpen) get().refreshSettingsData();
       // Resend the current UI locale unconditionally so a (re)started host
@@ -105,6 +130,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
     // Kicked by another client (remote-control takeover): NEVER auto-reconnect — the new holder would
     // kick us again, looping forever (Spec §7). Reconnect happens only via the manual reclaim action.
     ws.onclose = (ev) => {
+      if (get().ws !== ws) return; // stale socket: a newer connect() owns the state now
       get().setConnected(false, t("notify.disconnected"));
       if (ev.code === 4001 || get().kickedByOther) {
         set({ kickedByOther: true });
@@ -127,7 +153,7 @@ export const createWsSlice: StateCreator<AppStore, [], [], WsSlice> = (set, get)
       }
       scheduleReconnect(get().connect);
     };
-    ws.onerror = () => get().setConnected(false, t("notify.disconnected"));
+    ws.onerror = () => { if (get().ws === ws) get().setConnected(false, t("notify.disconnected")); };
   },
 });
 
@@ -178,11 +204,25 @@ declare global {
 
 export const invoke = window.__TAURI__?.core?.invoke;
 
+// Browser dev direct-connect (?ws=<hostPort>): an HMR session from `bun run ui:dev`
+// against a manually started host — `bun run dev:browser` spawns both and prints the
+// ready URL. The port comes from the host's READY stdout line; digits-only so the value
+// can only ever name a loopback port.
+export function devWsPort(): string | null {
+  const raw = new URLSearchParams(window.location.search).get("ws");
+  return raw && /^\d{1,5}$/.test(raw) ? raw : null;
+}
+
 // ---------- Remote control mode (Spec §4.1) ----------
-// REMOTE = plain browser against the host's remote LAN service: no Tauri shell, and not the
-// ?preview=1 sample page (the preview check mirrors main.tsx, which also skips connect() there).
-// The remote WS endpoint is this same origin's /ws gated by the access key.
-export const REMOTE = !invoke && !new URLSearchParams(window.location.search).has("preview");
+// REMOTE = plain browser against the host's remote LAN service: no Tauri shell, not the
+// ?preview=1 sample page (the preview check mirrors main.tsx, which also skips connect()
+// there), and not a ?ws= dev direct-connect (a local-channel loopback where remote
+// affordances — hidden settings, no voice button, key entry — would be wrong). The remote
+// WS endpoint is this same origin's /ws gated by the access key.
+// The ?ws= check mirrors layout.ts/Composer.tsx (.has() form in all three so an invalid
+// port degrades identically everywhere: connect() falls through to the noHost surface).
+export const REMOTE =
+  !invoke && !new URLSearchParams(window.location.search).has("preview") && !new URLSearchParams(window.location.search).has("ws");
 
 const REMOTE_KEY_STORAGE = "omp-remote-key";
 

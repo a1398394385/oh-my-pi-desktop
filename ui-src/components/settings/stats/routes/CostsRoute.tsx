@@ -39,10 +39,12 @@ const MODEL_LIMIT = 6;
 const DAY_MS = 86_400_000;
 
 // Labels come from i18n at call time; only stable key + color stay module-level.
+// Hues are spaced apart (blue / purple / green / amber): the previous pair of
+// blues (input #5b8cff and cache read on the accent blue) read as one color.
 const COMPONENTS = [
   { key: "costInput", color: "#5b8cff" },
   { key: "costOutput", color: "var(--chart-secondary)" },
-  { key: "costCacheRead", color: "var(--chart-primary)" },
+  { key: "costCacheRead", color: "#4ade80" },
   { key: "costCacheWrite", color: "#f5b54a" },
 ] as const satisfies readonly { key: keyof CostComponents; color: string }[];
 
@@ -68,7 +70,7 @@ const UTC_DAY_LONG = new Intl.DateTimeFormat(undefined, {
 
 export function CostsRoute({ active, range }: CostsRouteProps) {
   const { t } = useTranslation();
-  const query = useQuery(["costs", range], () => getCostDashboardStats(range), { enabled: active });
+  const query = useQuery(["costs", range], ({ signal }) => getCostDashboardStats(range, signal), { enabled: active });
   const meta = rangeMeta(range);
   const [split, setSplit] = useState<SplitMode>("model");
   const [hidden, toggleSeries] = useHiddenSeries();
@@ -166,6 +168,7 @@ export function CostsRoute({ active, range }: CostsRouteProps) {
 
         <Card
           index={2}
+          className="stats-fill-card"
           title={t("settingsPage.stats.costs.breakdownTitle")}
           description={t("settingsPage.stats.costs.breakdownDesc")}
           stale={query.stale}
@@ -332,15 +335,15 @@ function ComponentBreakdown({ summary }: { summary: CostSummaryView }) {
               <Swatch color={c.color} />
               {t(COMPONENT_LABEL_KEYS[c.key])}
             </span>
-            <span className="num">{formatCost(summary[c.key])}</span>
-            <span className="num dim costs-component-share">
+            <span className="stats-num">{formatCost(summary[c.key])}</span>
+            <span className="stats-num dim costs-component-share">
               {summary.totalCost > 0 ? formatPercent(summary[c.key] / summary.totalCost) : "–"}
             </span>
           </div>
         ))}
         <div className="costs-component-row costs-component-total">
           <span>{t("settingsPage.stats.costs.total")}</span>
-          <span className="num">{formatEstimatedCost(summary.totalCost, summary.unpricedRequests)}</span>
+          <span className="stats-num">{formatEstimatedCost(summary.totalCost, summary.unpricedRequests)}</span>
           <span className="costs-component-share" />
         </div>
       </div>
@@ -359,7 +362,7 @@ function buildCostColumns(view: CostsView): Column<CostModelRow>[] {
     header: componentLabel(c.key),
     align: "right",
     sort: row => row[c.key],
-    render: row => <span className="num">{formatCost(row[c.key])}</span>,
+    render: row => <span className="stats-num">{formatCost(row[c.key])}</span>,
   }));
   return [
     {
@@ -379,7 +382,7 @@ function buildCostColumns(view: CostsView): Column<CostModelRow>[] {
       header: ti("settingsPage.stats.costs.colRequests"),
       align: "right",
       sort: row => row.requests,
-      render: row => <span className="num">{formatInteger(row.requests)}</span>,
+      render: row => <span className="stats-num">{formatInteger(row.requests)}</span>,
     },
     {
       key: "cost",
@@ -401,7 +404,7 @@ function buildCostColumns(view: CostsView): Column<CostModelRow>[] {
       header: ti("settingsPage.stats.costs.colShare"),
       align: "right",
       sort: row => row.share,
-      render: row => <span className="num muted">{row.cost > 0 ? formatPercent(row.share) : "–"}</span>,
+      render: row => <span className="stats-num muted">{row.cost > 0 ? formatPercent(row.share) : "–"}</span>,
     },
     {
       key: "split",
@@ -430,7 +433,7 @@ function buildCostColumns(view: CostsView): Column<CostModelRow>[] {
       align: "right",
       sort: row => (row.requests > row.unpricedRequests ? row.cost / (row.requests - row.unpricedRequests) : -1),
       render: row => (
-        <span className="num">
+        <span className="stats-num">
           {row.requests > row.unpricedRequests
             ? formatUnitCost(row.cost / (row.requests - row.unpricedRequests))
             : "–"}
@@ -445,9 +448,9 @@ function buildCostColumns(view: CostsView): Column<CostModelRow>[] {
       sort: row => row.unpricedRequests,
       render: row =>
         row.unpricedRequests > 0 ? (
-          <span className="num tone-warn">{formatInteger(row.unpricedRequests)}</span>
+          <span className="stats-num tone-warn">{formatInteger(row.unpricedRequests)}</span>
         ) : (
-          <span className="num dim">–</span>
+          <span className="stats-num dim">–</span>
         ),
     },
   ];

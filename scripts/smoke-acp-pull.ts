@@ -7,20 +7,21 @@
 //      void, compression scope = the latest return)
 //   B  tool-entry decode (spec §3): hallucinated short refs reject with the
 //      candidate set rendered as short refs; an OLD short ref of a compressed
-//      block rejects in keep ("already compressed") but recalls fine
+//      block rejects in keep ("already compressed")
 //   C  e2e model flow: context_status -> compress(keep=[one bN]) -> success ->
-//      outcome names the new block by short ref, recall of it returns the full
-//      index, and the JSONL persists entry ids only (zero bN anywhere)
+//      outcome names the new block by short ref, and the JSONL persists entry
+//      ids only (zero bN anywhere)
 //   D  restart replay determinism (spec §3 MUST): compress -> reopen ->
 //      rebuild -> the same journal replays the SAME numbering (live, folded
 //      with holes preserved, and summary blocks); an old short ref resolves to
 //      the identical entry
 //   D  restart replay determinism (spec §3 MUST: compress -> restart -> same
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directories at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-pull.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-pull.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,10 +33,10 @@ import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
 import { AcpRuntimeState, createCompressContextTool, createAcpProjectionExtension } from "../host/acp-runtime.ts";
 import { createAcpStatusTool } from "../host/acp-status-tool.ts";
-import { createRecallBlockTool } from "../host/acp-recall-tool.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 import type { AcpParams, AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
 const { AuthStorage } = await import("@oh-my-pi/pi-coding-agent/session/auth-storage");
 const { ModelRegistry } = await import("@oh-my-pi/pi-coding-agent/config/model-registry");
@@ -163,6 +164,22 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	// Persistence stays entry-id-only (spec §3): compressedIds/index are raw ids.
 	assert.deepEqual(fx.writes[0].meta.compressedIds, ["e0", "e1", "e2", "e3", "e4"]);
 	assert.ok(fx.writes[0].index.every((l) => /^e\d+$/.test(l.id)), "index lines persist entry ids");
+	// Inline byte budget (the base spill threshold): the manifest is cut whole-line,
+	// never head/tailed by the base tool-result stage, and the round scope shrinks
+	// with the visible list.
+	const fxBudget = makeFixture(PARAMS, 12);
+	fxBudget.state.projectView(fxBudget.view);
+	const full = fxBudget.state.status();
+	if (!full.ok) throw new Error(full.error);
+	const budget = Buffer.byteLength(full.text, "utf-8") - 300;
+	const cut = fxBudget.state.status(budget);
+	if (!cut.ok) throw new Error(cut.error);
+	const cutText = cut.text;
+	assert.ok(Buffer.byteLength(cutText, "utf-8") <= budget, "the return fits the caller's inline budget");
+	const cutLines = parseManifest(cutText);
+	assert.ok(cutLines.length > 0 && cutLines.length < 12, "the manifest tail is cut whole-line");
+	assert.match(cutText, /exempt this round, re-listed next round/, "the cut tail is announced as exempt");
+	assert.equal(fxBudget.state.manifest?.ids.length, cutLines.length, "the round scope matches the visible list");
 	console.log("ok: A dashboard + refresh — bN manifest, consumed->context_status pointer, status revives the round, persistence id-only");
 }
 
@@ -191,26 +208,22 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	const keepOld2 = rejected(await fx.state.compress({ keep: [oldShort], summary: SUMMARY_TEXT }));
 	assert.equal(keepOld2.code, "hallucinated-keep");
 	assert.match(keepOld2.error, /already compressed/);
-	// ...but recall of the same old short ref still resolves to the original.
-	const rec = fx.state.recall(oldShort);
-	assert.equal(rec.ok, true);
-	assert.ok((rec as { text: string }).text.includes("journal block 2"), "old short ref recalls the folded original");
 	// no-manifest also points at context_status.
 	const fresh = makeFixture(PARAMS, 2);
 	const noMan = rejected(await fresh.state.compress({ keep: [], summary: SUMMARY_TEXT }));
 	assert.equal(noMan.code, "no-manifest");
 	assert.match(noMan.error, /call context_status/);
-	console.log("ok: B decode — ghost short ref rejected with bN candidates; positive keep decode; old short keep-rejects, recall works; pointers to context_status");
+	console.log("ok: B decode — ghost short ref rejected with bN candidates; positive keep decode; old short keep-rejects; pointers to context_status");
 }
 
-// --- C: e2e model flow — status -> compress(keep=[bN]) -> recall; JSONL id-only --------------
+// --- C: e2e model flow — status -> compress(keep=[bN]); JSONL id-only ---------------------------
 
 const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 {
 	const turnText = (label: string, n: number) => `${label}: ` + "detailed journal text about the parser bug and the failing test. ".repeat(n);
 	let keptRef = "";
 	let summaryRef = "";
-	const flow = { started: false, statusDone: false, compressDone: false, recallDone: false };
+	const flow = { started: false, statusDone: false, compressDone: false };
 	const mock = createMockModel({
 		handler: (context: { messages: Array<{ role: string; content: unknown; toolName?: string }> }) => {
 			const results = [...context.messages].reverse().filter((m) => m.role === "toolResult");
@@ -229,7 +242,6 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 			}
 			const lastStatus = results.find((m) => m.toolName === "context_status");
 			const compressResult = results.find((m) => m.toolName === "compress_context");
-			const recallResult = results.find((m) => m.toolName === "recall_block");
 			// The journal lags the view one request (forced-smoke precedent), so a
 			// first status snapshot can still list nothing: end the chain in text
 			// (the outer retry loop re-triggers on the next turn).
@@ -247,15 +259,11 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 					] as const,
 				};
 			}
-			if (!recallResult) {
-				const outcome = JSON.parse(resultText(compressResult.content)) as CompressOutcome;
-				if (!outcome.ok) return { content: ["Compress rejected; stopping the flow."] as const };
-				flow.compressDone = true;
-				summaryRef = outcome.blockId;
-				return { content: [{ type: "toolCall", name: "recall_block", arguments: { id: summaryRef } }] as const };
-			}
-			flow.recallDone = true;
-			return { content: ["Recall received; done."] as const };
+			const outcome = JSON.parse(resultText(compressResult.content)) as CompressOutcome;
+			if (!outcome.ok) return { content: ["Compress rejected; stopping the flow."] as const };
+			flow.compressDone = true;
+			summaryRef = outcome.blockId;
+			return { content: ["Compress done."] as const };
 		},
 	});
 	const sessionManager = SessionManager.create(cwdC);
@@ -279,7 +287,7 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
-		customTools: [createCompressContextTool(state), createRecallBlockTool(state), createAcpStatusTool(state)] as never,
+		customTools: [createCompressContextTool(state), createAcpStatusTool(state)] as never,
 		getApiKey: async () => "mock-key",
 		extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 		disableExtensionDiscovery: true,
@@ -305,29 +313,25 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	};
 
 	// Warm-up turns settle the journal (the view lags one request), then the
-	// status -> compress -> recall flow runs on a turn with listed candidates.
+	// status -> compress flow runs on a turn with listed candidates.
 	await ask(turnText("task one", 60), 1);
 	await ask(turnText("task two", 60), 2);
-	for (let round = 0; !flow.recallDone && round < 3; round++) {
-		await ask(`${turnText(`task three.${round}`, 60)} fetch status and compress`, assistantCount() + 4);
+	for (let round = 0; !flow.compressDone && round < 3; round++) {
+		await ask(`${turnText(`task three.${round}`, 60)} fetch status and compress`, assistantCount() + 3);
 	}
 	assert.ok(flow.statusDone, "the model read a non-empty short-ref manifest from context_status");
 	assert.ok(flow.compressDone, "the compress with a short-ref keep succeeded");
-	assert.ok(flow.recallDone, "the recall of the outcome's short ref ran");
 	assert.match(keptRef, /^b\d+$/, "the keep id was a bN short ref");
 	assert.match(summaryRef, /^b\d+$/, "the outcome names the new block by short ref");
 	const outcome = JSON.parse(resultText(resultsOf("compress_context").at(-1)!.content)) as CompressOutcome;
 	assert.equal(outcome.ok, true);
 	assert.ok(outcome.compressed.blocks >= 1, "the compress folded unkept manifest blocks");
-	const recallText = resultText(resultsOf("recall_block").at(-1)!.content);
-	assert.ok(recallText.includes("Full index:"), "the recall of the outcome's short ref returned the compaction index");
-	assert.ok(!recallText.includes(`${keptRef} | `), "the kept block is not in the compressed index");
 
 	// JSONL: the acpSummary DATA talks entry ids only (spec §3) — short refs
 	// live on model-facing surfaces; the journaled context_status tool result is an
 	// ordinary stored message and legitimately carries bN rows.
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	const raw = await Bun.file(sessionFile).text();
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 1, "exactly one acpSummary on disk");
 	const summaryId = sessionManager
@@ -348,12 +352,26 @@ const cwdC = mkdtempSync(join(tmpdir(), "acp-v10-c-"));
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdC, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler retries after
+		// teardown.
+		try {
+			rmSync(cwdC, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "C session dir fully removed (incl. lock files)");
-	rmSync(cwdC, { recursive: true, force: true });
-	console.log("ok: C e2e — status -> compress(keep=[bN]) -> recall(outcome bN) flow; JSONL persists entry ids only");
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdC, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
+	console.log("ok: C e2e — status -> compress(keep=[bN]) flow; JSONL persists entry ids only");
 }
 
 // --- D: restart replay determinism (spec §3 MUST: compress -> restart -> same numbering) ------
@@ -388,7 +406,7 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 
 	// Restart: reopen from disk, rebuild, replay. Same journal -> same numbers.
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	await sessionManager.close();
 	const reopened = await SessionManager.open(sessionFile, undefined, undefined, { suppressBreadcrumb: true });
 	const entries2 = reopened.getEntries();
@@ -401,15 +419,6 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 	for (const [id, ref] of refBefore) {
 		assert.equal(state2.shortRef(id), ref, `restart replay kept the numbering for ${id} (${ref})`);
 	}
-	// Old short refs still resolve to the identical entries after the restart.
-	for (const id of foldedIds) {
-		const rec = state2.recall(refBefore.get(id)!);
-		assert.equal(rec.ok, true, `old short ref ${refBefore.get(id)} resolves after restart`);
-		assert.ok((rec as { text: string }).text.includes(id === ids[4] ? "working through the blocks" : "journal block"), "and lands on the original content");
-	}
-	const recSummary = state2.recall(refBefore.get(summaryId1)!);
-	assert.equal(recSummary.ok, true);
-	assert.ok((recSummary as { text: string }).text.includes("Full index:"), "the summary's short ref recalls its index after restart");
 
 	// Restart-side status return agrees with the replayed numbering.
 	const status2 = state2.status();
@@ -423,12 +432,26 @@ const cwdD = mkdtempSync(join(tmpdir(), "acp-v10-d-"));
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdD, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler retries after
+		// teardown.
+		try {
+			rmSync(cwdD, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "D session dir fully removed (incl. lock files)");
-	rmSync(cwdD, { recursive: true, force: true });
-	console.log("ok: D restart replay — same numbering for live/folded/summary ids; old short refs resolve identically");
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdD, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
+	console.log("ok: D restart replay — same numbering for live/folded/summary ids");
 }
 
 // --- E: degrade rejects context_status at the entry ----------------------------------------------

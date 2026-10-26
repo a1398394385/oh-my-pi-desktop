@@ -1,0 +1,36 @@
+diff --git a/src/auth/select.ts b/src/auth/select.ts
+index 4d0ccd5..37367bb 100644
+--- a/src/auth/select.ts
++++ b/src/auth/select.ts
+@@ -114,26 +114,17 @@ export class CredentialSelector {
+ 		return next;
+ 	}
+ 
+-	/**
+-	 * FNV-1a hash for deterministic session-to-credential mapping.
+-	 * Ensures the same session always starts with the same credential.
+-	 */
+-	#getHashedIndex(sessionId: string, total: number): number {
+-		if (total <= 1) return 0;
+-		return Bun.hash.xxHash32(sessionId) % total;
+-	}
+-
+ 	/**
+ 	 * Returns credential indices in priority order for selection.
+-	 * With sessionId: starts from hashed index (consistent per session).
+-	 * Without sessionId: starts from round-robin index (load balancing).
++	 * Pool order IS the priority order (callers reorder the stored rows to rank
++	 * accounts), so a session starts at the top-ranked account; a hashed start
++	 * would serve a lower-priority account for most sessions. Without sessionId:
++	 * starts from round-robin index (load balancing).
+ 	 * Order wraps around so all credentials are tried if earlier ones are blocked.
+ 	 */
+ 	#getCredentialOrder(providerKey: string, sessionId: string | undefined, total: number): number[] {
+ 		if (total <= 1) return [0];
+-		const start = sessionId
+-			? this.#getHashedIndex(sessionId, total)
+-			: this.#getNextRoundRobinIndex(providerKey, total);
++		const start = sessionId ? 0 : this.#getNextRoundRobinIndex(providerKey, total);
+ 		const order: number[] = [];
+ 		for (let i = 0; i < total; i++) {
+ 			order.push((start + i) % total);

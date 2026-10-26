@@ -38,7 +38,7 @@ export interface AcpSummarySink {
 	appendCustomEntry(customType: string, data?: unknown): string;
 }
 
-/** Persist one compaction block; returns it with the journal id (its recall target). */
+/** Persist one compaction block; returns it with the journal id (its short-ref target). */
 export function appendAcpSummary(session: AcpSummarySink, draft: AcpSummaryDraft): AcpSummaryData {
 	const id = session.appendCustomEntry(ACP_SUMMARY_CUSTOM_TYPE, draft);
 	return { ...draft, id };

@@ -50,7 +50,8 @@
   .stats-bar { margin-bottom: calc(10px + env(safe-area-inset-bottom)); }
   /* Narrow-only two fixed rows (desktop keeps ONE line, see composer.css): smaller type +
      tighter gaps so the six token metrics fit the phone width */
-  #main .stats-bar { font-size: var(--ui-fs-xs); padding: 0; flex-direction: column; gap: 2px; }
+  #main .stats-bar { font-size: var(--ui-fs-xs); padding: 0; }
+  #main .stats-bar .sb-layer { flex-direction: column; gap: 2px; }
   #main .stats-bar .sb-break { font-size: var(--ui-fs-xs); }
   #main .stats-bar .sb-row {
     display: flex;
@@ -62,6 +63,13 @@
   }
   #main .stats-bar .sb-group { gap: 2px 6px; }
   #main .stats-bar .sb-item { gap: 3px; white-space: nowrap; }
+
+  /* Automations page (list + create/edit share .al-page > .al-col): same edge-to-edge
+     contract as the message column — the desktop four-stage shrink would otherwise leave
+     ~60px dead margin per side, and the two-column card grid does not fit a phone. */
+  #main .al-page { padding: 0 0 10px; }
+  #main .al-page .al-col { width: auto; max-width: none; margin-left: 12px; margin-right: 12px; }
+  #main .al-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 
   /* Right-panel tab bar: three tabs share the row, a fourth scrolls horizontally instead
      of squeezing every tab (desktop keeps the equal-width shrink recipe) */
@@ -166,6 +174,11 @@
     border-color: var(--line);
   }
   #tasklist .task .tt { line-height: 18px; }
+  /* Phone rows are 46px tall with an 18px title line, so the desktop icon sizes (16px slot,
+     18px needle nudged up 2px to sit right in the 34px row) read small and high here. Size
+     the glyphs to the row's text and drop the desktop-only optical nudge. */
+  #tasklist .task .tpin svg { width: 20px !important; height: 20px !important; margin-top: 0; }
+  #tasklist .task .task-indicator svg { width: 18px !important; height: 18px !important; }
 
   /* Project card: two-line head (name + tag / tasks + caret + add) followed by the meta
      line; expanding grows the SAME card — the head keeps its top corners, the kids panel
@@ -178,8 +191,13 @@
     row-gap: 2px;
   }
   #tasklist .proj.collapsed { margin-bottom: 6px; }
+  /* The head's own bottom gap yields to the kids panel for as long as the panel is mounted
+     (expanded, or mid-collapse while the deferred unmount is still pending): a collapsed head
+     must not add its 6px on top of the shrinking panel. Otherwise the collapse's first frame
+     widens the gap by that 6px and the unmount drops it again — a gap that appears and then
+     shrinks. */
+  #tasklist .proj:has(+ .proj-kids) { margin-bottom: 0; }
   #tasklist .proj:not(.collapsed) {
-    margin-bottom: 0;
     border-radius: var(--r-md) var(--r-md) 0 0;
     border-bottom-color: transparent;
   }
@@ -225,6 +243,9 @@
     transition: transform var(--dur-snap) var(--swift);
   }
   #tasklist .proj:not(.collapsed) .pcaret { transform: rotate(180deg); }
+  /* Touch screens have no hover: the card head's new-session ＋ (desktop reveals it on row
+     hover) stays visible at all times. */
+  #tasklist .proj .padd { display: inline-flex; }
   #tasklist .proj .ppath {
     flex: 0 0 calc(100% - 24px);
     width: calc(100% - 24px);
@@ -252,6 +273,15 @@
   /* Sessions inside the expanded card: plain rows (no nested card), two-line layout —
      title on top, relative time underneath, status/actions on the right. */
   #tasklist .proj-kids-in { padding: 4px 6px 6px; }
+  /* Collapse must reach zero. The frame's border/margin already drop with
+     `.proj.collapsed`, but the inner card's padding does not shrink with the
+     grid row — the 0fr row floors at the padding box (~8px) while the deferred
+     unmount only fires at 310ms, so a ghost box sits between the card and the
+     next project for ~190ms and then vanishes on its own (a gap that appears
+     and then shrinks). Animating the padding with the row lands both at 0
+     together, so the unmount has no step left to make. */
+  #tasklist .proj-kids > .proj-kids-in { transition: padding var(--dur-sheet) var(--swift); }
+  #tasklist .proj-kids.closing > .proj-kids-in { padding-top: 0; padding-bottom: 0; }
   #tasklist .proj-kids .task {
     margin: 0;
     width: 100%;
@@ -261,6 +291,9 @@
     border: 0;
     border-radius: 8px;
     flex-wrap: wrap;
+    /* The only flex line is the title/time pair: center it in the 52px touch target, while
+       align-items keeps the time on the title's first line when the title wraps. */
+    align-content: center;
     align-items: flex-start;
     row-gap: 2px;
   }
@@ -268,21 +301,52 @@
   #tasklist .proj-kids .task.on { background: var(--select); }
   #tasklist .proj-kids .task .tt {
     order: 1;
-    flex: 1 1 calc(100% - 34px);
+    flex: 1 1 0;
+    min-width: 0;
     white-space: normal;
     line-height: 1.35;
     mask-image: none;
     -webkit-mask-image: none;
   }
+  /* Time sits on the title's line, flush right (was a full-width second row). line-height
+     matches .tt's first line so the two baselines agree. */
   #tasklist .proj-kids .task .tm {
-    order: 4;
-    flex: 0 0 100%;
-    margin-left: 24px;
+    order: 2;
+    flex: none;
+    margin-left: 8px;
+    align-self: flex-start;
     font-size: var(--ui-fs-sm);
+    line-height: 1.35;
     color: var(--faint);
   }
-  /* Touch devices have no hover: the hover-only unload/archive buttons are dropped
-     (the row's ⋯ context menu still offers them) */
-  #tasklist .proj-kids .task .tarchive { display: none; }
   #tasklist .proj-kids .more-link { margin-left: 8px; }
+}
+
+/* Touch screens have no hover, but WebKit keeps :hover on the row for the whole tap gesture.
+   The desktop hover swap (time label out, archive buttons in) therefore reflowed the row
+   between touchstart and touchend — the browser dropped that click, so the first tap did
+   nothing and the time appeared to vanish. Keep the time and leave the row's unload/archive
+   actions to the ⋯ / long-press menu. Applies to phones by width (this file's breakpoint)
+   and to any touch-capable device by media feature. */
+@media (max-width: 768px), (hover: none) {
+  /* Both selectors name the hover state on purpose: sidebar.css declares the swap as
+     `.task:is(:hover, .ctx-open) .tm`, and a plain `.tm` rule loses to that gesture state. */
+  #tasklist .task .tm,
+  #tasklist .task:is(:hover, .ctx-open) .tm { display: inline; }
+  #tasklist .task .tarchive,
+  #tasklist .task:is(:hover, .ctx-open) .tarchive { display: none; }
+  /* WebKit applies :hover on the FIRST tap and eats that tap whenever the hover state shows
+     or hides content. Row hover swapped the state dot / auto badge out for the pin button,
+     so the tap only highlighted the row and the second tap finally opened it. Keep the idle
+     state; an unpinned row has no hover slot at all on a phone (pinning is in the
+     long-press menu), a pinned one keeps its always-visible needle. */
+  #tasklist .task:is(:hover, .ctx-open) .task-indicator,
+  #tasklist .task:is(:hover, .ctx-open) .task-auto { opacity: 1; }
+  #tasklist .task .tpin { display: none; }
+  #tasklist .task .tpin.on { display: inline-flex; }
+  /* Same trap one level up: the project card's add / more buttons appeared only on hover,
+     so the first tap that expanded the card was consumed as well. */
+  #tasklist .proj .padd,
+  #tasklist .proj .pmore,
+  .arch-row .arch-act { display: inline-flex; }
 }

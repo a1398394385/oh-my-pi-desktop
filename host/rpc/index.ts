@@ -20,6 +20,10 @@ import { voiceHandlers } from "./voice";
 import { bashCompleteHandlers } from "./bash-complete";
 import { automationsHandlers } from "./automations";
 import { btwHandlers } from "./btw";
+import { worktreeHandlers } from "./worktree";
+import { gitGraphHandlers } from "./git-graph";
+import { gitCompareHandlers } from "./git-compare";
+import { collabHandlers } from "./collab";
 import { remoteHandlers } from "./remote";
 import { REMOTE_WRITE_DENYLIST } from "../remote.ts";
 import { hostI18n } from "../i18n/host.ts";
@@ -42,6 +46,10 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...bashCompleteHandlers,
   ...automationsHandlers,
   ...btwHandlers,
+  ...worktreeHandlers,
+  ...gitGraphHandlers,
+  ...gitCompareHandlers,
+  ...collabHandlers,
   ...remoteHandlers,
 };
 

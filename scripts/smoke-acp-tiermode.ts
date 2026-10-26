@@ -1,10 +1,11 @@
 // ACP T12 smoke: acpParamsFromConfig dual-mode tier thresholds (absolute/percent).
 // Pure parameter coverage — no session or profile data is touched.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-tiermode.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-tiermode.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { acpParamsFromConfig, ACP_DEFAULT_PARAMS } from "../host/acp-plan.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 
 // --- 1. absolute passthrough: stored values are token lines; missing = §11 default ---
 const abs = acpParamsFromConfig({ l1: 150_000, l2: 250_000 });
@@ -39,10 +40,11 @@ assert.equal(warned, 1, "module-level flag suppresses repeat warnings");
 process.stderr.write = stderrWrite;
 
 // --- 4. non-tier params pass through untouched; unknown tierMode = absolute ---
-const rest = acpParamsFromConfig({ tierMode: "percent", l1: 50, target: 80_000, tailTurns: 4 }, 200_000);
+const rest = acpParamsFromConfig({ tierMode: "percent", l1: 50, target: 80_000, tailTurns: 4, tailUserMessages: 3 }, 200_000);
 assert.equal(rest.l1, 100_000);
 assert.equal(rest.target, 80_000);
 assert.equal(rest.tailTurns, 4);
+assert.equal(rest.tailUserMessages, 3);
 assert.equal(acpParamsFromConfig({ tierMode: "bogus", l1: 7 }, 400_000).l1, 7);
 
 console.log("smoke-acp-tiermode: ok");

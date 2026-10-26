@@ -145,6 +145,17 @@ function ManualBrowserView() {
     }, LOAD_TIMEOUT_MS);
   };
 
+  // One-shot target handed over by link clicks (openInBrowser): consumed as a normal
+  // navigation, so the self-built history/back behave like a typed address. The effect tracks
+  // only the pending value on purpose — `navigate` closes over this render's stack/idx, and
+  // listing it would refire on every render.
+  const pendingUrl = useAppStore((s) => s.browserManualUrl);
+  useEffect(() => {
+    if (!pendingUrl) return;
+    useAppStore.setState({ browserManualUrl: null });
+    navigate(pendingUrl);
+  }, [pendingUrl]);
+
   const goBack = () => {
     if (!canBack) return;
     clearTimeout(loadTimer.current);
@@ -290,9 +301,6 @@ function ManualBrowserView() {
           <div className="bpane-empty">
             <span className="bpane-empty-ic"><Icon name="globe" size={30} /></span>
             <div className="bpane-empty-tt">{t("right.browseEmptyTitle")}</div>
-            <div className="bpane-empty-sub">
-              {t("right.browseEmptySub")}
-            </div>
           </div>
         )}
         {current && (

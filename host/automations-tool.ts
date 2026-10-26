@@ -1,23 +1,40 @@
-// create_automation tool: the agent-facing entry to the scheduled-task system.
+// Agent-facing automation tools (this app's Automations feature): two entries
+// instead of one-per-verb — `automations_list` (read approval) and
+// `automations_manage` (write approval, action: create | delete). The split is
+// by approval level: listing must never ask for write confirmation.
 //
-// The tool reuses the automations domain entry (host/automations/create.ts) that
-// the UI's create RPC calls, so validation, the 20-task limit, id minting and
-// the born-completed rule stay one implementation. Only the model-facing shape
-// is translated here: flat schedule fields instead of the nested
+// Creation reuses the automations domain entry (host/automations/create.ts)
+// that the UI's create RPC calls, so validation, the 20-task limit, id minting
+// and the born-completed rule stay one implementation. Only the model-facing
+// shape is translated here: flat schedule fields instead of the nested
 // AutomationScheduleInput union, plus "HH:MM" instead of hour/minute pairs.
-// After a successful create the automations_list frame is pushed to the
-// connected UI, the same reconciliation the RPC reply performs.
+// `deliverToSession: true` aims the run at the calling conversation instead of
+// a fresh session; that mode is agent-only (the UI editor can neither create
+// nor convert one) and must carry a run cap so it cannot self-wake forever.
+// After a mutation the automations_list frame is pushed to the connected UI,
+// the same reconciliation the RPC reply performs.
 import fs from "node:fs";
 import path from "node:path";
 import { type } from "@oh-my-pi/omptype";
 import { createAutomation } from "./automations/create.ts";
-import { readAutomations } from "./automations/store.ts";
-import type { AutomationScheduleInput, AutomationUnit } from "./automations/types.ts";
+import { readAutomations, writeAutomations } from "./automations/store.ts";
+import type { Automation, AutomationScheduleInput, AutomationUnit } from "./automations/types.ts";
 import { eachUiWs } from "./state.ts";
 
-const CREATE_AUTOMATION_DESCRIPTION = `Create a scheduled task that runs a prompt in a fresh session on a timer (this app's Automations feature).
+/** Runs a session delivery may wake the conversation for by default. */
+const DELIVERY_DEFAULT_MAX_RUNS = 10;
+/** Hard cap on a session delivery's run count (self-wake cost guard). */
+const DELIVERY_MAX_RUNS_LIMIT = 100;
 
-Each run starts its own session in the task's working directory, sends \`prompt\` to the agent, and the run history is visible in the Automations view — so the task must be self-contained: the future session has no memory of this conversation.
+const LIST_DESCRIPTION = `List this app's automations (scheduled tasks) with their schedule, next run, run count and delivery target.
+
+Use it before creating or deleting anything: creation is limited to 20 automations and the user manages the same records in the Automations view.`;
+
+const MANAGE_DESCRIPTION = `Create or delete an automation (this app's Automations feature).
+
+An automation runs \`prompt\` on a timer. Two delivery modes:
+- default (new session): every run starts its own session in \`cwd\`; that session has no memory of this conversation, so the prompt must be self-contained.
+- session (deliverToSession: true): every run wakes THIS conversation by posting the prompt as a user message. Only use it when the user asks to be reminded or nudged in this same conversation. It requires a bounded run count (maxRuns, default ${DELIVERY_DEFAULT_MAX_RUNS}, at most ${DELIVERY_MAX_RUNS_LIMIT}) because each run costs a full turn of this context.
 
 SCHEDULE
 - \`every\`: the repeat unit — "minute", "hourly", "daily", "weekly" or "monthly". Defaults to "daily".
@@ -26,30 +43,35 @@ SCHEDULE
 - \`weekdays\`: weekly only — ISO weekdays, 1 = Monday .. 7 = Sunday (default [1]).
 - \`monthDays\`: monthly only — days of month 1-31 (default [1]); invalid dates (Feb 31) are skipped.
 - \`cron\`: optional raw 5-field cron in local time; when set it replaces every/at/interval/weekdays/monthDays.
-- \`recurring\`: defaults to true (repeat forever). Pass false for a one-shot task — it runs once and completes.
-- \`maxRuns\`: optional cap on total runs when recurring.
+- \`recurring\`: defaults to true (repeat forever). Ignored for session deliveries, which are always bounded by maxRuns.
+- \`maxRuns\`: total runs before the automation completes. \`recurring: false\` with maxRuns = N runs N times then completes.
 
 EXAMPLES
-- Every weekday at 09:30: { title: "Weekday standup brief", prompt: "…", every: "weekly", at: "09:30", weekdays: [1,2,3,4,5], cwd: "/path/to/repo" }
-- One-shot reminder: { title: "Check the deploy", prompt: "…", every: "daily", at: "18:00", recurring: false }
-- Every 10 minutes: { title: "Poll CI", prompt: "…", every: "minute", interval: 10 }
+- Every weekday at 09:30 in a fresh session: { action: "create", title: "Weekday standup brief", prompt: "…", every: "weekly", at: "09:30", weekdays: [1,2,3,4,5] }
+- Remind me in this conversation in 30 minutes, five times: { action: "create", title: "Check the build", prompt: "…", every: "minute", interval: 30, deliverToSession: true, maxRuns: 5 }
+- Delete: { action: "delete", id: "automation-…" }
 
-Creation only: there is no update/delete here — the user manages existing tasks in the Automations view. At most 20 tasks can exist.`;
+There is no update action: to change an automation, delete it and create a new one. At most 20 automations can exist.`;
 
-const createAutomationParams = type({
-  title: type("string").describe('Short label for the task, e.g. "Weekday standup brief".'),
-  prompt: type("string").describe(
-    "Self-contained instruction sent to the agent on every run — the run session knows nothing about this conversation.",
+const listParams = type({});
+
+const manageParams = type({
+  action: type("'create'|'delete'").describe("create a new automation, or delete one by id."),
+  "id?": type("string").describe('delete: automation id, as reported by automations_list.'),
+  "title?": type("string").describe('create: short label, e.g. "Weekday standup brief".'),
+  "prompt?": type("string").describe("create: instruction sent on every run."),
+  "every?": type("'minute'|'hourly'|'daily'|'weekly'|'monthly'").describe("create: repeat unit (default: daily)."),
+  "at?": type("string").describe('create: time of day as "HH:MM" in local time (daily/weekly/monthly, default 09:00).'),
+  "interval?": type("number").describe("create: run once every N units, 1-200 (default 1)."),
+  "weekdays?": type.array(type("number")).describe("create, weekly only: 1 = Monday .. 7 = Sunday (default [1])."),
+  "monthDays?": type.array(type("number")).describe("create, monthly only: days of month 1-31 (default [1])."),
+  "cron?": type("string").describe("create: raw 5-field cron in local time; replaces the unit fields above when set."),
+  "recurring?": type("boolean").describe("create: repeat forever (default true). Ignored for session deliveries."),
+  "maxRuns?": type("number").describe("create: total runs before it completes."),
+  "cwd?": type("string").describe("create: working directory for the run session (defaults to this session's cwd)."),
+  "deliverToSession?": type("boolean").describe(
+    `create: deliver into this conversation instead of a fresh session (requires maxRuns, at most ${DELIVERY_MAX_RUNS_LIMIT}).`,
   ),
-  "every?": type("'minute'|'hourly'|'daily'|'weekly'|'monthly'").describe("Repeat unit (default: daily)."),
-  "at?": type("string").describe('Time of day as "HH:MM" in local time (daily/weekly/monthly, default 09:00).'),
-  "interval?": type("number").describe("Run once every N units, 1-200 (default 1)."),
-  "weekdays?": type.array(type("number")).describe("weekly only: 1 = Monday .. 7 = Sunday (default [1])."),
-  "monthDays?": type.array(type("number")).describe("monthly only: days of month 1-31 (default [1])."),
-  "cron?": type("string").describe("Raw 5-field cron in local time; replaces the unit fields above when set."),
-  "recurring?": type("boolean").describe("Repeat forever (default true). false creates a one-shot task."),
-  "maxRuns?": type("number").describe("Optional cap on total runs when recurring."),
-  "cwd?": type("string").describe("Working directory for the run session (defaults to this session's cwd)."),
 });
 
 /** "HH:MM" → { hour, minute }; anything else is a user-input error, not a default. */
@@ -88,62 +110,125 @@ function transcriptLooksLikeSubagent(sessionFile: string | null | undefined): bo
   return fs.existsSync(`${path.dirname(sessionFile)}.jsonl`);
 }
 
-/** Build the create_automation tool (one instance per session: it carries the cwd default). */
-export function createAutomationTool(sessionCwd: string) {
-  return {
-    name: "create_automation",
-    label: "Create Scheduled Task",
-    description: CREATE_AUTOMATION_DESCRIPTION,
-    parameters: createAutomationParams,
-    loadMode: "essential" as const,
+/** Subagent refusal text shared by both tools (see transcriptLooksLikeSubagent). */
+const SUBAGENT_REFUSAL = {
+  content: [
+    {
+      type: "text" as const,
+      text: "Only the main session can manage automations. Tell the user what should be automated and let them ask you at the top level.",
+    },
+  ],
+  isError: true,
+};
+
+/** Tool execute context fields this file reads (the base passes a wider object). */
+interface ToolCtx {
+  taskDepth?: number;
+  sessionManager?: { getSessionFile?: () => string | null };
+}
+
+function isSubagentCall(ctx: ToolCtx | undefined): boolean {
+  const sessionFile = ctx?.sessionManager?.getSessionFile?.() ?? null;
+  return (ctx?.taskDepth ?? 0) > 0 || transcriptLooksLikeSubagent(sessionFile);
+}
+
+/** One line per automation: enough for the model to pick an id without dumping the store. */
+function describeAutomation(a: Automation): string {
+  const schedule = a.cronExpr ?? (a.scheduleRule ? `${a.scheduleRule.unit} x${a.scheduleRule.interval}` : "no schedule");
+  const next = a.nextRunAt ? new Date(a.nextRunAt).toLocaleString() : "none";
+  const target = a.deliverTo ? `this-session` : "new-session";
+  const cap = a.recurring ? "∞" : String(a.maxRuns ?? 1);
+  return `- ${a.id} | ${a.title} | ${schedule} | next=${next} | runs=${a.runCount}/${cap} | ${a.lifecycle}${a.enabled ? "" : " (disabled)"} | ${target}`;
+}
+
+/** Same reconciliation the create RPC reply performs: the sidebar refreshes without a reload. */
+function pushList(): void {
+  const state = readAutomations();
+  const data = JSON.stringify({ type: "automations_list", automations: state.automations, runs: state.runs });
+  eachUiWs((ws) => ws.send(data));
+}
+
+/** Build the automation tools for one session (they carry its cwd default). */
+export function createAutomationTools(sessionCwd: string) {
+  const list = {
+    name: "automations_list",
+    label: "List Automations",
+    description: LIST_DESCRIPTION,
+    parameters: listParams,
+    approval: "read" as const,
+    execute: async (_id: string, _params: Record<string, unknown>, _signal?: unknown, _onUpdate?: unknown, ctx?: ToolCtx) => {
+      if (isSubagentCall(ctx)) return SUBAGENT_REFUSAL;
+      const { automations } = readAutomations();
+      if (automations.length === 0) return { content: [{ type: "text" as const, text: "No automations exist." }] };
+      return {
+        content: [{ type: "text" as const, text: `${automations.length} automation(s):\n${automations.map(describeAutomation).join("\n")}` }],
+      };
+    },
+  };
+
+  const manage = {
+    name: "automations_manage",
+    label: "Manage Automations",
+    description: MANAGE_DESCRIPTION,
+    parameters: manageParams,
     approval: "write" as const,
-    execute: async (
-      _id: string,
-      params: Record<string, unknown>,
-      _signal?: unknown,
-      _onUpdate?: unknown,
-      ctx?: { taskDepth?: number; sessionManager?: { getSessionFile?: () => string | null } },
-    ) => {
-      // Subagents must not schedule follow-up work on the user's behalf. The tool is
+    execute: async (_id: string, params: Record<string, unknown>, _signal?: unknown, _onUpdate?: unknown, ctx?: ToolCtx) => {
+      // Subagents must not schedule follow-up work on the user's behalf. The tools are
       // already withheld from reloaded subagent sessions (host/session-lifecycle.ts),
       // but live task-spawned subagents inherit the parent's custom tools, so the
       // entry refuses on both signals: the base's taskDepth counter (authoritative
       // when present) and the on-disk transcript shape.
-      const sessionFile = ctx?.sessionManager?.getSessionFile?.() ?? null;
-      if ((ctx?.taskDepth ?? 0) > 0 || transcriptLooksLikeSubagent(sessionFile)) {
-        return {
-          content: [{ type: "text" as const, text: "Only the main session can create scheduled tasks. Tell the user what should be scheduled and let them ask you at the top level." }],
-          isError: true,
-        };
-      }
+      if (isSubagentCall(ctx)) return SUBAGENT_REFUSAL;
       try {
+        if (params.action === "delete") {
+          const id = String(params.id ?? "").trim();
+          if (!id) throw new Error('"id" is required for action: "delete"');
+          const state = readAutomations();
+          const target = state.automations.find((a) => a.id === id);
+          if (!target) throw new Error(`automation not found: ${id}`);
+          state.automations = state.automations.filter((a) => a.id !== id);
+          delete state.runs[id];
+          writeAutomations(state);
+          pushList();
+          return { content: [{ type: "text" as const, text: `Deleted automation "${target.title}" (${id}).` }] };
+        }
+        if (params.action !== "create") throw new Error('"action" must be "create" or "delete"');
+        const deliverToSession = params.deliverToSession === true;
+        const sessionFile = ctx?.sessionManager?.getSessionFile?.() ?? null;
+        if (deliverToSession && !sessionFile)
+          throw new Error("this session has no transcript yet, so it cannot be a delivery target; send a first message and retry");
+        const rawMaxRuns = typeof params.maxRuns === "number" ? Math.floor(params.maxRuns) : undefined;
+        if (deliverToSession && rawMaxRuns !== undefined && rawMaxRuns > DELIVERY_MAX_RUNS_LIMIT)
+          throw new Error(`maxRuns for a session delivery must be at most ${DELIVERY_MAX_RUNS_LIMIT}`);
         const automation = await createAutomation({
           title: String(params.title ?? ""),
           prompt: String(params.prompt ?? ""),
           cwd: typeof params.cwd === "string" && params.cwd.trim() ? params.cwd.trim() : sessionCwd,
           schedule: scheduleFrom(params),
-          recurring: params.recurring !== false,
-          ...(typeof params.maxRuns === "number" ? { maxRuns: params.maxRuns } : {}),
+          // A delivery is always bounded: the cap is what keeps a self-wake loop finite.
+          recurring: deliverToSession ? false : params.recurring !== false,
+          maxRuns: deliverToSession ? (rawMaxRuns ?? DELIVERY_DEFAULT_MAX_RUNS) : rawMaxRuns,
+          ...(deliverToSession && sessionFile ? { deliverTo: { sessionPath: sessionFile } } : {}),
         });
-        // Same reconciliation the create RPC reply performs: the sidebar refreshes without a reload.
-        const state = readAutomations();
-        const data = JSON.stringify({ type: "automations_list", automations: state.automations, runs: state.runs });
-        eachUiWs((ws) => ws.send(data));
+        pushList();
         const next = automation.nextRunAt ? new Date(automation.nextRunAt).toLocaleString() : "never";
+        const where = deliverToSession ? "into this conversation" : "in a fresh session";
         return {
           content: [
             {
               type: "text" as const,
-              text: `Created scheduled task "${automation.title}" (id ${automation.id}). Next run: ${next}. It is visible in the Automations view, where the user can edit, pause or delete it.`,
+              text: `Created automation "${automation.title}" (id ${automation.id}), running ${where}. Next run: ${next}. Visible in the Automations view, where the user can pause or delete it.`,
             },
           ],
         };
       } catch (err) {
         return {
-          content: [{ type: "text" as const, text: `Failed to create the scheduled task: ${err instanceof Error ? err.message : String(err)}` }],
+          content: [{ type: "text" as const, text: `Automation ${String(params.action)} failed: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }
     },
   };
+
+  return [list, manage];
 }

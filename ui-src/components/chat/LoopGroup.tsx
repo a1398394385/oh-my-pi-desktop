@@ -4,7 +4,8 @@
 // stagger: the number of sub-rows is unbounded) + the lp-kids container transitions its
 // grid row height 0fr→1fr; on collapse the container retracts (closing), committing and
 // unmounting after 310ms.
-import { useEffect, useRef } from "react";
+// useLayoutEffect (done before paint, no flicker).
+import { memo, useEffect, useRef } from "react";
 import type { LoopItem } from "../../types/session";
 import type { RailEntry } from "./chat-types";
 import { fmtTokens } from "../../store/utils";
@@ -34,7 +35,12 @@ export function loopSummaryText(item: LoopItem) {
   return parts.join(", ") || t("chat.processLog");
 }
 
-export default function LoopGroup({ item, fk, railEntries }: { item: LoopItem; fk?: string; railEntries: RailEntry[] }) {
+// memo (T2): collapse toggles go through patchActiveItem (item copy → new reference →
+// default comparison re-renders); while collapsed the railEntries prop is irrelevant
+// (no inner entries are pushed), so the comparator may skip despite its new reference —
+// expanded groups must re-render to refill the fresh entries array
+export default memo(
+  function LoopGroup({ item, fk, railEntries }: { item: LoopItem; fk?: string; railEntries: RailEntry[] }) {
   useAppStore((s) => s.hostSettings); // re-render on settings flips (usage/time gating reads it in render)
   const [closing, close] = useLift();
   const kidsRef = useRef<HTMLDivElement | null>(null);
@@ -79,4 +85,6 @@ export default function LoopGroup({ item, fk, railEntries }: { item: LoopItem; f
       )}
     </>
   );
-}
+  },
+  (a, b) => a.item === b.item && a.fk === b.fk && (b.item.collapsed || a.railEntries === b.railEntries),
+);

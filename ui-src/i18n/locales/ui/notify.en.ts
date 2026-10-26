@@ -8,17 +8,12 @@ export const notifyEn = {
   disconnected: "Disconnected",
   // Remote control (store/ws.ts, ConnBanner.tsx, KickedScreen.tsx — Spec §4.1)
   remoteNeedKey: "Missing access key",
-  kickedBadge: "Device takeover",
   kickedTitle: "Taken over by another device",
-  kickedBody: "Another remote device has connected; only one phone controller can be attached at a time.",
-  kickedNext: "Next steps",
-  kickedStep1: "Keep using the newly connected device.",
   kickedStep2: "To control from this device, rescan the desktop QR code.",
   kickedRelay: "Relay returned",
   kickedCode: "KICKED",
   kickedReclaim: "Reconnect",
   remoteKeyTitle: "Enter access key",
-  remoteKeyPlaceholder: "Access key",
   remoteKeySubmit: "Connect",
   // Working-state text (store/session.ts)
   working: "Working…",
@@ -56,6 +51,8 @@ export const notifyEn = {
   // Settings / config toasts (store/wsHandlers/settings.ts, config.ts)
   savedRestartHint: "Saved. Restart the app for some network settings to take full effect",
   profileActivated: "Profile activated: {{profile}}",
+  pluginInstalled: "Plugin installed: {{name}}",
+  pluginInstallFailed: "Plugin install failed",
   loginProgress: "{{provider}}: {{message}}",
   loginOk: "{{provider}} signed in, model list refreshed",
   loginCancelled: "Sign-in cancelled",

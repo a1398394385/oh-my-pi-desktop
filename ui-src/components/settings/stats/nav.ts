@@ -32,7 +32,6 @@ export interface NavItem {
   id: DashboardSection;
   label: string;
   icon: LucideIcon;
-  hotkey: string;
 }
 
 export interface NavGroup {
@@ -48,27 +47,27 @@ export function useNav(): readonly NavGroup[] {
       {
         heading: t("settingsPage.stats.nav.groupUsage"),
         items: [
-          { id: "overview", label: t("settingsPage.stats.nav.overview"), icon: LayoutGrid, hotkey: "o" },
-          { id: "models", label: t("settingsPage.stats.nav.models"), icon: Cpu, hotkey: "m" },
-          { id: "providers", label: t("settingsPage.stats.nav.providers"), icon: PlugZap, hotkey: "p" },
-          { id: "costs", label: t("settingsPage.stats.nav.costs"), icon: Coins, hotkey: "c" },
+          { id: "overview", label: t("settingsPage.stats.nav.overview"), icon: LayoutGrid },
+          { id: "models", label: t("settingsPage.stats.nav.models"), icon: Cpu },
+          { id: "providers", label: t("settingsPage.stats.nav.providers"), icon: PlugZap },
+          { id: "costs", label: t("settingsPage.stats.nav.costs"), icon: Coins },
         ],
       },
       {
         heading: t("settingsPage.stats.nav.groupActivity"),
         items: [
-          { id: "requests", label: t("settingsPage.stats.nav.requests"), icon: Activity, hotkey: "r" },
-          { id: "errors", label: t("settingsPage.stats.nav.errors"), icon: CircleAlert, hotkey: "e" },
-          { id: "traces", label: t("settingsPage.stats.nav.traces"), icon: SquareChartGantt, hotkey: "t" },
+          { id: "requests", label: t("settingsPage.stats.nav.requests"), icon: Activity },
+          { id: "errors", label: t("settingsPage.stats.nav.errors"), icon: CircleAlert },
+          { id: "traces", label: t("settingsPage.stats.nav.traces"), icon: SquareChartGantt },
         ],
       },
       {
         heading: t("settingsPage.stats.nav.groupPerformance"),
         items: [
-          { id: "tools", label: t("settingsPage.stats.nav.tools"), icon: Wrench, hotkey: "l" },
-          { id: "frustration", label: t("settingsPage.stats.nav.frustration"), icon: Frown, hotkey: "f" },
-          { id: "projects", label: t("settingsPage.stats.nav.projects"), icon: FolderGit2, hotkey: "j" },
-          { id: "gain", label: t("settingsPage.stats.nav.gain"), icon: Sparkles, hotkey: "g" },
+          { id: "tools", label: t("settingsPage.stats.nav.tools"), icon: Wrench },
+          { id: "frustration", label: t("settingsPage.stats.nav.frustration"), icon: Frown },
+          { id: "projects", label: t("settingsPage.stats.nav.projects"), icon: FolderGit2 },
+          { id: "gain", label: t("settingsPage.stats.nav.gain"), icon: Sparkles },
         ],
       },
     ],

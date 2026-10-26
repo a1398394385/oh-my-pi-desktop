@@ -1,5 +1,5 @@
 import type React from "react";
-import { useAppStore } from "../../../../store";
+import { effZoom } from "../../../../store";
 import { formatDurationMs, formatInteger } from "../data/formatters";
 import type { TraceMarker, TraceSpan, TraceSpanKind, TraceTrack } from "../types";
 import { buildTicks, formatOffset, type TraceScale } from "./time-scale";
@@ -341,7 +341,7 @@ export interface TooltipLabels {
 export function renderTooltip(hover: HoverState, traceStart: number, labels: TooltipLabels): React.ReactElement {
   // The tooltip portals to body, outside the zoomed #settings subtree: carry the
   // zoom, then divide the visual (clientX/Y-based) coords back out — placeMenu idiom
-  const zoom = useAppStore.getState().zoomLevel || 1;
+  const zoom = effZoom();
   const left = Math.min(hover.clientX + 14, window.innerWidth - 320);
   const top = hover.clientY + 16 > window.innerHeight - 140 ? hover.clientY - 120 : hover.clientY + 16;
   const style = { left: left / zoom, top: top / zoom, zoom: String(zoom) } as React.CSSProperties;
@@ -351,7 +351,7 @@ export function renderTooltip(hover: HoverState, traceStart: number, labels: Too
     return (
       <div className="traces-tooltip" style={style}>
         <div className="traces-tooltip-title">{marker.label}</div>
-        <div className="muted num">
+        <div className="muted stats-num">
           {new Date(marker.time).toLocaleTimeString()} ({formatOffset(marker.time - traceStart)})
         </div>
       </div>
@@ -362,19 +362,19 @@ export function renderTooltip(hover: HoverState, traceStart: number, labels: Too
   return (
     <div className="traces-tooltip" style={style}>
       <div className="traces-tooltip-title truncate">{span.label}</div>
-      <div className="muted num">
+      <div className="muted stats-num">
         {formatDurationMs(span.end - span.start)} · {new Date(span.start).toLocaleTimeString()} (
         {formatOffset(span.start - traceStart)}){span.unterminated ? ` · ${labels.unterminated}` : ""}
       </div>
       {span.kind === "model" && (
-        <div className="muted num">
+        <div className="muted stats-num">
           {span.tokens !== undefined && <>{formatInteger(span.tokens)}{labels.tok}</>}
           {span.cost !== undefined && <> · ${span.cost.toFixed(4)}</>}
           {span.ttft !== undefined && <> · TTFT {formatDurationMs(span.ttft)}</>}
           {span.isError && <> · {labels.error}</>}
         </div>
       )}
-      {span.kind === "subagent" && span.model && <div className="muted num">{span.model}</div>}
+      {span.kind === "subagent" && span.model && <div className="muted stats-num">{span.model}</div>}
       {span.detail && <div className="traces-tooltip-detail">{span.detail}</div>}
     </div>
   );

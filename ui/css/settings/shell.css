@@ -1,6 +1,7 @@
 /* Shell settings page (ShellPage.tsx): bash-interceptor graphical rules editor.
    Rows reuse the memory-page row language (.srow + .on highlight + .mem-caret); the
-   form body reuses the MCP editor classes (.mem-expand / .sem-body.form / .mcp-form-*).
+   form body reuses the shared form language (.mem-expand / .sem-body.form /
+   .frm-rows + FormRow).
    Only the pieces those don't cover live here. */
 
 /* summary head: display row — only the trailing count tag / add button are
@@ -27,9 +28,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* pattern field takes the remaining width next to the half-width tool field */
-.itcp-form-pattern { flex: 2; min-width: 240px; }
 
 /* move-down head button = the arrowUp icon flipped */
 .itcp-flip svg { transform: rotate(180deg); }

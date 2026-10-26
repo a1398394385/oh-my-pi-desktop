@@ -8,7 +8,8 @@ import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import type { UiPrefs } from "./shapes";
-import type { ContextDetailFrame, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
+import type { ContextDetailFrame, GitOperationState, GitStatusFile, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
+import type { UserItem } from "../types/session";
 import { activeOpen } from "./session";
 import { getSupportedThinkingForModel, modelDefaultThinking } from "./models";
 import { saveRightSlot, restoreRightSlot } from "./right";
@@ -26,10 +27,17 @@ export interface UiSlice {
   /** Full-page scheduled-tasks view in the main column (sidebar top entry); lives outside
    *  the settings overlay and closes whenever the welcome page or a session takes over. */
   automationsOpen: boolean;
+  /** Middle-column Git manager page (project cwd; null = closed). A project-level view:
+   *  opened from the project row's "more" menu, closed by any session taking over. */
+  gitManage: string | null;
+  /** Left column of the Git page: worktree status of the page's own cwd. Kept apart from
+   *  gitDiffCache, which mirrors the active session's right-panel Git tab. */
+  gitPageStatus: { cwd: string; files: GitStatusFile[]; state: GitOperationState; loading: boolean } | null;
   newSessionProject: string;
   newSessionBranch: string;
   newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
   newSessionRemotes: string[]; // remote-tracking branches from the same frame ("origin/xxx" form, listed under a separator)
+  newSessionDetached: boolean; // HEAD is not on a branch; newSessionBranch then carries the short oid
   newSessionIsGit: boolean;
   newSessionModel: string;
   newSessionThinking: string;
@@ -39,19 +47,28 @@ export interface UiSlice {
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   // Git branch chip in the main-column header (MainHeader): branches of the ACTIVE session's
   // cwd, landed from the same git_branches frame as the new-session picker (cwd-routed)
-  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[]; remotes: string[] } | null;
+  headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[]; remotes: string[]; detached: boolean } | null;
   fileSeq: number;
   animateGdKids: boolean;
   animateThinkBody: boolean;
   animateSubKids?: boolean; // subagent detail entrance-animation flag (attached at runtime, SubagentPage only)
   toastMsg: string | null; // current toast text (null = hidden)
   toastErr: boolean; // true = error toast (red icon + --err tinted border)
+  unloadedPaths: Set<string>; // sessions showing the pool-eviction notice on their sidebar row (cleared after 1s)
+  commandFlash: { sessionId: string; command: string; text: string; seq: number; phase: "in" | "out" } | null; // one-second composer echo of a consumed slash command (replaces the transcript command card); phase "out" plays the flip-out before it unmounts
   composerSetSignal: { text: string; images: unknown[] | null; seq: number; guard?: boolean } | null; // signal to fill the composer externally (fork backfill / queued-message editing); guard = async backfill, give up overwriting when the draft is non-empty
   findOpen: boolean; // in-session find bar open state (kept in sync by FindBar; guard before Esc interrupts generation)
   menuSignal: { name: string; seq: number } | null; // signal to open the composer menu externally (shortcut Alt+M)
   cyclePreview: { entries: { role: string; model: string }[]; activeRole: string; activeModel: string } | null; // ctrl+p quick-switch preview: the cycleOrder role list + the slot just switched to (drives the model menu's transient preview mode; manual menu opens always null it)
   thinkMenuAuto: boolean; // shift+tab auto-opened the think menu (normal content; auto-collapses on 0.8s pause / Shift release — manual opens always clear it)
   draftHasContent: boolean; // whether the composer has a draft (synced on every Composer render, used for the Esc double-confirm)
+  /** In-place user-message editing (UserMsg.tsx): entryId of the bubble currently showing
+      an edit box (null = none; one app-wide). Cleared on Esc/send, on session switch
+      (activateSession / showWelcomeScreen) and when focus enters the composer. */
+  editingEntryId: string | null;
+  /** Stash of the just-sent edit_resend payload (set at send time): the session_edited
+      failure landing restores it into the composer so the edited text is never lost. */
+  pendingEditText: { sessionId: string; text: string; images: NonNullable<UserItem["images"]> | null } | null;
   voiceStt: { state: "recording" | "transcribing"; message?: string } | null; // dictation runtime state (stt_state frame; null = idle — the mic button's recording look)
   sttSubmitSignal: number; // seq incremented by each stt_submit frame (the Composer effect sends the prompt; plain number = only ordering matters)
   voiceStatus: { modelId: string | null; modelKey: string | null; ready: boolean; downloading: boolean } | null; // voice_status reply: dictation model + cache state (settings page voice sections)
@@ -91,9 +108,17 @@ export interface UiSlice {
   bootSplash: boolean;
   /** Global search palette (⌘⇧F / sidebar search button): settings items + sessions */
   paletteOpen: boolean;
+  /** Bottom dock (⌘/Ctrl+J) open state per terminal group key (one key per project once
+   *  terminals are project-shared): a dock opened in one project must not pop up in another. */
+  bottomTermOpen: Record<string, boolean>;
   openPalette(): void;
   closePalette(): void;
+  toggleBottomTerm(groupKey: string): void;
+  closeBottomTerm(groupKey: string): void;
   toast(msg: unknown, error?: boolean): void;
+  /** Echo of a locally consumed slash command: the composer editor is replaced
+   *  by a one-second flip card instead of the transcript keeping a command row. */
+  showCommandFlash(sessionId: string, text: string, command: string): void;
   openHub(): void;
   closeHub(): void;
   setHubSel(id: string | null): void;
@@ -102,6 +127,8 @@ export interface UiSlice {
   setMainViewMode(mode: "chat" | "tree"): void;
   openAutomations(): void;
   closeAutomations(): void;
+  openGitManage(cwd: string): void;
+  closeGitManage(): void;
   showWelcomeScreen(preferredCwd?: string | null): void;
   hideWelcomeScreen(): void;
   setWelcomeProject(cwd?: string): void;
@@ -113,6 +140,7 @@ export interface UiSlice {
 const uiPrefsInit: UiPrefs = {
   theme: "dark", // placeholder; main.tsx applies the cached/file value before the first render
   motion: "system", // placeholder; same
+  agentProcessStyle: "standard",
   uiFont: "default",
   uiFontSize: 13,
   codeFontSize: 12,
@@ -143,6 +171,9 @@ if (storedUiPrefs.lang !== "zh-CN" && storedUiPrefs.lang !== "en") {
 
 // toast: the App-level Toast component consumes toastMsg (auto-hides after 2.2s)
 let toastTimer: TimerHandle | undefined;
+// Composer command echo (see showCommandFlash): a newer frame restarts both the timer and the flip animation (seq key)
+let commandFlashTimer: TimerHandle | undefined;
+let commandFlashSeq = 0;
 // Fill the composer externally (fork backfill / queued-message editing): a Composer component effect watches seq
 let composerSetSeq = 0;
 
@@ -160,11 +191,14 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   rightCollapsed: true,
   isCreatingNew: false,
   automationsOpen: false,
+  gitManage: null,
+  gitPageStatus: null,
   newSessionProject: "",
   newSessionBranch: "",
   headerGit: null,
   newSessionBranches: [],
   newSessionRemotes: [],
+  newSessionDetached: false,
   newSessionIsGit: false,
   newSessionModel: "",
   newSessionThinking: "auto",
@@ -177,12 +211,16 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   animateThinkBody: false,
   toastMsg: null,
   toastErr: false,
+  unloadedPaths: new Set<string>(),
+  commandFlash: null,
   composerSetSignal: null,
   findOpen: false,
   menuSignal: null,
   cyclePreview: null,
   thinkMenuAuto: false,
   draftHasContent: false,
+  editingEntryId: null,
+  pendingEditText: null,
   voiceStt: null,
   sttSubmitSignal: 0,
   voiceStatus: null,
@@ -210,9 +248,22 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   hubWarming: null,
   bootSplash: true,
   paletteOpen: false,
+  bottomTermOpen: {},
 
   openPalette() {
     set({ paletteOpen: true });
+  },
+
+  toggleBottomTerm(groupKey) {
+    // Narrow (phone) layout has no shortcut input and no room for a dock: refuse instead of
+    // flipping a state the layout never renders.
+    if (get().narrow) return;
+    set((s) => ({ bottomTermOpen: { ...s.bottomTermOpen, [groupKey]: !s.bottomTermOpen[groupKey] } }));
+  },
+
+  closeBottomTerm(groupKey) {
+    if (!get().bottomTermOpen[groupKey]) return;
+    set((s) => ({ bottomTermOpen: { ...s.bottomTermOpen, [groupKey]: false } }));
   },
 
   closePalette() {
@@ -265,6 +316,19 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     }, 2200);
   },
 
+  showCommandFlash(sessionId, text, command) {
+    set({ commandFlash: { sessionId, command, text, seq: ++commandFlashSeq, phase: "in" } });
+    clearTimeout(commandFlashTimer);
+    commandFlashTimer = setTimeout(() => {
+      // Hold the card for 1s, then flip it out; a new command during the flip
+      // restarts from "in" (the seq key replays the entrance animation).
+      const cur = get().commandFlash;
+      if (!cur) return;
+      set({ commandFlash: { ...cur, phase: "out" } });
+      commandFlashTimer = setTimeout(() => set({ commandFlash: null }), 220);
+    }, 1000);
+  },
+
   setComposerValue(text, images = [], opts) {
     set((s) => ({ composerSetSignal: { text, images, seq: ++composerSetSeq, ...(opts?.guard ? { guard: true } : {}) } }));
   },
@@ -276,11 +340,25 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   openAutomations() {
     // Available from anywhere (incl. the welcome page): entering the tasks
     // view leaves the new-session page, a session click takes over as usual.
-    set({ automationsOpen: true, isCreatingNew: false });
+    set({ automationsOpen: true, isCreatingNew: false, gitManage: null });
   },
 
   closeAutomations() {
     set({ automationsOpen: false });
+  },
+
+  openGitManage(cwd) {
+    // Project-level page: it takes over the main column from the welcome page
+    // and the tasks view; any session taking over closes it again (hideWelcomeScreen).
+    set({ gitManage: cwd, isCreatingNew: false, automationsOpen: false });
+  },
+
+  closeGitManage() {
+    set({ gitManage: null });
+    // openGitManage drops the welcome page, and the page can be opened with no
+    // session behind it: come back to the welcome page instead of an empty stream.
+    const { activePath, isCreatingNew } = get();
+    if (!activePath && !isCreatingNew) get().showWelcomeScreen();
   },
 
   showWelcomeScreen(preferredCwd) {
@@ -290,7 +368,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     // disposed the slot themselves.
     const leaving = get().activePath;
     if (leaving) saveRightSlot(leaving);
-    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false }));
+    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false, gitManage: null, editingEntryId: null }));
     restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
@@ -319,7 +397,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   },
 
   hideWelcomeScreen() {
-    set((s) => ({ isCreatingNew: false, mainViewMode: "chat", automationsOpen: false }));
+    set((s) => ({ isCreatingNew: false, mainViewMode: "chat", automationsOpen: false, gitManage: null }));
   },
 
   setWelcomeProject(cwd) {
@@ -340,6 +418,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       newSessionBranch: "",
       newSessionBranches: [],
       newSessionRemotes: [],
+      newSessionDetached: false,
     }));
     get().send({ type: "get_git_branches", cwd });
     // New-session MCP warm-up: the project is known the moment the user starts

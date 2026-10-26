@@ -19,7 +19,10 @@ interface SessionLabelLike {
 }
 
 export function sessionLabel(s: SessionLabelLike): string {
-  return s.title || s.firstMessage || t("sidebar.emptySession");
+  // The base scanner stamps this sentinel when its 4 KB prefix window holds no message
+  // entry (dense custom injections push the first message past it). It is not a title.
+  const first = s.firstMessage === "(no messages)" ? "" : s.firstMessage;
+  return s.title || first || t("sidebar.emptySession");
 }
 
 // Copy to clipboard (replica of shell.js copyText, incl. the WKWebView insecure-context fallback)

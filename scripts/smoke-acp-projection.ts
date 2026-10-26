@@ -1,6 +1,6 @@
 // ACP T1 smoke: block model + projection core (spec §3/§4, acceptance matrix 1/2/9-adjacent).
 // Pure-function assertions, single-process bun run; touches no profile state.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-projection.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-projection.ts
 import assert from "node:assert/strict";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import type { AgentMessage, AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
@@ -11,7 +11,6 @@ import {
 	projectContext,
 	renderCompactionBlock,
 	splitBlocks,
-	ACP_INDEX_RENDER_BUDGET,
 	type AcpCompactionBlock,
 	type AcpSourceMessage,
 } from "../host/acp-projection.ts";
@@ -119,33 +118,23 @@ const cb: AcpCompactionBlock = {
 	],
 	meta: { createdAt: Date.UTC(2026, 0, 2, 3, 4, 5), depth: 0, method: "normal" },
 };
-const rendered = renderCompactionBlock(cb, countTokens);
+const rendered = renderCompactionBlock(cb);
 assert.match(rendered, /\[acp-summary id=sum-1 time=2026-01-02T03:04:05\.000Z depth=0 blocks=3 method=normal\]/);
 assert.match(rendered, /^Explored the repo layout\.$/m);
-assert.match(rendered, /^u1 \| 12 \| list the files$/m);
-assert.ok(rendered.indexOf("u1 |") < rendered.indexOf("a1#t |"));
-assert.ok(!rendered.includes("recall_block"));
-console.log("ok: compaction render — header/summary/index lines, no truncation under budget");
-
-// Over 4K: oldest segments dropped + recall trailer (spec §11)
-const many = Array.from({ length: 60 }, (_, i) => ({
-	id: `blk${i}`,
-	tokens: 100,
-	intent: "x".repeat(600),
-}));
+// The per-block index no longer renders (dropped with recall_block): header
+// + summary only, regardless of index size.
+assert.ok(!rendered.includes("u1 |"), "no index lines in the render");
+assert.ok(!rendered.includes("Index:"));
+const many = Array.from({ length: 60 }, (_, i) => ({ id: `blk${i}`, tokens: 100, intent: "x".repeat(600) }));
 const big: AcpCompactionBlock = { ...cb, index: many };
-const bigRender = renderCompactionBlock(big, countTokens);
-assert.ok(countTokens(bigRender) <= ACP_INDEX_RENDER_BUDGET, `render ${countTokens(bigRender)} <= budget`);
-assert.match(bigRender, /… \d+ more, recall_block\(sum-1\) 取完整索引$/);
-assert.ok(!bigRender.includes("blk0 |"), "oldest segment dropped");
-assert.ok(bigRender.includes("blk59 |"), "newest segment kept");
-console.log("ok: index truncation over 4K drops oldest, keeps newest, recall trailer appended");
+assert.ok(Math.abs(countTokens(renderCompactionBlock(big)) - countTokens(rendered)) < 5, "render cost is index-size independent (header count digits aside)");
+console.log("ok: compaction render — header/summary only, index not rendered");
 
 // Projection places the rendered zone first, superseded blocks skipped:
 const cb2: AcpCompactionBlock = { ...cb, id: "sum-2", meta: { ...cb.meta, supersedes: ["sum-1"] } };
 const out4 = projectContext(src, kept1, [cb, cb2], countTokens);
 assert.equal(out4.length, 4);
-assert.equal((out4[0] as UserMessage).content, renderCompactionBlock(cb2, countTokens));
+assert.equal((out4[0] as UserMessage).content, renderCompactionBlock(cb2));
 assert.ok(!(out4[1] as UserMessage).content.includes("sum-1]"));
 console.log("ok: superseded compaction blocks not rendered; zone precedes active area");
 

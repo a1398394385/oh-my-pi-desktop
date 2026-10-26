@@ -45,7 +45,7 @@ function ModelList({ models }: { models: string[] }) {
 export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
-  const sessions = useQuery(["sessions", SESSION_LIMIT], () => getSessions(SESSION_LIMIT), {
+  const sessions = useQuery(["sessions", SESSION_LIMIT], ({ signal }) => getSessions(SESSION_LIMIT, undefined, signal), {
     pollMs: 30000,
     enabled: active && session === null,
   });
@@ -94,21 +94,21 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
         key: "duration",
         header: t("settingsPage.stats.tracesRoute.colDuration"),
         align: "right",
-        render: row => <span className="num">{formatElapsed(row.endedAt - row.startedAt)}</span>,
+        render: row => <span className="stats-num">{formatElapsed(row.endedAt - row.startedAt)}</span>,
         sort: row => row.endedAt - row.startedAt,
       },
       {
         key: "requests",
         header: t("settingsPage.stats.tracesRoute.colRequests"),
         align: "right",
-        render: row => <span className="num">{formatInteger(row.requests)}</span>,
+        render: row => <span className="stats-num">{formatInteger(row.requests)}</span>,
         sort: row => row.requests,
       },
       {
         key: "toolCalls",
         header: t("settingsPage.stats.tracesRoute.colTools"),
         align: "right",
-        render: row => <span className="num">{formatInteger(row.toolCalls)}</span>,
+        render: row => <span className="stats-num">{formatInteger(row.toolCalls)}</span>,
         sort: row => row.toolCalls,
       },
       {
@@ -117,9 +117,9 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
         align: "right",
         render: row =>
           row.subagents > 0 ? (
-            <span className="num">{formatInteger(row.subagents)}</span>
+            <span className="stats-num">{formatInteger(row.subagents)}</span>
           ) : (
-            <span className="num dim">0</span>
+            <span className="stats-num dim">0</span>
           ),
         sort: row => row.subagents,
       },
@@ -127,7 +127,7 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
         key: "tokens",
         header: t("settingsPage.stats.tracesRoute.colTokens"),
         align: "right",
-        render: row => <span className="num">{formatCompact(row.totalTokens)}</span>,
+        render: row => <span className="stats-num">{formatCompact(row.totalTokens)}</span>,
         sort: row => row.totalTokens,
       },
       {

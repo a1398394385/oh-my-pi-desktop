@@ -11,8 +11,9 @@ import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensure
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
+import { registerStatsJudge } from "./stats-judge.ts";
 import { reloadAutomationScheduler, setAutomationNotify } from "./automations/scheduler.ts";
-import { handleListSessions } from "./rpc/session.ts";
+import { refreshAllSessionLists } from "./rpc/session.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
@@ -309,6 +310,11 @@ export async function applyProfile(profileName: string) {
   // Sync the capability discovery registry: disabledProviders/enabledProviders -> in-memory registry (same call as the CLI entry;
   // without it, third-party sources the user disabled still show up / count as enabled at the discovery layer)
   initializeWithSettings(H.settings);
+  // Stats dashboard judge: the host must register a judge for the frustration
+  // page's classification, otherwise that page only has regex signals and its
+  // judge button stays disabled. Background import — it must not delay the
+  // ready frame.
+  registerStatsJudge(H.settings, H.modelRegistry);
 
   // Base cache warming off, unconditionally: the desktop ships its own cache
   // keepalive (host/keepalive.ts, keepalive.enabled in omp-desktop.json), and
@@ -386,7 +392,7 @@ export async function applyProfile(profileName: string) {
   // refresh the sidebar via the session_list push (the same pattern rpc/session
   // uses after list-mutating RPCs); the scheduler itself never imports rpc/.
   setAutomationNotify(() => {
-    eachUiWs((ws) => void handleListSessions(ws).catch(() => {}));
+    void refreshAllSessionLists().catch(() => {});
   });
   reloadAutomationScheduler();
 }
@@ -413,6 +419,7 @@ export function readAcpConfig(): {
   l3?: number;
   tailTurns?: number;
   tailTokens?: number;
+  tailUserMessages?: number;
 } {
   const acp = readDesktopSection("acp");
   const num = (v: unknown): number | undefined => (typeof v === "number" && v >= 0 ? v : undefined);
@@ -424,6 +431,7 @@ export function readAcpConfig(): {
     l3: num(acp.l3),
     tailTurns: num(acp.tailTurns),
     tailTokens: num(acp.tailTokens),
+    tailUserMessages: num(acp.tailUserMessages),
   };
 }
 
@@ -448,5 +456,49 @@ export function readSessionContextEnabled(): boolean {
 /** Write sessionContext.enabled back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
 export async function writeSessionContextEnabled(enabled: boolean): Promise<void> {
   writeDesktopSection("sessionContext", { ...readDesktopSection("sessionContext"), enabled });
+}
+
+/** Agent-driven automations (automations.agentTools in omp-desktop.json): whether
+ *  new sessions get the automations_list / automations_manage tools. Off by default
+ *  (same rule as acp.enabled); read at session creation, so a flip lands on new
+ *  sessions only. */
+export function readAutomationAgentEnabled(): boolean {
+  return readDesktopSection("automations").agentTools === true;
+}
+
+/** Write automations.agentTools back: read from disk first, then overlay, preserving omp-desktop.json's other keys and other fields inside the section. */
+export async function writeAutomationAgentEnabled(enabled: boolean): Promise<void> {
+  writeDesktopSection("automations", { ...readDesktopSection("automations"), agentTools: enabled });
+}
+
+/** Default for both automation dialog deadlines (settings page shows this). */
+export const AUTOMATION_DIALOG_TIMEOUT_SEC = 300;
+
+export interface AutomationDialogTimeouts {
+  /** Seconds an ask dialog in an automation run waits before taking the recommended option (0 = forever). */
+  askSec: number;
+  /** Seconds a permission approval in an automation run waits before denying (0 = forever). */
+  approvalSec: number;
+}
+
+/** Non-negative integer seconds; anything else falls back to the default. */
+function dialogSec(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : AUTOMATION_DIALOG_TIMEOUT_SEC;
+}
+
+/** Automation-run dialog deadlines (omp-desktop.json automations.askTimeoutSec / approvalTimeoutSec).
+ *  Unattended runs answer their own dialogs at these deadlines; other sessions keep following ask.timeout. */
+export function readAutomationDialogTimeouts(): AutomationDialogTimeouts {
+  const section = readDesktopSection("automations");
+  return { askSec: dialogSec(section.askTimeoutSec), approvalSec: dialogSec(section.approvalTimeoutSec) };
+}
+
+/** Write both deadlines back: read from disk first, then overlay, preserving the section's other fields. */
+export async function writeAutomationDialogTimeouts(timeouts: AutomationDialogTimeouts): Promise<void> {
+  writeDesktopSection("automations", {
+    ...readDesktopSection("automations"),
+    askTimeoutSec: dialogSec(timeouts.askSec),
+    approvalTimeoutSec: dialogSec(timeouts.approvalSec),
+  });
 }
 

@@ -37,14 +37,25 @@
 
 :is([data-theme="light"], [data-theme-mode="light"]) .bgcmd-expand { background: var(--tint-black-30); }
 .bgcmd-meta-row {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
   font-size: var(--ui-fs-sm); color: var(--dim);
   margin-bottom: 6px;
 }
 
 .bgcmd-meta-row b { color: var(--text); font-weight: 500; }
 
+/* Head items stay on one line: overflow becomes a tail ellipsis instead of a wrap.
+   Labels never shrink (a label cut to "Workin…" is unreadable); the value does. */
+.bgcmd-meta-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bgcmd-meta-item.wd, .bgcmd-meta-item.name { flex: 1 1 auto; }
+
+.bgcmd-meta-lbl { flex: none; white-space: nowrap; }
+
+.bgcmd-meta-row > .save-btn { white-space: nowrap; }
+
 .bgcmd-meta-tag {
+  flex: none; margin-left: auto; white-space: nowrap;
+  box-sizing: border-box; height: 18px;
   font-size: var(--ui-fs-xs); color: var(--dim);
   border: 1px solid var(--line); border-radius: 999px;
   padding: 0 6px; line-height: 16px;

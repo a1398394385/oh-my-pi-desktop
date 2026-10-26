@@ -7,12 +7,12 @@ export const compExtZh = {
   capWeb: "联网",
   capImg: "图像",
   // ApprovalCard.tsx ask multi-question paged form
-  askMultiHint: "↑/↓ 切换选项（单选选中后自动进入下一题，最后一题直接提交）· 空格勾选多选 · 全部作答后才能提交",
+  askMultiHint: "↑/↓ 切换选项 · 空格勾选多选",
   askPrev: "上一题",
   askNext: "下一题",
   askSubmitAll: "提交全部答案",
   askOther: "其他（自定义答案）",
-  askOtherPlaceholder: "输入自定义答案…",
+  askOtherPlaceholder: "输入你的回答…",
 };
 
 export default compExtZh;

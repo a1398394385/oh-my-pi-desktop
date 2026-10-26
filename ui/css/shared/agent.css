@@ -10,19 +10,22 @@
   transition: box-shadow var(--dur-snap) var(--swift);
 }
 
-.hub-row:hover { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
+.hub-row:hover { background: var(--hover-fill); box-shadow: inset 0 0 0 1px var(--line); }
 
-.hub-row.on { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.hub-row.on { background: var(--panel); --hover-fill: var(--menu-hl); box-shadow: inset 0 0 0 1px var(--line); }
 
 .hub-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 
 .hub-branch { flex: none; font-family: var(--mono); white-space: pre; }
 
-.hub-row .sub-dot.st-running { color: var(--green); }
-
-.hub-row .sub-dot.st-completed { color: var(--green-soft); }
-
-.hub-row .sub-dot.st-failed, .hub-row .sub-dot.st-aborted { color: var(--err); }
+/* Status capsule (hub roster rows + subagent tab cards): text pill on a light tint.
+   Colors follow the .al-badge pairs; --green-ink is the designated pill-text green
+   (light/dark aware). "started" renders under the running group (see SubStatusPill). */
+.sub-st { flex: none; padding: 1px 8px; border-radius: 999px; font-size: var(--ui-fs-xs); font-weight: 500; line-height: 1.5; }
+.sub-st.st-running { color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); }
+.sub-st.st-completed { color: var(--green-ink); background: color-mix(in srgb, var(--green) 12%, transparent); }
+.sub-st.st-failed { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); }
+.sub-st.st-aborted { color: var(--faint); background: var(--panel-2); }
 
 .hub-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -54,12 +57,12 @@
 
 .hub-ibtn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--dim); cursor: pointer; }
 
-.hub-ibtn:hover { background: var(--panel-2); color: var(--text); }
+.hub-ibtn:hover { background: var(--hover-fill); color: var(--text); }
 
 /* Steer inline input: expands in place below the row content (mem-expand's downward popIn entrance; no separator border inside cards) */
 .hub-steer { display: flex; align-items: center; gap: 4px; animation: popIn .3s ease-out; --pop-from: -4px; }
 
-.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--panel); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
+.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--panel); --hover-fill: var(--menu-hl); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
 
 .hub-steer-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 

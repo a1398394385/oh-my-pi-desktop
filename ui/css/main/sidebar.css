@@ -58,6 +58,17 @@ html[data-platform="macos"] #sidebar > .side-collapse {
   left: var(--top-toggle-left);
   top: var(--top-toggle-top);
 }
+/* Windows: no traffic lights to clear, so the button lives in the window's top-left
+   corner. 14px puts it inside the center card's left edge (8px shell gap + 6px) rather
+   than straddling that edge; the collapsed-state expand button (#sidebarToggle) reuses
+   these exact viewport coords (center.css), which is what makes the sidebar toggle in
+   place without moving the mouse. */
+html[data-platform="windows"] #sidebar > .side-collapse {
+  position: fixed;
+  right: auto;
+  left: calc(14px / var(--ui-zoom, 1));
+  top: calc(19px / var(--ui-zoom, 1));
+}
 /* inputs inside the sidebar (rename/new project) regain selection and editing */
 #sidebar input, #sidebar textarea { user-select: text; -webkit-user-select: text; }
 #sidebar > :not(.side-collapse) {
@@ -92,25 +103,32 @@ body:has(#sidebar.collapsed) #left-resizer {
 .nav-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
 :is([data-theme="light"], [data-theme-mode="light"]) .nav-item:hover { background: var(--tint-black-60); }
 .nav-item svg { color: var(--dim); flex: none; display: block; }
+/* Rounded-rect segmented card: a recessed surface carrying three equal slots,
+   the active one filled with an inset chip. */
 .seg {
   position: relative;
-  display: flex; background: var(--tint-black-220);
-  border-radius: 999px; padding: 2px;
+  display: flex; flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: 3px;
 }
-:is([data-theme="light"], [data-theme-mode="light"]) .seg { background: var(--tint-black-80); }
 /* CDS segmented-control magnet: a pure-geometry thumb (::before) snaps between the slots —
-   Sidebar.tsx drives --seg-i (active slot index) / --seg-n (slot count) as inline vars */
+   Sidebar.tsx drives --seg-i (active slot index) / --seg-n (slot count) as inline vars.
+   The containing block is the padding box, so the content area is 100% - 6px
+   and each slot starts 3px from the padding-box origin. */
 .seg::before {
-  content: ""; position: absolute; top: 2px; bottom: 2px;
-  left: calc(1px + var(--seg-i, 0) * (100% - 2px) / var(--seg-n, 1));
-  width: calc((100% - 2px) / var(--seg-n, 1));
-  border-radius: 999px; background: var(--select); pointer-events: none;
+  content: ""; position: absolute; top: 3px; bottom: 3px;
+  left: calc(3px + var(--seg-i, 0) * ((100% - 6px) / var(--seg-n, 1)));
+  width: calc((100% - 6px) / var(--seg-n, 1));
+  /* --inset reads as a recessed chip on the --panel-2 surface in both themes
+     (dark: #2B2B2B on #353738; light: #ffffff on #e8e8ec). */
+  border-radius: var(--r-md); background: var(--inset); --hover-fill: var(--menu-hl); pointer-events: none;
   transition: left var(--dur-snap) var(--spring), width var(--dur-snap) var(--spring);
 }
 .seg button {
   border: 0; background: transparent; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-base);
-  padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  padding: 4px 12px; border-radius: var(--r-sm); cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 6px;
   flex: 1; /* equal slots so the ::before thumb lands exactly on the active button */
   position: relative; z-index: 1; /* labels paint above the ::before thumb */
@@ -179,8 +197,11 @@ body:has(#sidebar.collapsed) #left-resizer {
   cursor: pointer; color: var(--dim);
   font-size: calc(var(--ui-fs) + 1px); line-height: 26px;
   border: 0; background: none; width: 100%; text-align: left;
+  /* A div row, not a <button> (see SessionRow): keep the button-like selection behaviour,
+     otherwise a long press selects the title text instead of opening the context menu. */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
-.task:is(:hover, .ctx-open) { background: var(--panel-2); color: var(--text); }
+.task:is(:hover, .ctx-open) { background: var(--hover-fill); color: var(--text); }
 .task.on { background: var(--select); color: var(--text); }
 .task .tt {
   flex: 1; min-width: 0;
@@ -190,6 +211,27 @@ body:has(#sidebar.collapsed) #left-resizer {
   color: var(--text); font-weight: 400;
 }
 .task:is(:hover, .ctx-open) .tt, .task.on .tt { color: var(--text); }
+/* Title-slot carousel for the pool-eviction notice (SessionRow): the incoming line slides in
+   from the right (the eject button's side) while the outgoing one slides out left. Both get
+   clipped by .tt's mask. */
+.task .tt { position: relative; }
+/* Inline-block: transforms do not apply to non-replaced inline boxes. */
+.task .tt-next { display: inline-block; }
+.task .tt-prev {
+  position: absolute; inset: 0;
+  animation: tt-slide-out var(--dur-sheet) ease forwards;
+}
+.task .tt-next.sliding { animation: tt-slide-in var(--dur-sheet) ease; }
+@keyframes tt-slide-in {
+  from { transform: translateX(140px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes tt-slide-out {
+  to { transform: translateX(-60%); opacity: 0; }
+}
+/* The slide obeys the Appearance motion switch through the global kill rule in
+   global/animations.css (data-motion=on forces it, off/system+OS-reduce flattens it); no
+   branch needed here. SessionRow skips the outgoing layer entirely when motion is reduced. */
 .task .tm { flex: none; font-size: 12px; color: var(--faint); font-weight: 400; }
 .task.on .tm { color: var(--dim); }
 .task .tarchive {
@@ -201,6 +243,10 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task:is(:hover, .ctx-open) .tarchive { display: inline-flex; }
 .task:is(:hover, .ctx-open) .tm { display: none; }
 .task .tarchive:hover { color: var(--text); background: var(--panel-3); }
+/* Running session: the host refuses both the archive (it evicts archived sessions from
+   the pool) and the manual eject (no live teardown), so the actions render inert. */
+.task .tarchive:disabled { opacity: 0.35; cursor: not-allowed; }
+.task .tarchive:disabled:hover { color: var(--faint); background: none; }
 .task .tarchive-confirm {
   flex: none;
   border: 1px solid transparent;
@@ -221,6 +267,13 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .task .tarchive-confirm:hover {
   filter: brightness(1.12);
+}
+.task .tarchive-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.task .tarchive-confirm:disabled:hover {
+  filter: none;
 }
 .task-cmd-badge {
   flex: none;
@@ -323,7 +376,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 .proj:active { cursor: grabbing; }
 /* archive view groups reuse the project head visuals but are plain click-to-expand rows, not drag handles (no #tasklist.project-view there) */
 #tasklist:not(.project-view) .project-scroll > .proj { cursor: pointer; touch-action: auto; }
-.proj:hover { background: var(--panel-2); color: var(--text); }
+.proj:hover { background: var(--hover-fill); color: var(--text); }
 .proj svg { flex: none; opacity: .9; color: var(--dim); }
 /* the project icon slot matches ZCode's size-4 slot. */
 .proj .fic {
@@ -403,7 +456,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 .proj-add-pop {
   position: fixed; z-index: 500;
   display: flex; align-items: center; gap: 6px;
-  background: var(--ctl-bg); border: 1px solid var(--line-soft);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line-soft);
   border-radius: 10px; box-shadow: 0 12px 32px var(--tint-black-500);
   padding: 8px;
   animation: popIn .18s ease-out; --pop-from: -6px; /* pops down: slides in from above */
@@ -500,7 +553,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   color: var(--faint); font-size: var(--ui-fs-base);
   border-radius: var(--r-md); cursor: pointer; user-select: none;
 }
-.arch-head:hover { background: var(--panel-2); color: var(--text); }
+.arch-head:hover { background: var(--hover-fill); color: var(--text); }
 /* entry container: grid row height 0fr<->1fr transition, same animation set as the .proj-kids project groups */
 .arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-sheet) var(--swift); }
 .arch-kids.closing { grid-template-rows: 0fr; }

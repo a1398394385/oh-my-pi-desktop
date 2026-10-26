@@ -45,7 +45,7 @@ export function ErrorsRoute({ active, range, onRequestClick }: ErrorsRouteProps)
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const limit = LOAD_STEPS[step];
-  const errors = useQuery(["errors", range, limit], () => getRecentErrors(range, limit), { enabled: active });
+  const errors = useQuery(["errors", range, limit], ({ signal }) => getRecentErrors(range, limit, signal), { enabled: active });
   const [selectedSignature, setSelectedSignature] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -402,7 +402,7 @@ function SignatureDetail({ group, onRequestClick }: { group: ErrorGroupView; onR
         {group.models.map(m => (
           <span key={modelKey(m.model, m.provider)} className="badge" data-mono="true">
             {m.model} <span className="dim">{m.provider}</span>{" "}
-            <span className="num">{formatCompact(m.count)}</span>
+            <span className="stats-num">{formatCompact(m.count)}</span>
           </span>
         ))}
       </div>
@@ -454,7 +454,7 @@ function buildFailureColumns(t: TFunction): readonly Column<MessageStats>[] {
       header: t("settingsPage.stats.errors.columns.tokens"),
       align: "right",
       sort: row => row.usage.totalTokens,
-      render: row => <span className="num">{formatInteger(row.usage.totalTokens)}</span>,
+      render: row => <span className="stats-num">{formatInteger(row.usage.totalTokens)}</span>,
     },
     {
       key: "cost",
@@ -462,7 +462,7 @@ function buildFailureColumns(t: TFunction): readonly Column<MessageStats>[] {
       title: t("settingsPage.stats.errors.columns.costTitle"),
       align: "right",
       sort: row => row.usage.cost.total,
-      render: row => <span className="num">{formatMessageCost(row, 4)}</span>,
+      render: row => <span className="stats-num">{formatMessageCost(row, 4)}</span>,
     },
   ];
 }

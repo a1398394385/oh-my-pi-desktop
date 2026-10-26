@@ -154,7 +154,7 @@ export default function SearchPalette() {
           hits: recent.map((s) => ({ kind: "session" as const, ...s })),
         };
       }
-      return { groupLabel: t("sidebar.paletteSessions"), hits: matches.map((s) => ({ kind: "session" as const, ...s })) };
+      return { groupLabel: "", hits: matches.map((s) => ({ kind: "session" as const, ...s })) };
     }
     if (!kw) return { groupLabel: "", hits: [] };
     const results: Array<{ hit: PaletteHit; score: number }> = [];
@@ -170,7 +170,7 @@ export default function SearchPalette() {
     }
     results.sort((a, b) => b.score - a.score);
     return {
-      groupLabel: t("sidebar.paletteSettings"),
+      groupLabel: "",
       hits: results.slice(0, 12).map((r) => r.hit),
     };
   }, [tab, kw, allSessions, allSettingsItems, textHits, t]);

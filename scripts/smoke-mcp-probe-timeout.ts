@@ -14,7 +14,7 @@ import path from "node:path";
 // import time), so these cannot be static imports at the top of the file.
 const { H } = await import("../host/state.ts");
 const { refreshAvailableProfiles, applyProfile } = await import("../host/profile.ts");
-const { probeMcpServerHealth } = await import("../host/assets.ts");
+const { probeMcpServerHealth } = await import("../host/mcp-assets.ts");
 
 const fail = (msg: string): never => {
   console.error(`✗ ${msg}`);

@@ -11,8 +11,8 @@
 //   C  strong execution (acceptance 6): S1{a}+S2{b} -> M folds c — M inherits
 //      the full compressedIds/index union, supersedes both, depth 1, zone
 //      collapses to one render; rebuildAcpState agrees without walking chains;
-//      multi-layer M -> M2 reaches depth 2; the recall data-layer stand-in is
-//      M.index holding the full set after rebuild (tool behavior is T5)
+//      multi-layer M -> M2 reaches depth 2; the persisted index keeps the
+//      full folded set after rebuild (it no longer renders; recall is gone)
 //   D  riding rules on the execution path: pending + active <= L1 stays normal
 //      (no riding, zone keeps appending); >L3 goes strong directly with an
 //      empty zone (no supersede, depth 1)
@@ -27,10 +27,11 @@
 //      schema drives both compressions (model-agnostic); annotation reaches
 //      the wire; post-strong projection shows exactly one zone render
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directory at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-strong.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-strong.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,7 +51,7 @@ import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host
 import { assertToolPairing, renderCompactionBlock } from "../host/acp-projection.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (T2/probe precedent).
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
@@ -174,18 +175,19 @@ function ephemeralText(fx: Fixture): string {
 }
 
 /**
- * Rendered size of one zone block with a `summaryTokens` summary and `lines`
- * index lines — used to place the window limit strictly between one and two
- * such blocks, so the pending-strong flip happens exactly after round 2.
+ * Rendered size of one zone block — header + summary only (the index no
+ * longer renders), so the summary text alone sizes the block. Used to place
+ * the window limit strictly between one and two such blocks, so the
+ * pending-strong flip happens exactly after round 2.
  */
-function zoneBlockSize(summaryTokens: number, lines: number): number {
+function zoneBlockSize(summaryTokens: number): number {
 	const block: AcpSummaryData = {
 		id: "s?",
 		summary: tokenText(summaryTokens),
-		index: Array.from({ length: lines }, (_, i) => ({ id: `e${i}`, tokens: 400, intent: "journal block tail for the index render" })),
+		index: [],
 		meta: { createdAt: 0, depth: 0, method: "normal", keepIds: [], compressedIds: [], supersedes: [], tokensBefore: 0, tokensAfter: 0 },
 	};
-	return countTokens(renderCompactionBlock(block, countTokens));
+	return countTokens(renderCompactionBlock(block));
 }
 
 // --- A: two-axis decision table (§5.2 rows 4-6) --------------------------------------------
@@ -213,7 +215,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 {
 	// Window sized so the limit sits strictly between one and two seeded zone
 	// blocks: after round 1 the zone is under, after round 2 over.
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], window);
@@ -259,7 +261,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 {
 	// Zone line between one and two seeded blocks; summaries 120 tokens each,
 	// the strong summary 220 (budget at round 3 = (500 + zone)/3 keeps it legal).
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	// l3 4000 sits above the round-1 active total (6 x ~506) so rounds 1-2 stay normal.
@@ -327,7 +329,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 
 {
 	// No riding at or under L1: pending zone, small active zone -> normal append.
-	const one = zoneBlockSize(60, 1);
+	const one = zoneBlockSize(60);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], window, 200); // 4 x 200 = 800 <= l1
@@ -358,7 +360,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 // --- E: pure reset (§6.6 exception, acceptance 14 first half) ------------------------------
 
 {
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	// 5 x 500: after two rounds the active zone (3 x 500) is still past L1, so
@@ -421,7 +423,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 
 const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 {
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	const sessionManager = SessionManager.create(cwdG);
@@ -459,13 +461,20 @@ const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 	assert.equal(state.roundStatus!.method, "strong", "active 4x500 > l1 800: riding");
 	accepted(await state.compress({ keep: R(state, userIds.slice(3)), summary: tokenText(220) })); // M{u2}
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	// Cleanup registers BEFORE the section asserts: a failed run must not leak
 	// probe session dirs (the SDK journals session_exit at process exit).
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdG, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler below retries after
+		// teardown.
+		try {
+			rmSync(cwdG, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	const raw = await Bun.file(sessionFile).text();
 	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 3, "three acpSummary entries on disk");
@@ -495,7 +504,14 @@ const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 	assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
 	console.log("ok: G disk round-trip — JSONL supersedes/depth/method correct; reopen rebuilds the single-block zone");
 }
-rmSync(cwdG, { recursive: true, force: true });
+// Windows can still hold the throwaway cwd when a session handle outlives the
+// test; the temp dir is disposable, and the exit handler above retries after
+// teardown.
+try {
+	rmSync(cwdG, { recursive: true, force: true });
+} catch {
+	// Windows lock window; the temp dir is disposable
+}
 
 // --- H: end-to-end mock session — same tool, same schema, strong on the wire ---------------
 
@@ -506,12 +522,13 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 		while (countTokens(text) < tokens) text += "detailed journal text about the parser bug and the failing test. ";
 		return text;
 	};
-	// Window 1000 -> zone line 350 tokens: one normal block (summary 300) puts
-	// the zone over the line, so the second compress rides strong.
+	// Window 900 -> zone line 315 tokens: one normal block (header + summary 300,
+	// ~325 rendered; the index no longer renders) puts the zone over the line,
+	// so the second compress rides strong.
 	let sawAnnotation = false;
 	let compressedOnce = false;
 	const mock = createMockModel({
-		contextWindow: 1_000,
+		contextWindow: 900,
 		handler: (context: { messages: Array<{ role: string; content: unknown }> }) => {
 			const users = [...context.messages].reverse().filter((m) => m.role === "user");
 			const routed = users.find((m) => !textOf(m).includes("[compress-hint]")) ?? users[0];
@@ -607,12 +624,19 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 	assert.ok(nonZone.includes("compress again"), "the triggering turn stays");
 
 	const sessionFile = sessionManager.getSessionFile()!;
-	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	// Cleanup registers BEFORE the remaining asserts (same leak guard as G).
 	const sessionDir = dirname(sessionFile);
 	process.on("exit", () => {
 		rmSync(sessionDir, { recursive: true, force: true });
-		rmSync(cwdH, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives the
+		// test; the temp dir is disposable, and the exit handler below retries after
+		// teardown.
+		try {
+			rmSync(cwdH, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
 	});
 	const raw = await Bun.file(sessionFile).text();
 	assert.ok(!raw.includes("[compress-hint]"), "no [compress-hint] residue in the session JSONL");
@@ -629,7 +653,14 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 	await sessionManager.close();
 	rmSync(sessionDir, { recursive: true, force: true });
 	assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
-	rmSync(cwdH, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler above retries after
+	// teardown.
+	try {
+		rmSync(cwdH, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 	console.log("ok: H e2e — same tool+schema drove normal then strong; annotation on the wire; single zone render; clean journal");
 }
 

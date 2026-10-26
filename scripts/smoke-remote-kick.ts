@@ -30,9 +30,11 @@ Object.assign(globalThis, {
 const sockets: MockWebSocket[] = [];
 class MockWebSocket {
   readyState = 1;
+  onopen: null | (() => void) = null;
   onmessage: null | ((ev: { data: string }) => void) = null;
   onclose: null | ((ev: CloseEvent) => void) = null;
-  send() {}
+  sent: string[] = [];
+  send(data: string) { this.sent.push(data); }
   constructor(public url: string) { sockets.push(this); }
   // smoke stand-in for the browser CloseEvent: the store's handler only reads ev.code
   close(code: number) { this.readyState = 3; this.onclose?.({ code } as unknown as CloseEvent); }
@@ -49,7 +51,9 @@ const { initI18n } = await import("../ui-src/i18n");
 initI18n("zh-CN");
 const { useAppStore } = await import("../ui-src/store");
 const { REMOTE, getRemoteKey } = await import("../ui-src/store/ws");
+const { openSessionByPath, activateSession } = await import("../ui-src/store/session");
 const { default: ConnBanner } = await import("../ui-src/components/main/ConnBanner");
+const { default: KickedScreen } = await import("../ui-src/components/main/KickedScreen");
 const { createElement, act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 
@@ -66,6 +70,17 @@ const renderBanner = async () => {
     document.body.append(host);
     root = createRoot(host);
     root.render(createElement(ConnBanner));
+  });
+};
+// Takeover surface: kicked connections render the full-page KickedScreen (App.tsx), the banner
+// only carries the key-entry / disconnected states.
+const renderKicked = async () => {
+  await act(async () => {
+    root?.unmount();
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    root.render(createElement(KickedScreen));
   });
 };
 const unmountBanner = async () => { await act(async () => { root?.unmount(); root = null; }); };
@@ -98,9 +113,9 @@ try {
 
   // 2. even a follow-up close with an ordinary code must NOT arm the reconnect ladder
   await act(async () => { first.close(1006); });
-  await renderBanner();
-  const reclaim = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("重新接管"));
-  assert.ok(reclaim, "takeover banner renders the reclaim button");
+  await renderKicked();
+  const reclaim = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("重新连接"));
+  assert.ok(reclaim, "takeover screen renders the reclaim button");
   // unmount before the real-time wait: the banner's per-second refresh timer would otherwise
   // fire outside act() (the reconnect ladder is store-side and needs no mounted component)
   await unmountBanner();
@@ -109,13 +124,35 @@ try {
   assert.equal(sockets.length, afterKick, "kicked gate must suppress reconnects for >3s (no kick-fight)");
 
   // 3. reclaim is the only reconnect path: click clears the gate and dials again
-  await renderBanner();
-  const reclaimBtn = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("重新接管"));
+  await renderKicked();
+  const reclaimBtn = [...document.querySelectorAll("button")].find((b) => (b.textContent || "").includes("重新连接"));
   await click(reclaimBtn!);
   assert.equal(useAppStore.getState().kickedByOther, false, "reclaim clears the gate");
   assert.equal(sockets.length, afterKick + 1, "reclaim click must call connect()");
   assert.equal(sockets[afterKick].url, "ws://remote-host/ws?t=testkey");
   const second = sockets[afterKick];
+
+  // 3b. a reconnect must remount the resident sessions: the host dropped the old socket's
+  // per-entry subscriptions on close, so a stale slot would render a frozen view whose abort
+  // button silently does nothing (no frames ever arrive again).
+  const createdFrame = (path: string, id: string) =>
+    JSON.stringify({ type: "session_created", path, sessionId: id, cwd: "/tmp", model: null, thinking: "auto", isGit: false, busy: false });
+  const loadCount = (path: string) =>
+    second.sent.filter((f) => f.includes('"load_session"') && f.includes(path)).length;
+  await act(async () => { openSessionByPath("/tmp/a.jsonl"); });
+  await act(async () => { second.onmessage?.({ data: createdFrame("/tmp/a.jsonl", "s-a") }); });
+  assert.equal(loadCount("/tmp/a.jsonl"), 1, "opening an unloaded session dials load_session");
+  await act(async () => { second.onopen?.(); });
+  assert.equal(loadCount("/tmp/a.jsonl"), 2, "socket open remounts the on-screen session (stale epoch)");
+
+  // 3c. a slot left behind by the reconnect remounts lazily when the user switches to it,
+  // while a slot mounted on this connection still activates in place (no extra dial)
+  await act(async () => { openSessionByPath("/tmp/b.jsonl"); });
+  await act(async () => { second.onmessage?.({ data: createdFrame("/tmp/b.jsonl", "s-b") }); });
+  await act(async () => { activateSession("/tmp/a.jsonl"); });
+  assert.equal(loadCount("/tmp/a.jsonl"), 3, "switching to a stale slot remounts it via load_session");
+  await act(async () => { activateSession("/tmp/b.jsonl"); });
+  assert.equal(loadCount("/tmp/b.jsonl"), 1, "a slot mounted on this connection activates without a redial");
 
   // 4. close code 4001 alone (kicked frame lost in the race, Spec §7) gates the same way
   await act(async () => { second.close(4001); });

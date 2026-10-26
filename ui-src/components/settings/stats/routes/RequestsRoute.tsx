@@ -6,6 +6,7 @@ import {
   formatCompact,
   formatDurationMs,
   formatEstimatedCost,
+  formatErrorRate,
   formatFolder,
   formatInteger,
   formatMessageCost,
@@ -49,7 +50,7 @@ export function RequestsRoute({ active, range, onRequestClick }: RequestsRoutePr
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const limit = LOAD_STEPS[step];
-  const log = useQuery(["requests-log", limit], () => getRecentRequests(limit), { enabled: active });
+  const log = useQuery(["requests-log", limit], ({ signal }) => getRecentRequests(limit, signal), { enabled: active });
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const meta = rangeMeta(range);
@@ -98,7 +99,7 @@ export function RequestsRoute({ active, range, onRequestClick }: RequestsRoutePr
     label: (
       <>
         {value === "all" ? t("settingsPage.stats.requests.filter.all") : REQUEST_STATUS[value].label}{" "}
-        <span className="dim num">{formatCompact(counts[value])}</span>
+        <span className="dim stats-num">{formatCompact(counts[value])}</span>
       </>
     ),
   }));
@@ -131,7 +132,7 @@ export function RequestsRoute({ active, range, onRequestClick }: RequestsRoutePr
                 label={t("settingsPage.stats.requests.stat.failed")}
                 value={formatInteger(summary.failed)}
                 hint={t("settingsPage.stats.requests.stat.failedHint", {
-                  percent: summary.requests > 0 ? formatPercent(summary.failed / summary.requests) : "–",
+                  percent: summary.requests > 0 ? formatErrorRate(summary.failed / summary.requests) : "–",
                   count: formatInteger(summary.aborted),
                 })}
               />
@@ -283,7 +284,7 @@ function buildRequestColumns(t: TFunction): readonly Column<MessageStats>[] {
       title: t("settingsPage.stats.requests.columns.inputTitle"),
       align: "right",
       sort: row => row.usage.input,
-      render: row => <span className="num">{formatCompact(row.usage.input)}</span>,
+      render: row => <span className="stats-num">{formatCompact(row.usage.input)}</span>,
     },
     {
       key: "cache",
@@ -293,7 +294,7 @@ function buildRequestColumns(t: TFunction): readonly Column<MessageStats>[] {
       sort: row => row.usage.cacheRead,
       render: row => (
         <span
-          className="num"
+          className="stats-num"
           title={t("settingsPage.stats.requests.cacheWriteTooltip", {
             count: formatInteger(row.usage.cacheWrite),
           })}
@@ -307,7 +308,7 @@ function buildRequestColumns(t: TFunction): readonly Column<MessageStats>[] {
       header: t("settingsPage.stats.requests.columns.output"),
       align: "right",
       sort: row => row.usage.output,
-      render: row => <span className="num">{formatCompact(row.usage.output)}</span>,
+      render: row => <span className="stats-num">{formatCompact(row.usage.output)}</span>,
     },
     {
       key: "cost",
@@ -315,14 +316,14 @@ function buildRequestColumns(t: TFunction): readonly Column<MessageStats>[] {
       title: t("settingsPage.stats.requests.columns.costTitle"),
       align: "right",
       sort: row => row.usage.cost.total,
-      render: row => <span className="num">{formatMessageCost(row, 4)}</span>,
+      render: row => <span className="stats-num">{formatMessageCost(row, 4)}</span>,
     },
     {
       key: "duration",
       header: t("settingsPage.stats.requests.columns.duration"),
       align: "right",
       sort: row => row.duration ?? -1,
-      render: row => <span className="num">{formatDurationMs(row.duration)}</span>,
+      render: row => <span className="stats-num">{formatDurationMs(row.duration)}</span>,
     },
     {
       key: "ttft",
@@ -330,7 +331,7 @@ function buildRequestColumns(t: TFunction): readonly Column<MessageStats>[] {
       title: t("settingsPage.stats.requests.columns.ttftTitle"),
       align: "right",
       sort: row => row.ttft ?? -1,
-      render: row => <span className="num muted">{formatDurationMs(row.ttft)}</span>,
+      render: row => <span className="stats-num muted">{formatDurationMs(row.ttft)}</span>,
     },
     {
       key: "status",

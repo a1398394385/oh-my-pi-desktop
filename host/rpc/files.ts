@@ -1,32 +1,41 @@
 // File and git domain RPC: file page reads (text/image/dir tree), single-file
 // diff, git status/branches/write operations.
 // Moved over from the main.ts message dispatch (third slice).
+//
+// Git argv/env/timeout all come from host/git.ts — this file holds only git
+// *semantics* (which command, what to do with the output), so the process-level
+// guards cannot drift per call site.
 import path from "node:path";
 import fs from "node:fs";
 import { defaultCwd } from "../state.ts";
-import { isGitWorktree } from "../session-lifecycle.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { quotePosixArgument } from "../bootstrap.ts";
 import { resolveRemoteTarget, readUserSshHost } from "../remote-workspaces.ts";
 import { runSshCommand, formatSshError, type SshHostConfigShape } from "./ssh.ts";
-
-// Shared by git write operations: argument arrays go straight to the
-// subprocess (no shell concatenation, injection-proof by construction); on
-// failure stderr is summarized into an error field for the caller's reply
-// (no exception blows up the connection); on success stdout/stderr are
-// returned
-function runGitChecked(cwd: string, args: string[]): { ok: true; stdout: string; stderr: string } | { ok: false; error: string } {
-  const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
-  if (p.exitCode !== 0) {
-    return { ok: false, error: p.stderr.toString().trim().slice(0, 500) || hostI18n.t("errors.git.commandFailed", { command: args[0], exitCode: p.exitCode }) };
-  }
-  return { ok: true, stdout: p.stdout.toString(), stderr: p.stderr.toString() };
-}
+import { forEachRef, gitError, gitRead, gitWrite, isGitWorktree, operationState, type GitOperationState } from "../git.ts";
 
 // paths parameter of git write RPCs: string array, empties dropped
 function stringPaths(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
+}
+
+/** Unmerged porcelain XY codes: both sides differ and the file needs resolving. */
+const CONFLICT_CODES = new Set(["DD", "AU", "UD", "UA", "DU", "AA", "UU"]);
+
+/**
+ * Repository state that forbids an operation, with the reason to show.
+ * `stage` and `commit` are deliberately absent: marking a conflict resolved and
+ * finishing a rebase/merge are exactly what those two are for.
+ */
+function refusalFor(state: GitOperationState, op: "unstage" | "discard" | "checkout"): string | null {
+  if (state === "NORMAL" || state === "DETACHED_HEAD") return null;
+  const name = hostI18n.t(`errors.git.opState.${state}` as any);
+  return hostI18n.t(`errors.git.refusedDuringOp` as any, { op: hostI18n.t(`errors.git.op.${op}` as any), state: name });
+}
+
+async function checkAllowed(cwd: string, op: "unstage" | "discard" | "checkout"): Promise<string | null> {
+  return refusalFor(await operationState(cwd), op);
 }
 
 // Remote-workspace branch shared by the file RPCs: a local path inside a stub
@@ -53,11 +62,8 @@ export const filesHandlers: Record<string, RpcHandler> = {
     const abs = path.resolve(cwd, filePath);
     let repoCwd = cwd;
     if (!abs.startsWith(path.resolve(cwd) + path.sep)) {
-      const top = Bun.spawnSync(["git", "-C", path.dirname(abs), "rev-parse", "--show-toplevel"], {
-        stdout: "pipe",
-        stderr: "ignore",
-      });
-      const topLevel = top.exitCode === 0 ? top.stdout.toString().trim() : "";
+      const top = await gitRead(path.dirname(abs), ["rev-parse", "--show-toplevel"]);
+      const topLevel = top.ok ? top.stdout.trim() : "";
       if (topLevel && abs.startsWith(topLevel + path.sep)) repoCwd = topLevel;
     }
     const rel = path.relative(path.resolve(repoCwd), abs);
@@ -67,22 +73,19 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // misjudged as false, the --no-index fallback renders the whole file as a
     // pure addition (the root cause of diff views disagreeing with +N-M
     // summaries)
-    const tracked = Bun.spawnSync(["git", "-C", repoCwd, "ls-files", "--error-unmatch", "--", rel], {
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    const args = tracked.exitCode === 0
+    const tracked = await gitRead(repoCwd, ["ls-files", "--error-unmatch", "--", rel]);
+    const args = tracked.ok
       ? ["diff", "HEAD", "--", rel]
       : ["diff", "--no-index", "--", "/dev/null", abs];
-    const p = Bun.spawnSync(["git", "-C", repoCwd, ...args], { stdout: "pipe", stderr: "pipe" });
+    const p = await gitRead(repoCwd, args);
     // exitCode=1 from --no-index with differences is normal
-    if (p.exitCode > 1) throw new Error(hostI18n.t("errors.git.diffFailed", { detail: p.stderr.toString().trim().slice(0, 200) }));
+    if ((p.code ?? 0) > 1) throw new Error(hostI18n.t("errors.git.diffFailed", { detail: gitError(p, 200) }));
     ws.send(
       JSON.stringify({
         type: "file_diff",
         cwd,
         path: filePath,
-        diff: p.stdout.toString().slice(0, 500_000),
+        diff: p.stdout.slice(0, 500_000),
       }),
     );
   },
@@ -206,45 +209,70 @@ export const filesHandlers: Record<string, RpcHandler> = {
     entries.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
     ws.send(JSON.stringify({ type: "dir_list", path: dir, entries }));
   },
-  git_stage(ws, msg) {
-    // Stage: git add -- <paths> (argument array passed straight through; -- prevents path injection)
+  async git_stage(ws, msg) {
+    // Stage: git add -- <paths> (argument array passed straight through; -- prevents path injection).
+    // Deliberately NOT blocked mid-rebase/merge: `git add` on a resolved conflict is
+    // how the user finishes that operation.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
-    const r = runGitChecked(cwd, ["add", "--", ...paths]);
-    if (!r.ok) ws.send(JSON.stringify({ type: "git_staged", cwd, error: r.error }));
-    else ws.send(JSON.stringify({ type: "git_staged", cwd, ok: true }));
+    const r = await gitWrite(cwd, ["add", "--", ...paths]);
+    ws.send(JSON.stringify(r.ok ? { type: "git_staged", cwd, ok: true } : { type: "git_staged", cwd, error: gitError(r) }));
   },
-  git_unstage(ws, msg) {
-    // Unstage: git reset HEAD -- <paths>
+  async git_unstage(ws, msg) {
+    // Unstage: git reset HEAD -- <paths>. Refused while a rebase/merge is open —
+    // resetting the index there silently rewrites the operation's own state.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
-    const r = runGitChecked(cwd, ["reset", "HEAD", "--", ...paths]);
-    if (!r.ok) ws.send(JSON.stringify({ type: "git_unstaged", cwd, error: r.error }));
-    else ws.send(JSON.stringify({ type: "git_unstaged", cwd, ok: true }));
-  },
-  git_discard(ws, msg) {
-    // Discard working-tree changes (destructive, already double-confirmed on
-    // the UI side, host executes directly):
-    // tracked files restore via checkout --; untracked files delete exactly
-    // via clean -f --; per-path processing, any failure replies with the error
-    const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
-    const paths = stringPaths(msg.paths);
-    if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
-    let err = "";
-    for (const p of paths) {
-      const tracked = runGitChecked(cwd, ["ls-files", "--error-unmatch", "--", p]);
-      const r = tracked.ok ? runGitChecked(cwd, ["checkout", "--", p]) : runGitChecked(cwd, ["clean", "-f", "--", p]);
-      if (!r.ok) {
-        err = r.error;
-        break;
-      }
+    const refused = await checkAllowed(cwd, "unstage");
+    if (refused) {
+      ws.send(JSON.stringify({ type: "git_unstaged", cwd, error: refused }));
+      return;
     }
-    if (err) ws.send(JSON.stringify({ type: "git_discarded", cwd, error: err }));
-    else ws.send(JSON.stringify({ type: "git_discarded", cwd, ok: true }));
+    const r = await gitWrite(cwd, ["reset", "HEAD", "--", ...paths]);
+    ws.send(JSON.stringify(r.ok ? { type: "git_unstaged", cwd, ok: true } : { type: "git_unstaged", cwd, error: gitError(r) }));
   },
-  git_commit(ws, msg) {
+  async git_discard(ws, msg) {
+    // Discard working-tree changes (destructive, already double-confirmed on
+    // the UI side, host executes directly): tracked files restore via one
+    // batched checkout --, untracked files delete via one batched clean -f --
+    // (same shape as git_stage; a per-path loop costs 2 spawns per file).
+    // One ls-files -z run partitions the list; a pathspec naming a directory
+    // still counts as tracked when any listed file sits beneath it.
+    const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+    const paths = stringPaths(msg.paths);
+    if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
+    const refused = await checkAllowed(cwd, "discard");
+    if (refused) {
+      ws.send(JSON.stringify({ type: "git_discarded", cwd, error: refused }));
+      return;
+    }
+    // ls-files failure mirrors the old per-path fallback: treat everything as
+    // untracked and let clean -f surface the real error.
+    const listed = await gitRead(cwd, ["ls-files", "-z", "--", ...paths]);
+    const trackedFiles = listed.ok ? listed.stdout.split("\0").filter(Boolean) : [];
+    const trackedNames = new Set<string>();
+    const trackedDirs = new Set<string>();
+    for (const f of trackedFiles) {
+      trackedNames.add(f);
+      for (let i = f.indexOf("/"); i >= 0; i = f.indexOf("/", i + 1)) trackedDirs.add(f.slice(0, i));
+    }
+    const tracked: string[] = [];
+    const untracked: string[] = [];
+    for (const p of paths) (trackedNames.has(p) || trackedDirs.has(p) ? tracked : untracked).push(p);
+    let err = "";
+    if (tracked.length > 0) {
+      const r = await gitWrite(cwd, ["checkout", "--", ...tracked]);
+      if (!r.ok) err = gitError(r);
+    }
+    if (!err && untracked.length > 0) {
+      const r = await gitWrite(cwd, ["clean", "-f", "--", ...untracked]);
+      if (!r.ok) err = gitError(r);
+    }
+    ws.send(JSON.stringify(err ? { type: "git_discarded", cwd, error: err } : { type: "git_discarded", cwd, ok: true }));
+  },
+  async git_commit(ws, msg) {
     // Commit: message goes through the argument array (no shell
     // concatenation, injection-proof); paths omitted = commit everything
     // staged, given = pathspec commit (git auto-stages those paths' changes
@@ -254,88 +282,149 @@ export const filesHandlers: Record<string, RpcHandler> = {
     if (!message.trim()) throw new Error(hostI18n.t("errors.param.missingMessage"));
     const paths = stringPaths(msg.paths);
     const args = ["commit", "-m", message, ...(paths.length > 0 ? ["--", ...paths] : [])];
-    const r = runGitChecked(cwd, args);
+    const r = await gitWrite(cwd, args);
     if (!r.ok) {
-      ws.send(JSON.stringify({ type: "git_committed", cwd, error: r.error }));
+      ws.send(JSON.stringify({ type: "git_committed", cwd, error: gitError(r) }));
       return;
     }
-    const sha = runGitChecked(cwd, ["rev-parse", "HEAD"]);
+    const sha = await gitRead(cwd, ["rev-parse", "HEAD"]);
     if (!sha.ok) {
-      ws.send(JSON.stringify({ type: "git_committed", cwd, error: sha.error }));
+      ws.send(JSON.stringify({ type: "git_committed", cwd, error: gitError(sha) }));
       return;
     }
     ws.send(JSON.stringify({ type: "git_committed", cwd, ok: true, commit: sha.stdout.trim() }));
   },
-  git_push(ws, msg) {
-    // Push the current branch (no automatic -u): without an upstream git errors, stderr passes through as error
+  async git_push(ws, msg) {
+    // Push the current branch. A branch with no upstream is the common failure:
+    // name the fix instead of letting git's bare "no upstream branch" surface.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
-    const r = runGitChecked(cwd, ["push"]);
-    if (!r.ok) ws.send(JSON.stringify({ type: "git_pushed", cwd, error: r.error }));
-    else {
-      // push's progress/result output (branch update lines) lands on stderr; take it as result on success
-      ws.send(JSON.stringify({ type: "git_pushed", cwd, ok: true, result: r.stderr.trim() || r.stdout.trim() }));
+    const refs = await forEachRef(cwd);
+    const head = refs.find((r) => r.isHead);
+    if (!head) {
+      ws.send(JSON.stringify({ type: "git_pushed", cwd, error: hostI18n.t("errors.git.noCommitsYet") }));
+      return;
     }
+    if (!head.upstream) {
+      ws.send(JSON.stringify({ type: "git_pushed", cwd, error: hostI18n.t("errors.git.noUpstream", { branch: head.short }) }));
+      return;
+    }
+    const r = await gitWrite(cwd, ["push"]);
+    if (!r.ok) {
+      ws.send(JSON.stringify({ type: "git_pushed", cwd, error: gitError(r) }));
+      return;
+    }
+    // push's progress/result output (branch update lines) lands on stderr; take it as result on success
+    ws.send(JSON.stringify({
+      type: "git_pushed",
+      cwd,
+      ok: true,
+      result: r.stderr.trim() || r.stdout.trim() || hostI18n.t("notify.pushed"),
+    }));
   },
-  get_git_diff(ws, msg) {
-    // Changed-files list of the current session's project (for tree/flat display)
+  async get_git_diff(ws, msg) {
+    // Changed-files list of the current session's project (for tree/flat display).
+    // `--porcelain -z` (not `--short`): NUL-delimited records carry the path
+    // verbatim, so a non-ASCII filename arrives as text instead of git's
+    // octal-escaped quoted form — which would render as garbage in the UI and
+    // make stage/unstage fail against a path that does not exist on disk.
+    // `--no-renames` keeps one record per path (a rename becomes D + A), which
+    // is what the per-row action buttons assume.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
-    const p = Bun.spawnSync(["git", "-C", cwd, "status", "--short"], { stdout: "pipe", stderr: "pipe" });
-    if (p.exitCode !== 0) throw new Error(hostI18n.t("errors.git.statusFailed", { detail: p.stderr.toString().trim().slice(0, 200) || hostI18n.t("errors.git.notARepo") }));
-    const files = p.stdout
-      .toString()
-      .split("\n")
-      .filter((l) => l.trim())
-      .map((line) => {
-        let path = line.slice(3);
-        const arrow = path.indexOf(" -> "); // rename: R  old -> new
-        if (arrow >= 0) path = path.slice(arrow + 4);
-        // Split the XY columns (X = index/staged state, Y = working-tree
-        // state) so the UI can decide per-row stage/unstage buttons;
-        // untracked (??) is essentially an unstaged new file: count as
-        // unstaged, never staged
-        const xy = line.slice(0, 2);
-        return {
-          code: line.slice(0, 2).trim() || "?",
-          path,
-          staged: xy[0] === " " || xy[0] === "?" ? "" : xy[0],
-          unstaged: xy[1] === " " ? "" : xy[1],
-        };
+    const p = await gitRead(cwd, ["status", "--porcelain", "-z", "--no-renames"]);
+    if (!p.ok) {
+      throw new Error(hostI18n.t("errors.git.statusFailed", {
+        detail: gitError(p, 200) || hostI18n.t("errors.git.notARepo"),
+      }));
+    }
+    const files: Array<{ code: string; path: string; staged: string; unstaged: string; conflict: boolean }> = [];
+    // tformat of a -z status still emits one record per NUL; split keeps empty tails out
+    for (const rec of p.stdout.split("\0")) {
+      if (!rec) continue;
+      // "XY path": two status columns, one space, then the path. Anything shorter
+      // is a format change we must not silently mis-slice (git4idea treats the
+      // same case as a hard error).
+      if (rec.length < 4) {
+        throw new Error(hostI18n.t("errors.git.statusFailed", { detail: hostI18n.t("errors.git.statusMalformed", { line: rec }) }));
+      }
+      const code = rec.slice(0, 2);
+      const filePath = rec.slice(3);
+      const [x, y] = code;
+      files.push({
+        code,
+        path: filePath,
+        staged: x === " " || x === "?" ? "" : x,
+        unstaged: y === " " ? "" : y,
+        conflict: CONFLICT_CODES.has(code),
       });
-    ws.send(JSON.stringify({ type: "git_status", cwd, files }));
+    }
+    ws.send(JSON.stringify({ type: "git_status", cwd, files, state: await operationState(cwd) }));
   },
-  get_git_branches(ws, msg) {
+  async get_git_branches(ws, msg) {
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
-    const isGit = isGitWorktree(cwd);
-    if (!isGit) {
+    if (!(await isGitWorktree(cwd))) {
       ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: false, current: null, branches: [], remotes: [] }));
       return;
     }
-    const currP = Bun.spawnSync(["git", "-C", cwd, "branch", "--show-current"], { stdout: "pipe", stderr: "ignore" });
-    let current = currP.stdout.toString().trim();
-    if (!current) {
-      const headP = Bun.spawnSync(["git", "-C", cwd, "rev-parse", "--short", "HEAD"], { stdout: "pipe", stderr: "ignore" });
-      current = headP.stdout.toString().trim() || "HEAD";
-    }
-    const bP = Bun.spawnSync(["git", "-C", cwd, "branch", "--format=%(refname:short)"], { stdout: "pipe", stderr: "ignore" });
-    const branches = bP.stdout.toString().split("\n").map((b) => b.trim()).filter(Boolean);
+    // One for-each-ref for everything: the refname prefix tells local from
+    // remote (a "/" test on the short name misreads "feat/login" as a remote),
+    // and %(HEAD) marks the checked-out ref — absent means detached HEAD.
+    const refs = await forEachRef(cwd);
+    const branches = refs.filter((r) => r.kind === "local").map((r) => r.short);
     // Remote-tracking refs (local refs/remotes snapshot, no network): "origin/xxx" form;
     // symbolic origin/HEAD entries are dropped
-    const rP = Bun.spawnSync(["git", "-C", cwd, "branch", "-r", "--format=%(refname:short)"], { stdout: "pipe", stderr: "ignore" });
-    const remotes = rP.stdout.toString().split("\n").map((b) => b.trim()).filter((b) => b.includes("/") && !b.endsWith("/HEAD"));
-    ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: true, current, branches, remotes }));
+    const remotes = refs.filter((r) => r.kind === "remote").map((r) => r.short).filter((b) => !b.endsWith("/HEAD"));
+    const head = refs.find((r) => r.isHead);
+    let current = head?.short ?? "";
+    let detached = false;
+    if (!current) {
+      // No ref carries %(HEAD): either detached at a commit, or a branch with no
+      // commit yet (unborn). An unborn branch still names a branch, so ask for it
+      // directly instead of showing an oid as if it were a branch.
+      const sym = await gitRead(cwd, ["symbolic-ref", "-q", "--short", "HEAD"]);
+      const unborn = sym.ok ? sym.stdout.trim() : "";
+      if (unborn) {
+        current = unborn;
+      } else {
+        detached = true;
+        const headOid = await gitRead(cwd, ["rev-parse", "--short", "HEAD"]);
+        current = headOid.ok ? headOid.stdout.trim() : "HEAD";
+      }
+    }
+    ws.send(JSON.stringify({ type: "git_branches", cwd, isGit: true, current, branches, remotes, detached }));
   },
-  switch_git_branch(ws, msg) {
+  async switch_git_branch(ws, msg) {
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
     const targetBranch = String(msg.branch ?? "").trim();
     if (!targetBranch) throw new Error(hostI18n.t("errors.param.missingBranch"));
-    // Remote-tracking name ("origin/xxx"): a plain checkout would detach HEAD — DWIM to a
-    // local tracking branch instead (checkout --track creates <name minus remote> tracking it)
-    const args = targetBranch.includes("/") ? ["checkout", "--track", targetBranch] : ["checkout", targetBranch];
-    const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "pipe" });
-    if (p.exitCode !== 0) {
-      throw new Error(hostI18n.t("errors.git.checkoutFailed", { detail: p.stderr.toString().trim().slice(0, 200) }));
+    const refused = await checkAllowed(cwd, "checkout");
+    if (refused) throw new Error(refused);
+    // Local-vs-remote comes from the refname prefix, never from a "/" test on
+    // the short name: "feat/login" is a perfectly ordinary local branch, and
+    // `checkout --track feat/login` would not fail — it would quietly create a
+    // second branch "login" tracking it and leave the user on the wrong one.
+    const refs = await forEachRef(cwd);
+    const local = refs.find((r) => r.kind === "local" && r.short === targetBranch);
+    let args: string[];
+    let branch: string;
+    if (local) {
+      args = ["checkout", targetBranch];
+      branch = targetBranch;
+    } else {
+      const remote = refs.find((r) => r.kind === "remote" && r.short === targetBranch);
+      if (!remote) throw new Error(hostI18n.t("errors.git.unknownBranch", { branch: targetBranch }));
+      // DWIM: a remote-tracking ref checks out as a local branch named after the
+      // part below the remote. If that branch already exists, switch to it
+      // rather than re-creating a duplicate.
+      const name = remote.short.slice(remote.short.indexOf("/") + 1);
+      branch = name;
+      args = refs.some((r) => r.kind === "local" && r.short === name)
+        ? ["checkout", name]
+        : ["checkout", "--track", remote.short];
     }
-    const branch = targetBranch.includes("/") ? targetBranch.split("/").slice(1).join("/") : targetBranch;
+    const p = await gitWrite(cwd, args);
+    if (!p.ok) {
+      throw new Error(hostI18n.t("errors.git.checkoutFailed", { detail: gitError(p, 200) }));
+    }
     ws.send(JSON.stringify({ type: "git_branch_switched", cwd, branch }));
   },
 };

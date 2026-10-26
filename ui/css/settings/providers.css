@@ -17,7 +17,7 @@
 .ap-vendor { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* login-in-progress bottom progress bar (with cancel) */
-.login-banner { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 8px 8px 8px 16px; z-index: 999; box-shadow: 0 4px 16px var(--tint-black-350); max-width: calc(100vw - 48px); }
+.login-banner { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; background: var(--panel); --hover-fill: var(--menu-hl); border: 1px solid var(--line); border-radius: 999px; padding: 8px 8px 8px 16px; z-index: 999; box-shadow: 0 4px 16px var(--tint-black-350); max-width: calc(100vw - 48px); }
 .login-banner span { font-size: var(--ui-fs-sm); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px; }
 
 /* provider detail page: login entry card */

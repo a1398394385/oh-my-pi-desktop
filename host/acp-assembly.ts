@@ -4,6 +4,7 @@
 // extension that session-lifecycle wires into the agent session (spec §8/§9).
 import { type } from "@oh-my-pi/omptype";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
+import { base64ImageSize } from "@oh-my-pi/pi-agent-core/image-tokens";
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import type { AcpParams } from "./acp-plan.ts";
@@ -37,6 +38,10 @@ export function createAcpRuntime(opts: {
 	const tokenizer = new Tokenizer(opts.model as never);
 	return new AcpRuntimeState({
 		countTokens: (s) => tokenizer.countTokens(s),
+		// Same image price the base countMessage charges (pixel size under the
+		// reader's catalog rule), so block tokens and the base context counter
+		// disagree only by real content, never by an uncounted image.
+		countImage: (image) => tokenizer.imageTokens(base64ImageSize(image.data), image.detail),
 		sink: opts.sink,
 		getEntries: opts.getEntries,
 		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.
@@ -59,7 +64,7 @@ Call context_status first: its manifest lists this round's compressible blocks a
   3. remaining actions: what is still to be done, starting with your concrete next step.
   Unresolved issues recorded in the summary must be consistent with the remaining actions — never state an open problem and then propose to finish (summary self-consistency).
 
-One successful compress consumes the manifest — call context_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary with a per-block index; recall_block can fetch any of them back later. The protected tail and blocks outside the manifest are never compressed — do not list them in keep. A good habit: check context_status and compress after finishing a stage of work, before the context grows large.`;
+One successful compress consumes the manifest — call context_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary; details folded into a summary are gone from the context, so record what later work depends on (paths, values, decisions) in the summary text itself. The protected tail and blocks outside the manifest are never compressed — do not list them in keep. A good habit: check context_status and compress after finishing a stage of work, before the context grows large.`;
 
 /** compress_context ToolDefinition (registered via createAgentSession({ customTools })). */
 export function createCompressContextTool(state: AcpRuntimeState) {
@@ -119,6 +124,9 @@ export function createAcpProjectionExtension(state: AcpRuntimeState, ownerSessio
 			try {
 				return { messages: state.projectView(ev.messages) };
 			} catch (err) {
+				// projectContext self-repairs source-view pairing gaps, so reaching
+				// here means an unexpected defect; passing the original view through
+				// keeps the session usable (the provider layer re-pairs the wire).
 				safeStderr(`[ACP] projection failed, passing the original view through:`, err);
 				return { messages: ev.messages };
 			}

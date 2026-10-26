@@ -2,12 +2,13 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
 import { useAppStore } from "../../store";
 import { bashAccentColor, sessionAccentColor } from "../../lib/session-color";
-import { toggleSidebar, toggleRightPanel } from "../../shell";
+import { toggleSidebar, toggleRightPanel, bindColResizer } from "../../shell";
 import MainHeader from "./MainHeader";
 import Welcome from "./WelcomePage";
 import MessagePage from "./chat/MessagePage";
 import AgentHub from "./AgentHubPage";
 import AutomationsPage from "./automations/AutomationsPage";
+import GitPage from "./git/GitPage";
 import MainSessionTree from "./tree/MainSessionTree";
 import Composer from "../Composer";
 import ApprovalCard from "../chat/ApprovalCard";
@@ -15,12 +16,17 @@ import SessionStatsBar from "./SessionStatsBar";
 import QueueCard from "../composer/QueueCard";
 import GoalCard from "../composer/GoalCard";
 import ConnBanner from "./ConnBanner";
+import BottomTerminal from "./BottomTerminal";
+import { termGroupKey } from "./right/termTabs";
 
 export default function MainColumn() {
   const isCreatingNew = useAppStore((s) => s.isCreatingNew);
   const automationsOpen = useAppStore((s) => s.automationsOpen);
+  const gitManage = useAppStore((s) => s.gitManage);
   const hubOpen = useAppStore((s) => s.hubOpen);
   const mainViewMode = useAppStore((s) => s.mainViewMode);
+  const narrow = useAppStore((s) => s.narrow);
+  const bottomTermOpen = useAppStore((s) => s.bottomTermOpen[termGroupKey()] === true);
   const activePath = useAppStore((s) => s.activePath);
   const session = useAppStore((s) => s.activePath ? s.openSessions.get(s.activePath) : undefined);
   const pendingApproval = session?.pendingApprovals?.[0] ?? null;
@@ -42,6 +48,10 @@ export default function MainColumn() {
   // halo) follows one color: the next palette slot, never the input's own
   const bashAccent = bashAccentColor(title);
   const ringRef = useRef<SVGSVGElement>(null);
+  // The column width handles belong to the session detail page only (mirrors the
+  // MessagePage branch of the page switch below).
+  const showSessionDetail =
+    !gitManage && !isCreatingNew && !automationsOpen && !hubOpen && !(session && mainViewMode === "tree");
 
   // Ring speed follows typing tempo: idle = the 6s CSS cycle, faster hands spin it up to 3×
   // (2s). playbackRate, not animation-duration — changing the duration rescales the current
@@ -79,11 +89,18 @@ export default function MainColumn() {
       clearInterval(timer);
     };
   }, []);
+  // The handles are re-created whenever the session detail page mounts, so the drag
+  // wiring re-attaches on that transition (the nodes and their listeners die together).
+  useEffect(() => {
+    if (showSessionDetail) bindColResizer();
+  }, [showSessionDetail]);
   return (
       <main id="main">
         <MainHeader onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
         <ConnBanner />
-        {automationsOpen && !isCreatingNew ? (
+        {gitManage ? (
+          <GitPage />
+        ) : automationsOpen && !isCreatingNew ? (
           <AutomationsPage />
         ) : isCreatingNew ? (
           <Welcome />
@@ -94,7 +111,7 @@ export default function MainColumn() {
         ) : (
           <MessagePage />
         )}
-        {!isCreatingNew && !automationsOpen && !hubOpen && (
+        {!isCreatingNew && !automationsOpen && !hubOpen && !gitManage && (
           <>
             {/* Goal bar -> queue card -> input dock: three stacked cards from
                 top down (the goal bar shifts up as the queue grows). Each card
@@ -123,6 +140,18 @@ export default function MainColumn() {
             {/* Session stats row: outside the dock, on its own row below the
                 composer card (not inside the composer) */}
             <SessionStatsBar />
+          </>
+        )}
+        {/* Bottom dock (⌘/Ctrl+J): terminal under the composer, full center-column width.
+            Narrow keeps it unmounted — App already renders one page at a time there. */}
+        {!narrow && bottomTermOpen && <BottomTerminal />}
+        {/* Column width drag handles: gutter strips beside the content column.
+            Only the session detail page hosts them, and wiring follows their mount
+            (bindColResizer in shell.ts) instead of initShell's one-shot boot. */}
+        {showSessionDetail && (
+          <>
+            <div className="col-resize-h" data-side="left" />
+            <div className="col-resize-h" data-side="right" />
           </>
         )}
       </main>

@@ -7,7 +7,10 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../../store";
 import Icon from "../../../Icon";
 import { IS_WINDOWS, MOD } from "../../../platform";
+import { confirmDialog } from "../../settings/common";
 import { fmtAgo, sessionLabel } from "./util";
+import { turnEndedWithError } from "../../../store/run-seal";
+import { motionEnabled } from "../../../shell";
 
 // Session entry (structural subset of diskProjects[].sessions / archivedSessions elements;
 // the full store-side type is defined by the P2F batch — this declares only the fields this
@@ -74,7 +77,7 @@ function RenameEditor({ s, sub, onDone }: { s: SessionInfo; sub?: boolean; onDon
     done = true;
     const title = ref.current!.value.trim();
     if (save && title && title !== (s.title || "")) {
-      send({ type: "rename_session", sessionId: s.id, title });
+      send({ type: "rename_session", path: s.path, title }); // path, not id: the pool key is a runtime UUID
     }
     onDone(); // restore the original row: cancel/unchanged just re-displays; the save path updates the title via the host's list refetch
   };
@@ -114,12 +117,33 @@ function AutoBadge({ s }: { s: SessionInfo }) {
 export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renaming, ctxOpen, className, style, shortcutDigit, onRenameStart, onRenameDone, onDelete, onContext }: SessionRowProps) {
   const { t } = useTranslation();
   // State subscribed via selectors (must run before the renaming early return: hooks cannot be conditional)
-  const openSessions = useAppStore((s) => s.openSessions);
-  const pinnedSessions = useAppStore((s) => s.pinnedSessions);
-  const unseenFinished = useAppStore((s) => s.unseenFinished);
-  const activePath = useAppStore((s) => s.activePath);
-  const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
-  const isCommandPressed = useAppStore((s) => s.isCommandPressed);
+  // Per-path field selectors (Batch 1, T7): after LRU eviction the getters return
+  // undefined/false and the row falls back to its disk/pool state instead of crashing
+  const streaming = useAppStore((st) => st.openSessions.get(s.path)?.streaming ?? false);
+  const awaitingApproval = useAppStore((st) => (st.openSessions.get(s.path)?.pendingApprovals?.length ?? 0) > 0);
+  const hasError = useAppStore((st) => {
+    const o = st.openSessions.get(s.path);
+    if (!o || o.streaming) return false;
+    const last = o.items[o.items.length - 1];
+    return turnEndedWithError(o.items) || !!(last as { error?: string | null } | undefined)?.error;
+  });
+  const pinnedSessions = useAppStore((s2) => s2.pinnedSessions);
+  const unseenFinished = useAppStore((s2) => s2.unseenFinished);
+  const activePath = useAppStore((s2) => s2.activePath);
+  const isProjectManageMode = useAppStore((s2) => s2.isProjectManageMode);
+  const isCommandPressed = useAppStore((s2) => s2.isCommandPressed);
+  // Pool busy flag (pool_sessions frame): the spinner for a session this client
+  // never loaded — running on the OTHER channel (remote control vs desktop) or
+  // spawned by an automation — which therefore has no openSessions slot here.
+  // O(1) set lookup (N1) instead of scanning the whole pool array per row per notification.
+  const poolBusy = useAppStore((st) => st.busyPaths.has(s.path));
+  // In the host's live pool: the eject action only makes sense for resident sessions, and
+  // the host pool — not openSessions — is the truth (the frontend slot map has an LRU cap,
+  // so a row can outlive its slot while still resident in the pool).
+  const inHostPool = useAppStore((st) => st.poolPaths.has(s.path));
+  // Pool-eviction notice: the store lights this path up for 1s on session_unload (below the
+  // row swaps it in over the title instead of raising a bottom toast)
+  const unloaded = useAppStore((st) => st.unloadedPaths.has(s.path));
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -129,23 +153,38 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     };
   }, []);
 
+  // Title-slot carousel: the eviction notice and the title swap both ways through the same
+  // slide (in from the right, where the eject button sits), so the outgoing line is kept one
+  // beat while the two cross. Only an `unloaded` flip animates — plain title updates don't.
+  const rowText = unloaded ? t("sidebar.unloadedNotice") : sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "");
+  // Adjust-state-during-render (React's own pattern): the flip and its `sliding` class must
+  // land in ONE paint. Driving this from an effect showed the final text for a frame before
+  // the slide started — that read as an instant swap.
+  const [swap, setSwap] = useState({ unloaded, text: rowText, prev: null as string | null });
+  if (swap.unloaded !== unloaded || swap.text !== rowText) {
+    // motionEnabled(): the Appearance motion switch (system / on / off). With motion reduced the
+    // global kill rule in global/animations.css flattens the slide, so keeping the outgoing line
+    // would leave both texts stacked for a beat — drop it and swap the text outright.
+    setSwap({ unloaded, text: rowText, prev: unloaded !== swap.unloaded && motionEnabled() ? swap.text : swap.prev });
+  }
+  useEffect(() => {
+    if (swap.prev === null) return;
+    const id = setTimeout(() => setSwap((s) => ({ ...s, prev: null })), 320); // slightly past the 300ms slide
+    return () => clearTimeout(id);
+  }, [swap.prev]);
+
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
-  const open = openSessions.get(s.path);
   const pinned = pinnedSessions.has(s.path);
-  // In the host's live pool (= has an open frontend slot): the eject action
-  // only makes sense for resident sessions; pure disk rows have nothing to evict.
-  const isOpenInPool = openSessions.has(s.path);
   // Like ZCode's TaskListItem, keep a single 16px leading slot with a fixed priority:
-  // error > unread > approval > running.
-  // The error state comes from the session's last error row; unopened sessions have no runtime
-  // state and only show the persisted unread dot.
-  const lastItem = open?.items?.[open.items.length - 1];
-  const hasError = !open?.streaming && (lastItem?.role === "error" || (lastItem as { error?: string | null } | undefined)?.error); // the error field is declared only on BashItem; other items read as undefined, same as the original
-  // A session blocked on an ask/approval dialog is waiting on the user, not working: the spinner
-  // would read as "still busy" while nothing moves until the question is answered, so it shows
-  // the attention dot instead.
-  const awaitingApproval = (open?.pendingApprovals?.length ?? 0) > 0;
-  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : awaitingApproval ? "approval" : open?.streaming ? "loading" : "none";
+  // error > unread > approval > running. The error state (selector above) comes from the
+  // session's last error row; unopened sessions have no runtime state and only show the
+  // persisted unread dot. A session blocked on an ask/approval dialog is waiting on the
+  // user, not working: the spinner would read as "still busy" while nothing moves until
+  // the question is answered, so it shows the attention dot instead.
+  // Loaded here → the subscribed streaming flag (driven by this client's own event frames);
+  // otherwise the host pool's busy flag (cross-channel running state)
+  const running = streaming || poolBusy;
+  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : awaitingApproval ? "approval" : running ? "loading" : "none";
   // Open session: already open → activate directly (refreshes the right panel's git diff); not
   // open → the host loading chain
   const openSession = () => {
@@ -169,8 +208,28 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     // just-restored per-session right panel state
   };
 
+  // A running session can neither be archived (the host evicts archived sessions from
+  // the pool) nor ejected (the host refuses a live teardown), so both actions stay
+  // disabled until the run settles — `running` mirrors the host-side busy gate.
+  const poolLocked = running;
+
   const handleStartConfirmArchive = (e: ReactMouseEvent) => {
     e.stopPropagation();
+    if (poolLocked) return;
+    // Archiving completes the automations that deliver into this session (the host
+    // settles them), so a plan change gets a dialog the user can read, not the inline
+    // two-step confirm that cannot carry an explanation.
+    const bound = useAppStore.getState().automations.filter((a) => a.deliverTo?.sessionPath === s.path).length;
+    if (bound > 0) {
+      void confirmDialog({
+        title: t("sidebar.archiveSession"),
+        message: `${t("sidebar.confirmArchive")}\n\n${t("sidebar.archiveAutomationMsg", { n: bound })}`,
+        confirmText: t("sidebar.confirm"),
+      }).then((yes) => {
+        if (yes) send({ type: "archive_session", path: s.path, archived: true });
+      });
+      return;
+    }
     setConfirmingArchive(true);
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     confirmTimerRef.current = setTimeout(() => {
@@ -182,7 +241,8 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     e.stopPropagation();
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     setConfirmingArchive(false);
-    send({ type: "archive_session", sessionId: s.id, archived: true });
+    if (poolLocked) return; // started running between confirm-open and confirm-click
+    send({ type: "archive_session", path: s.path, archived: true });
   };
 
   const handleMouseLeave = () => {
@@ -192,12 +252,23 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     }
   };
 
+  // A row is a div, not a button: the row hosts its own action buttons (pin, unload,
+  // archive), and <button> inside <button> is invalid HTML — React logs a nesting error
+  // and WebKit's tap targeting gets unreliable inside the illegal subtree.
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       className={"task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "") + (ctxOpen ? " ctx-open" : "") + (className ? " " + className : "")}
       data-path={s.path}
       style={style}
       onClick={openSession}
+      onKeyDown={(e) => {
+        // role=button no longer gets Enter/Space for free from the browser
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        openSession();
+      }}
       onContextMenu={(e) => onContext(e, s, rowKey)}
       onMouseLeave={handleMouseLeave}
     >
@@ -230,7 +301,8 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       </span>
       {/* Double-click the title to rename in place (the click before the double-click still opens the session; idempotent, no conflict) */}
       <span className="tt" onDoubleClick={() => onRenameStart(rowKey, s.path)}>
-        {sessionLabel(s) + (showRepo ? `  ·  ${s.repo}` : "")}
+        {swap.prev !== null && <span className="tt-prev">{swap.prev}</span>}
+        <span className={"tt-next" + (swap.prev !== null ? " sliding" : "")}>{swap.text}</span>
       </span>
       {isProjectManageMode ? (
         <button
@@ -261,7 +333,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
             title={t("sidebar.unarchiveRestore")}
             onClick={(e) => {
               e.stopPropagation();
-              send({ type: "archive_session", sessionId: s.id, archived: false });
+              send({ type: "archive_session", path: s.path, archived: false });
             }}
           >
             {t("sidebar.restore")}
@@ -281,16 +353,18 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         <button
           className="tarchive-confirm"
           title={t("sidebar.confirmArchive")}
+          disabled={poolLocked}
           onClick={handleConfirmArchive}
         >
           {t("sidebar.confirm")}
         </button>
       ) : (
         <>
-          {isOpenInPool && (
+          {inHostPool && (
             <button
               className="tarchive"
               title={t("sidebar.unloadFromPool")}
+              disabled={poolLocked}
               onClick={(e) => {
                 e.stopPropagation();
                 send({ type: "session_unload", path: s.path });
@@ -302,6 +376,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           <button
             className="tarchive"
             title={t("sidebar.archiveSession")}
+            disabled={poolLocked}
             onClick={handleStartConfirmArchive}
           >
             <Icon name="archive" size={14} />
@@ -310,6 +385,6 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           {s.modified && <span className="tm">{fmtAgo(s.modified)}</span>}
         </>
       )}
-    </button>
+    </div>
   );
 }

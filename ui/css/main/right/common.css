@@ -1,4 +1,4 @@
-.sp-pop .mi.on { background: var(--panel-3); }
+.sp-pop .mi.on { background: var(--menu-hl); }
 
 /* Per-item close buttons on open rows: appear on row hover (same semantics as the tab-header close button) */
 .sp-pop .mi .mi-x {
@@ -22,7 +22,7 @@
 
 .sp-pop .mi:hover .mi-x { opacity: 1; }
 
-.sp-pop .mi .mi-x:hover { background: var(--panel-2); color: var(--text); }
+.sp-pop .mi .mi-x:hover { background: var(--hover-fill); color: var(--text); }
 
 /* side panel (subagents / Git Diff dual tabs) */
 #sidepanel {
@@ -57,7 +57,7 @@
   transition: background var(--dur-snap), color var(--dur-snap);
 }
 
-.rtab:hover { background: var(--panel-2); color: var(--text); }
+.rtab:hover { background: var(--hover-fill); color: var(--text); }
 
 /* active: plate highlight + brighter text (hover uses the same panel-2 plate; the active state differs by text color) */
 .rtab.on { background: var(--panel-2); color: var(--text); }
@@ -105,7 +105,7 @@
 .sp-pop-search {
   display: flex; align-items: center; gap: 6px;
   height: 28px; padding: 0 8px; margin-bottom: 4px;
-  background: var(--inset); border: 1px solid var(--line-soft); border-radius: 7px;
+  background: var(--inset); --hover-fill: var(--menu-hl); border: 1px solid var(--line-soft); border-radius: 7px;
   color: var(--faint);
 }
 
@@ -159,13 +159,13 @@
   display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 12px;
   border: 0; border-radius: var(--r-lg);
-  background: var(--panel); color: var(--text);
+  background: var(--panel); --hover-fill: var(--menu-hl); color: var(--text);
   font: inherit; font-size: var(--ui-fs-base); font-weight: 500;
   cursor: pointer; transition: background var(--dur-snap);
 }
 
 .rt-item:not(.off):hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   transform: translateY(-1.5px);
   /* hover ring as inset shadow (replaces outline): paints inside the box, zero layout cost */
   box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line);

@@ -10,13 +10,15 @@
 //
 // Kimi provider: the same button instead mounts/unmounts the kimi-cu MCP
 // server into this session's tool surface mid-session (host/mcp-mount.ts).
+// /computer on arms the default overlay under this provider too, so the
+// icon-off path clears both — see setComputerMode.
 // The server definition is code-owned (host/mcp-builtin.ts, never in
 // mcp.json) and never auto-mounts at pool boundaries — only sessions the
 // user opted into carry its tools. Picking the provider warms the shared
 // global connection (warmKimiCu, also re-run at every profile apply). The
 // frame's enabled flag is the overlay OR the mounted state; its optional
 // error field makes the composer toggle's failures visible as a toast.
-import { H, pushCommandOutput, type PoolEntry } from "./state.ts";
+import { H, pushCommandOutput, sendSessionState, type PoolEntry } from "./state.ts";
 import { lookupSetting } from "./bootstrap.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
@@ -83,6 +85,17 @@ export function warmKimiCu(): void {
   });
 }
 
+/**
+ * The composer button's lit state: EITHER opt-in source alone lights it — the
+ * per-session `computer.enabled` overlay (default provider's eval prelude,
+ * armed by the base's /computer or setComputerMode) or a live kimi-cu mount.
+ * Single definition: every reader (frame push, /computer toggle+status in
+ * rpc/prompt.ts) must see the same OR or the button and the command fork.
+ */
+export function computerModeActive(sessionId: string, entry: PoolEntry): boolean {
+  return settingsGet(entry.session.settings, COMPUTER_ENABLED) === true || isServerMounted(sessionId, KIMI_CU_SERVER);
+}
+
 /** Computer-use state frame: the composer's screen-icon button lights up on it. */
 export function pushComputerMode(
   ws: { send(data: string): unknown },
@@ -90,11 +103,14 @@ export function pushComputerMode(
   entry: PoolEntry,
   error?: string,
 ) {
-  ws.send(
+  // Both attached channels light the composer's screen icon from this frame
+  sendSessionState(
+    ws,
+    entry,
     JSON.stringify({
       type: "computer_mode",
       sessionId,
-      enabled: settingsGet(entry.session.settings, COMPUTER_ENABLED) === true || isServerMounted(sessionId, KIMI_CU_SERVER),
+      enabled: computerModeActive(sessionId, entry),
       ...(error ? { error } : {}),
     }),
   );
@@ -103,18 +119,18 @@ export function pushComputerMode(
 /**
  * Toggle the per-session computer-use opt-in for the active provider.
  *
- * Default: writes the per-session `computer.enabled` runtime overlay (runtime
- * layer, never persisted — the same write the base's /computer on|off
- * performs). Enabling checks the settings-page master gate first and rolls
- * back when the eval prelude cannot activate; both failure paths keep the
- * state unchanged, surface a command_output line plus the frame's error
- * field (frontend red toast), and re-push the frame so the button reflects
- * reality.
+ * Off is provider-independent: it clears the per-session `computer.enabled`
+ * overlay AND drops any kimi-cu mount. The base's /computer on arms that
+ * overlay under ANY provider, and pushComputerMode ORs overlay+mount into
+ * the lit state — the kimi branch used to unmount only, so a /computer-on
+ * session kept the icon lit and the click did nothing.
  *
- * Kimi: mounts/unmounts the builtin kimi-cu MCP server (mcp-builtin.ts) in
- * this session's tool surface (mid-session, immediate). Enabling requires
- * KimiCU installed. Never rejects: every failure surfaces as a command_output
- * line + the frame's error field and the frame is re-pushed.
+ * On is provider-aware. Default: writes the overlay (settings-page master
+ * gate checked first; rolled back when the eval prelude cannot activate).
+ * Kimi: mounts the builtin kimi-cu MCP server (mcp-builtin.ts) mid-session,
+ * immediate; requires KimiCU installed. Every failure path keeps the state
+ * unchanged, surfaces a command_output line plus the frame's error field
+ * (frontend red toast), and re-pushes the frame so the button reflects reality.
  */
 export async function setComputerMode(
   ws: { send(data: string): unknown },
@@ -122,37 +138,37 @@ export async function setComputerMode(
   entry: PoolEntry,
   enabled: boolean,
 ): Promise<void> {
+  const gate = lookupSetting(COMPUTER_ENABLED);
+  if (!gate) throw new Error(`Unknown setting: ${COMPUTER_ENABLED}`);
+  if (!enabled) {
+    unmountServerForSession(sessionId, entry, KIMI_CU_SERVER);
+    entry.session.settings.writeValue(gate, false, "override");
+    pushComputerMode(ws, sessionId, entry);
+    return;
+  }
   if (readComputerProvider() === "kimi") {
-    if (enabled) {
-      if (!kimiCuInstalled()) {
-        const msg = hostI18n.t("errors.kimiCuNotInstalled");
-        pushCommandOutput(sessionId, msg);
-        pushComputerMode(ws, sessionId, entry, msg);
-      } else if (!(await mountServerForSession(sessionId, entry, KIMI_CU_SERVER))) {
-        const msg = hostI18n.t("errors.kimiCuConnectFailed");
-        pushCommandOutput(sessionId, msg);
-        pushComputerMode(ws, sessionId, entry, msg);
-      } else {
-        pushComputerMode(ws, sessionId, entry);
-      }
+    if (!kimiCuInstalled()) {
+      const msg = hostI18n.t("errors.kimiCuNotInstalled");
+      pushCommandOutput(sessionId, msg);
+      pushComputerMode(ws, sessionId, entry, msg);
+    } else if (!(await mountServerForSession(sessionId, entry, KIMI_CU_SERVER))) {
+      const msg = hostI18n.t("errors.kimiCuConnectFailed");
+      pushCommandOutput(sessionId, msg);
+      pushComputerMode(ws, sessionId, entry, msg);
     } else {
-      unmountServerForSession(sessionId, entry, KIMI_CU_SERVER);
       pushComputerMode(ws, sessionId, entry);
     }
     return;
   }
-
-  const gate = lookupSetting(COMPUTER_ENABLED);
-  if (!gate) throw new Error(`Unknown setting: ${COMPUTER_ENABLED}`);
-  if (enabled && !settingsGet(H.settings, COMPUTER_ENABLED)) {
+  if (!settingsGet(H.settings, COMPUTER_ENABLED)) {
     const msg = hostI18n.t("errors.computerGateClosed");
     pushCommandOutput(sessionId, msg);
     pushComputerMode(ws, sessionId, entry, msg);
     return;
   }
   const previous = settingsGet(entry.session.settings, COMPUTER_ENABLED) === true;
-  entry.session.settings.writeValue(gate, enabled, "override");
-  if (enabled && !entry.session.getEvalPreludes().some((d) => d?.name === "computer")) {
+  entry.session.settings.writeValue(gate, true, "override");
+  if (!entry.session.getEvalPreludes().some((d) => d?.name === "computer")) {
     entry.session.settings.writeValue(gate, previous, "override");
     const msg = hostI18n.t("errors.computerUnavailable");
     pushCommandOutput(sessionId, msg);

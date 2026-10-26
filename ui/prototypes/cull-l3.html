@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>第 3 层 · 改结构（不是删行）</title>
+<link rel="stylesheet" href="../dist/assets/index-CxCHg-mi.css" onerror="document.documentElement.dataset.cssMissing='1'" />
+<link rel="stylesheet" href="cull-shell.css" />
+</head>
+<body>
+<div class="cv-bar">
+  <b>第 3 层 · 改结构（不是删行）</b>
+  <span class="cv-note">左「现状」右「改后」。图标以单字符占位（真实页面注入注册表 SVG）。实线框 = 新增结构，虚线框 = 拿掉的部分。</span>
+</div>
+<div class="cv-wrap">
+
+  <!-- 1. three rows titled identically -->
+  <section class="cmp">
+    <div class="cmp-h"><code>ExperimentalPage.tsx:238-266</code><span class="cv-tag">分组</span><span class="cv-why">三行标题只差括号里的词：把共同前缀提成组标题，括号里的词直接当行标题（不新造文案）</span></div>
+    <div class="cmp-cols">
+      <div class="col"><div class="col-tag">现状</div>
+        <div class="set-page">
+          <div class="set-card">
+            <div class="srow">
+              <div class="srow-tx">
+                <b>尾部保护区(用户消息)</b>
+                <span>最近的 N 条用户消息一定保留，可能超出上面的 turn/token 上限。</span>
+              </div>
+              <div class="srow-ctl"><input class="inp" style="width:120px" placeholder="4" /><span class="text-faint">msg</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx">
+                <b>尾部保护区(turn)</b>
+                <span>活跃区最近 N 个回合不参与压缩。</span>
+              </div>
+              <div class="srow-ctl"><input class="inp" style="width:120px" placeholder="2" /><span class="text-faint">turn</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx">
+                <b>尾部保护区(token)</b>
+                <span>活跃区最近 N 个 token 不参与压缩。</span>
+              </div>
+              <div class="srow-ctl"><input class="inp" style="width:120px" placeholder="20" /><span class="text-faint">K</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col"><div class="col-tag">改后</div>
+        <div class="set-page">
+          <div class="set-group-tt cv-new">尾部保护区</div>
+          <div class="set-card">
+            <div class="srow">
+              <div class="srow-tx">
+                <b>用户消息</b>
+                <span>最近的 N 条用户消息一定保留，可能超出上面的 turn/token 上限。</span>
+              </div>
+              <div class="srow-ctl"><input class="inp" style="width:120px" placeholder="4" /><span class="text-faint">msg</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx">
+                <b>turn</b>
+                <span>活跃区最近 N 个回合不参与压缩。</span>
+              </div>
+              <div class="srow-ctl"><input class="inp" style="width:120px" placeholder="2" /><span class="text-faint">turn</span></div>
+            </div>
+            <div class="srow">
+              <div class="srow-tx">
+                <b>token</b>
+                <span>活跃区最近 N 个 token 不参与压缩。</span>
+              </div>
+              <div class="srow-ctl"><input class="inp" style="width:120px" placeholder="20" /><span class="text-faint">K</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. subagent status encoded twice -->
+  <section class="cmp">
+    <div class="cmp-h"><code>HubDetailPage.tsx:92</code><span class="cv-tag">去重</span><span class="cv-why">圆点与右侧文字说同一件事，且 .sub-dot 的颜色规则要 .sub-dot.st-*（st-* 实际挂在 head 上），圆点从来没上色；另一选项是删文字只留圆点，但圆点要 hover 才能读</span></div>
+    <div class="cmp-cols">
+      <div class="col"><div class="col-tag">现状</div>
+        <div class="cv-frame">
+          <div class="hub-detail">
+            <div class="hub-detail-head st-running">
+              <span class="sub-dot cv-mark">●</span>
+              <b>Explore</b>
+              <span class="hub-detail-id text-faint">explore</span>
+              <span class="hub-detail-st text-ui-sm text-faint">
+                <span class="hub-detail-st-line">running · 12s · active 2m ago</span>
+                <span class="hub-detail-model text-dim">opus-4.5</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col"><div class="col-tag">改后</div>
+        <div class="cv-frame">
+          <div class="hub-detail">
+            <div class="hub-detail-head st-running">
+              <b>Explore</b>
+              <span class="hub-detail-id text-faint">explore</span>
+              <span class="hub-detail-st text-ui-sm text-faint">
+                <span class="hub-detail-st-line">running · 12s · active 2m ago</span>
+                <span class="hub-detail-model text-dim">opus-4.5</span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. expand card repeats the collapsed row -->
+  <section class="cmp">
+    <div class="cmp-h"><code>BgCmdPage.tsx:241,259</code><span class="cv-tag">去重</span><span class="cv-why">折叠行已经给了 op 与状态，展开卡顶部又写一遍；卡内只留目录/名称/命令/输出</span></div>
+    <div class="cmp-cols">
+      <div class="col"><div class="col-tag">现状</div>
+        <div class="cv-frame">
+          <div class="srow bgcmd-row on">
+            <span class="bgcmd-dot running"></span>
+            <div class="stext">
+              <div style="display:flex;align-items:center;gap:6px">
+                <b style="color:var(--text)">BASH</b>
+                <span class="path" title="bun run dev">bun run dev</span>
+              </div>
+            </div>
+            <span class="bgcmd-meta-tag running">运行中</span>
+            <span class="bgcmd-caret"><span class="cv-ic">▾</span></span>
+          </div>
+          <div class="bgcmd-expand">
+            <div class="bgcmd-meta-row">
+              <span class="bgcmd-meta-item op cv-mark"><b>操作:</b> bash</span>
+              <b class="bgcmd-meta-lbl">工作目录:</b>
+              <span class="bgcmd-meta-item wd" title="/Users/me/GitHub/oh-my-pi-desktop">/Users/me/GitHub/oh-my-pi-desktop</span>
+            </div>
+            <div class="bgcmd-meta-row">
+              <span class="bgcmd-meta-item name" title="dev"><b>名称:</b> dev</span>
+              <span class="bgcmd-meta-tag running cv-mark">运行中</span>
+              <button type="button" class="save-btn">收起</button>
+            </div>
+            <div class="bgcmd-meta-row" style="margin-top:8px">
+              <b>命令 / 输入:</b>
+            </div>
+            <div class="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain">bun run dev</div>
+            <div class="bgcmd-meta-row" style="margin-top:8px">
+              <b>输出 / 响应:</b>
+            </div>
+            <pre class="max-h-[180px] overflow-y-auto overscroll-contain bg-card border border-line-soft rounded-sm py-2 px-2.5 mt-1.5 font-mono text-[length:var(--code-fs,12px)] text-dim whitespace-pre-wrap break-all">VITE v5.4.0  ready in 412 ms
+➜  Local:   http://localhost:1421/</pre>
+          </div>
+        </div>
+      </div>
+      <div class="col"><div class="col-tag">改后</div>
+        <div class="cv-frame">
+          <div class="srow bgcmd-row on">
+            <span class="bgcmd-dot running"></span>
+            <div class="stext">
+              <div style="display:flex;align-items:center;gap:6px">
+                <b style="color:var(--text)">BASH</b>
+                <span class="path" title="bun run dev">bun run dev</span>
+              </div>
+            </div>
+            <span class="bgcmd-meta-tag running">运行中</span>
+            <span class="bgcmd-caret"><span class="cv-ic">▾</span></span>
+          </div>
+          <div class="bgcmd-expand">
+            <div class="bgcmd-meta-row">
+              <b class="bgcmd-meta-lbl">工作目录:</b>
+              <span class="bgcmd-meta-item wd" title="/Users/me/GitHub/oh-my-pi-desktop">/Users/me/GitHub/oh-my-pi-desktop</span>
+            </div>
+            <div class="bgcmd-meta-row">
+              <span class="bgcmd-meta-item name" title="dev"><b>名称:</b> dev</span>
+              <button type="button" class="save-btn">收起</button>
+            </div>
+            <div class="bgcmd-meta-row" style="margin-top:8px">
+              <b>命令 / 输入:</b>
+            </div>
+            <div class="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain">bun run dev</div>
+            <div class="bgcmd-meta-row" style="margin-top:8px">
+              <b>输出 / 响应:</b>
+            </div>
+            <pre class="max-h-[180px] overflow-y-auto overscroll-contain bg-card border border-line-soft rounded-sm py-2 px-2.5 mt-1.5 font-mono text-[length:var(--code-fs,12px)] text-dim whitespace-pre-wrap break-all">VITE v5.4.0  ready in 412 ms
+➜  Local:   http://localhost:1421/</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. parenthetical in the process-log row -->
+  <section class="cmp">
+    <div class="cmp-h"><code>LoopGroup.tsx:35</code><span class="cv-tag">截断文案</span><span class="cv-why">没有耗时/用量时这行就只剩一句括号说明；开关在哪由外观设置项自己讲</span></div>
+    <div class="cmp-cols">
+      <div class="col"><div class="col-tag">现状</div>
+        <div class="cv-frame">
+          <div class="act loop sealed">
+            <span class="lp-tx">过程记录<span class="cv-mark">（Token 与耗时显示在外观设置中开启）</span></span>
+            <span class="lp-arrow"><span class="cv-ic">›</span></span>
+          </div>
+        </div>
+      </div>
+      <div class="col"><div class="col-tag">改后</div>
+        <div class="cv-frame">
+          <div class="act loop sealed">
+            <span class="lp-tx">过程记录</span>
+            <span class="lp-arrow"><span class="cv-ic">›</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

@@ -9,13 +9,13 @@
   color: var(--faint); cursor: pointer;
 }
 
-.approval-collapse-btn:hover { background: var(--panel-2); color: var(--text); }
+.approval-collapse-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 /* collapsed pending approval: one-line summary bar (same card language as .approval-card) */
 .approval-min {
   display: flex; align-items: center; gap: 8px;
   width: 100%; margin: 0; padding: 8px 12px;
-  background: var(--inset); border: 1px solid var(--line-soft); border-radius: var(--r-card);
+  background: var(--inset); --hover-fill: var(--menu-hl); border: 1px solid var(--line-soft); border-radius: var(--r-card);
   color: var(--dim); font-size: var(--ui-fs-base); text-align: left; cursor: pointer;
   transition: border-color 220ms var(--swift);
 }
@@ -23,7 +23,7 @@
 /* Same focus accent as the expanded card (inherited dock --ring-focus). */
 .approval-min:focus { border-color: var(--ring-focus); }
 
-.approval-min:hover { background: var(--panel-2); }
+.approval-min:hover { background: var(--hover-fill); }
 
 .approval-min-tt { flex: none; font-weight: 500; }
 

@@ -42,13 +42,22 @@ export const automationsHandlers: Record<string, RpcHandler> = {
   },
 
   async automations_create(ws, msg) {
-    await createAutomation((msg?.automation ?? {}) as Partial<AutomationUpsertInput>);
+    // Delivery mode is agent-only (the tool passes it): the wire create RPC always
+    // creates new-session automations, so a payload cannot redirect runs into a
+    // conversation the user did not hand over.
+    const input = { ...(msg?.automation ?? {}) } as Partial<AutomationUpsertInput>;
+    delete input.deliverTo;
+    await createAutomation(input);
     replyList(ws);
   },
 
   async automations_update(ws, msg) {
     const id = String(msg?.id ?? "");
     const { state, automation: a } = requireAutomation(id);
+    // Session-delivery automations are agent-owned and immutable: re-aiming the
+    // schedule here would resurrect a completed one whose target may be archived
+    // or deleted, and the delivery mode itself is never editable.
+    if (a.deliverTo) throw new Error(hostI18n.t("errors.automations.deliveryUpdateUnsupported"));
     const patch = (msg ?? {}) as AutomationUpdateInput;
     // Required-text fields: same non-empty rule as create, applied only when present.
     const title = reqString(patch.title);

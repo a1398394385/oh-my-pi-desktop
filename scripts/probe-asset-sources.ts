@@ -13,8 +13,10 @@ import path from "node:path";
 const PROFILE = "omp-desktop-test";
 const { H } = await import("../host/state.ts");
 const { refreshAvailableProfiles, applyProfile } = await import("../host/profile.ts");
-const { loadAllSkillsScoped, loadAllMcpScoped } = await import("../host/assets.ts");
+const { loadAllSkillsScoped } = await import("../host/assets.ts");
+const { loadAllMcpScoped } = await import("../host/mcp-assets.ts");
 const { buildExtensionsPayload } = await import("../host/extensions.ts");
+const { settingsGet, settingsSet } = await import("../host/settings-compat.ts");
 
 const assert = (cond: unknown, msg: string) => {
   if (!cond) throw new Error(`断言失败: ${msg}`);
@@ -28,21 +30,36 @@ assert(H.agentDir.includes(PROFILE), `profile 隔离生效（agentDir=${H.agentD
 
 // ~/.claude/plugins is one of this machine's external user-level sources (skill provider=claude-plugins; MCP same source)
 const hasClaudePlugins = fs.existsSync(path.join(os.homedir(), ".claude", "plugins"));
+// Positive MCP opt-in assertion needs an enabled plugin that actually ships an .mcp.json
+// (base discovery enumerates MCP only from enabled plugins' roots)
+const hasEnabledPluginsMcp = (() => {
+  try {
+    const installed = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", "plugins", "installed_plugins.json"), "utf8"));
+    const enabled = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", "settings.json"), "utf8")).enabledPlugins ?? {};
+    for (const [key, installs] of Object.entries<any>(installed.plugins ?? {})) {
+      if (!enabled[key]) continue;
+      for (const inst of installs as { installPath?: string }[]) {
+        if (inst.installPath && fs.existsSync(path.join(inst.installPath, ".mcp.json"))) return true;
+      }
+    }
+  } catch { /* treat as absent: skip the positive assertion */ }
+  return false;
+})();
 
 // ---------- settings snapshot (restored before exit) ----------
 const KEYS = ["disabledProviders", "enabledProviders", "skills.enableClaudeUser", "skills.enableCodexUser"] as const;
-const snapshot = new Map<string, unknown>(KEYS.map((k) => [k, H.settings.get(k)]));
+const snapshot = new Map<string, unknown>(KEYS.map((k) => [k, settingsGet(H.settings, k)]));
 async function restore() {
-  for (const [k, v] of snapshot) H.settings.set(k, v ?? (k.startsWith("skills.") ? false : []));
+  for (const [k, v] of snapshot) settingsSet(H.settings, k, v ?? (k.startsWith("skills.") ? false : []));
   await H.settings.flush();
 }
 
 // Write the source state and rebuild the base registry (disabledProviders only takes effect via initializeWithSettings)
 async function applySources(disabled: string[], enabled: string[], claudeToggle: boolean) {
-  H.settings.set("disabledProviders", disabled);
-  H.settings.set("enabledProviders", enabled);
-  H.settings.set("skills.enableClaudeUser", claudeToggle);
-  H.settings.set("skills.enableCodexUser", claudeToggle);
+  settingsSet(H.settings, "disabledProviders", disabled);
+  settingsSet(H.settings, "enabledProviders", enabled);
+  settingsSet(H.settings, "skills.enableClaudeUser", claudeToggle);
+  settingsSet(H.settings, "skills.enableCodexUser", claudeToggle);
   await H.settings.flush();
   await applyProfile(PROFILE);
 }
@@ -105,7 +122,13 @@ try {
   console.log(`  opt-in 后技能 providers: ${fmt(optedSkills)} | MCP: ${fmt(optedMcp)}`);
   if (hasClaudePlugins) {
     assert((optedSkills.get("claude-plugins") ?? 0) > 0, `opt-in 后 ~/.claude/plugins 技能回到列表（claude-plugins=${optedSkills.get("claude-plugins") ?? 0}）`);
-    assert((optedMcp.get("claude-plugins") ?? 0) > 0, `opt-in 后 ~/.claude/plugins MCP 回到列表（claude-plugins=${optedMcp.get("claude-plugins") ?? 0}）`);
+    // Base discovery only enumerates MCP from *enabled* plugins' roots; when no enabled
+    // plugin ships an .mcp.json this positive assertion can never hold on the machine
+    if (hasEnabledPluginsMcp) {
+      assert((optedMcp.get("claude-plugins") ?? 0) > 0, `opt-in 后 ~/.claude/plugins MCP 回到列表（claude-plugins=${optedMcp.get("claude-plugins") ?? 0}）`);
+    } else {
+      console.log("  · 跳过 opt-in MCP 正向断言：本机无已启用且带 .mcp.json 的插件");
+    }
   } else {
     console.log("  · 跳过 opt-in 正向断言：本机无 ~/.claude/plugins");
   }

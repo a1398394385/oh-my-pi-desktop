@@ -105,7 +105,7 @@ export function SpanDrawer({ span, track, onClose, onOpenChildTrack }: SpanDrawe
       key: "duration",
       label: t("settingsPage.stats.traceView.drawer.duration"),
       value: (
-        <span className="num">
+        <span className="stats-num">
           {formatDurationMs(span.end - span.start)}
           {span.unterminated && (
             <span className="muted"> · {t("settingsPage.stats.traceView.drawer.unterminated")}</span>
@@ -116,7 +116,7 @@ export function SpanDrawer({ span, track, onClose, onOpenChildTrack }: SpanDrawe
     {
       key: "start",
       label: t("settingsPage.stats.traceView.drawer.start"),
-      value: <span className="num">{new Date(span.start).toLocaleTimeString()}</span>,
+      value: <span className="stats-num">{new Date(span.start).toLocaleTimeString()}</span>,
     },
     {
       key: "track",
@@ -129,17 +129,17 @@ export function SpanDrawer({ span, track, onClose, onOpenChildTrack }: SpanDrawe
       {
         key: "tokens",
         label: t("settingsPage.stats.traceView.drawer.tokens"),
-        value: <span className="num">{formatInteger(span.tokens ?? 0)}</span>,
+        value: <span className="stats-num">{formatInteger(span.tokens ?? 0)}</span>,
       },
       {
         key: "cost",
         label: t("settingsPage.stats.traceView.drawer.cost"),
-        value: <span className="num">${(span.cost ?? 0).toFixed(4)}</span>,
+        value: <span className="stats-num">${(span.cost ?? 0).toFixed(4)}</span>,
       },
       {
         key: "ttft",
         label: t("settingsPage.stats.traceView.drawer.ttft"),
-        value: <span className="num">{formatDurationMs(span.ttft ?? null)}</span>,
+        value: <span className="stats-num">{formatDurationMs(span.ttft ?? null)}</span>,
       },
       {
         key: "model",
@@ -152,7 +152,7 @@ export function SpanDrawer({ span, track, onClose, onOpenChildTrack }: SpanDrawe
         key: "split",
         label: t("settingsPage.stats.traceView.drawer.split"),
         value: (
-          <span className="num">
+          <span className="stats-num">
             {formatInteger(usage.input ?? 0)} / {formatInteger(usage.output ?? 0)} /{" "}
             {formatInteger(usage.cacheRead ?? 0)}
           </span>

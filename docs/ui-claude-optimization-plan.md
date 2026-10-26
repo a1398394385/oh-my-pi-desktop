@@ -96,7 +96,7 @@
 
 ### Batch 8 — 收尾
 
-- 根 AGENTS.md「设置页一致性规范」补一条动效 token 指针（SSOT 在 tokens.css，新增动效必须用 token，禁止新裸时长字面量）；考虑 `check-style-tokens.mjs` 增加时长/缓动字面量棘轮。
+- 动效 token 指针已归位：SSOT 在 `ui/css/global/tokens.css`，全站约定在 `docs/systems/ui-conventions.md` §2（新增动效必须用 token，禁止新裸时长字面量）；考虑 `check-style-tokens.mjs` 增加时长/缓动字面量棘轮。
 - 全量回归：`bun run check` + `ui:build` + `ui:typecheck` + dev 冒烟全页面走查。
 - 本文档状态置「已实施」，保留作调研快照。
 

@@ -18,7 +18,7 @@
 }
 
 .fork-container {
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
   border: 1px dashed var(--tint-accent-400);
   border-radius: var(--r-md);
   padding: 8px 10px;
@@ -40,9 +40,4 @@
   align-items: center;
   gap: 5px;
   letter-spacing: 0.3px;
-}
-
-.fork-hint {
-  font-size: var(--ui-fs-xs);
-  color: var(--faint);
 }

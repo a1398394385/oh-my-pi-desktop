@@ -578,6 +578,13 @@ fn set_menu_language(app: tauri::AppHandle, lang: String) -> Result<(), String> 
 /// relaying the host WS address to the frontend.
 /// All business logic lives in the Bun host process (host/host.ts, in-repo omp SDK).
 pub fn run() {
+    // Release builds must not be externally attachable. WebView2 appends
+    // WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS after the shell's own browser args,
+    // so an inherited `--remote-debugging-port` would expose the shipped webview
+    // over CDP to any local process. Debug builds keep the variable: that is the
+    // CDP channel documented in docs/DEVELOPMENT.md.
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    std::env::remove_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS");
     let cell: WsUrlCell = Arc::new(Mutex::new(HostState {
         url: None,
         error: None,

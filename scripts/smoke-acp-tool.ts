@@ -17,10 +17,11 @@
 //      appendCustomEntry, projection live on the next request, tool_result
 //      stats, rebuild parity (T2), and the §5.3 degrade write-back demo.
 //
-// All session data lands under the OMP_PROFILE=acp-probe profile only
+// All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
 // directory at the end.
-// Usage: OMP_PROFILE=acp-probe bun run scripts/smoke-acp-tool.ts
+// Usage: OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-tool.ts
+import { TEST_PROFILE } from "./smoke-profile.ts";
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -41,10 +42,10 @@ import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host
 import { splitBlocks } from "../host/acp-projection.ts";
 import { rebuildAcpState } from "../host/acp-persist.ts";
 
-assert.equal(process.env.OMP_PROFILE, "acp-probe", "run with OMP_PROFILE=acp-probe (never the default profile)");
+assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Static imports cannot work for the coding-agent module: it resolves agentDir
 // at import time, so the profile must be active first (T2/probe precedent).
-setProfile("acp-probe");
+setProfile(TEST_PROFILE);
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
 const { AuthStorage } = await import("@oh-my-pi/pi-coding-agent/session/auth-storage");
 const { ModelRegistry } = await import("@oh-my-pi/pi-coding-agent/config/model-registry");
@@ -452,7 +453,7 @@ console.log("ok: E tool_result stats correct; same-batch second call rejected (c
 // Journal: the compaction block went to disk through the official channel; a
 // rejected call added nothing (zero side effects end to end).
 const sessionFile = sessionManager.getSessionFile()!;
-assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the acp-probe agentDir, got ${sessionFile}`);
+assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 const raw = await Bun.file(sessionFile).text();
 assert.equal(raw.split('"customType":"acpSummary"').length - 1, 1, "exactly one acpSummary entry, from the successful call only");
 console.log("ok: E acpSummary persisted via appendCustomEntry; rejection wrote nothing");
@@ -509,9 +510,23 @@ await reopened.close(); // release the OS lock sidecar so the dir cleanup sticks
 const sessionDir = dirname(sessionFile);
 process.on("exit", () => {
 	rmSync(sessionDir, { recursive: true, force: true });
-	rmSync(cwdE2E, { recursive: true, force: true });
+	// Windows can still hold the throwaway cwd when a session handle outlives the
+	// test; the temp dir is disposable, and the exit handler below retries after
+	// teardown.
+	try {
+		rmSync(cwdE2E, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
 });
 rmSync(sessionDir, { recursive: true, force: true });
 assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
-rmSync(cwdE2E, { recursive: true, force: true });
+// Windows can still hold the throwaway cwd when a session handle outlives the
+// test; the temp dir is disposable, and the exit handler above retries after
+// teardown.
+try {
+	rmSync(cwdE2E, { recursive: true, force: true });
+} catch {
+	// Windows lock window; the temp dir is disposable
+}
 console.log("\nALL ACP T3 TOOL SMOKE CHECKS PASSED");

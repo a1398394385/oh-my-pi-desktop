@@ -5,7 +5,7 @@
 // roleCandidatePool. The keepalive targets picker (ExperimentalPage) consumes the
 // generic picker directly.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useAppStore, send } from "../../store";
+import { useAppStore, send, effZoom } from "../../store";
 import { t } from "../../i18n";
 import ModelCascadeMenu, { type PickerModel, type PickerRole } from "../shared/models/ModelCascadeMenu";
 export type { PickerModel, PickerRole } from "../shared/models/ModelCascadeMenu";
@@ -168,7 +168,7 @@ export function ModelCascadePicker({
   const positionMenu = (menu: HTMLDivElement) => {
     const sel = selRef.current;
     if (!sel) return;
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     const bound = sel.closest("#setBody") ?? document.body;
     const selRect = sel.getBoundingClientRect();
     const boundRect = bound.getBoundingClientRect();
@@ -193,7 +193,7 @@ export function ModelCascadePicker({
   const positionFlyout = (menu: HTMLDivElement, fly: HTMLDivElement, row: HTMLDivElement) => {
     const sel = selRef.current;
     if (!sel) return;
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
     const rowTop = menu.offsetTop + row.offsetTop - menu.scrollTop;

@@ -2,7 +2,7 @@
 
 **Status**: Accepted(2026-10-12)
 **Decider**: xys
-**Informed by**: 2026-10-12 设计讨论会话;底座 oh-my-pi 压缩链路(packages/agent/src/compaction/、packages/snapcompact/)
+**Amended**: 2026-10-26(v12)——recall_block 工具与压缩块索引渲染移除:生产 journal 84 个压缩块 0 次调用、60% 会话压缩后 0-1 轮即结束,「索引→取回」闭环成本恒付收益为零;持久层 index 数据保留作记账。见 spec 修订记录。
 
 ## Context(背景)
 

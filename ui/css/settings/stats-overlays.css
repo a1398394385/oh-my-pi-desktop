@@ -1,0 +1,158 @@
+/* Stats overlays — the drawer, the dialog and the trace tooltip render in a
+   portal outside #pg-stats. They re-enter the stats scope through a
+   .stats-scope wrapper (see ui/Modal.tsx, ui/Drawer.tsx,
+   traces/TimelineCanvas.tsx), so the page tokens and the shared primitives
+   (btn / kv / meter / stack / badge …) apply there too.
+
+   Only what the page stylesheet does not cover lives here: the dialog itself
+   (stats.css defines .modal-scrim/.modal-panel, which no component renders),
+   the request drawer's error card, the judge cost quote, and the stacking
+   order against the app's own panels (the portal sits outside #settings, so
+   the dashboard's own z-index scale does not apply). */
+
+/* ── Dialog ─────────────────────────────────────────────────────────────── */
+
+:is(#pg-stats, .stats-scope) .modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--tint-black-450);
+  animation: fade var(--st-dur-2) var(--ease-out) both;
+}
+
+:is(#pg-stats, .stats-scope) .modal {
+  width: min(480px, 100%);
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--r-panel);
+  border: 1px solid var(--line-2);
+  background: var(--overlay);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  box-shadow: var(--shadow-3);
+  animation: rise var(--st-dur-3) var(--ease-out) both;
+}
+
+:is(#pg-stats, .stats-scope) .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 10px 18px;
+}
+
+:is(#pg-stats, .stats-scope) .modal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink-1);
+}
+
+:is(#pg-stats, .stats-scope) .modal-body {
+  padding: 4px 18px 16px;
+  color: var(--ink-2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+:is(#pg-stats, .stats-scope) .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line-1);
+  background: var(--hover);
+}
+
+/* ── Request drawer error card ──────────────────────────────────────────── */
+
+:is(#pg-stats, .stats-scope) .request-drawer-error {
+  --rd-tone: var(--bad);
+  --rd-tone-soft: var(--bad-soft);
+  padding: 10px 12px 12px;
+  border-radius: var(--r-control);
+  border: 1px solid color-mix(in srgb, var(--rd-tone) 35%, transparent);
+  background: var(--rd-tone-soft);
+}
+
+:is(#pg-stats, .stats-scope) .request-drawer-error[data-tone="warn"] {
+  --rd-tone: var(--warn);
+  --rd-tone-soft: var(--warn-soft);
+}
+
+:is(#pg-stats, .stats-scope) .request-drawer-error-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rd-tone);
+  margin-bottom: 6px;
+}
+
+:is(#pg-stats, .stats-scope) .request-drawer-error-text {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+}
+
+:is(#pg-stats, .stats-scope) .request-drawer-file {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+}
+
+/* ── Judge cost quote (inside the dialog) ───────────────────────────────── */
+
+:is(#pg-stats, .stats-scope) .frustration-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-control);
+  background: var(--hover);
+}
+
+:is(#pg-stats, .stats-scope) .frustration-quote-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+
+/* ── Stacking order (the portal sits outside #settings) ─────────────────── */
+
+:is(#pg-stats, .stats-scope) .drawer-scrim {
+  z-index: 1000;
+  animation: fade var(--st-dur-2) var(--ease-out) both;
+}
+
+:is(#pg-stats, .stats-scope) .drawer {
+  z-index: 1001;
+}
+
+:is(#pg-stats, .stats-scope) .traces-tooltip {
+  z-index: 600;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

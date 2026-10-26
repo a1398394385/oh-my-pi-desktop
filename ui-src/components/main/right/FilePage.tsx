@@ -1,7 +1,7 @@
 // File page: empty state is the current project's file tree (lazily loaded one level per
 // expand); clicking a file enters the detail
-// (read_file for whole files / read_image for image previews; rb-head breadcrumb pinned +
-// scrolling rb-scroll skeleton).
+// (read_file for whole files / read_image for image previews; fp-title title bar pinned +
+// rb-head actions + scrolling rb-scroll skeleton).
 import { flushSync, createPortal } from "react-dom";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
@@ -15,13 +15,186 @@ import { CodeTokens, useCodeTokens } from "../../../lib/CodeTokens";
 import type { EditorInfo } from "../../../types/frames";
 import type { FileViewState } from "../../../types/session";
 import { IMAGE_EXTS } from "../../chat/util";
+import MdSurface from "../../chat/MdSurface";
 
 const FILE_VIEW_MAX_LINES = 800; // display window for over-long whole files: start at the request range's first line when present, otherwise from the top
 
+// Markdown files open in rendered preview with a preview/source toggle (ZCode file-tab parity)
+const MD_VIEW_RE = /\.(md|markdown)$/i;
+// Above this size streamdown rendering janks the panel; the file stays in source view
+const MD_PREVIEW_MAX_CHARS = 300_000;
+
+// File page shell (ZCode two-pane parity): content pane (title bar + empty hint / opened file)
+// on the left, persistent navigation pane (search + root row + tree) on the right, draggable
+// splitter between. Nav width and collapse state are pure UI prefs persisted to localStorage.
+const NAV_WIDTH_KEY = "omp-file-nav-w";
+const NAV_COLLAPSED_KEY = "omp-file-nav-collapsed";
+const NAV_W_MIN = 200;
+const NAV_W_MAX = 480;
+
+// Title-bar trail: the project name followed by the path segments inside it; a file outside
+// the project root falls back to its own absolute segments
+function titleSegments(abs: string, root: string | undefined): string[] {
+  const a = abs.replace(/\\/g, "/").replace(/\/+$/, "");
+  const r = (root || "").replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!r || !a.startsWith(r + "/")) return a.split("/").filter(Boolean);
+  const name = r.split("/").filter(Boolean).pop() || r;
+  return [name, ...a.slice(r.length + 1).split("/")];
+}
+
+// Title-bar path: segments joined by the same right-chevron the collapsible tree rows use,
+// so the path reads as a trail instead of a slash string. `fold` swaps the middle segments
+// for a single ellipsis when the whole trail does not fit (measured in FilePage)
+function PathCrumbs({ segments, fold }: { segments: string[]; fold: boolean }) {
+  const first = segments[0];
+  const last = segments[segments.length - 1];
+  const middles = segments.slice(1, -1);
+  return (
+    <>
+      <span className="fp-crumb-seg">{first}</span>
+      {middles.length > 0 &&
+        (fold ? (
+          <>
+            <span className="fp-crumb-sep">
+              <Icon name="chevronRight" size={15} />
+            </span>
+            <span className="fp-crumb-seg">…</span>
+          </>
+        ) : (
+          middles.map((seg, i) => (
+            <Fragment key={i}>
+              <span className="fp-crumb-sep">
+                <Icon name="chevronRight" size={15} />
+              </span>
+              <span className="fp-crumb-seg">{seg}</span>
+            </Fragment>
+          ))
+        ))}
+      {segments.length > 1 && (
+        <>
+          <span className="fp-crumb-sep">
+            <Icon name="chevronRight" size={15} />
+          </span>
+          <span className="fp-crumb-seg">{last}</span>
+        </>
+      )}
+    </>
+  );
+}
+
 export default function FilePage() {
+  const { t } = useTranslation();
   const fileView = useAppStore((s) => s.fileView);
-  if (fileView) return <FvDetail />;
-  return <FileTree />; // empty state: current project file tree
+  const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
+  const [navW, setNavW] = useState(() => {
+    const v = Number(localStorage.getItem(NAV_WIDTH_KEY));
+    return v >= NAV_W_MIN && v <= NAV_W_MAX ? v : 260;
+  });
+  const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+  const dragRef = useRef(false);
+  // Fold the middle path segments only when the whole trail genuinely overflows: the hidden
+  // mirror renders the unfolded trail, so the decision never depends on the current render
+  const pathRef = useRef<HTMLSpanElement>(null);
+  const mirrorRef = useRef<HTMLSpanElement>(null);
+  const [foldPath, setFoldPath] = useState(false);
+  const pathSegments = fileView ? titleSegments(fileView.path, cwd) : [t("right.tabFile")];
+  // Splitter drag tracks the pointer on window (fast drags never lose the gesture);
+  // width = shell right edge minus pointer x, clamped
+  useEffect(() => {
+    const move = (e: PointerEvent) => {
+      if (!dragRef.current) return;
+      const shell = document.getElementById("fpShell")?.getBoundingClientRect();
+      if (!shell) return;
+      setNavW(Math.max(NAV_W_MIN, Math.min(NAV_W_MAX, shell.right - e.clientX)));
+    };
+    const up = () => { dragRef.current = false; };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, []);
+  useEffect(() => { localStorage.setItem(NAV_WIDTH_KEY, String(navW)); }, [navW]);
+  useEffect(() => { localStorage.setItem(NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0"); }, [navCollapsed]);
+  useLayoutEffect(() => {
+    const el = pathRef.current;
+    const mirror = mirrorRef.current;
+    if (!el || !mirror) return;
+    // ResizeObserver delivers an initial callback on observe(), so no separate first pass
+    const ro = new ResizeObserver(() => setFoldPath(mirror.offsetWidth > el.clientWidth + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+
+  return (
+    <div id="fpShell" className="fp-shell">
+      {/* Title bar (ZCode parity): the open file's path relative to the project root on the
+          left (the tab label while no file is open), the file actions and the file-navigation
+          toggle on the right. It spans both panes: the content pane alone is too narrow to
+          carry the path. */}
+      <div className="fp-title">
+        <span className="fp-title-path" ref={pathRef} title={fileView?.path}>
+          <PathCrumbs segments={pathSegments} fold={foldPath} />
+          {/* hidden unfolded copy: its width decides whether the real trail has to fold */}
+          <span className="fp-crumb-mirror" aria-hidden="true" ref={mirrorRef}>
+            <PathCrumbs segments={pathSegments} fold={false} />
+          </span>
+        </span>
+        <FileTabActions />
+        <button
+          type="button"
+          className="icon-btn"
+          title={navCollapsed ? t("right.expandFileNav") : t("right.collapseFileNav")}
+          onClick={() => setNavCollapsed((v) => !v)}
+        >
+          <Icon name={navCollapsed ? "collapseLeft" : "collapseRight"} size={15} />
+        </button>
+      </div>
+      <div className="fp-panes">
+        <div className="fp-main">{fileView ? <FvDetail /> : <FvEmpty />}</div>
+        {!navCollapsed && (
+          <>
+            <div
+              className="fp-split"
+              onPointerDown={(e) => { e.preventDefault(); dragRef.current = true; }}
+            />
+            <div className="fp-nav" style={{ width: navW, flexShrink: 1, minWidth: 160 }}>
+              <FileNav />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Empty content pane: ZCode's pick-a-file hint; the navigation pane beside it is the entry.
+// The hint is nowrap and the pane shrinks with the splitter drag, so it would spill over the
+// nav pane: hide it instead of clipping partial text. Width comes from the content box (no
+// padding on .fp-empty) so the hidden mirror is the exact text width.
+function FvEmpty() {
+  const { t } = useTranslation();
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const mirrorRef = useRef<HTMLSpanElement | null>(null);
+  const [fits, setFits] = useState(true);
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const mirror = mirrorRef.current;
+    if (!box || !mirror) return;
+    // ResizeObserver delivers an initial callback on observe(), so no separate first pass
+    const ro = new ResizeObserver(() => setFits(mirror.offsetWidth <= box.clientWidth));
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div className="fp-empty" ref={boxRef}>
+      {fits && <span>{t("right.pickFile")}</span>}
+      <span className="fp-empty-mirror" aria-hidden="true" ref={mirrorRef}>
+        {t("right.pickFile")}
+      </span>
+    </div>
+  );
 }
 
 // More menu on the project row / the back-to-tree row: open the target in one of the installed
@@ -34,7 +207,7 @@ const FALLBACK_ICON: Record<EditorInfo["kind"], string> = {
   terminal: "term",
 };
 
-function FileMoreMenu({ target, root }: { target: string; root: string }) {
+function FileMoreMenu({ target, root, mdView }: { target: string; root: string; mdView?: { preview: boolean; previewable: boolean; onPick: (v: boolean) => void } }) {
   const { t } = useTranslation();
   const editors = useAppStore((s) => s.editors);
   const [open, setOpen] = useState(false);
@@ -103,6 +276,42 @@ function FileMoreMenu({ target, root }: { target: string; root: string }) {
       {open &&
         createPortal(
           <div className="menu open fv-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+            {mdView && (
+              <>
+                <div className="mh">{t("right.mdGroup")}</div>
+                <button
+                  type="button"
+                  className="mi"
+                  disabled={!mdView.previewable}
+                  title={mdView.previewable ? undefined : t("right.mdTooLarge")}
+                  onClick={() => {
+                    setOpen(false);
+                    mdView.onPick(true);
+                  }}
+                >
+                  <span className="mi-ic">
+                    <Icon name="eye" size={14} />
+                  </span>
+                  {t("right.mdPreview")}
+                  <span className="fv-ck">{mdView.preview ? <Icon name="check" size={13} /> : null}</span>
+                </button>
+                <button
+                  type="button"
+                  className="mi"
+                  onClick={() => {
+                    setOpen(false);
+                    mdView.onPick(false);
+                  }}
+                >
+                  <span className="mi-ic">
+                    <Icon name="file" size={14} />
+                  </span>
+                  {t("right.mdSource")}
+                  <span className="fv-ck">{mdView.preview ? null : <Icon name="check" size={13} />}</span>
+                </button>
+                <div className="sep" />
+              </>
+            )}
             <div className="mh">{t("right.openWithTitle")}</div>
             {editors === null ? (
               <div className="mi empty">{t("common.loading")}</div>
@@ -142,15 +351,79 @@ function FileMoreMenu({ target, root }: { target: string; root: string }) {
   );
 }
 
-// Empty state: current project file tree (lazily loaded one level per expand; click a file to enter detail)
-function FileTree() {
+// Navigation pane: search box on top, then the project root row (more / refresh),
+// then the tree — or the flat search results while a query is active (ZCode behavior).
+// Results come from list_files (host fuzzyFind, the composer @-mention engine) tagged
+// target:"fileTab" so the reply lands in rightState.fileSearch instead of the composer list.
+function FileNav() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
+  const fileSearch = useAppStore((st) => st.rightState.fileSearch);
+  const [q, setQ] = useState("");
+  const [reqId, setReqId] = useState(0);
+  // Session switch resets the box: pending results belong to the old project's cwd
+  useEffect(() => { setQ(""); }, [s?.cwd]);
+  // Debounced search (the host fuzzyFind is a disk scan); reqId comes from the shared
+  // mentionReqSeq counter so composer @-mention replies can't be confused with these
+  useEffect(() => {
+    const kw = q.trim();
+    if (!kw) return;
+    const timer = setTimeout(() => {
+      const st = useAppStore.getState();
+      const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+      if (!sess) return;
+      const id = st.mentionReqSeq + 1;
+      useAppStore.setState({ mentionReqSeq: id });
+      setReqId(id);
+      send({ type: "list_files", sessionId: sess.sessionId, query: kw, reqId: id, target: "fileTab" });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [q]);
   if (!s) {
     return <div className="py-3 text-faint text-ui-base">{t("right.noActiveSession")}</div>;
   }
+  const kw = q.trim();
+  const results = kw && fileSearch && fileSearch.reqId === reqId ? fileSearch.matches : null;
+  // Directory hit: expand its whole chain in the tree and drop back to the tree view
+  const openDir = (rel: string) => {
+    useAppStore.setState((st) => {
+      const fileTreeExpanded = new Set(st.rightState.fileTreeExpanded);
+      let acc = s.cwd;
+      for (const seg of rel.split("/")) {
+        acc += "/" + seg;
+        fileTreeExpanded.add(acc);
+      }
+      return { rightState: { ...st.rightState, fileTreeExpanded } };
+    });
+    setQ("");
+  };
+  // Refresh: drop the level cache (and in-flight markers); expanded levels refetch on
+  // render because their cache entry is gone — expanded state itself is preserved
+  const refreshTree = () => {
+    useAppStore.setState((st) => ({
+      rightState: { ...st.rightState, fileTreeDirs: new Map(), fileTreePending: new Set() },
+    }));
+  };
   return (
     <>
+      <div className="flex items-center gap-1.5 mx-2 my-1 px-1.5 py-[3px] rounded-sm bg-panel-2 border border-line text-ui-sm text-dim">
+        <Icon name="search" size={12} />
+        <input
+          className="flex-1 min-w-0 bg-transparent border-0 outline-none text-ui-sm text-text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("right.searchFiles")}
+        />
+        {q && (
+          <button
+            className="border-0 bg-transparent text-faint cursor-pointer p-0.5 hover:text-text"
+            onClick={() => setQ("")}
+            title={t("common.close")}
+          >
+            <Icon name="xmark" size={11} />
+          </button>
+        )}
+      </div>
       <div
         className="flex items-center gap-1.5 text-ui-base text-text font-medium cursor-default py-[3px] px-2 rounded-sm whitespace-nowrap overflow-hidden text-ellipsis"
         title={s.cwd}
@@ -160,8 +433,47 @@ function FileTree() {
         </span>
         <span className="min-w-0 flex-1 overflow-hidden text-ellipsis">{pathBase(s.cwd) || s.cwd}</span>
         <FileMoreMenu target={s.cwd} root={s.cwd} />
+        <button
+          type="button"
+          className="icon-btn"
+          title={t("right.refreshTree")}
+          onClick={refreshTree}
+        >
+          <Icon name="refresh" size={14} />
+        </button>
       </div>
-      <FileTreeLevel dirPath={s.cwd} depth={1} />
+      {kw ? (
+        results === null ? (
+          <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>
+        ) : results.length === 0 ? (
+          <div className="py-3 text-faint text-ui-base">{t("right.noFileMatches")}</div>
+        ) : (
+          results.map((m) => {
+            const segs = m.path.split("/");
+            const tail = segs[segs.length - 1];
+            return (
+              <div
+                key={m.path}
+                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
+                style={{ paddingLeft: 20 + "px" }}
+                title={s.cwd + "/" + m.path}
+                onClick={() => (m.dir ? openDir(m.path) : openFileView(s.cwd + "/" + m.path))}
+              >
+                <span className="ft-caret ft-file-ic">
+                  <Icon name={m.dir ? "folder" : fileTypeIcon(tail)} />
+                </span>
+                <span className="min-w-0 overflow-hidden text-ellipsis">
+                  {segs.length > 1 && <span className="text-faint">{segs.slice(0, -1).join(" / ")} / </span>}
+                  {tail}
+                  {m.dir ? "/" : ""}
+                </span>
+              </div>
+            );
+          })
+        )
+      ) : (
+        <FileTreeLevel dirPath={s.cwd} depth={1} />
+      )}
     </>
   );
 }
@@ -195,7 +507,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
           return (
             <Fragment key={full}>
               <div
-                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
+                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
                 style={{ paddingLeft: 6 + depth * 14 + "px" }}
                 onClick={() => {
                   // Expand/collapse: fresh Set + fresh rightState reference (subscribers notice by reference)
@@ -219,7 +531,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
         return (
           <div
             key={full}
-            className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
+            className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
             style={{ paddingLeft: 6 + depth * 14 + "px" }}
             title={full}
             onClick={() => openFileView(full)}
@@ -253,43 +565,49 @@ export function openImageFileView(full: string) {
   send({ type: "read_image", path: full });
 }
 
-// File path breadcrumb: inside the project "project name › relative segments", full path
-// outside; separator uses the right-chevron icon
-function FileCrumb({ absPath }: { absPath: string }) {
+// File actions shown in the page title bar (reveal in the file manager + the more menu).
+// They sit in the title bar instead of a detail header row, so the detail itself carries no title.
+function FileTabActions() {
+  const { t } = useTranslation();
+  const fv = useAppStore((s) => s.fileView);
   const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
-  // Normalize Windows backslash paths to "/" first, else the prefix match fails and the whole
-  // path renders as one segment
-  const root = (cwd || "").replace(/\\/g, "/").replace(/\/+$/, "");
-  const abs = absPath.replace(/\\/g, "/").replace(/\/+$/, "");
-  let segs: (string | undefined)[];
-  if (root && abs.startsWith(root + "/")) {
-    segs = [root.split("/").filter(Boolean).pop(), ...abs.slice(root.length + 1).split("/")];
-  } else {
-    segs = abs.split("/").filter(Boolean);
-  }
+  const editors = useAppStore((st) => st.editors);
+  const fileManager = editors?.find((e) => e.kind === "fileManager");
+  if (!fv) return null;
+  const isMd = MD_VIEW_RE.test(fv.path);
+  const previewable = isMd && (fv.text ?? "").length <= MD_PREVIEW_MAX_CHARS;
   return (
-    <div className="flex items-center gap-0.5 text-ui-xs text-faint mb-2 overflow-hidden whitespace-nowrap" title={absPath}>
-      {segs.map((seg, i) => (
-        <Fragment key={i}>
-          {i > 0 && (
-            <span className="flex-none inline-flex items-center">
-              <Icon name="chevronRight" size={10} />
-            </span>
-          )}
-          <span className="min-w-0 overflow-hidden text-ellipsis last:text-dim last:font-medium">{seg}</span>
-        </Fragment>
-      ))}
-    </div>
+    <>
+      <button
+        type="button"
+        className="icon-btn"
+        disabled={!fileManager}
+        title={t("right.revealInFinder")}
+        onClick={() => fileManager && send({ type: "open_with", editorId: fileManager.id, path: fv.path })}
+      >
+        <Icon name="externalOpen" size={15} />
+      </button>
+      <FileMoreMenu
+        target={fv.path}
+        root={cwd || ""}
+        mdView={isMd ? { preview: fv.mdPreview ?? isMd, previewable, onPick: (v) => setBump({ fileView: { ...fv, mdPreview: v } }) } : undefined}
+      />
+    </>
   );
 }
 
 // File detail: render the read content first, switch to the whole file after the read_file
-// reply (request-range line highlighting + start line scrolled to top)
+// reply (request-range line highlighting + start line scrolled to top). Header-free: the path
+// lives in the page title bar, the actions in the tab head.
 function FvDetail() {
   const { t } = useTranslation();
   const fv = useAppStore((s) => s.fileView)!; // assertion: FilePage's entry if (fileView) already guards, same as the original
-  const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const isMd = MD_VIEW_RE.test(fv.path);
+  // Markdown opens in rendered preview (ZCode parity); the picked mode travels with the view
+  // state, so a non-md file never inherits a stale toggle
+  const mdPreview = fv.mdPreview ?? isMd;
+  const previewable = isMd && (fv.text ?? "").length <= MD_PREVIEW_MAX_CHARS;
   // Once the whole file is ready, scroll the request range's start line to the top of the view
   useEffect(() => {
     if (!fv.full || fv.reqRange == null) return;
@@ -328,38 +646,27 @@ function FvDetail() {
     };
   }, []);
   return (
-    <>
-      <div className="rb-head">
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <button
-            className="border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text"
-            onClick={() => {
-              setBump({ fileView: null });
-            }}
-          >
-            {t("right.backToTree")}
-          </button>
-          <span className="sp" />
-          <FileMoreMenu target={fv.path} root={cwd || ""} />
-        </div>
-        <FileCrumb absPath={fv.path} />
-      </div>
-      <div className="rb-scroll">
-        {/* Image preview: rendered once the read_image reply (store puts it in rightState.imageContent) arrives */}
-        {fv.image ? (
-          <FvImage fv={fv} />
-        ) : !fv.text && !fv.error ? (
-          <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>
-        ) : (
-          <>
-            {fv.error && (
-              <div className="text-ui-xs text-faint mt-2">{t("right.errorParen", { error: fv.error })}</div>
-            )}
+    <div className="rb-scroll">
+      {/* Image preview: rendered once the read_image reply (store puts it in rightState.imageContent) arrives */}
+      {fv.image ? (
+        <FvImage fv={fv} />
+      ) : !fv.text && !fv.error ? (
+        <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>
+      ) : (
+        <>
+          {fv.error && (
+            <div className="text-ui-xs text-faint mt-2">{t("right.errorParen", { error: fv.error })}</div>
+          )}
+          {isMd && mdPreview && previewable ? (
+            <div className="pt-1 pb-3 max-w-[900px]">
+              <MdSurface text={fv.text ?? ""} />
+            </div>
+          ) : (
             <FvBody key={fv.path} fv={fv} bodyRef={bodyRef} />
-          </>
-        )}
-      </div>
-    </>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

@@ -39,12 +39,13 @@ export const filesHandlers = {
         newSessionBranch: msg.current || "",
         newSessionBranches: msg.branches || [],
         newSessionRemotes: msg.remotes || [],
+        newSessionDetached: !!msg.detached,
       });
     }
     const activeCwd = st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined;
     if (msg.cwd === activeCwd) {
       useAppStore.setState({
-        headerGit: { cwd: msg.cwd, isGit: !!msg.isGit, current: msg.current, branches: msg.branches || [], remotes: msg.remotes || [] },
+        headerGit: { cwd: msg.cwd, isGit: !!msg.isGit, current: msg.current, branches: msg.branches || [], remotes: msg.remotes || [], detached: !!msg.detached },
       });
     }
   },
@@ -68,9 +69,15 @@ export const filesHandlers = {
       const parts = f.path.split("/");
       for (let i = 1; i < parts.length; i++) dirs.add(parts.slice(0, i).join("/"));
     }
+    const st = useAppStore.getState();
     useAppStore.setState((s) => ({
-      gitDiffCache: { cwd: msg.cwd, files: msg.files, loading: false },
+      gitDiffCache: { cwd: msg.cwd, files: msg.files, loading: false, state: msg.state ?? "NORMAL" },
       rightState: { ...s.rightState, expandedDirs: dirs },
+      // The Git page reads its own cwd only: a session-diff refresh landing while the
+      // page is open must not empty its left column.
+      ...(st.gitManage === msg.cwd
+        ? { gitPageStatus: { cwd: msg.cwd, files: msg.files, state: msg.state ?? "NORMAL", loading: false } }
+        : {}),
     }));
   },
   git_staged: onGitWrite,

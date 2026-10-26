@@ -2,7 +2,7 @@ import { X } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "../../../../store";
+import { useEffZoom } from "../../../../store";
 
 export interface DrawerProps {
   open: boolean;
@@ -18,7 +18,7 @@ export function Drawer({ open, onClose, title, subtitle, actions, width, childre
   const { t } = useTranslation();
   // Portal lives on body outside the zoomed #settings subtree: the panel carries
   // the zoom itself (scrim stays fullscreen)
-  const zoom = useAppStore((s) => s.zoomLevel);
+  const zoom = useEffZoom();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const panelRef = useRef<HTMLDivElement>(null);
@@ -42,7 +42,9 @@ export function Drawer({ open, onClose, title, subtitle, actions, width, childre
 
   if (!open) return null;
   return createPortal(
-    <>
+    // The stats scope carries the page tokens and shared primitives, which the
+    // portal would otherwise lose (it renders outside #pg-stats).
+    <div className="stats-scope">
       <div className="drawer-scrim" onClick={onClose} role="presentation" />
       <div
         ref={panelRef}
@@ -76,7 +78,7 @@ export function Drawer({ open, onClose, title, subtitle, actions, width, childre
         </header>
         <div className="drawer-body">{children}</div>
       </div>
-    </>,
+    </div>,
     document.body,
   );
 }

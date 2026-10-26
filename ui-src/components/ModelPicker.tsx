@@ -19,7 +19,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "../store";
+import { useAppStore, effZoom } from "../store";
 import type { TimerHandle } from "../store";
 import type { ModelCaps } from "../store/models";
 import Icon from "../Icon";
@@ -214,7 +214,7 @@ function SettingsCascadePicker({
     const sel = selRef.current;
     const menu = menuRef.current;
     if (!open || !sel || !menu) return undefined;
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     (menu.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
     const sr = sel.getBoundingClientRect();
     const mr = menu.getBoundingClientRect();
@@ -242,7 +242,7 @@ function SettingsCascadePicker({
     if (!open || !flyProv || !menu || !fly) return undefined;
     const row = rowRefs.current.get(flyProv);
     if (!row) return undefined;
-    const z = useAppStore.getState().zoomLevel || 1;
+    const z = effZoom();
     (fly.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
@@ -398,7 +398,7 @@ export function EnabledModelPicker({
  * entry), narrowed by `filter` (role accepted kinds / chat-only creation form).
  */
 export function ConfiguredModelPicker({
-  label, selectedId, filter, disabled, onPick, selClassName,
+  label, selectedId, filter, disabled, onPick, selClassName, menuClassName,
 }: {
   label: ReactNode;
   selectedId?: string;
@@ -406,6 +406,9 @@ export function ConfiguredModelPicker({
   disabled?: boolean;
   onPick: (id: string) => void;
   selClassName?: string;
+  // Level-1 menu base classes; override only when the trigger opts out of the
+  // sm control tier, so the menu keeps matching its trigger.
+  menuClassName?: string;
 }) {
   const modelCatalog = useAppStore((s) => s.modelCatalog);
   const models = modelCatalog.filter((m) => !filter || filter(m));
@@ -414,6 +417,7 @@ export function ConfiguredModelPicker({
       label={label}
       disabled={disabled}
       selClassName={selClassName}
+      menuClassName={menuClassName}
       models={models}
       selectedId={selectedId}
       onPick={onPick}

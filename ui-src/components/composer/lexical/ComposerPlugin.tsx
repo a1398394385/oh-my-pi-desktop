@@ -39,7 +39,7 @@ import type { PasteCommandType } from "lexical";
 import { useAppStore } from "../../../store";
 import { editQueueMsg } from "../../../store/session";
 import { $flattenText, $setText } from "./flat";
-import { saveDraft, getDraftText, recallClearedDraft, resetClearedDraftCursor } from "./draft";
+import { saveDraft, getDraftText, recallHistory, resetHistoryCursor } from "./draft";
 
 // Enter key-swallow window for IME candidate confirmation (ms): on WebKit,
 // compositionend and the following Enter keydown land in nearly the same tick;
@@ -85,8 +85,8 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
   // 0c54477). Non-Apple platforms dispatch in the reverse order; it stays 0 and
   // never fires.
   const imeCommitAtRef = useRef(0);
-  // History-browse mode over the cleared-draft stash: entered with plain ↑ on
-  // an empty input, ↑/↓ walk the stash while active, any user text edit exits
+  // History-browse mode over the slot's input history: entered with plain ↑ on
+  // an empty input, ↑/↓ walk it while active, any user text edit exits
   // (update listener below). histApplyTextRef marks the text just applied by
   // a recall step (one-shot, consumed by the next update) so the recall's own
   // editor.update is not mistaken for a user edit.
@@ -141,7 +141,7 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
     () => {
       const recallStep = (ev: KeyboardEvent, dir: 1 | -1): boolean => {
         if (typeaheadOpenRef.current) return false;
-        const target = recallClearedDraft(draftKeyRef.current, dir);
+        const target = recallHistory(draftKeyRef.current, dir);
         if (!target) return false;
         ev.preventDefault();
         histApplyTextRef.current = target.text;
@@ -217,12 +217,12 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
           },
           COMMAND_PRIORITY_NORMAL,
         ),
-        // Plain ↑/↓ over the cleared-draft stash in history-browse mode:
-        // entered by plain ↑ on an empty input (the double-Esc clear path
-        // pushes entries while composer.recallClearedDrafts is on); each
-        // entry re-arms at the newest stash item and snapshots the empty
-        // live draft as the base so ↓ can come back. Any user edit exits the
-        // mode (update listener). Bound on KEY_DOWN_COMMAND, not
+        // Plain ↑/↓ over the slot's input history in browse mode: entered by
+        // plain ↑ on an empty input (successful sends and the double-Esc
+        // clear path push entries while composer.recallClearedDrafts is on);
+        // each entry re-arms at the newest history item and snapshots the
+        // empty live draft as the base so ↓ can come back. Any user edit exits
+        // the mode (update listener). Bound on KEY_DOWN_COMMAND, not
         // KEY_ARROW_*_COMMAND: Lexical's core keydown table only dispatches
         // the arrow commands with Alt held (ALT_SHIFT_KEY_ANY), so plain
         // arrows never reach them; preventing default on the raw keydown
@@ -249,7 +249,7 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
                 // Enter browse mode: empty input + ↑ only
                 if (ev.key !== "ArrowUp") return false;
                 if (getDraftText(draftKeyRef.current).trim()) return false;
-                resetClearedDraftCursor(draftKeyRef.current);
+                resetHistoryCursor(draftKeyRef.current);
               }
               return recallStep(ev, ev.key === "ArrowUp" ? 1 : -1);
             }

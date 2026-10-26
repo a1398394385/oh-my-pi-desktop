@@ -1,13 +1,18 @@
-.chat-head > .win-controls { margin-right: -12px; }
+.chat-head > .win-controls { margin-right: -10px; } /* .chat-head padding (16px) minus the 6px card-edge breathing room */
 
 #main {
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0; flex: 1; position: relative;
   overflow: hidden;
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0;
   transition: margin var(--dur-base) var(--swift);
+  /* Content column width axis, single source of truth for messages + composer
+     (consumed as max-width: var(--col-w)). Percentages resolve at each
+     consumer's own containing block. --col-user-max is the drag override; the
+     100vw fallback leaves the default four-stage shrink untouched until set */
+  --col-w: min(var(--col-user-max, 100vw), min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))));
 }
 
 body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
@@ -28,6 +33,13 @@ body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
 body:has(#sidebar.collapsed) .chat-head {
   padding-left: 78px;
 }
+/* Header advisor toggle (right of the collab globe): ON state stays calm — soft green
+   like a live collab room, no accent highlight / no selection background; the color
+   alone marks the enabled state */
+.chat-head .advisor-toggle.on {
+  background: transparent;
+  color: var(--green);
+}
 /* macOS: the expand button lands exactly where the collapse button was (fixed viewport
    coords), so the sidebar toggles without moving the mouse; the title clears it below */
 html[data-platform="macos"] body:has(#sidebar.collapsed) .chat-head {
@@ -37,6 +49,18 @@ html[data-platform="macos"] body:has(#sidebar.collapsed) #sidebarToggle {
   position: fixed;
   left: var(--top-toggle-left);
   top: var(--top-toggle-top);
+}
+/* Windows: same in-place toggle, pinned to the window's top-left corner — the exact
+   coords the expanded .side-collapse uses (sidebar.css, inset 14px so the button sits
+   inside the center card), so the pointer never moves between collapsing and expanding */
+html[data-platform="windows"] body:has(#sidebar.collapsed) .chat-head {
+  padding-left: calc(14px / var(--ui-zoom, 1) + 26px + 8px - var(--shell-gap));
+}
+html[data-platform="windows"] body:has(#sidebar.collapsed) #sidebarToggle {
+  position: fixed;
+  right: auto;
+  left: calc(14px / var(--ui-zoom, 1));
+  top: calc(19px / var(--ui-zoom, 1));
 }
 /* macOS: same in-place toggle for the right panel. Expanded, its collapse button is the
    last .sp-head child: right edge = width − shell-gap − 6px padding, center = gap + 24.
@@ -127,8 +151,11 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
      as 50%/35% of screen width):
      1. content pinned at 50% screen width, margin keeps shrinking -> 2. margin pinned at 75px/side, content shrinks to 35% screen width
      -> 3. content pinned at 35% screen width, margin shrinks to 20px/side -> 4. margin pinned at 20px/side, content keeps shrinking.
-     Chat messages stay width-aligned with the bottom composer (queue card matches the dock width, stacked cards don't drift) */
-  max-width: min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px))));
+     Chat messages stay width-aligned with the bottom composer (queue card matches the dock width, stacked cards don't drift).
+     --col-w (declared on #main) adds an optional user override from dragging the gutter
+     handles (--col-user-max, restored at boot by shell.ts restoreColWidth); the 100vw fallback
+     keeps the override inactive until set */
+  max-width: var(--col-w);
   margin-left: auto;
   margin-right: auto;
   box-sizing: border-box;
@@ -149,4 +176,87 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
   display: inline-flex; align-items: center; padding: 1px 6px; margin-left: 6px;
   font-size: var(--ui-fs-sm); color: var(--accent); background: var(--panel-2);
   border: 1px solid var(--line-soft); border-radius: 4px; flex: none;
+}
+
+/* Column width drag handles: 10px col-resize strips in the gutters beside the
+   content column, absolute in #main (never inside the #stream scrollport — an
+   absolute strip there would extend the scrollable range). The inner edge sits
+   20px off the column edge; the width collapses to zero when the margin can't
+   fit inset + strip + safe zone, so narrow columns get no mispositioned hit
+   area. Hidden on mobile/narrow (same 768px breakpoint as remote.css). The
+   visible feedback is a 140px vertical line centered on the app height, fading
+   out at both ends (never a full-height rule). */
+.col-resize-h {
+  position: absolute; top: 0; bottom: 0; z-index: 2;
+  width: min(10px, calc((100% - var(--col-w)) / 2 - 20px - 20px));
+  cursor: col-resize;
+}
+.col-resize-h[data-side='left'] { right: calc(50% + var(--col-w) / 2 + 20px); }
+.col-resize-h[data-side='right'] { left: calc(50% + var(--col-w) / 2 + 20px); }
+.col-resize-h::after {
+  content: ""; position: absolute; top: 50%; transform: translateY(-50%);
+  width: 2px; height: 140px; border-radius: 1px;
+  background: linear-gradient(to bottom, transparent, var(--line) 25%, var(--line) 75%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--swift);
+}
+.col-resize-h[data-side='left']::after { right: 4px; }
+.col-resize-h[data-side='right']::after { left: 4px; }
+.col-resize-h:hover::after, .col-resize-h.dragging::after { opacity: 1; }
+@media (max-width: 768px) { .col-resize-h { display: none; } }
+
+/* Bottom dock (⌘/Ctrl+J): terminal-only panel, full width of the center column. flex:none
+   so #stream (flex:1) gives the height up instead of squeezing the dock; xterm re-fits
+   through its own ResizeObserver on every layout change. */
+#bottom-panel {
+  flex: none;
+  height: var(--bottom-h, 260px); min-height: 0;
+  display: flex; flex-direction: column;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Height drag handle on the dock's top edge (row-resize). It is a real flex child
+   (not an overlay) so it never swallows clicks on the head's tab strip. The visible
+   feedback is a short horizontal line centered on the panel width, fading out at both
+   ends (the horizontal twin of .col-resize-h). */
+.bpanel-resizer {
+  flex: none; height: 6px;
+  cursor: row-resize;
+  position: relative;
+}
+.bpanel-resizer::after {
+  content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+  top: 50%; width: 140px; height: 2px; border-radius: 1px;
+  background: linear-gradient(to right, transparent, var(--line) 25%, var(--line) 75%, transparent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--swift);
+}
+.bpanel-resizer:hover::after, .bpanel-resizer.dragging::after { opacity: 1; }
+
+/* Vertical drag variant of body.resizing (the column resizer uses col-resize). */
+body.resizing-v { user-select: none; cursor: row-resize; }
+
+.bpanel-head {
+  flex: none; height: 32px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+}
+
+#bottom-panel .tpane { flex: 1; min-height: 0; }
+
+#bottom-panel .tpane-host-wrap { padding: 6px 4px 6px 10px; }
+
+/* Right panel collapsed: on macOS #panelToggle is pinned to the card's top-right corner,
+   out of flow (see above), so the flow-positioned dock button steps back by
+   32px - shell-gap to keep an 8px row gap instead of stacking underneath it.
+   Windows puts #panelToggle top-left and its window controls back in flow, so no offset. */
+html[data-platform="macos"] body:has(#right.collapsed) .chat-head .dock-toggle {
+  margin-right: calc(32px - var(--shell-gap));
+  /* #panelToggle sits at top: shell-gap + 10.5px while the 43px header centers this 26px
+     button at 8.5px — a 2.5px drop puts both icons on one baseline. */
+  position: relative;
+  top: 2.5px;
 }

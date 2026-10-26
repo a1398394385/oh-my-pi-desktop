@@ -2,13 +2,13 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 11 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 15 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
 | 编号 | 规则 | 影响范围 |
 |------|------|---------|
-| RULE-001 | 新增/修改工具标签必须同步扩展 host/translate.ts 的参数白名单与结果摘要 | 前端渲染 + 宿主转发 |
+| RULE-001 | 新增/修改工具标签必须同步扩展 host/translate-tool.ts 的参数白名单与结果摘要 | 前端渲染 + 宿主转发 |
 | RULE-002 | 新增内嵌滚动容器必须 `overscroll-behavior: contain`,装饰元素不得放进滚动节点内 | 全部 UI 样式 |
 | RULE-003 | 渲染函数必须纯渲染,RPC 请求只能由视图入口/事件处理器发起 | 全部 UI 渲染 + RPC |
 | RULE-004 | 改动 import 区块禁止整行替换相邻 import;删改符号后必须核对本文件使用点 | host/ 与全部 TS 模块 |
@@ -19,20 +19,24 @@
 | RULE-009 | 整文件回写源码必须显式 UTF-8,回写后必须核对非 ASCII 内容未变 | 全部脚本/生成器/批量改写 |
 | RULE-010 | 升级 @oh-my-pi/* 底座版本后必须实跑 check 与 host:build,禁止只改 pin + install 就交付 | 依赖升级流程 |
 | RULE-011 | 配额链路只允许 authStorage 的凭证与显式 env,禁止读取第三方工具的机器状态 | host/limits/ 全链路 |
+| RULE-012 | 架构行数门禁走「域预算 + 单文件软硬线」,禁止再给单个文件写固定上限 | scripts/check-architecture.mjs |
+| RULE-013 | 双端都渲染的状态帧禁止 `ws.send` 只发请求方,必须走扇出原语;新增共享帧必须登记 + 双通道断言 | host/ 全部推送点 + scripts/frame-fanout.json |
+| RULE-014 | 相对时间（工作中 Ns / 已用时 / age）的起点必须由宿主随帧下发 epoch ms,禁止客户端就地取 `Date.now()` | host/wire + ui-src 展示层 |
+| RULE-015 | 编译版应用禁止可被外部进程远程接管：不得启用 tauri `devtools` feature,Windows 非 debug 构建必须清掉 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` | src-tauri/ 壳层 |
 
 ---
 
 ## 规则详情
 
-### RULE-001: 新增/修改工具标签必须同步扩展 host/translate.ts 的两处转发白名单
+### RULE-001: 新增/修改工具标签必须同步扩展 host/translate-tool.ts 的两处转发白名单
 
-**规则**:在 `ui-src/components/chat/ToolRow.tsx` 给新工具加标签行(或改既有标签的摘要字段)时,必须同步检查并扩展 `host/translate.ts`:
+**规则**:在 `ui-src/components/chat/ToolRow.tsx` 给新工具加标签行(或改既有标签的摘要字段)时,必须同步检查并扩展 `host/translate-tool.ts`:
 1. `toolArgsForUi()` —— 按工具白名单放行参数,新工具不加分支则前端只收到 `{}/path/files/content`;
 2. `summarizeResult()` —— 按工具提取 `output/details`,新工具不加分支则展开卡永远「(无输出)」。
 
-**Why**:UI 标签三层数据链路「底座事件 → translate.ts 过滤 → 前端渲染」中,行能渲染 ≠ 有数据。BUG-001:新标签行渲染正常但展开卡全是 `{}` 与「(无输出)」,根因就是只改了渲染层。
+**Why**:UI 标签三层数据链路「底座事件 → translate-tool.ts 过滤 → 前端渲染」中,行能渲染 ≠ 有数据。BUG-001:新标签行渲染正常但展开卡全是 `{}` 与「(无输出)」,根因就是只改了渲染层。
 
-**How to apply**:改 `ui-src/components/chat/ToolRow.tsx` 时 grep `toolArgsForUi` 与 `summarizeResult`,确认新工具名在两处都有分支且字段与 UI 摘要一致;大参数(questions/memories 等)过 `capValue()`。review  checklist:标签行出现新工具名 ↔ translate.ts 同名词条成对出现。
+**How to apply**:改 `ui-src/components/chat/ToolRow.tsx` 时 grep `toolArgsForUi` 与 `summarizeResult`,确认新工具名在两处都有分支且字段与 UI 摘要一致;大参数(questions/memories 等)过 `capValue()`。review  checklist:标签行出现新工具名 ↔ translate-tool.ts 同名词条成对出现。
 
 **关联**:BUG-001
 
@@ -114,7 +118,7 @@
 
 **Why**:BUG-026——`9b077bd` 一次整文件回写把 `ui/style.css` 504 行中文注释变成 `鈹€鈹€ 涓诲璇濆尯鍩熸秷鎭竷灞€...` 这类双重编码乱码:UTF-8 字节被按中文 ANSI(CP936) 解码后重新以 UTF-8 写出,非法字节对按 `?` 兜底还吃掉了 ASCII 字节。文件仍是合法 UTF-8(grep/`file`/agent 读到的都是乱码但没有任何报错),坏点混在正常 diff 里直接提交,恢复不可逆(`?` 处字节已丢)。同批回写还夹带了真实代码改动,使「整份取父版本」的粗暴恢复方式失效。
 
-**How to apply**:写批量改写脚本前先确认读/写两侧都显式 UTF-8;写回后立刻跑门禁 `bun run check:encoding`(或 `node scripts/check-encoding.mjs`;给未跟踪文件用 `node scripts/check-encoding.mjs <file>`)。门禁三项:非法 UTF-8 字节、乱码特征字符(GBK 误读 UTF-8 的标点/外来字母/PUA 残片)、双重编码指纹(阈值经 67455 行干净语料校准:0 误报、对坏版本召回 493/507 行)。提交侧由 `.githooks/pre-commit` 拦暂存区(`git config core.hooksPath .githooks`;`--no-verify` 绕过需在 commit 描述写明理由)。确需在文档里引用乱码做证据,把该文件加进 `scripts/check-encoding.mjs` 的 `EVIDENCE_DOCS`(仅豁免乱码指纹,编码合法性仍查)。给 agent 的整文件改写任务(含 `scripts/`、`host/` 里的生成器)同样适用。review checklist:diff 里出现大段非 ASCII 中文改动 ↔ 是否预期;出现无 `encoding=` 的 `open(`、无 `-Encoding utf8` 的 `Set-Content`、`toString("latin1"/"binary")` ↔ 该处是否真的在处理非 UTF-8 数据源。真出事时的恢复顺序:先用「引入该次改动的提交 diff 的 `-`/`+` 行对」逐 hunk 精确回填,不要反解乱码(本例反推会漏 2/3 的行)。
+**How to apply**:写批量改写脚本前先确认读/写两侧都显式 UTF-8;写回后立刻跑门禁 `bun run check:encoding`(或 `node scripts/check-encoding.mjs`;给未跟踪文件用 `node scripts/check-encoding.mjs <file>`)。门禁三项:非法 UTF-8 字节、乱码特征字符(GBK 误读 UTF-8 的标点/外来字母/PUA 残片)、双重编码指纹(阈值经 67455 行干净语料校准:0 误报、对坏版本召回 493/507 行)。提交侧由 `scripts/hooks/pre-commit` 拦暂存区——经全局 `~/.git-hooks/pre-commit` 在 gitleaks 之后链式调用;禁止把 `core.hooksPath` 指向仓库内目录,那会屏蔽全局密钥扫描(`--no-verify` 绕过需在 commit 描述写明理由)。确需在文档里引用乱码做证据,把该文件加进 `scripts/check-encoding.mjs` 的 `EVIDENCE_DOCS`(仅豁免乱码指纹,编码合法性仍查)。给 agent 的整文件改写任务(含 `scripts/`、`host/` 里的生成器)同样适用。review checklist:diff 里出现大段非 ASCII 中文改动 ↔ 是否预期;出现无 `encoding=` 的 `open(`、无 `-Encoding utf8` 的 `Set-Content`、`toString("latin1"/"binary")` ↔ 该处是否真的在处理非 UTF-8 数据源。真出事时的恢复顺序:先用「引入该次改动的提交 diff 的 `-`/`+` 行对」逐 hunk 精确回填,不要反解乱码(本例反推会漏 2/3 的行)。
 
 **关联**:BUG-026
 
@@ -137,3 +141,54 @@
 **How to apply**:新增/修改 vendor 时先问「这份数据从哪来」:只有 options 字段(由 index.ts 从 authStorage 构造)、`deps` 注入、或显式 env(`TOKEN_MONITOR_*`/厂商 token 名)算合规;出现 `os.homedir()`/`Library/Application Support`/`state.vscdb`/`child_process.spawn`/keychain/`node:sqlite` 读第三方库即为违规。适配层约定:无凭证时 index 直接返回 `notConfigured` 且**不调用** vendor(没有 `native` 开关了);env cookie 型供应商(stepfun/typesafe/alibaba/commandcode/ollama)保持「不吃 API key,只认 env」的既有惯例。回归验证:`host/limits/vendor/` 下任何新增读取点都必须有对应冒烟——假 HOME 里种带标记串的本机态文件 + `PATH=/nonexistent`,跑 vendor fetch 断言结果里不出现该标记串、零子进程。
 
 **关联**:无(BUG 未单独立账,见 2026-10-08 会话)
+
+### RULE-012: 架构行数门禁走「域预算 + 单文件软硬线」,禁止再给单个文件写固定上限
+
+**规则**:`scripts/check-architecture.mjs` 的行数约束分三层——`DOMAIN_BUDGETS`(同域文件合计封顶,域内可自由长大)、`FILE_CAPS`(必须保持薄的个别文件,目前只有 `host/main.ts`)、全局 `FILE_SOFT_CAP`(700,只对本次改动触及的文件告警)/`FILE_HARD_CAP`(1500,失败)。2026-10-21 之前的逐文件「只降不升」常量已废弃:新增约束必须落在这三层里,禁止再为单个文件手写行数上限。
+
+**Why**:旧的逐文件棘轮把每个文件钉死在拆分时的行数,3 行改动会被迫先拆出 50 行,奖励碎片化、惩罚内聚;而结构约束的真实护栏是 `scripts/check-host-boundaries.mjs`(声明边 + 孤儿符号),行数只是廉价的代理指标。
+
+**How to apply**:文件过软线时优先按职责拆分;确实需要增长时确认所属域预算仍有余额,或把新职责放进同域新文件(自动计入域总量)。调高域预算必须在提交信息里写明理由与当前用量;给单文件加 `FILE_CAPS` 只允许用于「必须保持薄的调度壳/入口」,不得用于业务模块。
+
+**关联**:无(BUG 未单独立账,见 2026-10-21 会话)
+
+### RULE-013: 双端都渲染的状态帧禁止 `ws.send` 只发请求方——必须走扇出原语，新增共享帧必须登记并补双通道断言
+
+**规则**:桌面端（本机 socket）与远程控制端（LAN socket）各自持有一份 UI 状态。凡「另一端也渲染」的帧（模型/推理档位、屏幕控制、计划模式、设置快照、权限模式、标题、完成/卸载通知、池快照），发送必须走下列原语之一，禁止裸 `ws.send`：
+- `host/state.ts` 的 `sendSessionState(ws, entry, data)`：请求方 + 其余 attached socket（去重；会 toast 的回执不能重发）；
+- `host/frames.ts` 的 `pushSettings()`：`eachUiWs` 广播的设置快照；
+- `entryBus(entry)`：该会话全体 attached 通道；
+- `eachUiWs(fn)`：全局帧。
+
+共享帧清单登记在 `scripts/frame-fanout.json` 的 `broadcast` 数组（SSOT），`scripts/check-frame-fanout.mjs` 在 `bun run check` 里强制：登记过的帧只要出现裸 `ws.send`/`bus.send`、且所在函数不是扇出 helper，即失败。确属只给请求方的回执（如 `get_settings` 的读取回执、`set_desktop_env` 的 restartHint）必须在同一行写 `// fan-out: requester-only — 理由` 豁免。新增共享帧 = 加进 `broadcast` 数组 + 在 `scripts/smoke-dual-channel.ts` 补一条 `m.type === "<frame>"` 断言（脚本会打印尚未覆盖的帧）。
+
+**Why**:BUG-100 一次性暴露 6 个现象，其中 5 个是同一形态复发（`session_model`/`session_thinking`/`cycle_model`/`computer_mode`/`settings`/`approval_mode` 全是裸 `ws.send`），而 `plan_mode` 早就在用 `entryBus`、远程密钥重生成早就在用 `eachUiWs`——说明靠记性不可靠：漏一处只是「另一端不动」，没有报错、没有日志、重开会话自愈，review 时极易滑过。远程的 `set_model`/`set_thinking`/`set_computer_mode`/`set_plan_mode` 又不在 `REMOTE_WRITE_DENYLIST` 里，双向可达。
+
+**How to apply**:写新 RPC 时先问一句「这个帧另一端渲染吗」——是就把帧名加进 `frame-fanout.json` 并用扇出原语发送；不确定时按「另一端渲染」处理（多推一份幂等帧的成本远低于静默不同步）。改既有 `ws.send` 前先 `grep` 帧名在 UI 的 `ui-src/store/wsHandlers/` 里落到哪个 store 片段：落 `openSessions`（会话域）用 `entryBus`/`sendSessionState`，落全局 store 用 `eachUiWs`/`pushSettings`。门禁只查代码路径，双端真机行为仍由 `scripts/smoke-dual-channel.ts` 兜底。
+
+**关联**:BUG-100
+
+### RULE-014: 相对时间（工作中 Ns / 已用时 / age）的起点必须由宿主随帧下发，禁止客户端就地取 `Date.now()`
+
+**规则**:任何「从 X 时刻起算」的展示（工作/流式计时、子代理用时、活跃时长、后台任务时长、列表 age），起点的唯一来源是宿主下发的 epoch ms 字段，且该字段在**每一个能重建该状态的帧**上都要带：
+- 会话运行窗口 → `PoolEntry.activeStartedAt`，随 `session_created` 的 `busySince` 下发（`host/session-snapshot.ts`）；
+- 子代理 → `registeredAt` + `usage.durationMs`；
+- 会话统计 → `session_stats` 的 `statsAt`（与 `activeMs` 同一次采样）。
+
+客户端只允许用这些宿主时间戳做 `now - ts` 的差，禁止把「本端第一次看到该状态的时刻」当起点——那等于把传输延迟和打开时机算进业务时长。
+
+**Why**:BUG-100 里桌面显示「工作中 64 分 48 秒」、远程打开后从 0 秒重新起算；更糟的是中途打开的会话在长时间工具调用期间没有任何帧，客户端连补写的触发点都没有。同一课在 `hitRate`/`statsAt` 上早已付过学费（`receivedAt` 的注释写明「用落地时刻会把时长回退一个传输延迟」）。
+
+**How to apply**:新增计时展示时，先在 host 侧找/加负责该状态的对象上的 `*StartedAt` 字段，把它加进快照帧；客户端用 `entry.turnStartAt = msg.busySince ?? null` 这类种子初始化，并在 `useEffect` 里做 250ms 轮询重算（`setInterval(1000)` 与起点不同相，主线程阻塞时会被压缩）。跨端一致性自检：两端在运行中打开同一会话，显示的秒数差应 < 2s。
+
+**关联**:BUG-100
+
+### RULE-015: 编译版应用禁止可被外部进程远程接管
+
+**规则**:`src-tauri/Cargo.toml` 的 `tauri` 依赖**禁止**启用 `devtools` feature;Windows 非 debug 构建必须在创建 webview 之前清掉 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`(`src-tauri/src/lib.rs` 的 `run()`)。debug 构建(`bun run dev`)不受影响——devtools 在 `cfg(debug_assertions)` 下自动可用。
+
+**Why**:tauri 的 `devtools` feature 语义是「让 **release** 构建也保留 devtools」;一旦打开,`tauri-runtime-wry` 会 `with_devtools(true)`,wry 随即在 macOS 上 `WKWebView.setInspectable(true)`(Safari Web Inspector 可附着并驱动页面)、Windows 上 `SetAreDevToolsEnabled(true)`——打包发布的应用就能被本机任意进程接管。Windows 还有第二条口子:WebView2 把 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 追加在自身参数**之后**(同名开关后者生效),因此继承来的 `--remote-debugging-port` 在 release 里同样能开 CDP。
+
+**How to apply**:验证通道需要 devtools / CDP 时只能跑 `bun run dev`(debug 构建),不要把 feature 加回 `[dependencies]`。Windows 侧要真机验证 CDP 时,同样用 `tauri dev`,release 构建里那条环境变量会被壳层丢弃。改动这两个位置后至少跑 `cargo check` 与 `cargo check --release`(后者确认 wry 的 devtools 代码在 release 里被编译掉)。
+
+**关联**:2026-10-24 安全加固(无 BUG 账),文档见 `docs/DEVELOPMENT.md` §Verification channels

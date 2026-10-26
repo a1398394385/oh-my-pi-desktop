@@ -18,7 +18,7 @@
 #agentScopeMenu .mi, #skillScopeMenu .mi, #mcpScopeMenu .mi, .scope-menu .mi {
   padding: 9px 12px;
   font-family: var(--ui-font);
-  font-size: var(--ui-fs-base);
+  font-size: var(--ui-fs-sm);
 }
 
 #agentScopeMenu .mi .mi-label, #skillScopeMenu .mi .mi-label, #mcpScopeMenu .mi .mi-label, .scope-menu .mi .mi-label {
@@ -89,7 +89,7 @@
 #settings {
   position: fixed; inset: 0; z-index: 300;
   display: grid; grid-template-columns: var(--setnav-w, 180px) 1fr;
-  background: var(--base);
+  background: var(--base); --hover-fill: var(--panel-2);
   padding: 0 var(--shell-gap) var(--shell-gap) 0;
 }
 
@@ -115,7 +115,7 @@
   display: flex; align-items: center; gap: 7px;
   padding: 7px 10px; color: var(--dim); cursor: pointer;
   border-radius: 10px; font-size: var(--ui-fs-base);
-  border: 0; background: var(--base); width: 100%; text-align: left; font: inherit;
+  border: 0; background: var(--base); --hover-fill: var(--panel-2); width: 100%; text-align: left; font: inherit;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
@@ -147,7 +147,7 @@
   width: 100%;
   height: 28px;
   padding: 0 24px 0 28px;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   border: 1px solid transparent;
   border-radius: 8px;
   color: var(--text);
@@ -192,7 +192,7 @@
 }
 
 .set-search-count {
-  font-size: 10px;
+  font-size: var(--ui-fs-xs);
   letter-spacing: .05em;
   color: var(--faint);
   padding: 6px 10px 4px;
@@ -249,16 +249,16 @@
 }
 
 .set-search-item-page {
-  font-size: 10px;
+  font-size: var(--ui-fs-xs);
   color: var(--faint);
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   padding: 1px 5px;
   border-radius: 4px;
   flex: none;
 }
 
 .set-search-item-desc {
-  font-size: 11px;
+  font-size: var(--ui-fs-sm);
   color: var(--faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -278,7 +278,7 @@
 }
 
 .set-sec {
-  font-size: 10.5px; letter-spacing: .08em; color: var(--faint);
+  font-size: var(--ui-fs-xs); letter-spacing: .08em; color: var(--faint);
   padding: 22px 12px 8px; user-select: none;
 }
 
@@ -313,12 +313,12 @@
   /* pixel-aligned with the main sidebar's .side-foot (avatar left edge 14px, vertical center 34px, gap 10px),
      so the bottom-left avatar/title doesn't move a pixel when entering/leaving settings */
   position: sticky; bottom: 0;
-  background: var(--base);
+  background: var(--base); --hover-fill: var(--panel-2);
 }
 
 #setBody {
   overflow-y: auto; padding: 32px 40px 60px;
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0 0;
   min-width: 0;
@@ -332,6 +332,8 @@
   margin-right: auto;
   min-width: 0;
 }
+
+.set-page.set-page-compact { max-width: min(860px, 50vw, calc(100% - clamp(24px, 6vw, 100px))); }
 
 .set-page > * { animation: setRise .45s var(--swift) backwards; }
 
@@ -385,7 +387,7 @@
 .gtt-hint::after {
   content: attr(data-hint);
   position: absolute; left: 0; top: calc(100% + 8px);
-  background: var(--ctl-bg); border: 1px solid var(--line);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line);
   border-radius: var(--r-md); box-shadow: 0 12px 32px var(--tint-black-500);
   color: var(--dim); font-size: var(--ui-fs-base); font-weight: 400;
   padding: 6px 10px; white-space: nowrap; z-index: 600;
@@ -406,7 +408,7 @@
 
 /* settings card: standalone card language (--panel base + 8% white border + r-card + deep shadow) */
 .set-card {
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--tint-white-80);
   border-radius: var(--r-card);
   box-shadow: 0 8px 26px var(--tint-black-350);
@@ -419,7 +421,7 @@
 
 .set-note {
   margin: 16px 0 0; padding: 12px 14px;
-  background: var(--panel); border: 1px solid var(--tint-white-80);
+  background: var(--panel); --hover-fill: var(--menu-hl); border: 1px solid var(--tint-white-80);
   border-left: 2px solid var(--accent); border-radius: var(--r-lg);
   display: flex; flex-direction: column; gap: 4px;
 }
@@ -435,7 +437,24 @@
 
 .srow-tx span { font-size: var(--ui-fs-sm); color: var(--faint); line-height: 1.55; }
 
+/* Badges inside a row title must stay in the xs tier: .srow-tx span (0,1,1) would
+   otherwise outrank .tag (0,1,0) and render them one step larger. */
+.srow-tx .tag { font-size: var(--ui-fs-xs); }
+
 .srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
+
+/* .inp carries a global min-width:240px, which clamps narrower widths set per page
+   (inline style or page class); min-width always wins over width. */
+.set-page .inp { min-width: 0; }
+
+/* Narrow windows: .set-page is capped at 50vw, so at the 700px minimum window width the
+   row is ~318px of content — a fixed-width control (320px string input) leaves no room
+   for the label column, which then collapses to one character per line. Stack the control
+   under the label instead and let the control shrink with the row. */
+@media (max-width: 1000px) {
+  .set-page .srow { flex-direction: column; align-items: stretch; gap: 8px; }
+  .set-page .srow-ctl { justify-content: flex-start; }
+}
 
 /* schema warning row (.srow-tx span has higher specificity, so .srow-tx .srow-wn overrides color/font-size) */
 .srow-tx .srow-wn { color: var(--err); display: block; font-size: var(--ui-fs-base); }
@@ -450,7 +469,7 @@
 /* number stepper = the .plus-btn language; tabular numerals don't jitter */
 .num-ctl {
   display: inline-flex; align-items: center; gap: 2px; flex: none;
-  background: var(--bg); border: 1px solid var(--line-soft);
+  background: var(--bg); --hover-fill: var(--panel-2); border: 1px solid var(--line-soft);
   border-radius: 9px; padding: 2px;
 }
 
@@ -461,7 +480,7 @@
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-fast) var(--swift);
 }
 
-.num-btn:hover { background: var(--panel-2); color: var(--text); }
+.num-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 .num-btn:active { transform: scale(.88); }
 
@@ -590,13 +609,46 @@
 
 .set-row .srow-tx b { display: flex; align-items: center; gap: 7px; }
 
+/* ── Page-level asset editor (skills / MCP / hooks) ──
+   Create and edit replace the whole page body with the editor window: back button +
+   title/subtitle head, then a single form card holding the page's own field markup
+   (.mcp-form-* / .inp / textareas). Head actions use the small .save-btn family
+   (danger variant for delete); the form card carries the padding the inline-expansion
+   body used to provide. */
+.set-edit-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+
+.set-edit-back { flex: none; }
+
+.set-edit-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.set-edit-title { display: flex; align-items: center; gap: 10px; font-size: var(--ui-fs-xl); font-weight: 600; line-height: 1.35; }
+
+.set-edit-sub { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.set-edit-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* Create/edit window body: same face as the main-column automation editor
+   (--card panel, --line edge), so every create form is the same object. */
+.set-card.set-edit-card {
+  margin-top: 18px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--card); --hover-fill: var(--panel-2);
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+:is([data-theme="light"], [data-theme-mode="light"]) .set-card.set-edit-card { border-color: var(--line); box-shadow: none; }
+
 /* Voice sections (InteractionPage VoiceSection): language code input width + the
    dictation test button's live-recording look */
 .voice-lang-inp { width: 110px; }
 
 .voice-test-btn.rec { color: var(--err); }
 
-.voice-test-btn.rec:hover { background: var(--panel-2); }
+.voice-test-btn.rec:hover { background: var(--hover-fill); }
 
 /* Hairline: halve the converted inset rings on HiDPI */
 @media (min-resolution: 2dppx) {
@@ -611,3 +663,20 @@
   .stag { box-shadow: inset 0 0 0 .33px var(--line); }
   .stag.on { box-shadow: inset 0 0 0 .33px var(--dim); }
 }
+
+/* Remote device-history list (RemotePage): the row stacks instead of using the right-hand
+   control column — title/desc on top, then the visitor list spanning the whole card width */
+.srow.remote-hist { flex-direction: column; align-items: stretch; gap: 10px; }
+
+.remote-devices { display: flex; flex-direction: column; }
+
+.remote-device {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 6px 0; border-top: 1px solid var(--line-soft);
+}
+
+.remote-device:first-child { border-top: 0; padding-top: 0; }
+
+.remote-device > span:first-child { font-size: var(--ui-fs-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.remote-device > span:last-child { flex: none; }

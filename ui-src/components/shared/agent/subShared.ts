@@ -2,12 +2,20 @@
 // Agent Hub roster and the hub's linked detail page all render the same metrics
 // (model/tokens/cost/requests/tools/start/elapsed) from SubagentState.usage.
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../../store";
+import { t } from "../../../i18n";
 import type { SubagentState } from "../../../types/session";
 
-// Model display name: look up modelNames; without an entry take the id tail (same rule as the composer bar)
+// Model display name: look up modelNames; without an entry take the id tail (same rule as the
+// composer bar). The base appends the resolved thinking level as a `:<level>` suffix (only when
+// one was resolved), so that tail goes through composer.thinkingLevels — an unknown level falls
+// back to its raw text.
 export function modelShort(id: string | null | undefined): string {
   if (!id) return "";
-  return useAppStore.getState().modelNames.get(id) ?? id.split("/").pop() ?? "";
+  const name = useAppStore.getState().modelNames.get(id) ?? id.split("/").pop() ?? "";
+  const cut = name.lastIndexOf(":");
+  if (cut <= 0) return name;
+  const level = name.slice(cut + 1);
+  return `${name.slice(0, cut)}:${t(`composer.thinkingLevels.${level}`, { defaultValue: level })}`;
 }
 
 // Token total from the SDK bucket object: prefer the explicit total, otherwise sum the buckets
@@ -53,6 +61,14 @@ export function timeSegments(sub: SubagentState, t: SegT, now: number): string[]
     sub.streaming && sub.registeredAt ? now - sub.registeredAt : (sub.usage?.durationMs ?? 0);
   if (elapsed > 0) segs.push(t("right.subElapsed", { duration: fmtDurationMs(elapsed) }));
   return segs;
+}
+
+// Live progress line: the running tool call with its args, else the model's last stated
+// intent. Shared by the detail's "Current" section and a running roster row's task slot.
+export function currentProgress(sub: SubagentState): string {
+  const u = sub.usage;
+  if (u?.currentTool) return u.currentTool + (u.currentToolArgs ? ` · ${JSON.stringify(u.currentToolArgs)}` : "");
+  return u?.lastIntent ?? "";
 }
 
 // Roster status ordering (running first), matching the TUI Agent Hub's STATUS_ORDER

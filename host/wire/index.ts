@@ -16,14 +16,15 @@ import type { CapabilityKeysFrame, SearchAvailabilityFrame } from "./payloads";
 import type {
   ApprovalModeFrame, ApprovalRequestFrame, ApprovalResolvedFrame, AskDialogQuestionWire, BashChunkFrame, BashCompleteResultFrame,
   BashDoneFrame, BashStartFrame, CommandOutputFrame, CommandPhaseFrame, CommandResultFrame, CommandsFrame,
-  ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
-  FileDiffFrame, FileMatchesFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommittedFrame, GitDiscardedFrame,
+  AdvisorModeFrame, ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
+  FileDiffFrame, FileMatchesFrame, FileVersionsFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,
+  GitGraphFrame,
   GitPushedFrame, GitStagedFrame, GitStatusFrame, GitUnstagedFrame, GoalFrame, ImageContentFrame,
   LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, PoolSessionsFrame, ProviderAccountEntry, ProviderAccountsFrame,
   ProviderDisabledAccount, ProviderLimitsResultFrame, ReadyFrame, SessionAbortedFrame, SessionArchivedFrame, SessionBranchedFrame,
-  SessionCompactedFrame, SessionCreatedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
-  SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame, SessionUnloadedFrame,
-  SessionTextSearchFrame,
+  SessionCompactedFrame, SessionCreatedFrame, SessionEditedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
+  SessionFinishedFrame, SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame,
+  SessionTextSearchFrame, SessionUnloadedFrame,
   TodosFrame,
 } from "./frames-session";
 import type {
@@ -32,7 +33,7 @@ import type {
   EditorInfo, EditorsFrame, ExtSource, ExtensionDetail, ExtensionItem, ExtensionStatusFrame,
   ExtensionsFrame, LoginDoneFrame, LoginProgressFrame, LoginPromptFrame, ManualProbeCatalogMatch, ManualProbeModel,
   McpServerTestedFrame, MemoryFileFrame, ModelRolesFrame, ModelsCatalogFrame, ModelsConfigPathFrame, ModelsFrame,
-  ProfileSwitchedFrame, ProviderKeyDoneFrame, ProviderModelMetaFrame, ProviderModelMetaRow, ProviderModelSavedFrame, ProviderModelTestFrame,
+  PluginInstallResultFrame, ProfileSwitchedFrame, ProviderKeyDoneFrame, ProviderModelMetaFrame, ProviderModelMetaRow, ProviderModelSavedFrame, ProviderModelTestFrame,
   ProviderModelsProbeFrame, ProviderModelsSavedFrame, SettingsFrame, SettingsSchemaFrame, TerminalCreatedFrame, TerminalDataFrame,
   TerminalExitFrame, UsageStatsFrame,
 } from "./frames-models";
@@ -43,8 +44,9 @@ import type {
   RemoteWorkspaceAddedFrame,
   SessionStatsFrame, SetLocaleFrame, SshDirsFrame, SshHostsFrame, SshTestResultFrame, SteerConsumedFrame,
   SttDownloadProgressFrame, SttDraftFrame, SttStateFrame, SttSubmitFrame, SttTestResultFrame, SubagentControlledFrame,
-  SubagentEventFrame, SubagentLifecycleFrame, SubagentProgressFrame, TtsDeltaFrame, TtsFlushFrame, TtsStopFrame,
+  SubagentEventFrame, SubagentLifecycleFrame, SubagentProgressFrame, TtsAudioFrame, TtsDeltaFrame, TtsFailedFrame, TtsFlushFrame, TtsStopFrame,
   VoiceStatusFrame,
+  CollabStateFrame, WorktreeCreatedFrame, WorktreeRemovedFrame, WorktreeStatusResultFrame,
 } from "./frames-live";
 
 export * from "./payloads";
@@ -52,7 +54,7 @@ export * from "./frames-session";
 export * from "./frames-models";
 export * from "./frames-live";
 
-/** Discriminated union of all host → UI frames (87 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Discriminated union of all host → UI frames (88 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
@@ -64,12 +66,14 @@ export type HostFrame =
   | TodosFrame
   | PlanOutputFrame
   | PlanModeFrame
+  | AdvisorModeFrame
   | ComputerModeFrame
   | SessionCreatedFrame
   | SessionListFrame
   | PoolSessionsFrame
   | SessionTextSearchFrame
   | SessionUnloadedFrame
+  | SessionFinishedFrame
   | MessagesFrame
   | SessionArchivedFrame
   | SessionAbortedFrame
@@ -80,6 +84,7 @@ export type HostFrame =
   | SessionTreeFrame
   | EntryTreeFrame
   | SessionNavigatedFrame
+  | SessionEditedFrame
   | SessionExternalWriteFrame
   | FileDiffFrame
   | FileContentFrame
@@ -101,6 +106,10 @@ export type HostFrame =
   | GitPushedFrame
   | GitStatusFrame
   | GitBranchesFrame
+  | GitGraphFrame
+  | GitCommitDetailFrame
+  | CommitFileDiffFrame
+  | FileVersionsFrame
   | GitBranchSwitchedFrame
   | ApprovalModeFrame
   | ApprovalResolvedFrame
@@ -133,6 +142,7 @@ export type HostFrame =
   | AssetFileSavedFrame
   | EditorsFrame
   | AssetFileDeletedFrame
+  | PluginInstallResultFrame
   | MemoryFileFrame
   | McpServerTestedFrame
   | ProfileSwitchedFrame
@@ -163,6 +173,8 @@ export type HostFrame =
   | TtsDeltaFrame
   | TtsFlushFrame
   | TtsStopFrame
+  | TtsAudioFrame
+  | TtsFailedFrame
   | SttTestResultFrame
   | SttDownloadProgressFrame
   | VoiceStatusFrame
@@ -181,4 +193,8 @@ export type HostFrame =
   | OpenRightTabFrame
   | KickedFrame
   | RemoteConfigFrame
-  | RemoteKeyFrame;
+  | RemoteKeyFrame
+  | CollabStateFrame
+  | WorktreeCreatedFrame
+  | WorktreeStatusResultFrame
+  | WorktreeRemovedFrame;

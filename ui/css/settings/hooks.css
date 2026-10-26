@@ -1,12 +1,18 @@
-/* Hooks page (HooksPage.tsx): discovered-hook rows expand an inline editor
-   (.mem-expand + .sem-body.form + .mcp-form-* from the shared form language, same
-   as the MCP/shell pages). Only the row interaction and the pill sizing live here. */
+/* Hooks page (HooksPage.tsx): discovered-hook rows open the page-level editor window
+   (.set-edit-* head + .mcp-form-* from the shared form language, same as the MCP/skills pages).
+   Only the row interaction and the pill sizing live here. */
 
-/* hook row: fully clickable, .on highlight + caret flip while its editor is expanded */
+/* hook row: fully clickable (a click opens the editor window), no row-expansion state left;
+   row hover is the shared .srow:hover language */
 .srow.hook-row { cursor: pointer; }
 
-.srow.hook-row.on { background: var(--panel-2); }
-
-.srow.hook-row.on .mem-caret svg { transform: rotate(0deg); }
-
 #hookPhasePills .mcp-type-pill { min-height: 26px; padding: 0 10px; font-size: var(--ui-fs-sm); }
+
+/* scope dropdown inside the create form row: read as a field face, not a pill */
+.hook-form-scope .scope-sel { display: flex; width: 100%; box-sizing: border-box; border-radius: 9px; padding: 6px 10px; background: var(--inset); --hover-fill: var(--menu-hl); color: var(--text); font-size: var(--ui-fs-sm); }
+
+.hook-form-scope .scope-sel:hover, .hook-form-scope .scope-sel:has(.menu.open) { background: var(--hover-fill); }
+
+.hook-form-scope .scope-sel-btn { flex: 1; }
+
+.hook-form-scope .scope-sel-btn .caret-svg { margin-left: auto; }

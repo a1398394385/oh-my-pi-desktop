@@ -51,7 +51,7 @@
   width: 24px;
   height: 24px;
   border-radius: var(--r-sm);
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   color: var(--dim);
   display: inline-flex;
@@ -67,7 +67,7 @@
 }
 
 .node-jump-btn:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   color: var(--accent);
   border-color: var(--accent);
 }
@@ -85,7 +85,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
   border: 2px solid var(--line);
   display: flex;
   align-items: center;
@@ -112,7 +112,7 @@
 }
 
 .node-card {
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   transition: background var(--dur-snap), border-color var(--dur-snap), box-shadow var(--dur-snap);
@@ -120,7 +120,7 @@
 }
 
 .node-card:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   border-color: var(--line-soft);
 }
 
@@ -228,7 +228,7 @@
 
 .node-detail-panel {
   padding: 10px 12px;
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
   border-top: 1px solid var(--line);
   animation: ed-drop .18s ease-out;
 }

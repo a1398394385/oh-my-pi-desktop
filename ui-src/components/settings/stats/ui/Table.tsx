@@ -197,7 +197,7 @@ export function MeterCell({
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div className="meter-cell">
-      <span className="num">{display}</span>
+      <span className="stats-num">{display}</span>
       <div className="meter">
         <div className="meter-fill" style={{ width: `${pct}%`, background: color }} />
       </div>

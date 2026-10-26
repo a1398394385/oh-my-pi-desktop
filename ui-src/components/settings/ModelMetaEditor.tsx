@@ -272,18 +272,18 @@ export default function ModelMetaEditor({ modelId, displayName, catalog, saved, 
       <div className="mcp-form-row">
         <div className="mcp-form-group mcp-form-half">
           <label className="mcp-form-label">{t("settingsPage.model.wizardModelName")}</label>
-          <input className="mcp-form-input" value={e.name} placeholder={displayName} disabled={!e.custom}
+          <input className="mcp-form-input mcp-inp-name" value={e.name} placeholder={displayName} disabled={!e.custom}
             onChange={(ev) => update({ ...e, name: ev.target.value })} />
         </div>
-        <div className="mcp-form-group mcp-form-quarter">
+        <div className="mcp-form-group mcp-form-quarter mcp-form-narrow">
           <label className="mcp-form-label">{t("settingsPage.model.wizardContext")}</label>
-          <input className="mcp-form-input" inputMode="numeric" value={e.contextWindow} disabled={!e.custom}
+          <input className="mcp-form-input mcp-inp-num" inputMode="numeric" value={e.contextWindow} disabled={!e.custom}
             placeholder={placeholderFor(e.contextWindow, catalog?.contextWindow, probedContext ?? null)}
             onChange={(ev) => update({ ...e, contextWindow: ev.target.value })} />
         </div>
-        <div className="mcp-form-group mcp-form-quarter">
+        <div className="mcp-form-group mcp-form-quarter mcp-form-narrow">
           <label className="mcp-form-label">{t("settingsPage.model.wizardMaxOut")}</label>
-          <input className="mcp-form-input" inputMode="numeric" value={e.maxTokens} disabled={!e.custom}
+          <input className="mcp-form-input mcp-inp-num" inputMode="numeric" value={e.maxTokens} disabled={!e.custom}
             placeholder={placeholderFor(e.maxTokens, catalog?.maxTokens, probedMaxTokens ?? null)}
             onChange={(ev) => update({ ...e, maxTokens: ev.target.value })} />
         </div>
@@ -295,9 +295,9 @@ export default function ModelMetaEditor({ modelId, displayName, catalog, saved, 
           ["costCacheRead", "wizardCostRead", catalog?.cost?.cacheRead],
           ["costCacheWrite", "wizardCostWrite", catalog?.cost?.cacheWrite],
         ] as const).map(([field, labelKey, catVal]) => (
-          <div className="mcp-form-group mcp-form-quarter" key={field}>
+          <div className="mcp-form-group mcp-form-quarter mcp-form-narrow" key={field}>
             <label className="mcp-form-label">{t("settingsPage.model." + labelKey)}</label>
-            <input className="mcp-form-input" inputMode="decimal" value={e[field]} disabled={!e.custom}
+            <input className="mcp-form-input mcp-inp-num" inputMode="decimal" value={e[field]} disabled={!e.custom}
               placeholder={catVal != null ? String(catVal) : ""}
               onChange={(ev) => update({ ...e, [field]: ev.target.value })} />
           </div>

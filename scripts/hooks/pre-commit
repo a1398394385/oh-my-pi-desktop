@@ -1,12 +1,18 @@
 #!/bin/sh
-# Repo-level pre-commit: when the staging area contains host/ changes, run three zero-cost protocol smoke tests (~15s total, no model calls);
-# any failure blocks the commit. The UI side cannot be asserted at protocol level (WKWebView layer) and is out of scope for the hook.
+# Repo-level pre-commit: (1) encoding gate on the staging area (RULE-009) on
+# every commit; (2) when the staging area contains host/ changes, run three
+# zero-cost protocol smoke tests (~15s total, no model calls); any failure
+# blocks the commit. The UI side cannot be asserted at protocol level
+# (WKWebView layer) and is out of scope for the hook.
 # Invoked in a chain by the global ~/.git-hooks/pre-commit (after gitleaks); can also be run directly.
 # Skip (with care): git commit --no-verify
+# Never point core.hooksPath at an in-repo hooks dir: it shadows the global
+# gitleaks chain (the old .githooks/pre-commit opt-in did exactly that).
 cd "$(git rev-parse --show-toplevel)"
 
+node scripts/check-encoding.mjs --staged || exit 1
+
 changed=$(git diff --cached --name-only --diff-filter=ACMR | grep '^host/' || true)
-[ -z "$changed" ] && exit 0
 
 # timeout: built into Linux; macOS gets it as gtimeout from coreutils. When
 # neither is present, fail loudly instead of letting the smoke be misreported.

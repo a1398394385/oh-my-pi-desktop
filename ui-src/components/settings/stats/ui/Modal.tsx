@@ -3,7 +3,7 @@ import type React from "react";
 import { useEffect, useRef, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "../../../../store";
+import { useEffZoom } from "../../../../store";
 
 export interface ModalAction {
   label: string;
@@ -24,7 +24,7 @@ export function Modal({ open, title, onClose, primaryAction, cancelLabel, childr
   const { t } = useTranslation();
   // The dialog portals to body, outside the zoomed #settings subtree: carry the
   // zoom on the inner box so it matches the page (overlay stays 100vw to center it)
-  const zoom = useAppStore((s) => s.zoomLevel);
+  const zoom = useEffZoom();
   const zoomStyle = { zoom: String(zoom) } as CSSProperties;
   const resolvedCancelLabel = cancelLabel ?? t("settingsPage.stats.ui.cancel");
   const primaryRef = useRef<HTMLButtonElement>(null);
@@ -63,41 +63,45 @@ export function Modal({ open, title, onClose, primaryAction, cancelLabel, childr
   };
 
   return createPortal(
-    <div className="modal-overlay" onClick={handleOverlayClick} role="presentation">
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" style={zoomStyle}>
-        <div className="modal-header">
-          <h2 id="modal-title" className="modal-title">
-            {title}
-          </h2>
-          <button
-            type="button"
-            className="btn icon-btn"
-            data-variant="ghost"
-            data-icon="true"
-            data-size="sm"
-            onClick={onClose}
-            aria-label={t("settingsPage.stats.ui.close")}
-          >
-            <X size={15} />
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        <div className="modal-footer">
-          <button ref={cancelRef} type="button" className="btn confirm-btn" onClick={onClose}>
-            {resolvedCancelLabel}
-          </button>
-          {primaryAction && (
+    // The stats scope carries the page tokens and shared primitives, which the
+    // portal would otherwise lose (it renders outside #pg-stats).
+    <div className="stats-scope">
+      <div className="modal-overlay" onClick={handleOverlayClick} role="presentation">
+        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" style={zoomStyle}>
+          <div className="modal-header">
+            <h2 id="modal-title" className="modal-title">
+              {title}
+            </h2>
             <button
-              ref={primaryRef}
               type="button"
-              className="btn confirm-btn"
-              data-variant="primary"
-              onClick={primaryAction.onClick}
-              disabled={primaryAction.disabled}
+              className="btn icon-btn"
+              data-variant="ghost"
+              data-icon="true"
+              data-size="sm"
+              onClick={onClose}
+              aria-label={t("settingsPage.stats.ui.close")}
             >
-              {primaryAction.label}
+              <X size={15} />
             </button>
-          )}
+          </div>
+          <div className="modal-body">{children}</div>
+          <div className="modal-footer">
+            <button ref={cancelRef} type="button" className="btn confirm-btn" onClick={onClose}>
+              {resolvedCancelLabel}
+            </button>
+            {primaryAction && (
+              <button
+                ref={primaryRef}
+                type="button"
+                className="btn confirm-btn"
+                data-variant="primary"
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+              >
+                {primaryAction.label}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>,

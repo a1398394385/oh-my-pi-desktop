@@ -38,7 +38,7 @@
   width: 100%;
   height: 30px;
   padding: 0 10px 0 32px;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text);
@@ -98,7 +98,7 @@
   transition: background var(--dur-snap) var(--swift);
 }
 
-.mcp-btn-new:hover { background: var(--panel-2); }
+.mcp-btn-new:hover { background: var(--hover-fill); }
 
 .mcp-btn-new:active { transform: scale(.95); }
 
@@ -108,7 +108,7 @@
 }
 
 .mcp-card-list {
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--tint-white-80);
   border-radius: var(--r-card);
   box-shadow: 0 8px 26px var(--tint-black-350);
@@ -207,10 +207,10 @@
 }
 
 .mcp-server-badge {
-  font-size: 10px;
+  font-size: var(--ui-fs-xs);
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   color: var(--faint);
   border: 1px solid var(--line-soft);
   text-transform: uppercase;
@@ -289,6 +289,46 @@
   gap: 12px;
   flex-shrink: 0;
 }
+
+/* ── Editor window (shared form language) ──
+   The editor body uses the shared .frm-rows / .frm-row language (css/shared/form-layout.css).
+   Only the page-specific pieces live here: the optional env/headers disclosure button and
+   the status line under the rows. */
+
+/* Disclosure button for the optional JSON block (env vars / request headers) */
+.mcp-edit-card .mcp-env-toggle {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--inset); --hover-fill: var(--menu-hl);
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.mcp-edit-card .mcp-env-toggle:hover { color: var(--text); }
+
+/* The control column already spaces its children (grid gap), so drop the legacy offset */
+.mcp-edit-card .mcp-env-toggle + .mcp-form-textarea { margin-top: 0; }
+
+/* Status line under the rows: diagnostic text + the log button on one row */
+.mcp-edit-card > .frm-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+  line-height: 1.4;
+}
+
+.mcp-edit-tone-ok { color: var(--green); }
+.mcp-edit-tone-err { color: var(--err); }
+.mcp-edit-tone-dim { color: var(--dim); }
 
 /* Hairline: halve the converted inset rings on HiDPI */
 @media (min-resolution: 2dppx) {

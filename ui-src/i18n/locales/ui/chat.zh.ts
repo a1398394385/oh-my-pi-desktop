@@ -25,7 +25,6 @@ export const chatZh = {
   // ---- ACP context management rows (ToolRow.tsx + the shell rail summary) ----
   labelContextStatus: "上下文状态",
   labelCompressContext: "压缩上下文",
-  labelRecallBlock: "召回块",
   contextStatusBlocks: "共 {{count}} 活跃块",
   contextStatusOccupied: "占用 {{tokens}} 上下文",
   compressFolded: "上下文压缩完成 · 已压缩 {{count}} 活跃块 · 释放 {{tokens}} 上下文",
@@ -56,6 +55,15 @@ export const chatZh = {
   roFiles: "{{count}} 份文件",
   roTasks: "{{count}} 项任务",
   roCmds: "{{count}} 条命令",
+  // ---- TTSR injection notice (TtsrRow.tsx) ----
+  ttsrInjected: "注入 {{count}} 条规则",
+  // ---- advisor advice rows (AdvisorCard.tsx) ----
+  advisorSevBlocker: "拦截",
+  advisorSevConcern: "疑虑",
+  advisorSevNit: "小意见",
+  // ---- header advisor toggle (MainHeader.tsx) ----
+  advisorOnTitle: "关闭顾问：停止第二模型对每轮的复审",
+  advisorOffTitle: "开启顾问：由第二模型安静复审每轮并提示风险",
   // ---- truncation notices (plurals / interpolation) ----
   truncated: " …(截断,共{{count}}字)",
   outputTruncated: "\n…（输出已截断）",
@@ -71,6 +79,8 @@ export const chatZh = {
   processing: "正在处理…",
   loadingAria: "加载中",
   workingFor: "工作中 ",
+  showProcess: "展开处理过程",
+  hideProcess: "收起处理过程",
   // ---- loop group summary (LoopGroup.tsx) ----
   workedFor: "已工作 {{duration}}",
   totalUsage: "总消耗 {{usage}}",
@@ -127,7 +137,6 @@ export const chatZh = {
   backToChat: "返回对话",
   filterMode: "过滤模式：",
   refreshTree: "刷新条目树",
-  backToStream: "返回对话流",
   // ---- session tree stream (SessionTreeStream.tsx) ----
   copiedToClipboard: "已复制到剪贴板",
   copySuccessFallback: "复制成功",
@@ -147,7 +156,6 @@ export const chatZh = {
   jump: "跳转",
   jumpAndSummarize: "跳转并摘要",
   forkSwitch: "分叉点切换 ({{count}} 个分支)",
-  forkHint: "滚轮左右滑动 · 点击切换分支",
   switchedToBranch: "已切换至分支 #{{index}}",
   branchSteps: "{{count}} 步",
   // ---- message rail (MsgRail.tsx) ----
@@ -155,6 +163,7 @@ export const chatZh = {
   railCommand: "命令",
   // ---- turn actions (TurnActs.tsx) ----
   copyReply: "复制这条回复",
+  speakReply: "朗读这条回复",
   replyCopied: "已复制回复",
   copyFailed: "复制失败",
   branchFromHere: "从此处分叉出新会话",
@@ -165,21 +174,18 @@ export const chatZh = {
   sendNow: "立即发送（当前步骤后注入）",
   imageN: "图片 {{n}}",
   clickToZoom: "点击查看大图",
+  automationDelivery: "自动化投递",
   copyMsg: "复制这条消息",
+  editResend: "编辑重发（原对话保留为分支）",
+  editResendSend: "发送（Enter）",
+  editAfterSaved: "消息落盘后可编辑",
+  editWhileStreaming: "回复结束后可编辑",
+  editResendFailed: "编辑重发失败：{{error}}",
   // ---- todo card (TodoCard.tsx) ----
-  allDone: "全部完成",
   sessionStatus: "会话状态",
   collapseToCapsule: "收起为胶囊",
   planOutput: "计划产出",
   planOutputHint: "在文件页打开计划文件",
-  // 能力卡片（右下角浮层；MCP/插件行走 right.* 的 caps 键）
-  capsCardTitle: "能力",
-  capsPlugins: "插件",
-  capsFlags: "会话模式",
-  capsDockCollapse: "收起区域",
-  capsDockExpand: "展开区域",
-  capFlagComputer: "Computer Use",
-  capFlagGoal: "目标模式",
   resizeTodo: "拖动调整卡片大小",
   // ---- approval card (ApprovalCard.tsx) ----
   awaitingConfirm: "等待确认",
@@ -193,7 +199,7 @@ export const chatZh = {
   enableWordWrap: "开启自动换行",
   // ---- shared render parts (parts.tsx) ----
   openLinkFailed: "打开链接失败：{{error}}",
-  openInBrowser: "{{mod}}+点击在默认浏览器打开",
+  openInBrowser: "点击在内置浏览器打开 · {{mod}}+点击在默认浏览器打开",
   // ---- rail tool summary (shell.ts railToolText) ----
   fileSep: "、",
   // ---- session stats bar (SessionStatsBar.tsx, 各项只显示图标，文字降级为 tooltip) ----
@@ -208,6 +214,9 @@ export const chatZh = {
   statsTokenSpeed: "输出速度",
   statsAvgTtft: "平均首字延迟",
   statsCompactions: "本次会话的上下文压缩次数（每次都会重建上下文，不计入缓存失效次数）",
+  // 缓存前缀失效：替换整行显示 3 秒（{{tokens}} 为重新计费的未缓存输入 token）
+  statsCacheMiss: "缓存失效：{{tokens}} tokens 重新计费",
+  statsCacheMissUsd: "缓存失效：{{tokens}} tokens 重新计费（约 {{usd}}）",
   // ---- session-tree filter pills (sessionTreeUtil FILTERS) ----
   filterDefault: "默认",
   filterNoTools: "无工具",

@@ -2,12 +2,13 @@
 // these UiEvent kinds and does not depend on omp event shape details.
 // The live stream (translateEvent) and the disk history (entriesToTranscript)
 // share the same tool-entry summary logic.
-import fs from "node:fs";
-import os from "node:os";
+import fsp from "node:fs/promises";
 import path from "node:path";
-import { editDiffString } from "@oh-my-pi/pi-natives";
 import { hostI18n } from "./i18n/host.ts";
+import { collectFiles, isDevicePath, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
+import { advisorEvent, advisorHistoryRow } from "./translate-advisor.ts";
+import { parseDelivery } from "./automations/delivery.ts";
 
 // Compat regex for journals written by the retired ACP nudge prototype: old
 // sessions carry <dcp-message-id>mNNNNN</dcp-message-id> tags that UI
@@ -16,15 +17,35 @@ const REF_TAG_RE = /<dcp-message-id>m\d{1,5}<\/dcp-message-id>\n?/g;
 
 // In-flight write tool snapshot before mutation: caches the pre-write text to
 // generate an accurate diff between the old and new file contents when the
-// tool completes, avoiding whole-file addition fallbacks for existing files.
-const pendingWrites = new Map<string, { path: string; oldText?: string }>();
+// tool completes, avoiding whole-file fallbacks; `owner` scopes agent_end cleanup to the parking session.
+// Exported for the diff tests: they spin the event loop until a pending snapshot lands
+// before overwriting the fixture file (the pre-read is async, see preadWriteOldText).
+export const pendingWrites = new Map<string, { path: string; oldText?: string; owner?: PoolEntry }>();
+
+// 3c: async pre-read of the file a `write` tool is about to overwrite (the sync
+// version ran on every socket fan-out's critical path). Placeholder set synchronously,
+// filled only while the toolCallId is still pending — if tool_execution_end wins the
+// race, the whole-file fallback diff is honest. Residual race: a read scheduled after
+// a very fast write presents post-write text as oldText (empty diff — no data loss).
+async function preadWriteOldText(toolCallId: string, abs: string, owner: PoolEntry): Promise<void> {
+  let oldText: string | undefined;
+  try {
+    const st = await fsp.stat(abs);
+    if (st.isFile() && st.size <= 2_000_000) oldText = await fsp.readFile(abs, "utf8");
+  } catch {
+    return; // missing/unreadable: keep the placeholder (no oldText)
+  }
+  if (oldText === undefined) return;
+  const pending = pendingWrites.get(toolCallId);
+  if (pending && pending.owner === owner && pending.oldText === undefined) pending.oldText = oldText;
+}
 
 
 // Strip the <dcp-message-id> tags injected/replayed by ACP: disk keeps the
 // original text (historical fact); scrub uniformly before pushing to the UI.
 // Brief flashes during live text_delta streaming are handled by the frontend
 // render layer (AssistantMsg).
-function stripDcpTags(s: string): string {
+export function stripDcpTags(s: string): string {
 	const out = s.replace(REF_TAG_RE, "");
 	return out === s ? s : out.trim();
 }
@@ -35,326 +56,13 @@ function stripDcpTags(s: string): string {
 import type { UiEvent } from "./wire/payloads.ts";
 export type { UiEvent };
 
-// Tool device paths (xd://tui, xd://mcp__xxx, ...): reading/writing one invokes a device, not a file read/write
-function isDevicePath(p: unknown): boolean {
-  return typeof p === "string" && /^[a-z][a-z0-9+.-]*:\/\//i.test(p);
-}
-
-function pathOf(args: any): string {
-  if (!args || typeof args !== "object") return "";
-  if (typeof args.path === "string") return args.path;
-  if (typeof args.file_path === "string") return args.file_path;
-  return "";
-}
-
-// The desktop edit tool addresses its target as an "[path#TAG]" header line inside
-// args.input (not args.path) — extract the path so the change row/group shows the file
-function editInputPath(input: unknown): string {
-  if (typeof input !== "string") return "";
-  const m = /^\[([^\[\]#\n]+?)(?:#[0-9a-fA-F]{4})?\]\s*$/m.exec(input);
-  return m ? m[1].trim() : "";
-}
-
-function collectFiles(name: string, args: any, details?: any): string[] {
-  const out: string[] = [];
-  const push = (p: unknown) => {
-    if (typeof p !== "string" || !p) return;
-    const norm = p.replace(/\\/g, "/");
-    const i = out.findIndex((x) => x === norm || x.endsWith("/" + norm) || norm.endsWith("/" + x));
-    if (i < 0) out.push(norm);
-    else if (norm.length > out[i].length) out[i] = norm; // Relative and absolute paths count as the same file; keep the more complete one
-  };
-  if (Array.isArray(args?.edits)) for (const e of args.edits) push(e?.path ?? e?.file_path);
-  if (Array.isArray(args?.paths)) for (const p of args.paths) push(p);
-  if (Array.isArray(args?.files)) for (const f of args.files) push(f);
-  if (Array.isArray(details?.files)) for (const f of details.files) push(f);
-  if (typeof args?.input === "string" && (name === "apply_patch" || name === "edit")) {
-    const re = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(args.input))) push(m[1].trim());
-  }
-  if (name === "edit") {
-    const p = editInputPath(args?.input);
-    if (p) push(p);
-  }
-  if (Array.isArray(details?.perFileResults)) for (const f of details.perFileResults) push(f?.path);
-  if (Array.isArray(details?.hits)) for (const h of details.hits) push(h?.rel);
-  if (typeof details?.path === "string") push(details.path);
-  if (typeof details?.resolvedPath === "string") push(details.resolvedPath);
-  const p = pathOf(args);
-  if (p) push(p);
-  return out;
-}
-
-function toolArgsForUi(name: string, args: any): Record<string, unknown> {
-  if (!args || typeof args !== "object") return {};
-  if (name === "bash" || name === "shell") return { command: String(args.command ?? "").slice(0, 4000) };
-  if (name === "eval") return { command: String(args.code ?? args.command ?? "").slice(0, 4000) }; // JS evaluation, rendered as a terminal card
-  if (name === "grep" || name === "ast_grep") return { pattern: String(args.pattern ?? args.query ?? args.pat ?? "").slice(0, 500), path: pathOf(args) };
-  if (name === "glob") return { pattern: String(args.pattern ?? "").slice(0, 500), path: pathOf(args) };
-  if (name === "find") {
-    return {
-      query: String(args.query ?? "").slice(0, 500),
-      grep_keywords: Array.isArray(args.grep_keywords) ? args.grep_keywords.map(String).slice(0, 20) : undefined,
-      path: pathOf(args),
-    };
-  }
-  if (name === "web_search") return { query: String(args.query ?? "").slice(0, 1000) };
-  if (name === "read_session_context") return { query: args.query, sessionId: args.sessionId, fromTurn: args.fromTurn, toTurn: args.toTurn };
-  if (name === "ask") return { questions: capValue(args.questions) };
-  if (name === "debug") {
-    return { action: args.action, program: args.program, file: args.file, line: args.line, function: args.function, expression: args.expression };
-  }
-  if (name === "github") {
-    return { op: args.op, repo: args.repo, branch: args.branch, path: args.path, pr: args.pr, query: args.query, title: args.title, base: args.base, head: args.head };
-  }
-  if (name === "lsp") {
-    return { action: args.action, file: args.file, line: args.line, symbol: args.symbol, query: args.query, new_name: args.new_name };
-  }
-  if (name === "retain") return { memories: capValue(args.memories) };
-  if (name === "recall" || name === "reflect") return { query: args.query };
-  if (name === "learn") return { memory: args.memory, skill: args.skill?.name };
-  if (name === "memory_edit") return { op: args.op, id: args.id };
-  if (name === "todo") return { op: args.op, task: args.task, i: args.i };
-  if (name === "yield") {
-    // Subagent result submission: the payload IS the row's subject (the frontend derives
-    // its one-line summary from these), so carry all four fields through instead of letting
-    // them fall into the generic path/content filter. `data` can be an arbitrary output
-    // object, so it goes through the frame cap like the other structured params.
-    return {
-      type: Array.isArray(args.type) ? args.type.slice(0, 20).map(String) : args.type,
-      key: args.key,
-      data: capValue(args.data),
-      error: typeof args.error === "string" ? args.error.slice(0, 2000) : args.error,
-    };
-  }
-  if (name === "task") {
-    // Subagent spawn: the assignment text (flat task / batch context) is the card's main content;
-    // per-item task text capped individually so one big item cannot swallow the whole frame
-    return {
-      name: args.name,
-      agent: args.agent,
-      task: typeof args.task === "string" ? args.task.slice(0, 20_000) : undefined,
-      context: typeof args.context === "string" ? args.context.slice(0, 20_000) : undefined,
-      tasks: Array.isArray(args.tasks)
-        ? args.tasks.map((it) => ({
-            name: it?.name,
-            agent: it?.agent,
-            isolated: it?.isolated,
-            task: typeof it?.task === "string" ? it.task.slice(0, 8000) : undefined,
-          }))
-        : undefined,
-    };
-  }
-  if (name === "hub") {
-    return {
-      op: args.op,
-      name: args.name,
-      application: args.application,
-      args: args.args,
-      text: args.text,
-      cwd: args.cwd,
-      i: args.i,
-      pty: args.pty,
-      to: args.to,
-      message: args.message,
-    };
-  }
-  const files = collectFiles(name, args);
-  const path = pathOf(args) || (name === "edit" ? editInputPath(args?.input) : "");
-  const out: Record<string, unknown> = {};
-  if (path) out.path = path;
-  if (files.length) out.files = files;
-  if (typeof args.content === "string") out.content = args.content.slice(0, 8000);
-  return out;
-}
-
-// Structured params (ask.questions / retain.memories etc.) over the cap degrade to a truncated JSON string, protecting the WebSocket frame
-function capValue(v: unknown, max = 8000): unknown {
-  if (v === undefined) return v;
-  const s = JSON.stringify(v) ?? "";
-  return s.length > max ? s.slice(0, max) : v;
-}
-
-function diffStats(diff: string): { added: number; removed: number } {
-  let added = 0;
-  let removed = 0;
-  for (const line of String(diff || "").split("\n")) {
-    if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) continue;
-    if (line.startsWith("+")) added++;
-    else if (line.startsWith("-")) removed++;
-  }
-  return { added, removed };
-}
-
 function thinkingLabel(sec: number): string {
   if (sec < 5) return hostI18n.t("flows.think.durationFew");
   if (sec < 60) return hostI18n.t("flows.think.durationSec", { n: sec });
   return hostI18n.t("flows.think.durationMinSec", { m: Math.floor(sec / 60), s: String(sec % 60).padStart(2, "0") });
 }
 
-// Tool result text: joins the text segments of result.content (truncated; details go through the artifact)
-function resultText(result: unknown, max = 20_000): string {
-  if (!result || typeof result !== "object" || !("content" in result) || !Array.isArray(result.content)) return "";
-  return result.content
-    .filter(
-      (p): p is { type: string; text: string } =>
-        !!p && typeof p === "object" && "type" in p && p.type === "text" && "text" in p && typeof p.text === "string",
-    )
-    .map((p) => p.text)
-    .join("\n")
-    .trim()
-    .slice(0, max);
-}
-
-function summarizeResult(name: string, args: any, result: any, pendingWrite?: { path: string; oldText?: string }): Partial<TranscriptItem> {
-  const details = result?.details ?? (result && typeof result === "object" && "diff" in result ? result : undefined);
-  const patch: Partial<TranscriptItem> = {};
-  const files = collectFiles(name, args, details);
-  if (files.length) patch.files = files;
-  if (name === "read") {
-    // Pass through the TUI-style render data: displayContent is the original text the model saw (no line-number prefix), the line range comes from truncation.shownRange
-    const dc = details?.displayContent;
-    if (dc && typeof dc.text === "string" && dc.text) {
-      const MAX = 200_000; // A realistic bound for WebSocket transport and frontend rendering; a normal read (self-truncating) stays far below
-      let text = dc.text;
-      let lineNumbers = Array.isArray(dc.lineNumbers) ? dc.lineNumbers : undefined;
-      if (text.length > MAX) {
-        text = text.slice(0, MAX);
-        const n = text.split("\n").length;
-        if (lineNumbers) lineNumbers = lineNumbers.slice(0, n);
-      }
-      patch.details = {
-        isDirectory: details.isDirectory === true,
-        displayContent: { text, startLine: dc.startLine, lineNumbers },
-        totalLines: details.totalLines,
-        resolvedPath: details.resolvedPath ?? (details.meta?.source?.type === "path" ? details.meta.source.value : undefined),
-        shownRange: details.meta?.truncation?.shownRange,
-        // Summarized reads (elided body): the only "partial read" marker with no
-        // truncation/lineNumbers; the frontend derives the shown range from it
-        summary: typeof details.summary?.lines === "number" ? details.summary : undefined,
-      };
-    }
-    // Directory-read fallback: carry isDirectory even without displayContent (the frontend filters the browsed group by it)
-    else if (details?.isDirectory) patch.details = { isDirectory: true };
-  }
-  if (name === "bash" || name === "shell" || name === "eval") {
-    // Terminal/eval tools: carry the output text for the frontend's expandable card (truncated; details go through the artifact)
-    const text = resultText(result);
-    if (text) patch.output = text;
-    return patch;
-  }
-  if (name === "hub") {
-    const text = resultText(result);
-    if (text) patch.output = text;
-    if (details) patch.details = details;
-    return patch;
-  }
-  if (name === "wait") {
-    // Coordination wait: the frontend's wait row summarizes details.jobs/agents; the model-facing
-    // text (consumed peer message / nothing-to-wait notice) feeds the expandable card
-    const text = resultText(result);
-    if (text) patch.output = text;
-    if (details) patch.details = details;
-    return patch;
-  }
-  if (name === "task") {
-    // Subagent spawn: details carry results/progress/async state for the expandable card
-    const text = resultText(result);
-    if (text) patch.output = text;
-    if (details) patch.details = details;
-    return patch;
-  }
-  if (name === "todo") {
-    const tasks = (details?.phases ?? []).flatMap((p: any) => p.tasks ?? []);
-    const done = tasks.filter((t: any) => t.status === "completed").length;
-    const cur = tasks.find((t: any) => t.status === "in_progress") ?? tasks[0];
-    patch.todo = {
-      content: String(args?.task || cur?.content || args?.i || ""),
-      done,
-      total: tasks.length,
-    };
-    return patch;
-  }
-  // Tagged tools (find / web search / ask / debug / GitHub / LSP / yield / the memory suite): result text feeds the frontend's expandable card
-  if (
-    name === "find" ||
-    name === "web_search" || name === "ask" || name === "debug" || name === "github" || name === "lsp" ||
-    name === "read_session_context" || name === "yield" ||
-    name === "retain" || name === "recall" || name === "reflect" || name === "learn" || name === "memory_edit" ||
-    name === "context_status" || name === "compress_context" || name === "recall_block"
-  ) {
-    const text = resultText(result);
-    if (text) patch.output = text;
-    if (details) patch.details = details;
-    return patch;
-  }
-  if (Array.isArray(details?.perFileResults) && details.perFileResults.length > 1) {
-    if (typeof details?.diff === "string") {
-      patch.diffContent = details.diff.slice(0, 500_000);
-    }
-    if (details) patch.details = details;
-    return patch; // Multi-file "changes" carry no line counts
-  }
-  if (typeof details?.diff === "string") {
-    Object.assign(patch, diffStats(details.diff));
-    // Carry the tool's real modification for this call too: the edit row's
-    // inline expansion renders it directly (for a new file / no git baseline,
-    // git diff can only show the whole thing as additions, mismatching the
-    // +N-M summary); truncation cap matches the file_diff reply's scope
-    patch.diffContent = details.diff.slice(0, 500_000);
-  }
-  else if (name === "write" && typeof args?.content === "string") {
-    // Writing a tool device (xd://tui etc.) is not a file edit: there is no
-    // file diff to show, and add/remove counts derived from content line
-    // counts would be fake — send the device's reply text instead, for the
-    // device row's expansion
-    if (isDevicePath(args?.path)) {
-      const text = resultText(result);
-      if (text) patch.output = text;
-    } else {
-      const newText = args.content;
-      const targetPath = pendingWrite?.path ?? pathOf(args);
-      if (pendingWrite?.oldText !== undefined) {
-        try {
-          const diffRes = editDiffString(pendingWrite.oldText, newText, targetPath);
-          if (diffRes?.diff) {
-            Object.assign(patch, diffStats(diffRes.diff));
-            patch.diffContent = diffRes.diff.slice(0, 500_000);
-          } else {
-            patch.added = 0;
-            patch.removed = 0;
-            patch.diffContent = "";
-          }
-        } catch {
-          patch.added = Math.max(1, newText.split("\n").length);
-          patch.removed = 0;
-        }
-      } else {
-        patch.added = Math.max(1, newText.split("\n").length);
-        patch.removed = 0;
-        try {
-          const diffRes = editDiffString("", newText, targetPath);
-          if (diffRes?.diff) {
-            patch.diffContent = diffRes.diff.slice(0, 500_000);
-          }
-        } catch {}
-      }
-    }
-  }
-  else if (name === "edit" && typeof args?.content === "string") {
-    if (isDevicePath(args?.path)) {
-      const text = resultText(result);
-      if (text) patch.output = text;
-    } else {
-      patch.added = Math.max(1, args.content.split("\n").length);
-      patch.removed = 0;
-    }
-  }
-  return patch;
-}
-
-function isJunkPlaceholderText(text?: string | null): boolean {
+export function isJunkPlaceholderText(text?: string | null): boolean {
   if (!text) return true;
   const t = text.trim();
   return t === "." || t === "。" || t === "·" || t === "•";
@@ -462,11 +170,13 @@ export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string
   return last;
 }
 
-function flushAssistantDraft(entry: PoolEntry) {
+function flushAssistantDraft(entry: PoolEntry, final = false) {
   if (!entry.assistantDraft) return;
   const draft = stripDcpTags(entry.assistantDraft);
   if (!isJunkPlaceholderText(draft)) {
-    entry.transcript.push({ role: "assistant", text: draft });
+    // final: the message ended stopReason "stop" — a delivered output, lifted out of the
+    // loop group at seal time (toolUse-turn prose stays process narration)
+    entry.transcript.push({ role: "assistant", text: draft, ...(final ? { turnFinal: true } : {}) });
   }
   entry.assistantDraft = "";
 }
@@ -475,7 +185,7 @@ function flushAssistantDraft(entry: PoolEntry) {
 // transport) is persisted as an assistant message whose payload is only the
 // `errorMessage` field — `content` is empty, so it carries no UI row of its own.
 // That field is the single source for the error row in both live and reload paths.
-function errorTextOf(msg: unknown): string | null {
+export function errorTextOf(msg: unknown): string | null {
   if (typeof msg !== "object" || msg === null) return null;
   const { role, stopReason, errorMessage } = msg as { role?: unknown; stopReason?: unknown; errorMessage?: unknown };
   if (role !== "assistant" || stopReason !== "error") return null;
@@ -535,10 +245,29 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       return {
         kind: "turn_end",
         runEnd: false,
+        // final: this turn ended "stop" — the UI settles its draft as a delivered output
+        final: ev.message?.stopReason === "stop",
         usage: u
           ? { input: u.input ?? 0, output: u.output ?? 0, cacheRead: u.cacheRead ?? 0, cacheWrite: u.cacheWrite ?? 0 }
           : null,
       };
+    }
+    case "ttsr_triggered": {
+      // A TTSR match rewound the stream and injected these rules: the notice sits at that
+      // point as a read-only row (the TUI shows the same block). Rules ride along with name +
+      // description only — the row never re-renders the injected body in full.
+      const rules = (Array.isArray(ev.rules) ? (ev.rules as unknown[]) : []).flatMap((raw) => {
+        const r = raw as { name?: unknown; description?: unknown; content?: unknown };
+        if (typeof r.name !== "string" || !r.name) return [];
+        const body = typeof r.description === "string" ? r.description : typeof r.content === "string" ? r.content : "";
+        return [{ name: r.name, description: body.trim() || undefined }];
+      });
+      if (rules.length === 0) return null;
+      // Settle the interrupted prose first: the notice belongs after the text it cut off
+      flushAssistantDraft(entry);
+      const item: TranscriptItem = { role: "ttsr", text: rules.map((r) => r.name).join(", "), rules };
+      entry.transcript.push(item);
+      return { kind: "ttsr", rules };
     }
     case "thinking_level_changed":
       // auto-resolution frame: when configured==="auto", resolved is the
@@ -547,12 +276,34 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // configured. Pass through only; the frontend decides display.
       return { kind: "thinking_level", configured: ev.configured, resolved: ev.resolved };
     case "message_end": {
+      // An automation delivery wakes this session with a custom user message; the
+      // composer never sent it, so this echo is the only thing that draws the
+      // bubble (pooled snapshots replay entry.transcript, hence the push).
+      const delivered = parseDelivery(ev.message ?? {});
+      if (delivered) {
+        entry.transcript.push({ role: "user", text: delivered.text, automation: delivered.marker });
+        return {
+          kind: "user_message",
+          text: delivered.text,
+          ...(delivered.marker.id ? { automation: delivered.marker } : {}),
+        };
+      }
+      const advice = advisorEvent(ev.message, entry);
+      if (advice) return advice;
       // A failed request emits an error assistant message (stopReason "error",
       // payload only in `errorMessage`); text streamed before the failure is
       // settled first so the error row lands after it. Without this branch the
       // failure never reaches the UI: no text_delta ever carried it.
       const text = errorTextOf(ev.message);
-      if (!text) return null;
+      if (!text) {
+        // A stop-ended assistant message is a delivered output: settle it NOW with the
+        // turnFinal mark instead of waiting for the next event's flush — a mid-run wake
+        // (advisor note / async result) would otherwise land its row above this text in
+        // the pooled transcript, and the seal could not see the mark.
+        const m = ev.message as { role?: unknown; stopReason?: unknown };
+        if (m?.role === "assistant" && m.stopReason === "stop") flushAssistantDraft(entry, true);
+        return null;
+      }
       flushAssistantDraft(entry);
       entry.transcript.push({ role: "error", text });
       return { kind: "error", text };
@@ -597,15 +348,9 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         const p = pathOf(ev.args);
         if (p && !isDevicePath(p)) {
           const abs = path.resolve(entry.cwd, p);
-          try {
-            if (fs.existsSync(abs) && fs.statSync(abs).isFile() && fs.statSync(abs).size <= 2_000_000) {
-              pendingWrites.set(ev.toolCallId, { path: abs, oldText: fs.readFileSync(abs, "utf8") });
-            } else {
-              pendingWrites.set(ev.toolCallId, { path: abs });
-            }
-          } catch {
-            pendingWrites.set(ev.toolCallId, { path: abs });
-          }
+          // Sync placeholder, async fill (see preadWriteOldText) — tool_execution_end never stalls on it
+          pendingWrites.set(ev.toolCallId, { path: abs, owner: entry });
+          void preadWriteOldText(ev.toolCallId, abs, entry);
         }
       }
       const args = toolArgsForUi(ev.toolName, ev.args);
@@ -646,10 +391,26 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         diffContent: item?.diffContent, // The edit row's inline expansion prefers the real diff from this call's reply
       };
     }
+    case "tool_execution_update": {
+      // Async task jobs keep reporting spawn progress after the call returned and its
+      // tool_execution_end settled the card, so late-resolved models (spawns still in
+      // setup when the result snapshot was taken) would stay missing. Forward details
+      // only: reusing tool_update would mark the row finished and collapse it again.
+      // shortcut: only `task` is forwarded — it is the one tool whose work outlives the
+      // call. Another tool that starts reporting after its result will silently stop
+      // refreshing the card here; upgrade to a frame with an explicit running flag (and
+      // make the store fold only on the terminal one) when that happens.
+      if (ev.toolName !== "task") return null;
+      const details = ev.partialResult?.details;
+      if (!details) return null;
+      return { kind: "tool_details", name: ev.toolName, toolCallId: ev.toolCallId, details };
+    }
     case "agent_end":
       // isTerminal === false means maintenance/async delivery will keep running; not a true end
       if (ev.isTerminal === false) return null;
       flushAssistantDraft(entry);
+      // 3c: an interrupted turn can strand a pre-read snapshot (≤2MB) — sweep this session's at terminal end
+      for (const [k, v] of pendingWrites) if (v.owner === entry) pendingWrites.delete(k);
       const userEntryId = backfillUserEntryIds(entry);
       return {
         kind: "turn_end",
@@ -681,481 +442,12 @@ export const PHASE_TEXT: Record<string, [string, string]> = {
   },
 };
 
-// Disk history entries → frontend transcript (thinking blocks expandable;
-// tools carry path/command/line counts)
-// Turn grouping: one user message opens a turn; the turn's thinking/tool/
-// intermediate assistant items are collected into a loop group (displayed
-// collapsed), leaving only the last assistant text outside the group as the
-// turn's outward result — matching the live turn_end collapse behavior.
-export function entriesToTranscript(entries: any[]): TranscriptItem[] {
-  const out: TranscriptItem[] = [];
-  const byId = new Map<string, TranscriptItem>();
-  const fileHistory = new Map<string, string>();
-  let run: { items: TranscriptItem[]; usage: TurnUsage | null; startMs: number; endMs: number } | null = null;
-
-  const finalizeRun = () => {
-    if (!run) return;
-    const r = run;
-    run = null;
-    let lastA = -1;
-    for (let i = r.items.length - 1; i >= 0; i--) {
-      if (r.items[i].role === "assistant") {
-        lastA = i;
-        break;
-      }
-    }
-    const finalOut = lastA >= 0 ? r.items.splice(lastA, 1) : [];
-    if (r.items.length) {
-      out.push({
-        role: "loop",
-        text: "",
-        collapsed: true,
-        items: r.items,
-        durationSec: Math.max(1, Math.round((r.endMs - r.startMs) / 1000)),
-        usage: r.usage,
-      });
-    }
-    out.push(...finalOut);
-  };
-
-  for (const e of entries) {
-    // Execution-trace entries → phase separator rows: whichever end executed
-    // (CLI/desktop), loading the session on the other end shows the record.
-    // compaction.method distinguishes handoff from compact (old sessions have
-    // no method, displayed as compact); title_change only counts user renames
-    // (source "auto" is a new session's auto-generated title, not an
-    // execution record)
-    if (e.type === "compaction") {
-      finalizeRun();
-      const cmd = e.method === "handoff" ? "handoff" : "compact";
-      out.push({ role: "phase", phase: "done", command: cmd, text: PHASE_TEXT[cmd][1] });
-      continue;
-    }
-    if (e.type === "title_change") {
-      if (e.source === "user") {
-        finalizeRun();
-        out.push({ role: "phase", phase: "done", command: "rename", text: PHASE_TEXT.rename[1] });
-      }
-      continue;
-    }
-    if (e.type !== "message") continue;
-    const msg = e.message ?? {};
-    const { role, content } = msg;
-    const ts = Date.parse(e.timestamp ?? "") || 0;
-    if (role === "toolResult") {
-      if (run && ts) run.endMs = ts;
-      const item = byId.get(msg.toolCallId);
-      if (item) {
-        let pendingWrite: { path: string; oldText?: string } | undefined;
-        if (msg.toolName === "write") {
-          const p = pathOf(item.args);
-          if (p && !isDevicePath(p)) {
-            const oldText = fileHistory.get(p);
-            pendingWrite = { path: p, oldText };
-            if (typeof item.args?.content === "string") {
-              fileHistory.set(p, item.args.content);
-            }
-          }
-        }
-        Object.assign(item, summarizeResult(msg.toolName, item.args, msg, pendingWrite));
-        if (msg.toolName === "read") {
-          const p = pathOf(item.args);
-          const readText = msg.details?.displayContent?.text;
-          if (p && typeof readText === "string") {
-            fileHistory.set(p, readText);
-          }
-        }
-      }
-      continue;
-    }
-    if (role === "bashExecution") {
-      // ! local command result: flattened into a bash row; opens no new turn, joins no loop group
-      out.push({
-        role: "bash",
-        text: msg.command,
-        output: msg.output ?? "",
-        exitCode: msg.exitCode ?? null,
-        cancelled: !!msg.cancelled,
-        truncated: !!msg.truncated,
-        excludeFromContext: !!msg.excludeFromContext,
-        running: false,
-      });
-      continue;
-    }
-    if (role === "fileMention") {
-      // @ mention already read: flattened into a mention row
-      out.push({ role: "mention", text: "", files: (msg.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")) });
-      continue;
-    }
-    if (role !== "user" && role !== "assistant") continue;
-    // Provider failure entries carry no content, only `errorMessage`. Surface them as
-    // their own top-level row: a run may be collapsed into a loop group, its failure
-    // must not be — otherwise a reloaded session loses the reason it stopped.
-    if (role === "assistant") {
-      const errText = errorTextOf(msg);
-      if (errText) {
-        finalizeRun();
-        out.push({ role: "error", text: errText });
-        continue;
-      }
-    }
-    if (role === "user") {
-      const text = stripDcpTags(typeof content === "string" ? content : (content ?? []).filter((b: any) => b?.type === "text").map((b: any) => b.text).join("\n"));
-      const images: Array<{ type: "image"; data: string; mimeType: string }> = [];
-      if (Array.isArray(content)) {
-        for (const b of content) {
-          if (b?.type === "image") {
-            const data = b.data || b.source?.data;
-            const mimeType = b.mimeType || b.source?.media_type || b.source?.mimeType || "image/png";
-            if (typeof data === "string") {
-              images.push({ type: "image", data, mimeType });
-            }
-          }
-        }
-      }
-      if (!isJunkPlaceholderText(text) || images.length > 0) {
-        finalizeRun(); // Valid user input opens a new turn
-        out.push({
-          role: "user",
-          text,
-          entryId: e.id,
-          ...(images.length > 0 ? { images } : {}),
-        });
-        run = { items: [], usage: null, startMs: ts, endMs: ts };
-      }
-      continue;
-    }
-    if (run) {
-      run.endMs = ts || run.endMs;
-      if (msg.usage) {
-        run.usage = run.usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-        run.usage.input += msg.usage.input || 0;
-        run.usage.output += msg.usage.output || 0;
-        run.usage.cacheRead += msg.usage.cacheRead || 0;
-        run.usage.cacheWrite += msg.usage.cacheWrite || 0;
-      }
-    }
-    const sink = run ? run.items : out; // Orphan assistants outside a run (no turn-leading user message) flatten directly, preserving old behavior
-    if (typeof content === "string") {
-      const plain = stripDcpTags(content);
-      if (!isJunkPlaceholderText(plain)) {
-        sink.push({ role, text: plain, entryId: e.id, endMs: ts });
-      }
-      continue;
-    }
-    for (const block of content ?? []) {
-      if (block.type === "text") {
-        const plain = stripDcpTags(block.text);
-        if (!isJunkPlaceholderText(plain)) {
-          sink.push({ role: "assistant", text: plain, entryId: e.id, endMs: ts });
-        }
-      } else if (block.type === "thinking" && block.thinking) {
-        sink.push({
-          role: "thinking",
-          text: hostI18n.t("flows.think.with", { duration: hostI18n.t("flows.think.durationFew") }),
-          thinking: String(block.thinking),
-          expandable: true,
-        });
-      } else if (block.type === "toolCall") {
-        // block.intent: the extracted `i` (persisted alongside the raw arguments, which still
-        // carry `i`); toolArgsForUi filters args, so intent is the only surviving copy
-        const item: TranscriptItem = {
-          role: "tool",
-          text: block.name,
-          name: block.name,
-          toolCallId: block.id,
-          args: toolArgsForUi(block.name, block.arguments),
-          files: collectFiles(block.name, block.arguments),
-          intent: typeof block.intent === "string" ? block.intent : undefined,
-        };
-        byId.set(block.id, item);
-        sink.push(item);
-      }
-    }
-  }
-  finalizeRun();
-  return out;
-}
-
-// ---------- In-session entry tree (TUI /tree data source) ----------
-// SessionTreeNode forest (manager.getTree()) → frontend display nodes. Row
-// text scope aligns with the base tree-selector's #getEntryDisplayText: a
-// one-line summary per entry type, bookkeeping entries keep only the type
-// label; the two kinds hidden in the default view (settings-kind entries /
-// textless non-leaf assistants) are flagged with isSettings /
-// emptyAssistant, and the filtering happens in the frontend (same filter
-// semantics as the base). In the installed base this function lives at
-// pi-tui/chat/transcript-entry (only newer versions moved it to
-// session-context — follow the installed one)
-import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
-import type { SessionEntry, SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-
-const TREE_SETTINGS_KINDS: Record<string, true> = {
-  label: true,
-  custom: true,
-  model_change: true,
-  model_usage: true,
-  thinking_level_change: true,
-  service_tier_change: true,
-  title_change: true,
-  credential_pin: true,
-  session_init: true,
-  ttsr_injection: true,
-  mode_change: true,
-  reset_boundary: true,
-};
-
-// AgentMessage is a union of Message + custom message unions with varying member fields; read uniformly as optional fields
-function msgField(msg: unknown, key: string): unknown {
-  return typeof msg === "object" && msg !== null && key in msg
-    ? (msg as Record<string, unknown>)[key]
-    : undefined;
-}
-
-// Single-line normalization: folds newlines/tabs to spaces, strips ANSI and control characters, caps length (right-pane row width is limited)
-function treeNorm(s: unknown, max = 160): string {
-  const t = String(s ?? "")
-    .replace(/\x1b\[[0-9;:]*m/g, "")
-    .replace(/[\n\t]/g, " ")
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
-    .trim();
-  return t.length > max ? t.slice(0, max) + "…" : t;
-}
-
-// Full-text variant for message-class rows: the host sends the complete text
-// (line breaks kept); the collapsed row truncates via CSS single-line ellipsis
-// and the expanded drawer is the full-content scrollable view.
-function treeNormMulti(s: unknown): string {
-  return String(s ?? "")
-    .replace(/\x1b\[[0-9;:]*m/g, "")
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "")
-    .trim();
-}
-
-function treeContentText(content: unknown): string {
-  if (typeof content === "string") return stripDcpTags(content);
-  if (!Array.isArray(content)) return "";
-  return stripDcpTags(
-    content
-      .map((b) => (msgField(b, "type") === "text" ? String(msgField(b, "text") ?? "") : ""))
-      .filter(Boolean)
-      .join(" "),
-  );
-}
-
-// Tool call row summary (aligned with the base tree-selector
-// #formatToolCall): a toolResult row shows its corresponding call
-// (command/path/pattern), truncated with an ellipsis when too long, so the
-// right pane tells at a glance what was done
-function treeShortenPath(p: string): string {
-  const home = os.homedir();
-  return p.startsWith(home) ? "~" + p.slice(home.length) : p;
-}
-
-function treeFormatToolCall(name: string, args: Record<string, unknown>): string {
-  const str = (v: unknown) => String(v ?? "");
-  const pathOf = () => treeShortenPath(str(args.path || args.file_path));
-  switch (name) {
-    case "read": {
-      const offset = typeof args.offset === "number" ? args.offset : undefined;
-      const limit = typeof args.limit === "number" ? args.limit : undefined;
-      let display = pathOf();
-      if (offset !== undefined || limit !== undefined) {
-        const start = offset ?? 1;
-        display += `:${start}${limit !== undefined ? `-${start + limit - 1}` : ""}`;
-      }
-      return `[read: ${display}]`;
-    }
-    case "write":
-      return `[write: ${pathOf()}]`;
-    case "edit":
-      return `[edit: ${pathOf()}]`;
-    case "bash":
-      return `[bash: ${treeNorm(args.command, 50)}]`;
-    case "grep": {
-      const pattern = str(args.pattern);
-      const scope = typeof args.path === "string" ? treeShortenPath(args.path) : ".";
-      return `[grep: /${pattern}/ in ${scope}]`;
-    }
-    case "glob": {
-      const scope = typeof args.path === "string" ? treeShortenPath(args.path) : ".";
-      return `[glob: ${scope}]`;
-    }
-    case "ls":
-      return `[ls: ${pathOf() || "."}]`;
-    default: {
-      const raw = JSON.stringify(args);
-      return `[${name}: ${raw.slice(0, 40)}${raw.length > 40 ? "…" : ""}]`;
-    }
-  }
-}
-
-// Collect toolCall blocks from assistant message content across the whole
-// tree: toolResult entries only carry toolCallId, and the row summary needs
-// it to find the call's name/arguments back (same idea as the base's
-// #flattenTree building a toolCallMap)
-function collectToolCalls(roots: SessionTreeNode[]): Map<string, { name: string; args: Record<string, unknown> }> {
-  const map = new Map<string, { name: string; args: Record<string, unknown> }>();
-  const walk = (node: SessionTreeNode): void => {
-    const entry = node.entry;
-    if (entry.type === "message") {
-      const content = msgField(entry.message, "content");
-      if (Array.isArray(content)) {
-        for (const b of content) {
-          if (msgField(b, "type") !== "toolCall") continue;
-          const id = msgField(b, "id");
-          const name = msgField(b, "name");
-          const args = msgField(b, "arguments");
-          if (typeof id === "string" && typeof name === "string") {
-            map.set(id, { name, args: typeof args === "object" && args !== null ? (args as Record<string, unknown>) : {} });
-          }
-        }
-      }
-    }
-    node.children.forEach(walk);
-  };
-  roots.forEach(walk);
-  return map;
-}
-
-// Entry → row display text (a slimmed version aligned with the base tree-selector summary scope)
-function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: string; args: Record<string, unknown> }>): string {
-  switch (entry.type) {
-    case "message": {
-      const msg = entry.message;
-      const role = msgField(msg, "role");
-      const content = treeContentText(msgField(msg, "content"));
-      if (role === "toolResult") {
-        const callId = msgField(msg, "toolCallId");
-        const call = typeof callId === "string" ? toolCalls.get(callId) : undefined;
-        if (call) return treeFormatToolCall(call.name, call.args);
-        return `[${String(msgField(msg, "toolName") ?? "tool")}]`;
-      }
-      if (role === "bashExecution") return `[bash]: ${treeNorm(msgField(msg, "command"), 80)}`;
-      if (role === "assistant") {
-        if (content) return treeNormMulti(content);
-        const err = msgField(msg, "errorMessage");
-        if (typeof err === "string" && err) return treeNorm(err, 80);
-        if (msgField(msg, "stopReason") === "aborted") return hostI18n.t("flows.tree.aborted");
-        return "";
-      }
-      return treeNormMulti(content); // user / developer / other roles
-    }
-    case "custom_message":
-      return treeNormMulti(treeContentText(entry.content));
-    case "compaction":
-      return `[compaction: ${Math.round((entry.tokensBefore ?? 0) / 1000)}k tokens]`;
-    case "branch_summary":
-      return treeNormMulti(entry.summary);
-    case "model_change":
-      return `[model: ${entry.model}]`;
-    case "model_usage":
-      return `[model usage: ${entry.purpose ?? ""} ${entry.provider ?? ""}/${entry.model ?? ""}]`;
-    case "thinking_level_change":
-      return `[thinking: ${entry.thinkingLevel ?? "off"}]`;
-    case "label":
-      return `[label: ${entry.label ?? hostI18n.t("flows.tree.cleared")}]`;
-    case "service_tier_change":
-      return "[service tier]";
-    case "title_change":
-      return `[title: ${treeNorm(entry.title, 60)}]`;
-    case "mode_change":
-      return `[mode: ${entry.mode}]`;
-    case "credential_pin":
-      return `[credential pin: ${entry.provider}]`;
-    default:
-      return `[${entry.type.replaceAll("_", " ")}]`;
-  }
-}
-
-export type EntryTreeNode = {
-  id: string;
-  kind: string; // entry.type
-  role?: string; // message role (message entries only)
-  text: string; // row display text
-  label?: string; // user label (already resolved by the base's getTree)
-  ts?: string; // entry.timestamp
-  userReq?: boolean; // isUserRequestEntry: for the "user only" filter
-  emptyAssistant?: boolean; // Textless non-leaf assistant: hidden by the default filter
-  isSettings?: boolean; // bookkeeping entry: shown only in "all" mode
-  children: EntryTreeNode[];
-};
-
-export function treeToDisplay(roots: SessionTreeNode[], leafId: string | null): EntryTreeNode[] {
-  const toolCalls = collectToolCalls(roots);
-  const walk = (node: SessionTreeNode): EntryTreeNode => {
-    const entry = node.entry;
-    const role = entry.type === "message" ? msgField(entry.message, "role") : undefined;
-    const text = treeEntryText(entry, toolCalls);
-    const isLeaf = entry.id === leafId;
-    const out: EntryTreeNode = {
-      id: entry.id,
-      kind: entry.type,
-      text,
-      ts: entry.timestamp,
-      children: node.children.map(walk),
-    };
-    if (typeof role === "string") out.role = role;
-    if (node.label) out.label = node.label;
-    if (isUserRequestEntry(entry)) out.userReq = true;
-    if (TREE_SETTINGS_KINDS[entry.type]) out.isSettings = true;
-    // Matching the base's default filter: a textless assistant that is neither error nor aborted (a pure tool-call container) is hidden by default, except the leaf
-    if (role === "assistant" && !isLeaf && !text) {
-      const sr = msgField(entry.message, "stopReason");
-      if (sr === undefined || sr === "stop" || sr === "toolUse") out.emptyAssistant = true;
-    }
-    return out;
-  };
-  return roots.map(walk);
-}
-
-// Whole-session active duration (ms): segments turns the same way
-// entriesToTranscript does, summing each turn's "valid user input → turn
-// end" wall-clock span (at least 1 second per turn, same scope as the loop
-// group's durationSec). Used to seed the host's in-memory timer when loading
-// a past session — it cannot come from summing the transcript's loop groups:
-// pure-conversation turns (no tool calls) generate no loop group, so turns
-// would be missed (measured: 2 turns produced only 1 loop).
-export function sumRunDurationMs(entries: any[]): number {
-  let total = 0;
-  let startMs = 0;
-  let endMs = 0;
-  let open = false;
-  const flush = () => {
-    if (!open) return;
-    total += Math.max(1000, endMs - startMs);
-    open = false;
-  };
-  for (const e of entries) {
-    if (e.type !== "message") continue;
-    const msg = e.message ?? {};
-    const { role, content } = msg;
-    const ts = Date.parse(e.timestamp ?? "") || 0;
-    if (role === "toolResult") {
-      if (open && ts) endMs = ts;
-      continue;
-    }
-    if (role === "user") {
-      const text =
-        typeof content === "string"
-          ? content
-          : (content ?? [])
-              .filter((b: any) => b?.type === "text")
-              .map((b: any) => b.text)
-              .join("\n");
-      if (isJunkPlaceholderText(text)) continue; // Hidden companion/placeholder messages open no turn
-      flush();
-      startMs = ts;
-      endMs = ts;
-      open = true;
-      continue;
-    }
-    if (role === "assistant" && open) endMs = ts || endMs;
-  }
-  flush();
-  return total;
-}
-
+/**
+ * Split an automation-delivery custom message back into the bubble the reader
+ * sees. The header is host-authored (host/automations/scheduler.ts deliveryText),
+ * so a message of that type always carries one; an unparsable header still yields
+ * a bubble without labels rather than dropping the delivery.
+ */
 // Subagent events → frontend narrow events (pure forwarding, not persisted into the parent session's transcript; text is accumulated by the frontend keyed on subagentId)
 export function translateSubagentEvent(ev: any): UiEvent | null {
   switch (ev.type) {

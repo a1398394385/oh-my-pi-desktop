@@ -1,6 +1,7 @@
 // Tool rows: tool name → label kind mapping and per-label row rendering. Migrated from
 // ui/tool-labels.js (renderToolItem/toolKind + the render functions). Adding or removing a
 // tool label only touches this file.
+import { memo } from "react";
 import type { ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, cmdExpand, devExpand } from "../../store/groupExpand";
 export { cmdExpand, devExpand };
@@ -205,30 +206,37 @@ function renderWait(item: ToolItem) {
   return <ExpandableRow item={item} iconName="pause" label={t("chat.labelWait")} summary={summary || item.text || ""} />;
 }
 
-// Task row: subagent spawn (flat or batch), mirrors the TUI task card. Header meta is the
-// spawn count ("Subagent 3"); the expanded card shows the assignment text plus one
-// `• name ⟦agent⟧ → model:thinking` bullet per spawned subagent.
+// Task row: subagent spawn (flat or batch), mirrors the TUI task card. The spawn count
+// rides next to the label as a badge ("Subagent ×3"); the expanded card shows the
+// assignment text plus one `• name [agent] → model:thinking` bullet per spawned subagent.
 function taskSpawnCount(item: ToolItem): number {
   const args = item.args || {};
   const details = item.details as { results?: unknown[]; progress?: unknown[] } | undefined;
-  return (
-    details?.results?.length ??
-    details?.progress?.length ??
-    (Array.isArray(args.tasks) ? args.tasks.length : 0)
+  // Async mode settles results only for the inline (blocking) subset — the whole batch
+  // lives in `progress`, and an async-only call reports `results: []`. So the count is
+  // the widest of the three signals, not the first non-undefined one.
+  return Math.max(
+    details?.results?.length ?? 0,
+    details?.progress?.length ?? 0,
+    Array.isArray(args.tasks) ? args.tasks.length : 0,
   );
 }
 function taskSummary(item: ToolItem): string {
-  const count = taskSpawnCount(item);
-  if (count > 0) return t("chat.taskSummaryBatch", { count });
   const args = item.args || {};
   const agent = typeof args.agent === "string" ? args.agent.trim() : "";
-  if (agent && agent !== "task") return `⟦${agent}⟧`;
+  if (agent && agent !== "task") return `[${agent}]`;
+  if (Array.isArray(args.tasks)) {
+    const first = args.tasks[0] as { agent?: unknown; task?: unknown } | undefined;
+    const batchAgent = typeof first?.agent === "string" ? first.agent.trim() : "";
+    return batchAgent && batchAgent !== "task" ? `[${batchAgent}]` : typeof first?.task === "string" ? first.task.split("\n")[0].trim() : "";
+  }
   return typeof args.task === "string" ? args.task.split("\n")[0].trim() : "";
 }
 function renderTask(item: ToolItem) {
-  // No `item.text` fallback: that is the bare tool name ("task"), which the label already
-  // says — the row reads "Subagent ⟦agent⟧" / "Subagent 3 subagents" / plain "Subagent".
-  return <ExpandableRow item={item} iconName="agents" label={t("chat.labelTask")} summary={taskSummary(item)} />;
+  // The spawn count rides next to the label ("Subagent ×3"); the summary keeps the
+  // assignment gist (agent type / first line). No `item.text` fallback: that is the bare
+  // tool name ("task"), which the label already says.
+  return <ExpandableRow item={item} iconName="agents" label={t("chat.labelTask")} count={taskSpawnCount(item)} summary={taskSummary(item)} />;
 }
 // Yield row: a subagent submitting its structured result (the base's YieldTool). The summary
 // is the submission itself — failure reason, incremental section labels, workpool key, or a
@@ -238,7 +246,7 @@ function renderYield(item: ToolItem) {
 }
 // One spawned subagent row for the expanded card's result body. Source: resolved results first,
 // then live progress — never the call args (the args box shows the assignment text only).
-// Agent type is ⟦bracketed⟧ unless it is the default. The base appends the resolved thinking
+// Agent type is [bracketed] unless it is the default. The base appends the resolved thinking
 // level as a `:<level>` suffix on resolvedModel (only when one was resolved), so the short
 // display name already reads "model:thinking".
 interface TaskSpawnRecord {
@@ -257,7 +265,7 @@ function taskSpawnRows(item: ToolItem): { name: string; agent: string; model: st
   }));
 }
 // Expanded task card, TUI layout: the assignment text (Goal/Constraints/Contract) on top; the
-// spawn list (• name ⟦agent⟧ → model:thinking) as the result body once any details exist. The
+// spawn list (• name [agent] → model:thinking) as the result body once any details exist. The
 // model-facing spawn-feedback text (item.output) is deliberately hidden when structured details
 // exist — it is coordination instruction for the model, not user content.
 function TaskBody({ item }: { item: ToolItem }) {
@@ -277,7 +285,7 @@ function TaskBody({ item }: { item: ToolItem }) {
         <div className="cmd-card-out">
           {rows.map((r, i) => (
             <div className="task-sub" key={i}>
-              <span>{`• ${r.name}${r.agent && r.agent !== "task" ? ` ⟦${r.agent}⟧` : ""}`}</span>
+              <span>{`• ${r.name}${r.agent && r.agent !== "task" ? ` [${r.agent}]` : ""}`}</span>
               {r.model ? (
                 <>
                   <Icon name="arrowRight" size={12} className="task-sub-arrow" />
@@ -368,7 +376,9 @@ function ContentCard({ item, liftRef, noInput }: { item: ToolItem; liftRef?: (el
     </div>
   );
 }
-function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string; noInput?: boolean }) {
+// `count` renders a dim spawn-count badge right after the row label (task rows: "Subagent ×3");
+// omit it (0 / undefined) for tools whose label never carries a count.
+function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput, count }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string; noInput?: boolean; count?: number }) {
   const [, close, liftRef] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
@@ -379,6 +389,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput }
       <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name={iconName} size={15} />
         <span className="lbl">{label}</span>
+        {count ? <span className="lbl-n">{`×${count}`}</span> : null}
         <Ellip className="path" title={summaryTitle || summary}>{summary}</Ellip>
         {item.running && <Spin />}
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
@@ -416,7 +427,7 @@ function renderSessionContext(item: ToolItem) {
     : `${String(args.sessionId || "")}${args.fromTurn !== undefined || args.toTurn !== undefined ? ` · ${args.fromTurn ?? 0}–${args.toTurn ?? "end"}` : ""}`;
   return <ExpandableRow item={item} iconName="search" label={t("chat.labelSessionContext")} summary={summary || item.text || ""} />;
 }
-// ---------- ACP context-management rows (host/acp-status-tool.ts · acp-assembly.ts · acp-recall-tool.ts) ----------
+// ---------- ACP context-management rows (host/acp-status-tool.ts · acp-assembly.ts) ----------
 // context_status dashboard: `[context-status] tier=L1 compress=normal zone=N tokens active=N tokens projected=N tokens activeBlocks=N`
 const ACP_REPORT_RE = /tier=(\S+)\s+compress=\S+\s+zone=\d+ tokens active=(\d+) tokens projected=\d+ tokens activeBlocks=(\d+)/;
 function renderContextStatus(item: ToolItem) {
@@ -430,22 +441,6 @@ function renderContextStatus(item: ToolItem) {
         .join(" · ")
     : "";
   return <ExpandableRow item={item} iconName="stats" label={t("chat.labelContextStatus")} summary={summary} noInput />;
-}
-// An xd:// device call journals the target tool's arguments as a JSON string in the
-// wrapper's `content` (the call itself is recorded under `write`), so decode that form too.
-function deviceCallArgs(content: unknown): Record<string, unknown> | null {
-  if (typeof content !== "string") return null;
-  try {
-    const v = JSON.parse(content) as unknown;
-    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null; // not JSON (truncated stream): callers fall back to their plain label
-  }
-}
-// recall_block: its only argument is the short id (bN) of the block it fetches back
-function renderRecallBlock(item: ToolItem) {
-  const id = item.args?.id ?? deviceCallArgs(item.args?.content)?.id;
-  return <ExpandableRow item={item} iconName="archive" label={t("chat.labelRecallBlock")} summary={id ? String(id) : item.text || ""} />;
 }
 // compress_context result (the JSON CompressOutcome). Folding half the context is a turn
 // milestone, so it renders as the centered phase separator row, not a tool row; a rejection
@@ -688,14 +683,13 @@ function toolKind(item: ToolItem) {
   if (name === "web_search") return "websearch";
   if (name === "ask") return "ask";
   if (name === "read_session_context") return "sessionctx";
-  // ACP context management (host/acp-assembly.ts · acp-status-tool.ts · acp-recall-tool.ts).
+  // ACP context management (host/acp-assembly.ts · acp-status-tool.ts).
   // They are also reachable as `write` + xd://<name> device calls — the harness journals
   // those under `write` with the device path as the argument — so resolve the name from the
   // device path first, otherwise they fall through to the device row below.
   const acpTarget = isDevicePath(item.args?.path) ? deviceNameOf(item.args?.path) : name;
   if (acpTarget === "context_status") return "ctxstatus";
   if (acpTarget === "compress_context") return "ctxcompress";
-  if (acpTarget === "recall_block") return "ctxrecall";
   if (name === "debug") return "debug";
   if (name === "github") return "github";
   if (name === "lsp") return "lsp";
@@ -710,7 +704,21 @@ function toolKind(item: ToolItem) {
   return "generic";
 }
 
-export default function ToolRow({ item }: { item: ToolItem }) {
+// Scalar props are captured mutation snapshots (T2): tool_update mutates the item in place
+// (same reference), so memo compares these parent-captured values; the body reads item.*
+type ToolRowProps = {
+  item: ToolItem;
+  output?: string;
+  running?: boolean;
+  files?: string[];
+  added?: number;
+  removed?: number;
+  todo?: unknown;
+  details?: unknown;
+  diffContent?: string;
+};
+
+export default memo(function ToolRow({ item }: ToolRowProps) {
   switch (toolKind(item)) {
     case "think":
       // The thinking role is already routed to ThinkingRow in items.tsx; this is the fallback
@@ -752,8 +760,6 @@ export default function ToolRow({ item }: { item: ToolItem }) {
       return renderContextStatus(item);
     case "ctxcompress":
       return renderCompressContext(item);
-    case "ctxrecall":
-      return renderRecallBlock(item);
     case "debug":
       return renderDebug(item);
     case "github":
@@ -769,8 +775,8 @@ export default function ToolRow({ item }: { item: ToolItem }) {
     case "change":
       return renderChange(item);
     case "edit":
-      return <EditRow item={item} />;
+      return <EditRow item={item} files={item.files} added={item.added} removed={item.removed} running={!!item.running} diffContent={item.diffContent} />;
     default:
       return renderGenericTool(item);
   }
-}
+});
