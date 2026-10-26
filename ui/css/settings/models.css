@@ -4,7 +4,7 @@
 
 .pv { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 8px; color: var(--dim); cursor: pointer; font-size: var(--ui-fs-base); min-width: 0; }
 
-.pv:hover { background: var(--panel-2); color: var(--text); }
+.pv:hover { background: var(--hover-fill); color: var(--text); }
 
 .pv.on { background: var(--panel-3); color: var(--text); }
 
@@ -79,9 +79,8 @@
 
 .mp-role-desc { margin: -4px 0 4px; }
 
-.mpw-sel { width: 100%; justify-content: space-between; }
-
-.mpw-probe-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+/* probe action row: the shared action-row rhythm (hairline above, own padding) */
+.mpw-probe-row { display: flex; align-items: center; gap: 10px; margin-top: 0; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 
 .mpw-err { color: var(--err); font-size: var(--ui-fs-base); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -93,9 +92,9 @@
 
 .mpw-mrow + .mpw-mrow, .mpw-list .mem-expand + .mpw-mrow { border-top: 1px solid var(--line); }
 
-.mpw-mrow:hover { background: var(--panel-2); }
+.mpw-mrow:hover { background: var(--hover-fill); }
 
-.mpw-mrow.on { background: var(--panel); }
+.mpw-mrow.on { background: var(--panel); --hover-fill: var(--menu-hl); }
 
 .mpw-check { accent-color: var(--accent); width: 14px; height: 14px; flex: none; margin: 0; }
 
@@ -123,7 +122,7 @@
 
 .mpw-chip { padding: 3px 10px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
 
-.mpw-chip:hover { background: var(--panel-2); color: var(--text); }
+.mpw-chip:hover { background: var(--hover-fill); color: var(--text); }
 
 .mpw-chip.on { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); background: var(--panel-2); }
 

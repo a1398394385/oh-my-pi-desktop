@@ -62,6 +62,20 @@ export default memo(function TurnActs({ item }: { item: AssistantItem; entryId?:
         >
           <Icon name="fork" />
         </button>
+        {/* Read aloud: the host resolves the speech role (tts model) and answers
+            with a clip, or with backend "system" when only the OS voice is set. */}
+        <button
+          className="q-btn"
+          title={t("chat.speakReply")}
+          disabled={!item.text || !sessionId}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!item.text || !sessionId) return;
+            useAppStore.getState().send({ type: "speak_text", sessionId, text: item.text });
+          }}
+        >
+          <Icon name="speaker" />
+        </button>
         {item.endMs ? <span className="turn-acts-time">{fmtClock(item.endMs)}</span> : null}
       </div>
     </div>

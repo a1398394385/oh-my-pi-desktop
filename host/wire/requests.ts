@@ -27,13 +27,13 @@ export type HostRequestMethod =
   "provider_enable_account" | "provider_list_accounts" | "provider_login" | "provider_login_cancel" | "provider_logout" | "provider_model_meta" |
   "provider_reorder_account" | "provider_set_key" | "read_file" | "read_image" | "reload_session" | "reload_settings" |
   "remove_project" | "rename_session" | "reorder_projects" | "reorder_queued" | "requeue" | "remote_regenerate_key" | "save_mcp_server" | "save_provider_model" |
-  "save_provider_models" | "search_session_text" | "send_now" | "session_unload" | "set_acp_config" | "set_automation_agent_enabled" | "set_acp_enabled" |
+  "save_provider_models" | "search_session_text" | "send_now" | "session_unload" | "set_acp_config" | "set_automation_agent_enabled" | "set_automation_dialog_timeouts" | "set_acp_enabled" |
   "set_approval_mode" | "set_advisor_mode" | "set_auto_review" | "set_branch_titles" | "set_computer_default" | "set_computer_mode" | "set_computer_provider" | "set_desktop_env" |
   "set_enabled_model" | "set_external_browser" |
   "set_hooks_enabled" | "set_keepalive_config" | "set_keepalive_enabled" | "set_kimi_auto_thinking" | "set_locale" | "set_mcp_server_enabled" |
   "set_model" | "set_model_role" | "set_plan_mode" | "set_plugins_enabled" | "set_project_expanded" | "set_remote_config" | "set_session_context_enabled" |
-  "set_session_pinned" | "set_session_title_refresh" | "set_setting" | "set_skills_enabled" | "set_thinking" | "set_ui_prefs" | "smoke_plan_propose" |
-  "ssh_list_dirs" | "ssh_list_hosts" | "ssh_remove_host" | "ssh_save_host" | "ssh_test_host" | "stt_download" |
+  "set_session_pinned" | "set_session_title_refresh" | "set_setting" | "set_skills_enabled" | "set_thinking" | "set_ui_prefs" | "smoke_plan_propose" | "speak_text" | "ssh_list_dirs" | "ssh_list_hosts" | "ssh_remove_host" | "ssh_save_host" |
+  "ssh_test_host" | "stt_download" |
   "stt_start" | "stt_stop" | "switch_git_branch" | "switch_profile" | "terminal_create" | "terminal_dispose" |
   "terminal_resize" | "terminal_write" | "test_kimi_cu" | "test_mcp_server" | "test_provider_model" | "toggle_extension_item" |
   "toggle_extension_provider" | "toggle_extension_user_source" | "ui_error" | "voice_status" |

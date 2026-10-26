@@ -202,6 +202,29 @@ export interface TtsStopFrame {
   seq?: number;
 }
 
+/** One-shot reading of a finished reply (message speak button; requester only).
+ * backend "system" = no speech model configured: the UI speaks `text` with the
+ * system speechSynthesis. Otherwise `data` carries the synthesized clip. */
+export interface TtsAudioFrame {
+  type: "tts_audio";
+  sessionId: string;
+  backend: "local-inference" | "xai-tts" | "openai-speech" | "system";
+  text?: string;
+  data?: string;
+  mime?: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
+/** One-shot reading failed (speech model error; surfaced as a toast) */
+export interface TtsFailedFrame {
+  type: "tts_failed";
+  sessionId: string;
+  message: string;
+  hi?: string; // stamped frame
+  seq?: number;
+}
+
 /** Test-mode dictation result (settings page; final text; stamped) */
 export interface SttTestResultFrame {
   type: "stt_test_result";

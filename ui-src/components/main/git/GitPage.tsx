@@ -45,6 +45,8 @@ export default function GitPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [fileView, setFileView] = useState<"flat" | "tree">("flat");
+  /** Layout of the working-changes list (independent of the commit file list). */
+  const [worktreeView, setWorktreeView] = useState<"flat" | "tree">("flat");
   /** Which list the right side panel shows. */
   const [sideMode, setSideMode] = useState<"worktree" | "commit">("worktree");
   /** Open compare view; null = the graph column. */
@@ -290,6 +292,8 @@ export default function GitPage() {
               files={worktreeFiles}
               loading={worktreeLoading}
               state={status?.cwd === cwd ? status.state : "NORMAL"}
+              view={worktreeView}
+              onToggleView={() => setWorktreeView((v) => (v === "flat" ? "tree" : "flat"))}
               selectedPath={pair?.origin === "worktree" ? pair.path : null}
               onOpen={openWorktreeFile}
             />

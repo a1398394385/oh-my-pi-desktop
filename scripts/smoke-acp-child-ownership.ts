@@ -9,7 +9,7 @@
 // ownership check a `task` subagent receives the parent's compaction blocks as synthetic
 // user turns and is told it did work it never did. Fingerprint-based detection is not a
 // substitute: a child can legitimately match a parent message (same system reminder, same
-// recall result), and one match is enough to re-enter the full projection path.
+// tool result), and one match is enough to re-enter the full projection path.
 //
 // This drives the real rebind path — a child session built with preloadedPreparedExtensions,
 // exactly what task/structured-subagent.ts:609 hands its executor — so a regression in the
@@ -145,7 +145,7 @@ await owner.prompt("owner second turn");
 await waitForCall(calls, mark++);
 
 // Seed the zone directly: projectView renders `state.zone` (acp-runtime), and a block's
-// rendered text carries `summary` + the index intents (renderCompactionBlock), so the marker
+// rendered text carries the summary (renderCompactionBlock), so the marker
 // has to live there for "the zone was projected" to be observable on the wire.
 state.zone = [
 	{

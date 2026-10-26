@@ -38,6 +38,13 @@ export function StatsShell() {
 
   const closeDrawer = useCallback(() => setSelectedRequestId(null), []);
 
+  // The request drawer jumps into the trace view of the same session; without
+  // switching the section the trace view would stay unmounted.
+  const openTrace = useCallback((sessionFile: string) => {
+    setSession(sessionFile);
+    setSection("traces");
+  }, []);
+
   const mounted = useRef(new Set<DashboardSection>());
   mounted.current.add(section);
 
@@ -49,7 +56,6 @@ export function StatsShell() {
   }, [nav]);
 
   useEffect(() => {
-    let pendingG = 0;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented) return;
       const target = e.target;
@@ -63,20 +69,7 @@ export function StatsShell() {
         return;
       }
       if (document.querySelector('[aria-modal="true"]')) return;
-      const key = e.key.toLowerCase();
-      if (pendingG && Date.now() - pendingG < 1200) {
-        pendingG = 0;
-        const item = nav.flatMap(group => group.items).find(i => i.hotkey === key);
-        if (item) {
-          e.preventDefault();
-          setSection(item.id);
-        }
-        return;
-      }
-      if (key === "g") {
-        pendingG = Date.now();
-        return;
-      }
+      // Number keys pick the time range; the range chip's tooltip shows the index.
       const rangeIndex = Number(e.key) - 1;
       if (rangeIndex >= 0 && rangeIndex < TIME_RANGES.length) {
         e.preventDefault();
@@ -85,7 +78,7 @@ export function StatsShell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [nav]);
+  }, []);
 
   const renderRoute = (target: DashboardSection) => {
     const active = target === section;
@@ -151,7 +144,6 @@ export function StatsShell() {
                 >
                   <item.icon size={15} className="stats-nav-icon" />
                   <span className="stats-nav-label">{item.label}</span>
-                  <span className="stats-nav-hotkey">G {item.hotkey.toUpperCase()}</span>
                 </button>
               ))}
             </div>
@@ -167,7 +159,7 @@ export function StatsShell() {
         </section>
       </div>
 
-      <RequestDrawer id={selectedRequestId} onClose={closeDrawer} />
+      <RequestDrawer id={selectedRequestId} onClose={closeDrawer} onOpenSession={openTrace} />
     </div>
   );
 }

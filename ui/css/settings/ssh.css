@@ -5,15 +5,7 @@
 /* Group heading with the page-level add button riding the same line */
 .set-group-tt.ssh-head { display: flex; align-items: center; justify-content: space-between; }
 
-/* Editor form: two-column grid for the short fields (the .set-edit-card supplies padding) */
-.ssh-form { display: grid; gap: 10px; }
-
-.ssh-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-
-.ssh-field > span { font-size: var(--ui-fs-sm); color: var(--dim); }
-
-.ssh-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
+/* Editor form: the shared .frm-rows / FormRow language (css/shared/form-layout.css) */
 .ssh-form-err { font-size: var(--ui-fs-sm); color: var(--err); }
 
 /* Probe verdict at the card foot (the head carries delete/test/save) */

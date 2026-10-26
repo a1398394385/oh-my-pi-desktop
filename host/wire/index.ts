@@ -44,7 +44,7 @@ import type {
   RemoteWorkspaceAddedFrame,
   SessionStatsFrame, SetLocaleFrame, SshDirsFrame, SshHostsFrame, SshTestResultFrame, SteerConsumedFrame,
   SttDownloadProgressFrame, SttDraftFrame, SttStateFrame, SttSubmitFrame, SttTestResultFrame, SubagentControlledFrame,
-  SubagentEventFrame, SubagentLifecycleFrame, SubagentProgressFrame, TtsDeltaFrame, TtsFlushFrame, TtsStopFrame,
+  SubagentEventFrame, SubagentLifecycleFrame, SubagentProgressFrame, TtsAudioFrame, TtsDeltaFrame, TtsFailedFrame, TtsFlushFrame, TtsStopFrame,
   VoiceStatusFrame,
   CollabStateFrame, WorktreeCreatedFrame, WorktreeRemovedFrame, WorktreeStatusResultFrame,
 } from "./frames-live";
@@ -173,6 +173,8 @@ export type HostFrame =
   | TtsDeltaFrame
   | TtsFlushFrame
   | TtsStopFrame
+  | TtsAudioFrame
+  | TtsFailedFrame
   | SttTestResultFrame
   | SttDownloadProgressFrame
   | VoiceStatusFrame

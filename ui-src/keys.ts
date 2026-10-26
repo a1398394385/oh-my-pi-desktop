@@ -419,7 +419,7 @@ export interface ShortcutItem {
 }
 export interface ShortcutGroup {
   title: string;
-  desc: string;
+  desc?: string; // omit when the title already says everything
   items: ShortcutItem[];
 }
 // Registry labels/titles/descs are getters: the module-level array re-reads the
@@ -459,14 +459,12 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
   {
     get title() { return t("misc.keysGroupDisplay"); },
-    get desc() { return t("misc.keysGroupDisplayDesc"); },
     items: [
       { keys: ["Ctrl", "O"], chords: ["ctrl+o"], get label() { return t("misc.keysToolExpand"); }, run: toggleToolOutput },
     ],
   },
   {
     get title() { return t("misc.keysGroupComposer"); },
-    get desc() { return t("misc.keysGroupComposerDesc"); },
     items: [
       { keys: ["↵"], get label() { return t("misc.keysSend"); } },
       { keys: ["⇧", "↵"], get label() { return t("misc.keysNewline"); } },
@@ -480,7 +478,6 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     // Keys inside the tree page are bound in the SessionTreeStream component;
     // registered here for display only (no re-binding -- re-binding means double triggering)
     get title() { return t("misc.keysGroupTree"); },
-    get desc() { return t("misc.keysGroupTreeDesc"); },
     items: [
       { keys: ["↑", "↓"], get label() { return t("misc.keysTreeMove"); } },
       { keys: ["↵"], get label() { return t("misc.keysTreeJump"); } },
@@ -488,7 +485,6 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   },
   {
     get title() { return t("misc.keysGroupZoom"); },
-    get desc() { return t("misc.keysGroupZoomDesc"); },
     items: [
       { keys: [MOD, "+"], get label() { return t("misc.keysZoomIn"); } },
       { keys: [MOD, "−"], get label() { return t("misc.keysZoomOut"); } },

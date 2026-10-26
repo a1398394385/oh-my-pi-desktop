@@ -17,7 +17,7 @@ import type { SessionItem } from "../../types/session";
 import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
 import { emitBrowserFrame } from "../browserMirror";
-import { feedTtsDelta, flushTts, stopTts } from "../../lib/speechOut";
+import { feedTtsDelta, flushTts, playTtsClip, speakNow, stopTts } from "../../lib/speechOut";
 import type { HandlerSlice } from "./types";
 
 // Deduplicate tool-row file lists (used by the tool_update branch of subagent_event)
@@ -399,6 +399,18 @@ export const streamHandlers = {
   },
   tts_stop() {
     stopTts();
+  },
+  // One-shot reading (turn-end speaker button): a configured speech model arrives
+  // as a synthesized clip, the unconfigured default as system-voice text
+  tts_audio(msg) {
+    if (msg.backend === "system") {
+      void speakNow(msg.text ?? "");
+      return;
+    }
+    playTtsClip(msg.data ?? "", msg.mime ?? "audio/mpeg");
+  },
+  tts_failed(msg) {
+    useAppStore.getState().toast(msg.message);
   },
   // Settings-page voice sections: model status snapshot / download progress /
   // test-mode dictation result

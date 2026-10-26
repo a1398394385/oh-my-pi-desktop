@@ -12,7 +12,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools", "tray-icon"] }
+# No `devtools` feature: it keeps the debug-only devtools on in RELEASE builds,
+# which makes the packaged webview remotely inspectable (wry -> WKWebView
+# setInspectable / WebView2 AreDevToolsEnabled), i.e. an external process can
+# attach and drive the shipped app. Debug builds keep devtools via
+# cfg(debug_assertions), so `bun run dev` stays attachable.
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
@@ -37,7 +42,7 @@ objc2-core-audio-types = { version = "0.3", default-features = false, features =
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std"] }
 # Native traffic lights: the shell re-places them on every UI zoom change
 # (set_traffic_light_y in lib.rs) — needs NSWindow standardWindowButton + NSView frames.
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSView", "NSResponder"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSView", "NSResponder", "NSSound"] }
 objc2-core-media = { version = "0.3", default-features = false, features = ["std", "objc2-core-audio-types", "CMBase", "CMBlockBuffer", "CMSampleBuffer"] }
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSError", "NSString", "NSBundle"] }
 objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "SCShareableContent", "SCStream", "block2", "dispatch2", "objc2-core-graphics", "objc2-core-media"] }

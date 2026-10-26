@@ -10,7 +10,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
 }
 
 .kicked-card {
@@ -44,18 +44,6 @@
   color: var(--err);
 }
 
-.kicked-badge {
-  height: 26px;
-  padding: 0 10px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  background: var(--tint-danger-150);
-  border: 1px solid var(--tint-danger-350);
-  color: var(--err);
-  font-size: var(--ui-fs-sm);
-}
-
 .kicked-title {
   margin-top: 14px;
   font-size: calc(var(--ui-fs) * 1.5);
@@ -64,55 +52,15 @@
   color: var(--text);
 }
 
+/* The title now sits inside .kicked-head (align-items:center) next to the 34px icon; the
+   standalone 14px top gap would push its baseline ~7px below the icon's center. */
+.kicked-head .kicked-title { margin-top: 0; }
+
 .kicked-desc {
   margin: 8px 0 0;
   font-size: var(--ui-fs-base);
   line-height: 1.6;
   color: var(--dim);
-}
-
-.kicked-sep {
-  height: 1px;
-  margin: 16px 0;
-  background: var(--line-soft);
-}
-
-.kicked-next {
-  font-size: var(--ui-fs-base);
-  font-weight: 500;
-  color: var(--text);
-}
-
-.kicked-steps {
-  margin: 10px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.kicked-steps li {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  font-size: var(--ui-fs-base);
-  line-height: 1.5;
-  color: var(--dim);
-}
-
-.kicked-num {
-  width: 22px;
-  height: 22px;
-  flex: none;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-3);
-  color: var(--dim);
-  font-size: var(--ui-fs-sm);
-  line-height: 1;
 }
 
 .kicked-status {
@@ -121,7 +69,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-md);
   font-size: var(--ui-fs-base);

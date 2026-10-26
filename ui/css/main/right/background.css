@@ -47,7 +47,6 @@
 /* Head items stay on one line: overflow becomes a tail ellipsis instead of a wrap.
    Labels never shrink (a label cut to "Workin…" is unreadable); the value does. */
 .bgcmd-meta-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bgcmd-meta-item.op { flex: none; }
 .bgcmd-meta-item.wd, .bgcmd-meta-item.name { flex: 1 1 auto; }
 
 .bgcmd-meta-lbl { flex: none; white-space: nowrap; }

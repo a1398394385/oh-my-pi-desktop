@@ -5,14 +5,12 @@ const collabZhCn = {
   entry: "协作",
   // Dialog
   title: "协作",
-  desc: "通过 relay 实时共享本会话，或用链接加入他人的房间。",
   hostTitle: "发起共享",
-  hostDesc: "通过 relay 广播本会话。relay 地址留空则使用已配置的默认值。",
+  hostDesc: "通过 relay 广播本会话。",
   relayPh: "wss://relay.example.com（留空 = 默认）",
   start: "开始共享",
   joinTitle: "加入",
   joinDesc: "粘贴发起方给你的协作链接（omp collab link 或其 web 变体）。",
-  joinPh: "协作链接",
   join: "加入",
   // Active state
   hosting: "正在共享本会话",

@@ -142,6 +142,7 @@ export const hostErrorsEn = {
     arrayItemString: "{{key}} items must be strings",
     mustBeObject: "{{key}} must be an object",
     askTimeoutNonNegative: "ask.timeout must be a non-negative number of seconds",
+    automationTimeoutNonNegative: "automation dialog timeouts must be non-negative numbers of seconds",
     invalidLocale: "Invalid locale: {{lang}}",
     profileEmpty: "Profile name must not be empty",
     invalidApprovalMode: "Invalid approval mode: {{mode}}",

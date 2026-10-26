@@ -463,6 +463,12 @@
       "note": "写入 omp-desktop.json 的 automations.agentTools，控制新会话是否注入 automations_list / automations_manage 工具"
     },
     {
+      "id": "set_automation_dialog_timeouts",
+      "kind": "settings",
+      "risk": "write",
+      "note": "写入 omp-desktop.json 的 automations.askTimeoutSec / approvalTimeoutSec（秒，0=永不超时）：定时任务会话的提问与权限审批弹窗到点自动作答，下次派发生效"
+    },
+    {
       "id": "set_keepalive_enabled",
       "kind": "settings",
       "risk": "write",
@@ -924,6 +930,12 @@
       "note": "设置页下载当前 dictation 模型：进度经 stt_download_progress 帧流式回传，完成后回推 voice_status"
     },
     {
+      "id": "speak_text",
+      "kind": "voice",
+      "risk": "read",
+      "note": "消息尾部朗读按钮：speech 角色解析到 tts 模型时由 tts 工具合成临时音频，base64 经 tts_audio 帧回传（失败回 tts_failed）；未配置 speech 角色时回 backend=system，由 UI 系统语音朗读"
+    },
+    {
       "id": "automations_list",
       "kind": "automation",
       "risk": "read",
@@ -933,13 +945,13 @@
       "id": "automations_create",
       "kind": "automation",
       "risk": "write",
-      "note": "新建自动化：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限、弹窗超时 askTimeoutSec/approvalTimeoutSec 缺省 300 秒，落盘后回 automations_list 帧（投递目标字段由 agent 工具写入，RPC 侧剥离）"
+      "note": "新建自动化：title/prompt/cwd 非空校验、schedule 归一（非法 cron 报错）、20 条上限，落盘后回 automations_list 帧（投递目标字段由 agent 工具写入，RPC 侧剥离）"
     },
     {
       "id": "automations_update",
       "kind": "automation",
       "risk": "write",
-      "note": "编辑自动化：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活）；askTimeoutSec/approvalTimeoutSec 为 0 秒表示永不超时，缺省 300 秒；投递型自动化拒绝编辑"
+      "note": "编辑自动化：schedule/recurring/maxRuns/endAt 变化时以当前时刻重算 nextRunAt 与 lifecycle（completed 改回可跑态则复活）；投递型自动化拒绝编辑"
     },
     {
       "id": "automations_delete",

@@ -190,13 +190,13 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
         }}
       />
       <span className={"find-count" + (count === t("misc.noResults") ? " none" : "")}>{count}</span>
-      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title={t("misc.prevMatch")} onClick={() => gotoMatch(-1)}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-hover-fill hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title={t("misc.prevMatch")} onClick={() => gotoMatch(-1)}>
         <Icon name="chevronUp" />
       </button>
-      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title={t("misc.nextMatch")} onClick={() => gotoMatch(1)}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-hover-fill hover:text-text transition-[background,color] duration-150 ease-[var(--swift)]" title={t("misc.nextMatch")} onClick={() => gotoMatch(1)}>
         <Icon name="chevronDown" />
       </button>
-      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-panel-2 hover:text-text transition-[background,color] duration-150 ease-[var(--swift)] find-close" title={t("misc.closeFind")} onClick={close}>
+      <button className="flex-none w-[22px] h-[22px] rounded-sm inline-flex items-center justify-center text-dim cursor-pointer border-0 bg-none p-0 hover:bg-hover-fill hover:text-text transition-[background,color] duration-150 ease-[var(--swift)] find-close" title={t("misc.closeFind")} onClick={close}>
         <Icon name="xmark" size={12} />
       </button>
     </div>

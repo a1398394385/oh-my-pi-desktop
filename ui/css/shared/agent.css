@@ -10,9 +10,9 @@
   transition: box-shadow var(--dur-snap) var(--swift);
 }
 
-.hub-row:hover { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--line); }
+.hub-row:hover { background: var(--hover-fill); box-shadow: inset 0 0 0 1px var(--line); }
 
-.hub-row.on { background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.hub-row.on { background: var(--panel); --hover-fill: var(--menu-hl); box-shadow: inset 0 0 0 1px var(--line); }
 
 .hub-row-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
 
@@ -57,12 +57,12 @@
 
 .hub-ibtn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--dim); cursor: pointer; }
 
-.hub-ibtn:hover { background: var(--panel-2); color: var(--text); }
+.hub-ibtn:hover { background: var(--hover-fill); color: var(--text); }
 
 /* Steer inline input: expands in place below the row content (mem-expand's downward popIn entrance; no separator border inside cards) */
 .hub-steer { display: flex; align-items: center; gap: 4px; animation: popIn .3s ease-out; --pop-from: -4px; }
 
-.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--panel); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
+.hub-steer-input { flex: 1; min-width: 0; height: 24px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--panel); --hover-fill: var(--menu-hl); color: var(--text); font: inherit; font-size: var(--ui-fs-sm); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
 
 .hub-steer-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent); }
 

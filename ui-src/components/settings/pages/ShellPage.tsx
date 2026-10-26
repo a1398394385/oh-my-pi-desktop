@@ -4,15 +4,15 @@
 // the shell-minimizer group, then eval & runtimes. The interceptor section carries an
 // id in PAGE_PLACEMENT (skipped by SchemaRows) — this page lays it out so the toggle
 // and the rule list share one card. Rule rows follow the memory-page row language
-// (.srow + .on highlight + .mem-caret); the edit form reuses the MCP editor classes
-// (.mem-expand / .sem-body.form / .mcp-form-*).
+// (.srow + .on highlight + .mem-caret); the edit form reuses the shared form language
+// (.mem-expand / .sem-body.form / .frm-rows + FormRow).
 import { Fragment, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows, { SchemaRowsBare, SchemaGroupTitle } from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
-import { confirmDialog, emptyRow } from "../common";
+import { confirmDialog, emptyRow, FormRow } from "../common";
 
 const RULES_KEY = "bashInterceptor.patterns";
 
@@ -95,9 +95,8 @@ function RuleEditor({ initial, index, total, onSave, onClose, onMove, onDelete }
         </button>
       </div>
       <div className="sem-body form">
-        <div className="mcp-form-row">
-          <div className="mcp-form-group itcp-form-pattern">
-            <label className="mcp-form-label">{t("settingsPage.shellPage.patternLabel")} <span className="req">*</span></label>
+        <div className="frm-rows">
+          <FormRow label={<>{t("settingsPage.shellPage.patternLabel")} <span className="req">*</span></>}>
             <textarea
               className="mcp-form-textarea mcp-form-code"
               rows={2}
@@ -106,9 +105,8 @@ function RuleEditor({ initial, index, total, onSave, onClose, onMove, onDelete }
               placeholder={t("settingsPage.shellPage.patternPlaceholder")}
               onChange={(e) => setPattern(e.target.value)}
             />
-          </div>
-          <div className="mcp-form-group mcp-form-half itcp-form-tool">
-            <label className="mcp-form-label">{t("settingsPage.shellPage.toolLabel")} <span className="req">*</span></label>
+          </FormRow>
+          <FormRow label={<>{t("settingsPage.shellPage.toolLabel")} <span className="req">*</span></>}>
             <input
               type="text"
               className="mcp-form-input mcp-form-code"
@@ -117,30 +115,28 @@ function RuleEditor({ initial, index, total, onSave, onClose, onMove, onDelete }
               placeholder={t("settingsPage.shellPage.toolPlaceholder")}
               onChange={(e) => setTool(e.target.value)}
             />
-          </div>
-        </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.shellPage.messageLabel")} <span className="req">*</span></label>
-          <textarea
-            className="mcp-form-textarea"
-            rows={2}
-            spellCheck={false}
-            value={message}
-            placeholder={t("settingsPage.shellPage.messagePlaceholder")}
-            onChange={(e) => setMessage(e.target.value)}
-          />
-        </div>
-        <div className="mcp-form-group itcp-form-flags">
-          <label className="mcp-form-label">{t("settingsPage.shellPage.flagsLabel")}</label>
-          <input
-            type="text"
-            className="mcp-form-input mcp-form-code"
-            spellCheck={false}
-            value={flags}
-            placeholder={t("settingsPage.shellPage.flagsPlaceholder")}
-            onChange={(e) => setFlags(e.target.value)}
-          />
-          <div className="mcp-form-hint">{t("settingsPage.shellPage.flagsHint")}</div>
+          </FormRow>
+          <FormRow label={<>{t("settingsPage.shellPage.messageLabel")} <span className="req">*</span></>}>
+            <textarea
+              className="mcp-form-textarea"
+              rows={2}
+              spellCheck={false}
+              value={message}
+              placeholder={t("settingsPage.shellPage.messagePlaceholder")}
+              onChange={(e) => setMessage(e.target.value)}
+            />
+          </FormRow>
+          <FormRow label={t("settingsPage.shellPage.flagsLabel")}>
+            <input
+              type="text"
+              className="mcp-form-input mcp-form-code"
+              spellCheck={false}
+              value={flags}
+              placeholder={t("settingsPage.shellPage.flagsPlaceholder")}
+              onChange={(e) => setFlags(e.target.value)}
+            />
+            <div className="frm-hint">{t("settingsPage.shellPage.flagsHint")}</div>
+          </FormRow>
         </div>
         <div className="sem-foot">
           {onDelete && (
@@ -326,31 +322,31 @@ function ApprovalRuleEditor({ initial, index, total, onSave, onClose, onMove, on
         </button>
       </div>
       <div className="sem-body form">
-        <div className="mcp-form-group itcp-form-pattern itcp-form-match">
-          <label className="mcp-form-label">{t("settingsPage.shellPage.apprMatchLabel")} <span className="req">*</span></label>
-          <input
-            type="text"
-            className="mcp-form-input mcp-form-code"
-            spellCheck={false}
-            value={match}
-            placeholder={t("settingsPage.shellPage.apprMatchPlaceholder")}
-            onChange={(e) => setMatch(e.target.value)}
-          />
-        </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.shellPage.apprActionLabel")}</label>
-          <div className="mcp-type-pills">
-            {APPROVALS.map((a) => (
-              <button
-                key={a}
-                type="button"
-                className={"mcp-type-pill" + (approval === a ? " on" : "")}
-                onClick={() => setApproval(a)}
-              >
-                {t(`settingsPage.shellPage.appr${a[0].toUpperCase()}${a.slice(1)}`)}
-              </button>
-            ))}
-          </div>
+        <div className="frm-rows">
+          <FormRow label={<>{t("settingsPage.shellPage.apprMatchLabel")} <span className="req">*</span></>}>
+            <input
+              type="text"
+              className="mcp-form-input mcp-form-code"
+              spellCheck={false}
+              value={match}
+              placeholder={t("settingsPage.shellPage.apprMatchPlaceholder")}
+              onChange={(e) => setMatch(e.target.value)}
+            />
+          </FormRow>
+          <FormRow label={t("settingsPage.shellPage.apprActionLabel")}>
+            <div className="mcp-type-pills">
+              {APPROVALS.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  className={"mcp-type-pill" + (approval === a ? " on" : "")}
+                  onClick={() => setApproval(a)}
+                >
+                  {t(`settingsPage.shellPage.appr${a[0].toUpperCase()}${a.slice(1)}`)}
+                </button>
+              ))}
+            </div>
+          </FormRow>
         </div>
         <div className="sem-foot">
           {onDelete && (

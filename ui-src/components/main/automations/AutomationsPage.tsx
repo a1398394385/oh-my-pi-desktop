@@ -210,9 +210,8 @@ export default function AutomationsPage() {
         <button type="button" className="icon-btn" title={t("autoList.settingsTitle")} onClick={() => openSettings("pg-automations")}>
           <Icon name="settings" size={17} />
         </button>
-        <button type="button" className="al-primary" onClick={() => setView({ mode: "create" })}>{t("autoEdit.createBtn")}</button>
+        <button type="button" className="frm-primary" onClick={() => setView({ mode: "create" })}>{t("autoEdit.createBtn")}</button>
       </div>
-      <div className="al-sub">{t("settingsPage.automations.unattendedHint")}</div>
 
       {automations.length > 0 && (
         <div className="al-filters">

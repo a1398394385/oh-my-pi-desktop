@@ -6,7 +6,7 @@
 // main.ts comment "do not sink models.ts, avoid module cycles".
 import { H, eachUiWs } from "./state.ts";
 import { modelsPayload, modelsDefaults, modelRolesPayload, settingsSnapshot } from "./models.ts";
-import { readAcpConfig, readAcpEnabled, readAutomationAgentEnabled, readSessionContextEnabled } from "./profile.ts";
+import { readAcpConfig, readAcpEnabled, readAutomationAgentEnabled, readAutomationDialogTimeouts, readSessionContextEnabled } from "./profile.ts";
 import { readKeepaliveEnabled, readKeepaliveProbeConfig } from "./keepalive-config.ts";
 import { readHooksEnabled, readPluginsEnabled } from "./plugin-assets.ts";
 import { readUiConfig } from "./ui-config.ts";
@@ -35,6 +35,7 @@ export function settingsFrame() {
     acpEnabled: readAcpEnabled(),
     sessionContextEnabled: readSessionContextEnabled(),
     automationAgentEnabled: readAutomationAgentEnabled(),
+    automationDialogTimeouts: readAutomationDialogTimeouts(),
     keepaliveEnabled: readKeepaliveEnabled(),
     keepaliveConfig: readKeepaliveProbeConfig(),
     hooksEnabled: readHooksEnabled(),

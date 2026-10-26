@@ -7,8 +7,9 @@ import { settingsGet } from "./settings-compat.ts";
 
 /**
  * Permission-approval deadline for a session, in ms: an automation run carries
- * its task's approvalTimeoutSec, every other session follows ask.timeout (the
- * same setting the base resolves for ask). 0 or absent = wait forever.
+ * the automation settings page's deadline (spawn-time snapshot), every other
+ * session follows ask.timeout (the same setting the base resolves for ask).
+ * 0 or absent = wait forever.
  *
  * The ask tool does not come through here: the base reads ask.timeout itself
  * and hands the ms deadline in the dialog options.

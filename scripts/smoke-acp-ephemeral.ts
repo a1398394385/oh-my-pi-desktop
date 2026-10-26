@@ -48,7 +48,7 @@ import {
 import { computeRoundPlan, milestoneFor, type AcpParams } from "../host/acp-plan.ts";
 import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { createAcpStatusTool } from "../host/acp-status-tool.ts";
-import { assertToolPairing } from "../host/acp-projection.ts";
+import { assertToolPairing, type AcpBlockInfo } from "../host/acp-projection.ts";
 
 assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
@@ -183,6 +183,44 @@ function ephemeralText(fx: Fixture): string {
 	const gIds = guarded.state.roundStatus!.manifestIds;
 	assert.ok(!gIds.includes("e3"), "protected tail (last user turn) excluded");
 	assert.ok(gIds.every((id) => !id.startsWith("view:")), "pseudo-id view blocks excluded");
+
+	// The floor drives the real manifest path: two journaled user blocks stay
+	// protected while the view-only reminder between them spends no quota.
+	const floorFx = makeFixture(
+		{ l1: 100, l2: 200, l3: 300, target: 10_000, tailTurns: 0, tailTokens: 0, tailUserMessages: 2 },
+		[10, 10, 10, 10],
+	);
+	floorFx.view.splice(3, 0, { role: "user", content: "view-only reminder never journaled", timestamp: 9 } as never as AgentMessage);
+	floorFx.state.projectView(floorFx.view);
+	const fIds = floorFx.state.roundStatus!.manifestIds;
+	assert.ok(!fIds.includes("e2") && !fIds.includes("e3"), "floor protects the latest 2 journaled user messages");
+	assert.ok(fIds.includes("e1"), "the block just past the floor stays a candidate");
+
+	// tailUserMessages floor: synthetic auto-continues also split into user
+	// blocks, so the floor counts real user inputs only and outranks the
+	// turn/token ceilings (it walks past them to reach N user messages).
+	const tailBlocks: AcpBlockInfo[] = [
+		{ id: "u1", kind: "user", sourceId: "u1", tokens: 10, intent: "", userInput: true },
+		{ id: "a1", kind: "text", sourceId: "a1", tokens: 10, intent: "" },
+		{ id: "u2", kind: "user", sourceId: "u2", tokens: 10, intent: "", userInput: false },
+		{ id: "a2", kind: "text", sourceId: "a2", tokens: 10, intent: "" },
+		{ id: "u3", kind: "user", sourceId: "u3", tokens: 10, intent: "", userInput: true },
+		{ id: "a3", kind: "text", sourceId: "a3", tokens: 10, intent: "" },
+	];
+	const tailState = new AcpRuntimeState({
+		countTokens,
+		sink: { appendCustomEntry: () => "s1" },
+		getEntries: () => [],
+		params: { tailUserMessages: 2, tailTurns: 1, tailTokens: 0 },
+	});
+	assert.deepEqual(
+		[...tailState.protectedZone(tailBlocks)].sort(),
+		["a1", "a2", "a3", "u1", "u2", "u3"],
+		"floor walks past the turn ceiling until 2 real user messages are protected",
+	);
+	tailState.params.tailTurns = 0;
+	tailState.params.tailUserMessages = 1;
+	assert.deepEqual([...tailState.protectedZone(tailBlocks)].sort(), ["a3", "u3"], "floor alone ends the walk at N user messages");
 
 	// Multi-round convergence: compress each round's full manifest until the
 	// tier drops; exempted blocks re-enter once the big ones leave (§7).

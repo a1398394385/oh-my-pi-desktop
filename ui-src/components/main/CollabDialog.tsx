@@ -74,7 +74,6 @@ export default function CollabDialog() {
           <Icon name="globe" size={15} />
           <span>{t("collab.title")}</span>
         </DialogTitle>
-        <div style={{ color: "var(--faint)", fontSize: "var(--ui-fs-sm)", marginTop: "2px" }}>{t("collab.desc")}</div>
 
         <div style={{ flex: 1, minHeight: 0, marginTop: "14px", overflowY: "auto", overflowX: "hidden" }}>
           {!active ? (
@@ -107,8 +106,8 @@ export default function CollabDialog() {
                 <input
                   className="inp w-full"
                   style={{ marginTop: "10px" }}
+                  aria-label={t("collab.joinDesc")}
                   value={joinLink}
-                  placeholder={t("collab.joinPh")}
                   onChange={(e) => setJoinLink(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && joinLink.trim() && sessionId && !busy) collabJoin(sessionId, joinLink);

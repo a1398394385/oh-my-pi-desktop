@@ -9,7 +9,7 @@ import { useAppStore } from "./index";
 import { findLast, pathOfSessionId } from "./session-lookup";
 import { notifyDesktop, alertTitle } from "./notify";
 import { invoke } from "./ws";
-import { sealRunItems, turnEndedWithError } from "./run-seal";
+import { sealRunItems, endingErrorText } from "./run-seal";
 // Per-session right panel snapshots: activateSession is the single funnel for all session
 // activations, so save/restore hooks live here (right.ts also imports activeOpen from this
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
@@ -588,6 +588,12 @@ export function applyEvent(msg: EventFrame): void {
     // duration counts from turnStartAt): seal once + backfill entryIds. Reset running tools before
     // sealing — interrupted/error paths may never see a tool_update; without the reset the rows
     // keep an eternal spinner
+    // Read the run's outward result BEFORE sealing: the base auto-retries a failed request and
+    // keeps running, so a mid-run failure row sits above the retry's own output — only a tail
+    // error row means this run was interrupted by the failure. Output streamed after that row
+    // is still in assistantDraft until the seal flushes it.
+    const pre = findBySessionId(msg.sessionId);
+    const endedWithError = pre && !isJunkPlaceholder(pre.assistantDraft) ? null : endingErrorText(pre?.items ?? []);
     updateSession(msg.sessionId, (s) => {
       if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
       s.assistantDraft = "";
@@ -636,14 +642,15 @@ export function applyEvent(msg: EventFrame): void {
       useAppStore.getState().saveUnseen();
     }
     // Background session finished → desktop alert: the title comes from the session title in the
-    // on-disk list (notify.bgSessionTitle when not listed), the body is the last assistant text
-    // truncated to 80 chars as the summary (notify.finished when absent). A run that ended on an
-    // error row has already alerted in the error branch — don't also announce "finished".
-    if (!turnEndedWithError(s.items)) {
-      const lastA = findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && !isJunkPlaceholder(it.text));
-      const summary = (lastA?.text || "").trim();
-      notifyDesktop("turn_end", s, alertTitle(s), summary ? (summary.length > 80 ? summary.slice(0, 80) + "…" : summary) : t("notify.finished"));
-    }
+    // on-disk list (notify.bgSessionTitle when not listed). An interrupted run alerts as "error"
+    // with the failure text (the error frame itself stays silent: the base retries it); a
+    // completed one alerts with the last assistant text truncated to 80 chars as the summary
+    // (notify.finished when absent).
+    const summary =
+      endedWithError ??
+      ((findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && !isJunkPlaceholder(it.text))?.text || "").trim() ||
+        t("notify.finished"));
+    notifyDesktop(endedWithError === null ? "turn_end" : "error", s, alertTitle(s), summary.length > 80 ? `${summary.slice(0, 80)}…` : summary);
     // One extra eviction pass after this session leaves streaming state: when a new session is
     // opened while every session is running, the eviction loop deletes nothing because "streaming
     // sessions are protected"; if eviction only triggered at activation, those sessions would keep
@@ -688,14 +695,13 @@ export function applyEvent(msg: EventFrame): void {
   } else if (msg.kind === "error") {
     // Provider/request failure (quota, auth, transport): one row of its own.
     // Settle the in-flight draft first so text produced before the failure stays above it.
+    // No alert here: the base auto-retries most failures and the run keeps going — the
+    // turn_end branch alerts only when the failure actually ended the run.
     updateSession(msg.sessionId, (s) => {
       if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
       s.assistantDraft = "";
       s.items.push({ role: "error", text: msg.text });
     });
-    // A failed run is exactly what a user working elsewhere must hear about
-    const failed = findBySessionId(msg.sessionId);
-    if (failed) notifyDesktop("error", failed, alertTitle(failed), msg.text.length > 80 ? `${msg.text.slice(0, 80)}…` : msg.text);
   }
 }
 

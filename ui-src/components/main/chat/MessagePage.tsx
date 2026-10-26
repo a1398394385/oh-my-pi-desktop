@@ -122,8 +122,14 @@ function latestScrollTop(el: HTMLElement): number {
     return Math.min(max, Math.max(last.offsetTop, end + FADE_RESERVE - el.clientHeight));
   }
   // Top-level node after the sections (pending steer bubble): keep it above the fade at the
-  // stream end; a stream shorter than the viewport just pins to its top
-  return Math.min(max, Math.max(0, last.offsetTop + last.offsetHeight + FADE_RESERVE - el.clientHeight));
+  // stream end; a stream shorter than the viewport just pins to its top. The node's bottom
+  // margin sits below offsetTop+offsetHeight but still counts as scrollable height (sibling
+  // margin collapse with the in-flow #stream::after spacer), so without it max overshoots
+  // the follow target by that margin: the reader wheels down into the bogus band and the
+  // pinned follow yanks the view back on the next render — the stream visibly bounces
+  // whenever a pending steer bubble is the stream's last node.
+  const mb = parseFloat(getComputedStyle(last).marginBottom) || 0;
+  return Math.min(max, Math.max(0, last.offsetTop + last.offsetHeight + mb + FADE_RESERVE - el.clientHeight));
 }
 
 // Button visibility: shown while the latest content sits more than BTN_SHOW_TOLERANCE px

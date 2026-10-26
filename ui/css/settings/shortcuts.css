@@ -5,7 +5,7 @@
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 24px; height: 22px; padding: 0 7px; box-sizing: border-box;
   border-radius: 6px; border: 1px solid var(--tint-white-140);
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   font-size: 11px; color: var(--dim);
   box-shadow: 0 1.5px 0 var(--tint-white-60);
 }

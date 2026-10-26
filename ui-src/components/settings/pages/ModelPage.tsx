@@ -305,6 +305,10 @@ function RolesView() {
               label={newModel ? (chatModels.find((m) => m.id === newModel)?.name ?? newModel) : t("settingsPage.model.roleDefault")}
               selectedId={newModel ?? undefined}
               onPick={setNewModel}
+              // Opt-out from the sm control tier: this picker sits next to a text
+              // input in the role-creation row and keeps the base size.
+              selClassName="sel-base"
+              menuClassName="menu model mp-role-menu mp-menu-base"
             />
             <button
               type="button"
@@ -607,7 +611,6 @@ function AddProviderView() {
   return (
     <>
       <div className="mp-head"><b>{t("settingsPage.model.addViewTitle")}</b></div>
-      <div className="set-group-desc">{t("settingsPage.model.addViewDesc")}</div>
       {allProvidersCache == null ? (
         <div className="set-group-desc">{t("settingsPage.model.loading")}</div>
       ) : (

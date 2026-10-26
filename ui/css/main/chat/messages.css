@@ -128,7 +128,7 @@
   top: 0;
   z-index: 20;
   width: 100%;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   padding: 12px 0 4px;
   border-bottom: none;
   user-select: none;
@@ -216,7 +216,7 @@
 .msg.user .user-bubble {
   /* Cap = half the content column's max width (50vw); 82% is the relative fallback when the column narrows */
   max-width: min(25vw, 82%);
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border-radius: var(--r-lg);
   padding: 12px 16px;
   font-size: var(--ui-fs-md);
@@ -262,14 +262,14 @@
    the button carries the bubble background to stay legible over the first line's tail */
 .ub-copy { position: absolute; top: 5px; right: 5px; opacity: 0; transition: opacity var(--dur-snap) var(--swift); }
 .msg.user .user-bubble:hover .ub-copy { opacity: 1; background: var(--inset); }
-.msg.user .user-bubble:hover .ub-copy:hover { background: var(--panel-2); }
+.msg.user .user-bubble:hover .ub-copy:hover { background: var(--hover-fill); }
 
 /* Edit-resend button (UserMsg.tsx): pinned left of .ub-copy, revealed by the same hover
    mechanism; grayed (not hidden) while the entryId is not backfilled or the session is
    streaming, so the hover row never jumps. Remote clients render no button at all. */
 .ub-edit-btn { position: absolute; top: 5px; right: 28px; opacity: 0; transition: opacity var(--dur-snap) var(--swift); }
 .msg.user .user-bubble:hover .ub-edit-btn { opacity: 1; background: var(--inset); }
-.msg.user .user-bubble:hover .ub-edit-btn:hover { background: var(--panel-2); }
+.msg.user .user-bubble:hover .ub-edit-btn:hover { background: var(--hover-fill); }
 .msg.user .user-bubble:hover .ub-edit-btn:disabled { opacity: .45; cursor: default; }
 .msg.user .user-bubble:hover .ub-edit-btn:disabled:hover { background: none; color: var(--faint); }
 
@@ -279,7 +279,7 @@
 .ub-edit { display: flex; align-items: flex-end; gap: 6px; min-width: 220px; }
 .ub-edit textarea {
   flex: 1; min-width: 0; resize: none;
-  background: var(--card); color: var(--text);
+  background: var(--card); --hover-fill: var(--panel-2); color: var(--text);
   border: 1px solid var(--line); border-radius: var(--r-sm);
   padding: 6px 8px; line-height: 1.55;
 }
@@ -433,7 +433,7 @@
 .think-body::before {
   content: "";
   position: absolute;
-  left: 5.5px; top: 0; bottom: 4px;
+  left: 6.5px; top: 0; bottom: 4px;
   width: 2px; border-radius: 1px;
   background: var(--line);
 }
@@ -477,7 +477,7 @@
 /* Inline diff expanding downward after an edit-row click (same container language as ZCode EditInlineDiffContent: rounded-xl + border + card base, no inner padding — diff rows carry their own px, 240px height cap with inner scrolling) */
 .ed-brief {
   margin: -6px 0 12px; /* left edge aligned with the label-row icon (inside groups, positioned by .chg-body's padding, no extra indent) */
-  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); --hover-fill: var(--menu-hl); border: 1px solid var(--line); border-radius: 12px;
   padding: 0;
   font-family: var(--mono); font-size: var(--code-fs, 12px);
   line-height: 1.5; max-height: 240px; overflow: hidden;
@@ -500,24 +500,24 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* Change group (consecutive edit events merged): rows in the expansion body left-align with the "changes" label text (indent = pencil icon 13 + gap 6, same column as the edit/write label text).
+/* Group expansion body (change / read / terminal groups): inner rows left-align with the group header's label text (indent = header icon 15 + .act row gap 6, the same 21px as .ro-body).
    Indenting goes through padding: #stream>*'s margin-left:auto (an ID selector) would crush margin-left. The group header's 16px bottom margin collapses with the body's -6px into 10px — matching the card-popup-to-label spacing (the edit-row ed-brief baseline);
    padding-top 1px: the first label inside the line sits 1px below the line's top end. Inner rows pad 5px, 10px between neighbors — uniform pairwise row spacing (including rows with expanded briefs, see .chg-body .ed-brief) */
 .chg-body {
-  margin: -6px 0 12px; padding: 1px 0 0 19px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box;
+  margin: -6px 0 12px; padding: 1px 0 0 21px; display: flex; flex-direction: column; align-items: stretch; position: relative; max-width: 100%; box-sizing: border-box;
   /* Long expansions cap and scroll inside the body — the same contract as .ed-brief/.cmd-card (wheels over the body scroll it, never the outer stream; the
      MessagePage wheel guard already treats .chg-body as a card). Column-flex children must not shrink, or flex compresses the rows instead of overflowing. */
   max-height: 480px; overflow-y: auto; overscroll-behavior: contain;
 }
 
 .chg-body > * { flex-shrink: 0; }
-/* The full left vertical line: centered on the group header's pencil icon (13px wide) (6.5 - line width 2/2 = 5.5).
+/* The full left vertical line: centered on the group header's icon (15px wide, so 7.5 - line width 2/2 = 6.5).
    top end flush with the expansion body's top edge (top:0): no longer reaching up into the group header row to cover the icon; the gap to the group header text = the header mb 16 and
    body mt -6 collapsed into 10px, matching the card-popup margin. Anchored to the body's padding box, so once the capped body scrolls the line keeps spanning the visible window while the rows scroll behind it (like .think-body's outer line over .think-scroll) */
 .chg-body::before {
   content: "";
   position: absolute;
-  left: 5.5px; top: 0; bottom: 4px;
+  left: 6.5px; top: 0; bottom: 4px;
   width: 2px; border-radius: 1px;
   background: var(--line);
 }
@@ -624,7 +624,7 @@
    the theme surface with the same token set as bash-out/ed-brief instead of the hardcoded dark
    island above — light-gray-on-white text was the readability bug. Dark values stay untouched. */
 :is([data-theme="light"], [data-theme-mode="light"]) .cmd-card {
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
 }
 
@@ -751,12 +751,16 @@
 .scroll-bottom {
   position: sticky; bottom: calc(var(--chat-fade) + 6px);
   margin: 16px auto 2px; width: 26px; height: 26px; border-radius: 50%;
-  background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+  /* #stream is a column flexbox: with content overflowing, the default flex-shrink:1 squeezes
+     this row's main-axis (height) to 18px while the explicit width holds, so the circle renders
+     as an ellipse. Keep the intrinsic 26x26. */
+  flex: none;
+  background: var(--panel); --hover-fill: var(--menu-hl); border: 1px solid var(--line); color: var(--dim);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; z-index: 5; box-shadow: 0 4px 12px var(--tint-black-350);
 }
 
-.scroll-bottom:hover { color: var(--text); background: var(--panel-2); }
+.scroll-bottom:hover { color: var(--text); background: var(--hover-fill); }
 
 :is([data-theme="light"], [data-theme-mode="light"]) .scroll-bottom { box-shadow: 0 4px 12px var(--tint-black-120); }
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
@@ -841,7 +845,7 @@
   align-items: center;
   gap: 2px;
   padding: 4px 0;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-popover);

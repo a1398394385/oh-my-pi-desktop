@@ -172,7 +172,7 @@
 .tpane {
   display: flex; flex-direction: column;
   height: 100%; min-height: 0;
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
 }
 
 /* Tab strip inside the bottom dock head: one .rtab per terminal (reuses the right-panel

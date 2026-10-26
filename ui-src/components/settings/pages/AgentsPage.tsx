@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast, pathBase } from "../../../store";
 import Icon from "../../../Icon";
-import { emptyRow, EditWindowHead } from "../common";
+import { emptyRow, EditWindowHead, FormRow } from "../common";
 import ScopeSel from "../ScopeSel";
 import { EnabledModelPicker } from "../../ModelPicker";
 import type { AgentAssetsPayload } from "../../../types/frames";
@@ -176,74 +176,72 @@ function AgentCreateWindow({ scope, onScopeChange, profile, projects, onClose }:
         sub={t("settingsPage.agents.form.newSub")}
         onBack={onClose}
       >
-        <button type="button" className="save-btn" onClick={submit}>
+        <button type="button" className="frm-primary" onClick={submit}>
           {t("common.save")}
         </button>
       </EditWindowHead>
 
       <div className="set-card set-edit-card">
-        <div className="agent-form-scope-row">
-          <span className="agent-form-scope-label">{t("settingsPage.agents.form.scopeLabel")}</span>
-          <ScopeSel value={scope} onChange={onScopeChange} profile={profile} projects={projects} />
-        </div>
-        <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half agent-form-name">
-            <label className="mcp-form-label">{t("settingsPage.agents.form.nameLabel")}</label>
+        <div className="frm-rows">
+          <FormRow label={t("settingsPage.agents.form.scopeLabel")}>
+            <div className="agent-form-scope frm-compact">
+              <ScopeSel value={scope} onChange={onScopeChange} profile={profile} projects={projects} />
+            </div>
+          </FormRow>
+          <div className="frm-pair">
+            <FormRow label={t("settingsPage.agents.form.nameLabel")}>
+              <input
+                type="text"
+                className="mcp-form-input mcp-form-code mcp-inp-name"
+                placeholder={t("settingsPage.agents.form.namePlaceholder")}
+                spellCheck={false}
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </FormRow>
+            <FormRow label={t("settingsPage.agents.form.modelLabel")}>
+              <div className="agent-form-model">{modelPicker}</div>
+            </FormRow>
+          </div>
+          <FormRow label={t("settingsPage.agents.form.descLabel")}>
             <input
               type="text"
-              className="mcp-form-input mcp-form-code mcp-inp-name"
-              placeholder={t("settingsPage.agents.form.namePlaceholder")}
-              spellCheck={false}
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              className="mcp-form-input"
+              placeholder={t("settingsPage.agents.form.descPlaceholder")}
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
             />
-          </div>
-          <div className="mcp-form-group mcp-form-half agent-form-model">
-            <label className="mcp-form-label">{t("settingsPage.agents.form.modelLabel")}</label>
-            {modelPicker}
-          </div>
+          </FormRow>
+          <FormRow label={t("settingsPage.agents.form.toolsLabel")}>
+            <div className="agent-form-tools">
+              {(showAllTools ? AGENT_TOOL_NAMES : AGENT_TOOL_NAMES.filter((x) => COMMON_AGENT_TOOL_NAMES.includes(x))).map((tool) => (
+                <label className="agent-form-tool" key={tool}>
+                  <input type="checkbox" checked={tools.has(tool)} onChange={() => toggleTool(tool)} />
+                  <span className="agent-form-tool-name">{tool}</span>
+                </label>
+              ))}
+            </div>
+            <button type="button" className="mcp-env-toggle" onClick={() => setShowAllTools((v) => !v)}>
+              <span className="caret-svg"><Icon name={showAllTools ? "chevronUp" : "chevronDown"} size={12} /></span>
+              {showAllTools
+                ? t("settingsPage.agents.form.toolsShowLess")
+                : t("settingsPage.agents.form.toolsShowMore", { count: AGENT_TOOL_NAMES.length - COMMON_AGENT_TOOL_NAMES.length })}
+            </button>
+            <div className="frm-hint">{t("settingsPage.agents.form.toolsHint")}</div>
+          </FormRow>
+          <FormRow label={t("settingsPage.agents.form.promptLabel")}>
+            <textarea
+              className="mcp-form-textarea"
+              rows={8}
+              spellCheck={false}
+              placeholder={t("settingsPage.agents.form.promptPlaceholder")}
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+            />
+          </FormRow>
         </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.agents.form.descLabel")}</label>
-          <input
-            type="text"
-            className="mcp-form-input"
-            placeholder={t("settingsPage.agents.form.descPlaceholder")}
-            value={desc}
-            onChange={(e) => setDesc(e.target.value)}
-          />
-        </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.agents.form.toolsLabel")}</label>
-          <div className="agent-form-tools">
-            {(showAllTools ? AGENT_TOOL_NAMES : AGENT_TOOL_NAMES.filter((x) => COMMON_AGENT_TOOL_NAMES.includes(x))).map((tool) => (
-              <label className="agent-form-tool" key={tool}>
-                <input type="checkbox" checked={tools.has(tool)} onChange={() => toggleTool(tool)} />
-                <span className="agent-form-tool-name">{tool}</span>
-              </label>
-            ))}
-          </div>
-          <button type="button" className="mcp-env-toggle" onClick={() => setShowAllTools((v) => !v)}>
-            <span className="caret-svg"><Icon name={showAllTools ? "chevronUp" : "chevronDown"} size={12} /></span>
-            {showAllTools
-              ? t("settingsPage.agents.form.toolsShowLess")
-              : t("settingsPage.agents.form.toolsShowMore", { count: AGENT_TOOL_NAMES.length - COMMON_AGENT_TOOL_NAMES.length })}
-          </button>
-          <div className="mcp-form-hint">{t("settingsPage.agents.form.toolsHint")}</div>
-        </div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.agents.form.promptLabel")}</label>
-          <textarea
-            className="mcp-form-textarea"
-            rows={8}
-            spellCheck={false}
-            placeholder={t("settingsPage.agents.form.promptPlaceholder")}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-        </div>
-        {status ? <div className="mcp-form-hint">{status}</div> : null}
+        {status ? <div className="frm-hint agent-form-status">{status}</div> : null}
       </div>
     </>
   );

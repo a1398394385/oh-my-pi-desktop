@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>删除 29 处 set-group-desc 对照</title>
+<!-- Real build output. File name carries a content hash: after `bun run ui:build` the name
+     changes, so update this href (a missing file turns on the red guard at the top bar). -->
+<link rel="stylesheet" href="../dist/assets/index-CxCHg-mi.css" onerror="document.documentElement.dataset.cssMissing='1'" />
+<style>
+  /* Preview-shell only: nothing below overrides a real control style. */
+  /* The real stylesheet lays body out as the app shell (display:flex + overflow:hidden);
+     the preview is a normal scrolling document, so both must be reset after the link. */
+  html { background: var(--base); }
+  body { display: block; overflow: auto; height: auto; background: var(--base); color: var(--text); margin: 0; padding-bottom: 80px; }
+  .cv-bar {
+    position: sticky; top: 0; z-index: 20; display: flex; gap: 14px; align-items: center;
+    padding: 10px 24px; background: var(--panel); border-bottom: 1px solid var(--tint-white-80);
+  }
+  .cv-bar b, .cv-bar .cv-btn { flex: none; }
+  .cv-bar b { font-weight: 600; }
+  .cv-bar .cv-note { color: var(--faint); font-size: var(--ui-fs-sm); flex: 1; min-width: 0; white-space: normal; }
+  .cv-bar .cv-note code { white-space: nowrap; }
+  .cv-btn {
+    font: inherit; font-size: var(--ui-fs-sm); color: var(--dim); background: var(--panel-2);
+    border: 1px solid var(--tint-white-80); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+  }
+  .cv-btn.on { color: var(--text); border-color: var(--accent); }
+  .cv-wrap { max-width: 1500px; margin: 0 auto; padding: 18px 24px; }
+  .cmp { margin: 0 0 22px; border: 1px solid var(--tint-white-80); border-radius: 10px; overflow: hidden; }
+  .cmp-h {
+    display: flex; gap: 10px; align-items: baseline; padding: 8px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--tint-white-80);
+    font-size: var(--ui-fs-sm);
+  }
+  .cmp-h code { font-family: var(--mono); color: var(--dim); }
+  .cmp-h .cv-tag { color: var(--accent); }
+  .cmp-h .cv-delta { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .cmp-cols { display: grid; grid-template-columns: 1fr 1fr; }
+  .cmp-cols > div { min-width: 0; padding: 4px 18px 18px; }
+  .cmp-cols > div + div { border-left: 1px solid var(--tint-white-80); }
+  .cv-col-tag { font-size: var(--ui-fs-sm); color: var(--faint); padding: 6px 2px 0; }
+  .cmp .set-page { max-width: none; margin: 0; }
+  /* Mark the rows this exercise deletes so the eye can find them. */
+  .cv-marked { position: relative; outline: 1px dashed var(--tint-white-200); outline-offset: 3px; }
+  .cv-marked::after {
+    content: "删除"; position: absolute; right: 0; top: -9px;
+    font-size: 10px; color: var(--accent); background: var(--bg); padding: 0 4px;
+  }
+  body.mode-before .cmp-cols .after { display: none; }
+  body.mode-before .cmp-cols { grid-template-columns: 1fr; }
+  body.mode-after .cmp-cols .before { display: none; }
+  body.mode-after .cmp-cols { grid-template-columns: 1fr; }
+  .cv-keep .cv-col-tag { color: var(--dim); }
+  html[data-css-missing] .cv-bar::after {
+    content: "构建产物 CSS 未加载：dist 里的 hash 文件名已变，请更新本页 <link> 的 href";
+    position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 24px;
+    background: #7a1f1f; color: #fff; font-size: 13px; z-index: 30;
+  }
+</style>
+</head>
+<body class="mode-split">
+<div class="cv-bar">
+  <b>set-group-desc 删除对照</b>
+  <span class="cv-note">静态复刻：DOM 类名与文案照抄 <code>ui-src/components/settings/pages/*</code> 与 <code>ui-src/i18n/locales/ui/settingsPage.zh.ts</code>，唯一改动是移除被虚线框标注的行。</span>
+  <button class="cv-btn on" data-mode="split">并排</button>
+  <button class="cv-btn" data-mode="before">只看现状</button>
+  <button class="cv-btn" data-mode="after">只看删除后</button>
+  <button class="cv-btn" id="cvTheme">切浅色</button>
+</div>
+<div class="cv-wrap" id="cvRoot">
+
+<!-- ============ 1 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>AppearancePage.tsx:168</code><span class="cv-tag">副标题复述组内行</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-tt">外观</div>
+        <div class="set-group-tt">界面设置</div>
+        <div class="set-group-desc cv-marked">设置应用主题和界面文字大小。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>界面主题</b><span>选择浅色、深色或跟随系统主题。</span></div><div class="srow-ctl"><div class="sel">跟随系统 ▾</div></div></div>
+          <div class="srow"><div class="srow-tx"><b>字体样式</b><span>全局字体族（代码块与 Git Diff 内容除外）；指定字体不可用时回退系统默认。</span></div><div class="srow-ctl"><div class="sel">系统默认 ▾</div></div></div>
+          <div class="srow"><div class="srow-tx"><b>字体大小</b><span>调整全局文字大小（代码块与 Git Diff 内容除外）。</span></div><div class="srow-ctl"><div class="num-ctl"><button class="num-btn">−</button><div class="num">14 <i>px</i></div><button class="num-btn">+</button></div></div></div>
+          <div class="srow"><div class="srow-tx"><b>动效</b><span>跟随系统的减弱动态设置，或强制开启 / 关闭应用内动效。</span></div><div class="srow-ctl"><div class="tg on"><i></i></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>AppearancePage.tsx:240</code><span class="cv-tag">前半复述 5 行，仅末尾有硬信息</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">代码设置</div>
+        <div class="set-group-desc cv-marked">设置代码内容的主题、字号和显示方式，不受界面字号影响。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>浅色代码主题</b><span>浅色界面下代码内容使用的高亮主题。</span></div><div class="srow-ctl"><div class="sel">GitHub Light ▾</div></div></div>
+          <div class="srow"><div class="srow-tx"><b>显示行号</b><span>在代码内容和差异视图中显示行号。</span></div><div class="srow-ctl"><div class="tg on"><i></i></div></div></div>
+          <div class="srow"><div class="srow-tx"><b>长行自动换行</b><span>代码内容过长时自动换行。</span></div><div class="srow-ctl"><div class="tg"><i></i></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>AppearancePage.tsx:276</code><span class="cv-tag">布局已表达两遍（并排卡 + 「当前生效」标签）</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">代码预览</div>
+        <div class="set-group-desc cv-marked">同时预览浅色与深色代码主题，当前界面使用的主题会标记为「当前生效」。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>浅色预览 <span class="tag">当前生效</span></b></div></div>
+          <div class="srow"><div class="srow-tx"><b>深色预览</b></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ExperimentalPage.tsx:177</code><span class="cv-tag">冒号前逐字重复组名</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">ACP 上下文压缩</div>
+        <div class="set-group-desc cv-marked">ACP 上下文压缩：对话变长时自动折叠旧内容、压缩上下文，避免越聊越臃肿。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>启用 ACP 上下文压缩</b><span>给新会话加上上下文工具：模型能查看可折叠的内容清单，把久远的对话折叠成摘要，需要时原样取回。只影响开关后新开的会话。</span></div><div class="srow-ctl"><div class="tg on"><i></i></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ExperimentalPage.tsx:269</code><span class="cv-tag">该组只有一行，副标题是同一句复述</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">终端</div>
+        <div class="set-group-desc cv-marked">终端标签页是否在同一项目的多个会话之间共用。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>项目共享终端</b><span>同一项目的所有会话共用一套终端标签页（右边栏和底栏各自独立）。一个会话里开的终端，其他会话也能看到；终端只在关闭标签页时回收，删除会话不会销毁。</span></div><div class="srow-ctl"><div class="tg on"><i></i></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ExperimentalPage.tsx:288</code><span class="cv-tag">与首行 desc 说同一件事</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">会话与检索</div>
+        <div class="set-group-desc cv-marked">在本机历史会话里检索旧对话、按需取回原文。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>历史会话检索</b><span>给新会话加上历史检索工具：模型能按关键词搜索本机已保存的 Pi 会话历史，并展开命中的原始对话。只影响开关后新开的会话。</span></div><div class="srow-ctl"><div class="tg"><i></i></div></div></div>
+          <div class="srow"><div class="srow-tx"><b>回合后刷新会话标题</b><span>每回合结束后用 tiny 模型重新生成会话标题（每回合多一次小模型调用）。手动改过名的会话永不覆盖。</span></div><div class="srow-ctl"><div class="tg"><i></i></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 7 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ExperimentalPage.tsx:329</code><span class="cv-tag">三段话，仅两句是硬信息</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">缓存保温</div>
+        <div class="set-group-desc cv-marked">缓存保温：定期用小型重放请求刷新模型的自动前缀缓存，避免过期。支持 Anthropic Messages 与 OpenAI 兼容（Completions）协议的模型。配置按 profile 独立存放在 omp-desktop.json。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>启用缓存保温</b><span>会话空闲时按节奏重放最后一次请求做小探测，保住目标模型的自动前缀缓存。与插件中心/钩子总开关互斥：两者都开时以 ~/.omp/plugins 里的原版为准，本开关不生效。</span></div><div class="srow-ctl"><div class="tg"><i></i></div></div></div>
+          <div class="srow"><div class="srow-tx"><b>保温模型</b><span>选要保温缓存的模型（可多个，点已选胶囊移除）。只有会话真的向该模型发过请求后才会开始探测；捕获是单槽的，同一会话里多个目标模型会互相覆盖，建议只选各会话的主模型。</span></div><div class="srow-ctl"><div class="sel">未选择 ▾</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 8 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ExperimentalPage.tsx:546</code><span class="cv-tag">与主开关 desc 重复</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">消息区音乐律动</div>
+        <div class="set-group-desc cv-marked">对话区左侧那排竖线会跟着你正在播放的音乐跳动。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>竖线跟随音乐</b><span>让对话区左侧那排竖线跟着音乐跳，低音在上、高音在下。</span></div><div class="srow-ctl"><div class="tg"><i></i></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 9 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>CapabilityPage.tsx:182</code><span class="cv-tag">页面 intro，冒号后逐个点名下方分组</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-tt">能力与引擎</div>
+        <div class="set-group-desc cv-marked">为聊天之外的特殊功能指定专属模型与引擎密钥：网络搜索、语音合成、语音听写、智能判定、图像生成。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>网络搜索</b><span>按引擎粘贴 API Key；也可用环境变量配置（无需在此保存）。未配置的引擎仅在选择后仍可回退到内置链。</span></div><div class="srow-ctl"><div class="sel">公共搜索 ▾</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 10 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>RemotePage.tsx:67</code><span class="cv-tag">页面 intro，与下方两行 desc 重叠</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-tt">远程控制</div>
+        <div class="set-group-desc cv-marked">从局域网内其他设备的浏览器访问本应用：开启后，在设备上打开访问链接即可操作（发 prompt、批准、浏览会话与右栏）。同一时间仅允许一个远程连接，后连者会顶掉先连者。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>启用远程控制</b><span>在本机启动远程服务并监听下方端口；关闭后远程端将被断开。</span></div><div class="srow-ctl"><div class="tg"><i></i></div></div></div>
+          <div class="srow"><div class="srow-tx"><b>监听端口</b><span>远程服务绑定的 TCP 端口（1–65535），保存后立即换绑并重启远程服务。</span></div><div class="srow-ctl"><div class="sel">16800</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 11 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>PluginsPage.tsx:168 / :172</code><span class="cv-tag">副标题是组内行的清单</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">配置项</div>
+        <div class="set-group-desc cv-marked">控制插件与扩展的超时时间、市场自动更新模式及自定义加载路径。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>启用插件与扩展发现</b><span>允许 Agent 自动发现并加载用户及项目中的插件与扩展功能（设置会话 <code>disableExtensionDiscovery: false</code>）。开关对新建会话生效。</span></div><div class="srow-ctl"><div class="tg on"><i></i></div></div></div>
+        </div>
+        <div class="set-group-tt">已安装插件</div>
+        <div class="set-group-desc cv-marked">系统检测到的可用插件清单，可直接在本页安装。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>插件包</b><span>支持 npm 包（可带 @版本）、github:user/repo、git 地址或本地路径，安装到当前 Profile，新建会话生效。</span></div><div class="srow-ctl"><button class="save-btn">安装</button></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 12 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>HooksPage.tsx:336 / :340</code><span class="cv-tag">两处副标题都在复述</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">运行配置</div>
+        <div class="set-group-desc cv-marked">控制钩子在执行时的状态展示与工具调用超时时间。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>启用钩子 (Hooks)</b><span>允许 Agent 在工具调用前后或会话生命周期事件（回合/子代理/结束）执行脚本，可运行命令。新建会话生效。</span></div><div class="srow-ctl"><div class="tg on"><i></i></div></div></div>
+        </div>
+        <div class="set-group-tt">已发现的钩子</div>
+        <div class="set-group-desc cv-marked">在 Profile 目录或各项目工作区 hooks/ 下检测到的脚本。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>未检测到钩子脚本</b><span>当前作用域暂无钩子，点击「新建钩子」创建。</span></div><div class="srow-ctl"><button class="save-btn">新建钩子</button></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 13 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>AutomationsPage.tsx:42</code><span class="cv-tag">副标题复述唯一一行的行为</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">Agent 能力</div>
+        <div class="set-group-desc cv-marked">控制 agent 能否自己创建、查看和删除自动化。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>允许 agent 操控自动化</b><span>开启后，新创建的会话会获得 automations_list 与 automations_manage 两个工具：agent 可以列出自动化、创建任务（包括投递到当前会话的提醒）以及删除任务。投递型自动化只能由 agent 创建，且必须带运行次数上限。</span></div><div class="srow-ctl"><div class="tg"><i></i></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 14 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>KeyboardPage.tsx:27</code><span class="cv-tag">还指错了对象（说「思考」，组里只有工具输出）</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="set-group-tt">过程显示</div>
+        <div class="set-group-desc cv-marked">思考与工具输出在运行期间的默认展开。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>工具输出运行时展开</b></div><div class="sc-keys"><span class="sc-key">Ctrl</span><span class="sc-key">O</span></div></div>
+          <div class="srow"><div class="srow-tx"><b>思考过程展开</b></div><div class="sc-keys"><span class="sc-key">Ctrl</span><span class="sc-key">T</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ 15 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ModelPage.tsx:610</code><span class="cv-tag">用文字教怎么点（应当靠布局）</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">现在</div>
+      <div class="set-page">
+        <div class="mp-head"><b>＋ 添加供应商</b></div>
+        <div class="set-group-desc cv-marked">点击供应商卡片进入详情页，可选登录或配置 API key（同系列供应商已合并为一张卡片）；最后一个「手动添加供应商」是图形化向导，检测模型后写入 models.yml。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>Anthropic</b><span>已登录</span></div><div class="srow-ctl"><div class="sel">详情 ▾</div></div></div>
+          <div class="srow"><div class="srow-tx"><b>＋ 手动添加供应商</b><span>未检测到模型</span></div><div class="srow-ctl"><div class="sel">向导 ▾</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后</div></div>
+  </div>
+</section>
+
+<!-- ============ keep 1 ============ -->
+<section class="cmp cv-keep">
+  <div class="cmp-h"><code>AutomationsPage.tsx:61</code><span class="cv-tag">不该删：含「0 表示永不超时」等硬信息</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">保留</div>
+      <div class="set-page">
+        <div class="set-group-tt">弹窗超时</div>
+        <div class="set-group-desc">定时任务无人值守，弹窗到点自动作答：询问取推荐项，审批一律拒绝。0 表示永不超时。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>询问超时</b><span>定时任务会话的提问等待秒数，到点自动选推荐项。</span></div><div class="srow-ctl"><div class="sel">600</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后（对照：空洞感）</div></div>
+  </div>
+</section>
+
+<!-- ============ keep 2 ============ -->
+<section class="cmp cv-keep">
+  <div class="cmp-h"><code>ModelPage.tsx:701</code><span class="cv-tag">不该删：解释了「只能登录」与替代供应商</span><span class="cv-delta" data-delta></span></div>
+  <div class="cmp-cols">
+    <div class="before"><div class="cv-col-tag">保留</div>
+      <div class="set-page">
+        <div class="set-group-tt">供应商详情</div>
+        <div class="set-group-desc">该供应商仅支持浏览器登录授权，登录后模型会归入对应的目录供应商；如需 API key 直连，请添加对应的 API 型供应商（如 Z.AI 用 zai）。</div>
+        <div class="set-card">
+          <div class="srow"><div class="srow-tx"><b>Kimi</b><span>已登录</span></div><div class="srow-ctl"><div class="sel">详情 ▾</div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="after"><div class="cv-col-tag">删除后（对照：空洞感）</div></div>
+  </div>
+</section>
+
+</div>
+<script>
+  // Build the "after" column by cloning each "before" panel and dropping the marked rows,
+  // then measure the height each deletion reclaims.
+  for (const cmp of document.querySelectorAll(".cmp")) {
+    const before = cmp.querySelector(".before .set-page");
+    const afterHost = cmp.querySelector(".after");
+    if (!before || !afterHost) continue;
+    const clone = before.cloneNode(true);
+    clone.querySelectorAll(".set-group-desc").forEach((el) => el.remove());
+    afterHost.appendChild(clone);
+    const delta = cmp.querySelector("[data-delta]");
+    if (delta && !cmp.classList.contains("cv-keep")) {
+      requestAnimationFrame(() => {
+        const d = before.getBoundingClientRect().height - clone.getBoundingClientRect().height;
+        delta.textContent = d > 0.5 ? "省下约 " + Math.round(d) + "px 高度" : "高度不变";
+      });
+    }
+  }
+  for (const btn of document.querySelectorAll("[data-mode]")) {
+    btn.addEventListener("click", () => {
+      document.body.className = "mode-" + btn.dataset.mode;
+      for (const b of document.querySelectorAll("[data-mode]")) b.classList.toggle("on", b === btn);
+    });
+  }
+  document.getElementById("cvTheme").addEventListener("click", (e) => {
+    const dark = document.documentElement.dataset.theme !== "light";
+    document.documentElement.dataset.theme = dark ? "light" : "dark";
+    e.currentTarget.textContent = dark ? "切深色" : "切浅色";
+  });
+</script>
+</body>
+</html>

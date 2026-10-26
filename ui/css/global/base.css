@@ -6,13 +6,13 @@
    keyboards; falls back to the layout viewport everywhere else */
 html, body { height: var(--app-h, 100%); }
 
-html { background: var(--base); color-scheme: dark; font-size: var(--ui-fs-base); }
+html { background: var(--base); --hover-fill: var(--panel-2); color-scheme: dark; font-size: var(--ui-fs-base); }
 
 html[data-theme="light"],
 html[data-theme-mode="light"] { color-scheme: light; }
 
 body {
-  background: var(--base);
+  background: var(--base); --hover-fill: var(--panel-2);
   font-family: var(--ui-font, var(--sans));
   font-size: var(--ui-fs-base);
   color: var(--text);

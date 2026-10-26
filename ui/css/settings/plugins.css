@@ -18,3 +18,6 @@
 .plug-item em { font-style: normal; color: var(--faint); }
 
 .plug-empty { font-size: var(--ui-fs-sm); color: var(--faint); }
+
+/* Install card: failure text under the spec field (the shared .frm-hint is faint) */
+.plug-install-err { color: var(--err); font-size: var(--ui-fs-sm); }

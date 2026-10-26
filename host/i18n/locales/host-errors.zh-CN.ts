@@ -146,6 +146,7 @@ export const hostErrorsZh = {
     arrayItemString: "{{key}} 元素必须是字符串",
     mustBeObject: "{{key}} 必须是对象",
     askTimeoutNonNegative: "ask.timeout 必须是非负秒数",
+    automationTimeoutNonNegative: "定时任务弹窗超时必须是非负秒数",
     invalidLocale: "非法语言: {{lang}}",
     profileEmpty: "Profile 名称不能为空",
     invalidApprovalMode: "非法审批模式: {{mode}}",

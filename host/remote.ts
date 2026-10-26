@@ -27,6 +27,7 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "set_computer_default", "set_approval_mode", "set_acp_enabled", "set_acp_config",
   "set_session_context_enabled", "set_keepalive_enabled", "set_keepalive_config",
   "set_automation_agent_enabled",
+  "set_automation_dialog_timeouts",
   "set_kimi_auto_thinking", "set_hooks_enabled", "set_plugins_enabled", "set_skills_enabled",
   "set_desktop_env", "switch_profile", "set_auto_review", "set_session_title_refresh", "set_branch_titles",
   // models.ts (2)

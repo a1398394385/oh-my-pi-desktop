@@ -16,6 +16,31 @@ import type {
 // (no AgentType*/Cost*/Trace*/SessionSummary); the official dashboard client
 // imports from shared-types directly, so we mirror that here.
 export * from "@oh-my-pi/omp-stats/shared-types";
+// Gain dashboard: the host's stats server folds ACP compaction totals into
+// /api/stats/gain (host/acp-gain.ts), so the gain types extend the base shape
+// locally (local exports shadow the star re-export).
+export type GainSource = "snapcompact" | "acp";
+export interface GainTimeSeriesPoint {
+  date: string;
+  snapcompact: number;
+  acp: number;
+  total: number;
+}
+export interface GainSourceTotals {
+  savedTokens: number;
+  savedBytes: number;
+  hits: number;
+  outputBytes: number;
+  originalBytes: number;
+  reductionPercent: number | null;
+}
+export interface GainDashboardStats {
+  overall: GainSourceTotals;
+  bySource: Record<GainSource, GainSourceTotals>;
+  timeSeries: GainTimeSeriesPoint[];
+  project: string | null;
+  projects: string[];
+}
 
 export interface Usage {
   input: number;

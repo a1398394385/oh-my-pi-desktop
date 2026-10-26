@@ -11,7 +11,7 @@
   max-height: min(70vh, 640px);
   display: flex;
   flex-direction: column;
-  background: var(--inset); /* whole panel shares the user-bubble surface; regions split by borders only */
+  background: var(--inset); --hover-fill: var(--menu-hl); /* whole panel shares the user-bubble surface; regions split by borders only */
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   box-shadow: var(--shadow-panel);
@@ -24,7 +24,7 @@
   align-items: center;
   gap: 9px;
   flex: none;
-  background: var(--inset); /* same surface as the user message bubble */
+  background: var(--inset); --hover-fill: var(--menu-hl); /* same surface as the user message bubble */
   border: 1px solid var(--line-soft);
   border-radius: var(--r-md);
   padding: 9px 13px;
@@ -66,7 +66,7 @@
 }
 .palette-clear:hover {
   color: var(--text);
-  background: var(--panel-2);
+  background: var(--hover-fill);
 }
 
 .palette-tabs {
@@ -90,7 +90,7 @@
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 .palette-tab:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
 }
 .palette-tab.on {
   background: var(--panel-3);

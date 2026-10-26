@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
-import { confirmDialog, EditWindowHead } from "../common";
+import { confirmDialog, EditWindowHead, FormRow } from "../common";
 
 // Host row shape from the ssh_hosts frame (see SshHostsFrame)
 interface SshHostRow {
@@ -129,38 +129,30 @@ function SshEditor({ host, onClose }: { host: SshHostRow | null; onClose: () => 
         <button type="button" className="save-btn" disabled={testing} onClick={test}>
           {testing ? t("ssh.testing") : t("ssh.testBtn")}
         </button>
-        <button type="button" className="save-btn" onClick={save}>
+        <button type="button" className="frm-primary" onClick={save}>
           {t("common.save")}
         </button>
       </EditWindowHead>
       <div className="set-card set-edit-card">
-        <div className="ssh-form">
-          <label className="ssh-field">
-            <span>{t("ssh.nameLabel")} *</span>
-            <input type="text" className="inp" style={{ width: 200, maxWidth: "100%" }} placeholder={t("ssh.namePh")} spellCheck="false" value={form.name} onChange={set("name")} />
-          </label>
-          <label className="ssh-field">
-            <span>{t("ssh.addressLabel")} *</span>
-            <input type="text" className="inp" style={{ width: 320, maxWidth: "100%" }} placeholder={t("ssh.addressPh")} spellCheck="false" value={form.host} onChange={set("host")} />
-          </label>
-          <div className="ssh-field-row">
-            <label className="ssh-field">
-              <span>{t("ssh.userLabel")}</span>
-              <input type="text" className="inp" style={{ width: 200, maxWidth: "100%" }} placeholder={t("ssh.userPh")} spellCheck="false" value={form.username} onChange={set("username")} />
-            </label>
-            <label className="ssh-field">
-              <span>{t("ssh.portLabel")}</span>
-              <input type="text" className="inp" style={{ width: 90, maxWidth: "100%" }} placeholder={t("ssh.portPh")} spellCheck="false" value={form.port} onChange={set("port")} />
-            </label>
-          </div>
-          <label className="ssh-field">
-            <span>{t("ssh.keyPathLabel")}</span>
+        <div className="frm-rows">
+          <FormRow label={<>{t("ssh.nameLabel")} <span className="req">*</span></>}>
+            <input type="text" className="inp" placeholder={t("ssh.namePh")} spellCheck="false" value={form.name} onChange={set("name")} />
+          </FormRow>
+          <FormRow label={<>{t("ssh.addressLabel")} <span className="req">*</span></>}>
+            <input type="text" className="inp" placeholder={t("ssh.addressPh")} spellCheck="false" value={form.host} onChange={set("host")} />
+          </FormRow>
+          <FormRow label={t("ssh.userLabel")}>
+            <input type="text" className="inp" placeholder={t("ssh.userPh")} spellCheck="false" value={form.username} onChange={set("username")} />
+          </FormRow>
+          <FormRow label={t("ssh.portLabel")}>
+            <input type="text" className="inp" placeholder={t("ssh.portPh")} spellCheck="false" value={form.port} onChange={set("port")} />
+          </FormRow>
+          <FormRow label={t("ssh.keyPathLabel")}>
             <input type="text" className="inp" placeholder={t("ssh.keyPathPh")} spellCheck="false" value={form.keyPath} onChange={set("keyPath")} />
-          </label>
-          <label className="ssh-field">
-            <span>{t("ssh.descLabel")}</span>
-            <input type="text" className="inp" style={{ width: 320, maxWidth: "100%" }} placeholder={t("ssh.descPh")} spellCheck="false" value={form.description} onChange={set("description")} />
-          </label>
+          </FormRow>
+          <FormRow label={t("ssh.descLabel")}>
+            <input type="text" className="inp" placeholder={t("ssh.descPh")} spellCheck="false" value={form.description} onChange={set("description")} />
+          </FormRow>
         </div>
         {formError ? <div className="ssh-form-err">{formError}</div> : null}
         {status ? (

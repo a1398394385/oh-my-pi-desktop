@@ -24,7 +24,8 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWo
   // Mirrors SessionRow's gate: a running session cannot be archived, since the host
   // evicts archived sessions from the in-memory pool. Unarchiving stays available.
   const streaming = useAppStore((st) => st.openSessions.get(entry.path)?.streaming ?? false);
-  const running = streaming || useAppStore((st) => st.busyPaths.has(entry.path));
+  const poolBusy = useAppStore((st) => st.busyPaths.has(entry.path));
+  const running = streaming || poolBusy;
   const pinned = useAppStore((st) => st.pinnedSessions.has(entry.path));
   // Already-unread sessions hide the entry (marking again would be a no-op); the dot is
   // per-device (local set) and survives reloads via localStorage.

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>第 2 层 · 删掉后要么有落点、要么要补布局</title>
+<link rel="stylesheet" href="../dist/assets/index-CxCHg-mi.css" onerror="document.documentElement.dataset.cssMissing='1'" />
+<link rel="stylesheet" href="cull-shell.css" />
+</head>
+<body>
+<div class="cv-bar">
+  <b>第 2 层 · 删掉后要么有落点、要么要补布局</b>
+  <span class="cv-note">左「现状」右「改后」。图标以单字符占位（真实页面注入注册表 SVG）。接管屏的 <code>#kicked-screen</code>（fixed 全屏居中容器）在原型里省去，卡片直接落在栏内。</span>
+</div>
+<div class="cv-wrap">
+
+<!-- ============ 1 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ui-src/components/main/KickedScreen.tsx:11-33</code><span class="cv-tag">整屏层级 8 → 4</span><span class="cv-why">徽章、说明段、「下一步」、步骤 1 都在解释「为什么会这样」，可执行信息只剩一个动作，落点是步骤 2 扫码 + KICKED + 重连按钮（步骤 2 降为普通说明行）。</span></div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="kicked-card">
+        <div class="kicked-head">
+          <span class="kicked-ic"><span class="cv-ic">▸</span></span>
+          <span class="kicked-badge cv-mark"><span class="cv-muted">①</span> 设备接管</span>
+        </div>
+        <div class="kicked-title"><span class="cv-muted">②</span> 已被其他设备接管</div>
+        <p class="kicked-desc cv-mark"><span class="cv-muted">③</span> 另一台远程控制设备已经接入，同一时间只能保留一个手机控制端。</p>
+        <div class="kicked-sep"></div>
+        <div class="kicked-next cv-mark"><span class="cv-muted">④</span> 下一步</div>
+        <ol class="kicked-steps">
+          <li class="cv-mark"><span class="kicked-num">1</span><span><span class="cv-muted">⑤</span> 继续使用新接入的设备。</span></li>
+          <li><span class="kicked-num">2</span><span><span class="cv-muted">⑥</span> 如果要使用本设备控制，请重新扫描桌面端二维码。</span></li>
+        </ol>
+        <div class="kicked-status">
+          <span><span class="cv-muted">⑦</span> Relay 返回</span>
+          <span class="kicked-code">KICKED</span>
+        </div>
+        <button class="kicked-btn"><span class="cv-muted">⑧</span> 重新连接</button>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="kicked-card">
+        <div class="kicked-head">
+          <span class="kicked-ic"><span class="cv-ic">▸</span></span>
+        </div>
+        <div class="kicked-title"><span class="cv-muted">①</span> 已被其他设备接管</div>
+        <p class="kicked-desc"><span class="cv-muted">②</span> 如果要使用本设备控制，请重新扫描桌面端二维码。</p>
+        <div class="kicked-status">
+          <span><span class="cv-muted">③</span> Relay 返回</span>
+          <span class="kicked-code">KICKED</span>
+        </div>
+        <button class="kicked-btn"><span class="cv-muted">④</span> 重新连接</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ui-src/components/main/right/HubDetailPage.tsx:144-146</code><span class="cv-tag">「·」粘补充说明</span><span class="cv-why">「每代理 LoC 不可归属」是无处可去的实现注脚：Read-only 档已用 <code>0 LoC</code> 把同一结论写成数值，主指标单独一行即可。</span></div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="hub-detail">
+        <div class="hub-sec">变更</div>
+        <div class="hub-sec-body text-dim cv-mark">Shared workspace · 每代理 LoC 不可归属</div>
+        <div class="hub-sec-body text-dim">Read-only · 0 LoC</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="hub-detail">
+        <div class="hub-sec">变更</div>
+        <div class="hub-sec-body text-dim">Shared workspace</div>
+        <div class="hub-sec-body text-dim">Read-only · 0 LoC</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ui-src/components/chat/ApprovalCard.tsx:773-782</code><span class="cv-tag">说明行混状态复述</span><span class="cv-why">「最后一题自动提交 / 全部作答后才能提交」已由底部按钮的 disabled 与「提交全部答案」表达，说明行只留键位与勾选。</span></div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="cv-frame">
+        <div class="ask-q">
+          <div class="approval-list" role="radiogroup" aria-label="确认选项">
+            <div class="approval-opt ask-opt ask-other-opt">
+              <input type="radio" name="ask-a" />
+              <span class="approval-label">其他（自定义答案）</span>
+            </div>
+          </div>
+        </div>
+        <div class="approval-foot">
+          <span class="approval-hint cv-mark"><span class="cv-ic">▸</span>↑/↓ 切换选项（单选选中后自动进入下一题，最后一题直接提交）· 空格勾选多选 · 全部作答后才能提交</span>
+          <span class="approval-foot-actions">
+            <button type="button" class="approval-cancel">取消</button>
+            <button type="button" class="approval-confirm" disabled>提交全部答案</button>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="cv-frame">
+        <div class="ask-q">
+          <div class="approval-list" role="radiogroup" aria-label="确认选项">
+            <div class="approval-opt ask-opt ask-other-opt">
+              <input type="radio" name="ask-b" />
+              <span class="approval-label">其他（自定义答案）</span>
+            </div>
+          </div>
+        </div>
+        <div class="approval-foot">
+          <span class="approval-hint cv-new"><span class="cv-ic">▸</span><span class="cv-keys"><span>↑</span><span>↓</span></span>切换选项<span class="cv-keys"><span>空格</span></span>勾选多选</span>
+          <span class="approval-foot-actions">
+            <button type="button" class="approval-cancel">取消</button>
+            <button type="button" class="approval-confirm" disabled>提交全部答案</button>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ui-src/components/main/tree/SessionTreeStream.tsx:534</code><span class="cv-tag">常驻操作提示</span><span class="cv-why">提示教的两件事就写在胶囊本身：横排可滚、点击即切换，删掉后没有信息需要落点。</span></div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="stream-fork-hub">
+        <div class="fork-container">
+          <div class="fork-header">
+            <span class="fork-title"><span class="cv-ic">▸</span>分叉点切换 (3 个分支)</span>
+            <span class="fork-hint cv-mark">滚轮左右滑动 · 点击切换分支</span>
+          </div>
+          <div class="fork-pills">
+            <button type="button" class="fork-pill active"><span class="fork-pill-index">#1</span><span class="truncate max-w-[200px]">（空条目）</span><span class="fork-pill-len">1 步</span></button>
+            <button type="button" class="fork-pill"><span class="fork-pill-index">#2</span><span class="truncate max-w-[200px]">（空条目）</span><span class="fork-pill-len">2 步</span></button>
+            <button type="button" class="fork-pill"><span class="fork-pill-index">#3</span><span class="truncate max-w-[200px]">（空条目）</span><span class="fork-pill-len">3 步</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="stream-fork-hub">
+        <div class="fork-container">
+          <div class="fork-header">
+            <span class="fork-title"><span class="cv-ic">▸</span>分叉点切换 (3 个分支)</span>
+          </div>
+          <div class="fork-pills">
+            <button type="button" class="fork-pill active"><span class="fork-pill-index">#1</span><span class="truncate max-w-[200px]">（空条目）</span><span class="fork-pill-len">1 步</span></button>
+            <button type="button" class="fork-pill"><span class="fork-pill-index">#2</span><span class="truncate max-w-[200px]">（空条目）</span><span class="fork-pill-len">2 步</span></button>
+            <button type="button" class="fork-pill"><span class="fork-pill-index">#3</span><span class="truncate max-w-[200px]">（空条目）</span><span class="fork-pill-len">3 步</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section class="cmp">
+  <div class="cmp-h"><code>ui-src/components/main/MainHeader.tsx:41 × chat/MessagePage.tsx:648</code><span class="cv-tag">同屏两处指引</span><span class="cv-why">同一句指引在对话区空态已有落点（点左侧任务或「新建任务」开始），header 那句只是复述。</span></div>
+  <div class="cmp-cols">
+    <div class="col">
+      <div class="col-tag">现状</div>
+      <div class="chat-head">
+        <button class="icon-btn"><span class="cv-ic">▸</span></button>
+        <span class="cv-ic">▸</span>
+        <span class="text-ui-md font-semibold truncate min-w-0 cv-mark">选择左侧会话或新建任务</span>
+      </div>
+      <div class="cv-frame">
+        <div class="text-faint text-ui-base py-[12px] px-[10px]">点左侧任务或「新建任务」开始</div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="col-tag">改后</div>
+      <div class="chat-head">
+        <button class="icon-btn"><span class="cv-ic">▸</span></button>
+        <span class="cv-ic">▸</span>
+      </div>
+      <div class="cv-frame">
+        <div class="text-faint text-ui-base py-[12px] px-[10px]">点左侧任务或「新建任务」开始</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

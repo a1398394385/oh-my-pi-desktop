@@ -11,8 +11,8 @@
 //   C  strong execution (acceptance 6): S1{a}+S2{b} -> M folds c — M inherits
 //      the full compressedIds/index union, supersedes both, depth 1, zone
 //      collapses to one render; rebuildAcpState agrees without walking chains;
-//      multi-layer M -> M2 reaches depth 2; the recall data-layer stand-in is
-//      M.index holding the full set after rebuild (tool behavior is T5)
+//      multi-layer M -> M2 reaches depth 2; the persisted index keeps the
+//      full folded set after rebuild (it no longer renders; recall is gone)
 //   D  riding rules on the execution path: pending + active <= L1 stays normal
 //      (no riding, zone keeps appending); >L3 goes strong directly with an
 //      empty zone (no supersede, depth 1)
@@ -175,18 +175,19 @@ function ephemeralText(fx: Fixture): string {
 }
 
 /**
- * Rendered size of one zone block with a `summaryTokens` summary and `lines`
- * index lines — used to place the window limit strictly between one and two
- * such blocks, so the pending-strong flip happens exactly after round 2.
+ * Rendered size of one zone block — header + summary only (the index no
+ * longer renders), so the summary text alone sizes the block. Used to place
+ * the window limit strictly between one and two such blocks, so the
+ * pending-strong flip happens exactly after round 2.
  */
-function zoneBlockSize(summaryTokens: number, lines: number): number {
+function zoneBlockSize(summaryTokens: number): number {
 	const block: AcpSummaryData = {
 		id: "s?",
 		summary: tokenText(summaryTokens),
-		index: Array.from({ length: lines }, (_, i) => ({ id: `e${i}`, tokens: 400, intent: "journal block tail for the index render" })),
+		index: [],
 		meta: { createdAt: 0, depth: 0, method: "normal", keepIds: [], compressedIds: [], supersedes: [], tokensBefore: 0, tokensAfter: 0 },
 	};
-	return countTokens(renderCompactionBlock(block, countTokens));
+	return countTokens(renderCompactionBlock(block));
 }
 
 // --- A: two-axis decision table (§5.2 rows 4-6) --------------------------------------------
@@ -214,7 +215,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 {
 	// Window sized so the limit sits strictly between one and two seeded zone
 	// blocks: after round 1 the zone is under, after round 2 over.
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], window);
@@ -260,7 +261,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 {
 	// Zone line between one and two seeded blocks; summaries 120 tokens each,
 	// the strong summary 220 (budget at round 3 = (500 + zone)/3 keeps it legal).
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	// l3 4000 sits above the round-1 active total (6 x ~506) so rounds 1-2 stay normal.
@@ -328,7 +329,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 
 {
 	// No riding at or under L1: pending zone, small active zone -> normal append.
-	const one = zoneBlockSize(60, 1);
+	const one = zoneBlockSize(60);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], window, 200); // 4 x 200 = 800 <= l1
@@ -359,7 +360,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 // --- E: pure reset (§6.6 exception, acceptance 14 first half) ------------------------------
 
 {
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	// 5 x 500: after two rounds the active zone (3 x 500) is still past L1, so
@@ -422,7 +423,7 @@ function zoneBlockSize(summaryTokens: number, lines: number): number {
 
 const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 {
-	const one = zoneBlockSize(120, 1);
+	const one = zoneBlockSize(120);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	const sessionManager = SessionManager.create(cwdG);
@@ -521,12 +522,13 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 		while (countTokens(text) < tokens) text += "detailed journal text about the parser bug and the failing test. ";
 		return text;
 	};
-	// Window 1000 -> zone line 350 tokens: one normal block (summary 300) puts
-	// the zone over the line, so the second compress rides strong.
+	// Window 900 -> zone line 315 tokens: one normal block (header + summary 300,
+	// ~325 rendered; the index no longer renders) puts the zone over the line,
+	// so the second compress rides strong.
 	let sawAnnotation = false;
 	let compressedOnce = false;
 	const mock = createMockModel({
-		contextWindow: 1_000,
+		contextWindow: 900,
 		handler: (context: { messages: Array<{ role: string; content: unknown }> }) => {
 			const users = [...context.messages].reverse().filter((m) => m.role === "user");
 			const routed = users.find((m) => !textOf(m).includes("[compress-hint]")) ?? users[0];

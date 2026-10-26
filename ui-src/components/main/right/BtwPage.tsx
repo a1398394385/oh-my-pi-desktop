@@ -234,7 +234,6 @@ function TopicList({
   return (
     <div className="btw-page">
       <div className="btw-top">
-        <span className="btw-top-t">{t("right.tabBtw")}</span>
         <button className="icon-btn" title={t("right.refresh")} onClick={() => btwLoad(sessionId)}>
           <Icon name="refresh" size={15} />
         </button>

@@ -27,6 +27,7 @@
 @import "./css/main/chat/advisor.css";
 @import "./css/shared/markdown.css";
 @import "./css/shared/code-blocks.css";
+@import "./css/shared/form-layout.css";
 @import "./css/main/chat/approval.css";
 @import "./css/main/chat/approval-collapse.css";
 @import "./css/main/chat/ask.css";
@@ -80,6 +81,8 @@
 @import "./css/settings/permissions.css";
 @import "./css/settings/stats.css";
 @import "./css/settings/stats-port.css";
+@import "./css/settings/stats-pages.css";
+@import "./css/settings/stats-overlays.css";
 
 /* Keep the previously effective theme overrides at the end. */
 @import "./themes/midnight.css";

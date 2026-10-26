@@ -2,7 +2,7 @@
 // this repo's .sel pill (transparent background / hover --panel-2 / caret
 // rotates 180° when open), the popover aligns with .menu (--ctl-bg surface +
 // --line border + r-md + popIn entrance), and item rows align with .mi (r6 +
-// hover --select) plus a 14px left check slot (✓, --green). Keyboard
+// hover --menu-hl) plus a 14px left check slot (✓, --green). Keyboard
 // navigation / focus management provided by Radix.
 import * as React from "react";
 import { Select as SelectPrimitive } from "radix-ui";
@@ -40,7 +40,7 @@ function SelectTrigger({
         // Pill language: same as .sel (transparent background + radius 999 + hover/open --panel-2 background)
         "group/sel inline-flex flex-none shrink-0 cursor-pointer items-center gap-[6px] rounded-full border-0 bg-transparent px-[10px] py-[5px] text-ui-base text-dim outline-none",
         "transition-[background-color,color] duration-[var(--dur-snap)] ease-[var(--swift)]",
-        "hover:bg-panel-2 hover:text-text data-[state=open]:bg-panel-2 data-[state=open]:text-text",
+        "hover:bg-hover-fill hover:text-text data-[state=open]:bg-panel-2 data-[state=open]:text-text",
         "focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-[1px]",
         className,
       )}
@@ -78,7 +78,7 @@ function SelectContent({
         sideOffset={sideOffset}
         align={align}
         className={cn(
-          "z-[500] flex flex-col overflow-x-hidden overflow-y-auto rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text shadow-[var(--shadow-lg)] outline-none",
+          "z-[500] flex flex-col overflow-x-hidden overflow-y-auto rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text outline-none",
           "max-h-(--radix-select-content-available-height) min-w-[170px] origin-(--radix-select-content-transform-origin)",
           "[--pop-from:-6px] data-[state=open]:[animation:popIn_.18s_ease-out] data-[state=closed]:[animation:none]",
           className,
@@ -115,7 +115,7 @@ const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item
         data-slot="select-item"
         className={cn(
           "flex w-full cursor-default items-center gap-[7px] rounded-[6px] px-[9px] py-[6px] text-ui-base text-text outline-none select-none",
-          "data-[highlighted]:bg-select data-[disabled]:pointer-events-none data-[disabled]:text-faint",
+          "data-[highlighted]:bg-menu-hl data-[disabled]:pointer-events-none data-[disabled]:text-faint",
           className,
         )}
         {...props}

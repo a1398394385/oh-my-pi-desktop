@@ -27,7 +27,7 @@ export interface GainRouteProps {
 
 const DAY_MS = 86_400_000;
 
-const SOURCE_LABEL: Record<GainSource, string> = { snapcompact: "Snapcompact" };
+const SOURCE_LABEL: Record<GainSource, string> = { snapcompact: "Snapcompact", acp: "ACP compaction" };
 
 const DAY_LABEL = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
 
@@ -39,7 +39,7 @@ interface SourceRow extends GainSourceTotals {
 export function GainRoute({ active, range }: GainRouteProps) {
   const { t } = useTranslation();
   const [project, setProject] = useState<string | null>(null);
-  const gain = useQuery(["gain", range, project], () => getGainDashboardStats(range, project), { enabled: active });
+  const gain = useQuery(["gain", range, project], ({ signal }) => getGainDashboardStats(range, project, signal), { enabled: active });
   const meta = rangeMeta(range);
   const data = gain.data;
 
@@ -50,7 +50,7 @@ export function GainRoute({ active, range }: GainRouteProps) {
       points.map(p => p.timestamp),
       DAY_MS,
     );
-    const daily = densify(points, buckets, p => p.snapcompact);
+    const daily = densify(points, buckets, p => p.total); // host-folded total (snapcompact + ACP compaction)
     let running = 0;
     const cumulative = daily.map(v => (running += v));
     return { buckets, daily, cumulative };
@@ -94,21 +94,21 @@ export function GainRoute({ active, range }: GainRouteProps) {
         header: t("settingsPage.stats.gain.colShare"),
         align: "right",
         sort: row => row.share,
-        render: row => <span className="num muted">{formatPercent(row.share)}</span>,
+        render: row => <span className="stats-num muted">{formatPercent(row.share)}</span>,
       },
       {
         key: "bytes",
         header: t("settingsPage.stats.gain.colSavedBytes"),
         align: "right",
         sort: row => row.savedBytes,
-        render: row => <span className="num">{formatBytes(row.savedBytes)}</span>,
+        render: row => <span className="stats-num">{formatBytes(row.savedBytes)}</span>,
       },
       {
         key: "hits",
         header: t("settingsPage.stats.gain.colHits"),
         align: "right",
         sort: row => row.hits,
-        render: row => <span className="num">{formatInteger(row.hits)}</span>,
+        render: row => <span className="stats-num">{formatInteger(row.hits)}</span>,
       },
       {
         key: "reduction",
@@ -116,7 +116,7 @@ export function GainRoute({ active, range }: GainRouteProps) {
         align: "right",
         sort: row => row.reductionPercent ?? -1,
         render: row => (
-          <span className="num">{row.reductionPercent !== null ? formatPercent(row.reductionPercent) : "–"}</span>
+          <span className="stats-num">{row.reductionPercent !== null ? formatPercent(row.reductionPercent) : "–"}</span>
         ),
       },
     ],

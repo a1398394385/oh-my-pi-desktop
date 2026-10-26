@@ -9,6 +9,7 @@ import {
   formatCompact,
   formatDurationMs,
   formatEstimatedCost,
+  formatErrorRate,
   formatInteger,
   formatPercent,
   formatRelativeTime,
@@ -55,7 +56,7 @@ const SHARE_LIMIT = 6;
 
 export function ModelsRoute({ active, range }: ModelsRouteProps) {
   const { t } = useTranslation();
-  const query = useQuery(["models", range], () => getModelDashboardStats(range), { enabled: active });
+  const query = useQuery(["models", range], ({ signal }) => getModelDashboardStats(range, signal), { enabled: active });
   const meta = rangeMeta(range);
   const [mode, setMode] = useState<ShareMode>("share");
   const [hidden, toggleSeries] = useHiddenSeries();
@@ -102,7 +103,7 @@ export function ModelsRoute({ active, range }: ModelsRouteProps) {
                   label={t("settingsPage.stats.models.stat.modelsUsed")}
                   value={formatInteger(view.models.length)}
                   hint={t("settingsPage.stats.models.stat.modelsUsedHint", {
-                    count: formatInteger(view.providerCount),
+                    count: view.providerCount,
                   })}
                 />
                 <Stat
@@ -371,7 +372,7 @@ function buildModelColumns(
       title: t("settingsPage.stats.models.columns.costTitle"),
       align: "right",
       sort: row => row.totalCost,
-      render: row => <span className="num">{formatEstimatedCost(row.totalCost, row.unpricedRequests)}</span>,
+      render: row => <span className="stats-num">{formatEstimatedCost(row.totalCost, row.unpricedRequests)}</span>,
     },
     {
       key: "tokens",
@@ -382,7 +383,7 @@ function buildModelColumns(
       render: row => {
         const tokens = sumConversationTokens(row);
         return (
-          <span className="num" title={formatInteger(tokens)}>
+          <span className="stats-num" title={formatInteger(tokens)}>
             {formatCompact(tokens)}
           </span>
         );
@@ -394,7 +395,7 @@ function buildModelColumns(
       title: t("settingsPage.stats.models.columns.cacheRateTitle"),
       align: "right",
       sort: row => row.cacheRate,
-      render: row => <span className="num">{formatPercent(row.cacheRate)}</span>,
+      render: row => <span className="stats-num">{formatPercent(row.cacheRate)}</span>,
     },
     {
       key: "errors",
@@ -403,11 +404,11 @@ function buildModelColumns(
       sort: row => row.errorRate,
       render: row =>
         row.failedRequests === 0 ? (
-          <span className="num dim">0%</span>
+          <span className="stats-num dim">0%</span>
         ) : (
           <span title={t("settingsPage.stats.models.columns.errorsTooltip", { count: formatInteger(row.failedRequests) })}>
             <Badge tone={errorRateTone(row.errorRate)} mono>
-              {formatPercent(row.errorRate)}
+              {formatErrorRate(row.errorRate)}
             </Badge>
           </span>
         ),
@@ -418,7 +419,7 @@ function buildModelColumns(
       title: t("settingsPage.stats.models.columns.tpsTitle"),
       align: "right",
       sort: row => row.avgTokensPerSecond ?? -1,
-      render: row => <span className="num">{formatTokensPerSecond(row.avgTokensPerSecond)}</span>,
+      render: row => <span className="stats-num">{formatTokensPerSecond(row.avgTokensPerSecond)}</span>,
     },
     {
       key: "ttft",
@@ -426,7 +427,7 @@ function buildModelColumns(
       title: t("settingsPage.stats.models.columns.ttftTitle"),
       align: "right",
       sort: row => row.avgTtft ?? -1,
-      render: row => <span className="num">{formatDurationMs(row.avgTtft)}</span>,
+      render: row => <span className="stats-num">{formatDurationMs(row.avgTtft)}</span>,
     },
     {
       key: "trend",
@@ -497,7 +498,7 @@ function ModelDetail({
                 label: t("settingsPage.stats.models.detail.errorRate"),
                 value: (
                   <span className={`tone-${errorRateTone(model.errorRate)}`}>
-                    {formatPercent(model.errorRate)}{" "}
+                    {formatErrorRate(model.errorRate)}{" "}
                     <span className="dim">
                       {t("settingsPage.stats.models.detail.failedParens", {
                         count: formatInteger(model.failedRequests),

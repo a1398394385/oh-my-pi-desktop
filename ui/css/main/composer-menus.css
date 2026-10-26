@@ -27,17 +27,17 @@
   min-width: 0;
   max-width: none;
   padding: 8px;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line-soft);
   border-radius: 16px;
   box-shadow: 0 12px 40px var(--tint-black-280);
 }
 
-:is([data-theme="light"], [data-theme-mode="light"]) .menu.palette { background: var(--inset); border-color: var(--line-soft); box-shadow: 0 12px 40px var(--tint-black-70); }
+:is([data-theme="light"], [data-theme-mode="light"]) .menu.palette { background: var(--inset); --hover-fill: var(--menu-hl); border-color: var(--line-soft); box-shadow: 0 12px 40px var(--tint-black-70); }
 .menu.palette .mi { border-radius: 8px; }
 
 /* row radius one notch below the card (16px card -> 8px row) */
-.menu.palette .mi.on { background: var(--panel-3); }
+.menu.palette .mi.on { background: var(--menu-hl); }
 
 /* keyboard highlight (the base class only has :hover, no .on) */
 .menu.palette .mi .mi-tx { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

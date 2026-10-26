@@ -144,11 +144,12 @@ export type PoolEntry = {
   // session_list rows (sidebar clock badge) and echoed as a live user-message
   // event (automation sessions have no local composer send to draw the bubble)
   automation?: { id: string; title: string };
-  // Automation-run dialog deadline (seconds, spawn-time snapshot of the task's
-  // approvalTimeoutSec): permission approvals in this session auto-deny after
-  // it. Ask dialogs are bounded by the same task's askTimeoutSec, which the
-  // spawn writes into the session's `ask.timeout` override instead (the base
-  // ask tool reads it). Absent = follow the global ask.timeout.
+  // Automation-run dialog deadline (seconds, spawn-time snapshot of the
+  // automation settings page's approvalTimeoutSec): permission approvals in
+  // this session auto-deny after it. Ask dialogs are bounded by the page's
+  // askTimeoutSec instead, which the spawn writes into the session's
+  // `ask.timeout` override (the base ask tool reads it). Absent = follow the
+  // global ask.timeout.
   approvalTimeoutSec?: number;
   // fileMention read-back cursor: at agent_end, re-reads manager.getEntries()
   // and turns fileMention entries added since this index into mention frames

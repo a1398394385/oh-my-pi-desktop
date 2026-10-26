@@ -7,6 +7,7 @@ import {
   formatCompact,
   formatDurationMs,
   formatEstimatedCost,
+  formatErrorRate,
   formatFolder,
   formatInteger,
   formatPercent,
@@ -43,7 +44,7 @@ const TOP_LIMIT = 8;
 
 export function ProjectsRoute({ active, range }: ProjectsRouteProps) {
   const { t } = useTranslation();
-  const folders = useQuery(["projects", range], () => getFolderStats(range), { enabled: active });
+  const folders = useQuery(["projects", range], ({ signal }) => getFolderStats(range, signal), { enabled: active });
   const [search, setSearch] = useState("");
   const [hideTemporary, setHideTemporary] = useState(true);
   const query = useDeferredValue(search.trim().toLowerCase());
@@ -300,7 +301,7 @@ function folderColumns(maxRequests: number, maxCost: number): Column<FolderRowVi
       align: "right",
       sort: row => row.conversationTokens,
       render: row => (
-        <span className="num" title={formatInteger(row.conversationTokens)}>
+        <span className="stats-num" title={formatInteger(row.conversationTokens)}>
           {formatCompact(row.conversationTokens)}
         </span>
       ),
@@ -311,7 +312,7 @@ function folderColumns(maxRequests: number, maxCost: number): Column<FolderRowVi
       title: ti("settingsPage.stats.projects.colCacheRateTitle"),
       align: "right",
       sort: row => row.cacheRate,
-      render: row => <span className="num">{formatPercent(row.cacheRate)}</span>,
+      render: row => <span className="stats-num">{formatPercent(row.cacheRate)}</span>,
     },
     {
       key: "cacheSavings",
@@ -320,7 +321,7 @@ function folderColumns(maxRequests: number, maxCost: number): Column<FolderRowVi
       align: "right",
       sort: row => row.cacheSavings,
       render: row => (
-        <span className={`num ${row.cacheSavings < 0 ? "tone-bad" : "muted"}`}>
+        <span className={`stats-num ${row.cacheSavings < 0 ? "tone-bad" : "muted"}`}>
           {formatPercent(row.cacheSavings)}
         </span>
       ),
@@ -333,7 +334,7 @@ function folderColumns(maxRequests: number, maxCost: number): Column<FolderRowVi
       render: row => (
         <span title={ti("settingsPage.stats.projects.colErrorsTitle", { count: row.failedRequests })}>
           <Badge tone={row.failedRequests > 0 ? errorRateTone(row.errorRate) : "neutral"} mono>
-            {formatPercent(row.errorRate)}
+            {formatErrorRate(row.errorRate)}
           </Badge>
         </span>
       ),
@@ -343,7 +344,7 @@ function folderColumns(maxRequests: number, maxCost: number): Column<FolderRowVi
       header: ti("settingsPage.stats.projects.colAvgDuration"),
       align: "right",
       sort: row => row.avgDuration ?? -1,
-      render: row => <span className="num">{formatDurationMs(row.avgDuration)}</span>,
+      render: row => <span className="stats-num">{formatDurationMs(row.avgDuration)}</span>,
     },
     {
       key: "last",

@@ -8,7 +8,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
-import { emptyRow } from "../common";
+import { emptyRow, FormRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import ScopeSel from "../ScopeSel";
 import { useExtSources } from "../ExtSourceTag";
@@ -165,11 +165,9 @@ export default function PluginsPage() {
 
 
       <div className="set-group-tt">{t("settingsPage.plugins.configGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.plugins.configDesc")}</div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-plugins"]} />
 
       <div className="set-group-tt">{t("settingsPage.plugins.installedGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.plugins.installedDesc")}</div>
       <div className="ext-bar-primary">
         <ScopeSel
           value={scope}
@@ -192,27 +190,28 @@ export default function PluginsPage() {
       </div>
       {scope === "profile" && installOpen && (
         <div className="set-card set-edit-card">
-          <div className="mcp-form-group">
-            <label className="mcp-form-label">{t("settingsPage.plugins.installLabel")}</label>
-            <input
-              className="mcp-form-input mcp-form-code"
-              placeholder={t("settingsPage.plugins.installPlaceholder")}
-              value={spec}
-              spellCheck={false}
-              onChange={(e) => setSpec(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") doInstall();
-              }}
-            />
-          </div>
-          <div className="mcp-form-hint">{t("settingsPage.plugins.installHint")}</div>
-          {pluginInstall?.status === "error" && pluginInstall.message ? (
-            <div className="mcp-form-hint">{pluginInstall.message}</div>
-          ) : null}
-          <div className="mcp-form-row">
-            <button type="button" className="save-btn" disabled={installing} onClick={doInstall}>
-              {installing ? t("settingsPage.plugins.installing") : t("settingsPage.plugins.installDo")}
-            </button>
+          <div className="frm-rows">
+            <FormRow label={t("settingsPage.plugins.installLabel")}>
+              <input
+                className="mcp-form-input mcp-form-code"
+                placeholder={t("settingsPage.plugins.installPlaceholder")}
+                value={spec}
+                spellCheck={false}
+                onChange={(e) => setSpec(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") doInstall();
+                }}
+              />
+              <div className="frm-hint">{t("settingsPage.plugins.installHint")}</div>
+              {pluginInstall?.status === "error" && pluginInstall.message ? (
+                <div className="plug-install-err">{pluginInstall.message}</div>
+              ) : null}
+              <div>
+                <button type="button" className="frm-primary" disabled={installing} onClick={doInstall}>
+                  {installing ? t("settingsPage.plugins.installing") : t("settingsPage.plugins.installDo")}
+                </button>
+              </div>
+            </FormRow>
           </div>
         </div>
       )}

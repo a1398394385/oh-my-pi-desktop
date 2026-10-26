@@ -199,7 +199,7 @@ function GdFileDetail() {
     <>
       <div className="rb-head">
         <button
-          className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text"
+          className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-hover-fill hover:text-text"
           onClick={() => {
             setBump({ selectedFile: null });
           }}
@@ -237,7 +237,7 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
   const animateGdKids = useAppStore.getState().animateGdKids;
   return (
     <div
-      className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
+      className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-hover-fill hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
       style={{ paddingLeft: 4 + depth * 14 + 14 + "px", animationDelay: depth * 15 + "ms" }}
       title={f.path}
       onClick={() => {
@@ -315,7 +315,7 @@ function TreeLevel({ node, prefix, depth, onDiscard }: { node: GitTreeNode; pref
     rows.push(
       <div
         key={"d:" + dirPath}
-        className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-panel-2 hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
+        className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-hover-fill hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
         style={{ paddingLeft: 4 + depth * 14 + "px", animationDelay: depth * 15 + "ms" }}
         onClick={() => {
           // Expand/collapse swaps in a new Set + new rightState reference (subscribers notice

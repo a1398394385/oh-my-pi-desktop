@@ -29,6 +29,7 @@
     "smoke:automations": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-automations.ts",
     "smoke:project-group": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-project-group.ts",
     "smoke:browsermirrorui": "OMP_PROFILE=omp-desktop-test bun run ui:build && OMP_PROFILE=omp-desktop-test bun scripts/smoke-browser-mirror-ui.ts",
+    "smoke:stats-judge": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-stats-judge.ts",
     "check:capabilities": "node scripts/check-capabilities.mjs",
     "smoke:skill-commands": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-skill-commands.ts",
     "smoke:ssh-result": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-ssh-result.ts",

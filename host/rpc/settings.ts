@@ -17,6 +17,7 @@ import { settingsFrame, modelsFrame, pushSettings } from "../frames.ts";
 import {
   writeAcpEnabled,
   writeAutomationAgentEnabled,
+  writeAutomationDialogTimeouts,
   writeSessionContextEnabled,
   applyProfile,
   applySleepPrevention,
@@ -207,6 +208,27 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // omp-desktop.json. Gates the automations_list / automations_manage tools at
     // session creation, so already-open sessions keep whatever surface they got.
     await writeAutomationAgentEnabled(!!msg.enabled);
+    pushSettings();
+  },
+  async set_automation_dialog_timeouts(ws, msg) {
+    // Automations settings page deadlines: writes automations.askTimeoutSec /
+    // approvalTimeoutSec in omp-desktop.json. Read at dispatch, so the next run
+    // of any automation picks them up. Non-negative integers only — a negative
+    // or non-numeric value would otherwise read back as the 300s default and
+    // silently contradict what the page just showed.
+    const askSec = msg?.askSec;
+    const approvalSec = msg?.approvalSec;
+    if (
+      typeof askSec !== "number" ||
+      typeof approvalSec !== "number" ||
+      !Number.isFinite(askSec) ||
+      !Number.isFinite(approvalSec) ||
+      askSec < 0 ||
+      approvalSec < 0
+    ) {
+      throw new Error(hostI18n.t("errors.setting.automationTimeoutNonNegative"));
+    }
+    await writeAutomationDialogTimeouts({ askSec: Math.floor(askSec), approvalSec: Math.floor(approvalSec) });
     pushSettings();
   },
   async set_keepalive_enabled(ws, msg) {

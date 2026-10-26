@@ -49,9 +49,23 @@ export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
   s.turnItemStart = s.items.length;
 }
 
-// A run that ended on an error row (sidebar dot, desktop alert): the row folds into the
-// group instead of sitting last, so scan the turn's tail for it. Also stops the turn_end
-// "finished" alert from doubling up on the error branch's own alert.
+// Text of the error row a run ended on, else null. Pre-seal only (session.ts turn_end):
+// the base auto-retries a failed request, so a mid-run failure leaves its row above the
+// retry's own output — only a row at the very tail means the run was interrupted.
+// Annotation rows (advisor note / ttsr notice / mention read-back) can land after the
+// failure row and are skipped.
+export function endingErrorText(items: readonly SessionItem[]): string | null {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.role === "error") return it.text;
+    if (it.role === "advisor" || it.role === "ttsr" || it.role === "mention") continue;
+    return null;
+  }
+  return null;
+}
+
+// A run that ended on an error row (sidebar dot): the row folds into the
+// group instead of sitting last, so scan the turn's tail for it.
 export function turnEndedWithError(items: readonly SessionItem[]): boolean {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];

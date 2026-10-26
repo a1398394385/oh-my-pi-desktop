@@ -8,6 +8,7 @@ import { buildColorLookup, OTHER_COLOR } from "../data/colors";
 import {
   formatCompact,
   formatEstimatedCost,
+  formatErrorRate,
   formatInteger,
   formatPercent,
   formatRelativeTime,
@@ -47,7 +48,7 @@ const TOP_TOOLS = 6;
 
 export function ToolsRoute({ active, range }: ToolsRouteProps) {
   const { t } = useTranslation();
-  const tools = useQuery(["tools", range], () => getToolDashboardStats(range), { enabled: active });
+  const tools = useQuery(["tools", range], ({ signal }) => getToolDashboardStats(range, signal), { enabled: active });
   const [metric, setMetric] = useState<CallMetric>("calls");
   const [hidden, toggleHidden] = useHiddenSeries();
   const [pickedTool, setToolFilter] = useState<string | null>(null);
@@ -105,7 +106,7 @@ export function ToolsRoute({ active, range }: ToolsRouteProps) {
                 <Stat
                   label={t("settingsPage.stats.tools.statErrorRate")}
                   title={t("settingsPage.stats.tools.statErrorRateTitle")}
-                  value={formatPercent(totals.calls > 0 ? totals.errors / totals.calls : 0)}
+                  value={formatErrorRate(totals.calls > 0 ? totals.errors / totals.calls : 0)}
                   hint={t("settingsPage.stats.tools.succeededCount", {
                     count: formatInteger(totals.calls - totals.errors),
                   })}
@@ -400,9 +401,9 @@ function buildToolColumns(
       sort: row => row.errorRate,
       render: row => (
         <span className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
-          <span className="num dim">{formatInteger(row.errors)}</span>
+          <span className="stats-num dim">{formatInteger(row.errors)}</span>
           <Badge tone={row.errors > 0 ? errorRateTone(row.errorRate) : "neutral"} mono>
-            {formatPercent(row.errorRate)}
+            {formatErrorRate(row.errorRate)}
           </Badge>
         </span>
       ),
@@ -413,7 +414,7 @@ function buildToolColumns(
       title: t("settingsPage.stats.tools.argsCharsTitle"),
       align: "right",
       sort: row => row.argsChars,
-      render: row => <span className="num">{formatCompact(row.argsChars)}</span>,
+      render: row => <span className="stats-num">{formatCompact(row.argsChars)}</span>,
     },
     {
       key: "result",
@@ -421,7 +422,7 @@ function buildToolColumns(
       title: t("settingsPage.stats.tools.resultTextTitle"),
       align: "right",
       sort: row => row.resultChars,
-      render: row => <span className="num">{formatCompact(row.resultChars)}</span>,
+      render: row => <span className="stats-num">{formatCompact(row.resultChars)}</span>,
     },
     {
       key: "avgResult",
@@ -429,7 +430,7 @@ function buildToolColumns(
       title: t("settingsPage.stats.tools.colResultPerCallTitle"),
       align: "right",
       sort: row => row.avgResultChars,
-      render: row => <span className="num muted">{formatCompact(Math.round(row.avgResultChars))}</span>,
+      render: row => <span className="stats-num muted">{formatCompact(Math.round(row.avgResultChars))}</span>,
     },
     {
       key: "tokens",
@@ -438,7 +439,7 @@ function buildToolColumns(
       align: "right",
       sort: row => row.totalTokensShare,
       render: row => (
-        <span className="num" title={t("settingsPage.stats.tools.shareOfTokens", { share: formatPercent(row.tokenFraction) })}>
+        <span className="stats-num" title={t("settingsPage.stats.tools.shareOfTokens", { share: formatPercent(row.tokenFraction) })}>
           {formatCompact(Math.round(row.totalTokensShare))}
           <span className="dim tools-share">{formatPercent(row.tokenFraction, 0)}</span>
         </span>
@@ -451,7 +452,7 @@ function buildToolColumns(
       align: "right",
       sort: row => row.costShare,
       render: row => (
-        <span className="num" title={t("settingsPage.stats.tools.shareOfCost", { share: formatPercent(row.costFraction) })}>
+        <span className="stats-num" title={t("settingsPage.stats.tools.shareOfCost", { share: formatPercent(row.costFraction) })}>
           {formatEstimatedCost(row.costShare, row.unpricedRequestsShare)}
           <span className="dim tools-share">{formatPercent(row.costFraction, 0)}</span>
         </span>
@@ -530,9 +531,9 @@ function ToolModelTable({
         sort: row => row.errorRate,
         render: row => (
           <span className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
-            <span className="num dim">{formatInteger(row.errors)}</span>
+            <span className="stats-num dim">{formatInteger(row.errors)}</span>
             <Badge tone={row.errors > 0 ? errorRateTone(row.errorRate) : "neutral"} mono>
-              {formatPercent(row.errorRate)}
+              {formatErrorRate(row.errorRate)}
             </Badge>
           </span>
         ),
@@ -543,7 +544,7 @@ function ToolModelTable({
         title: t("settingsPage.stats.tools.resultTextTitle"),
         align: "right",
         sort: row => row.resultChars,
-        render: row => <span className="num">{formatCompact(row.resultChars)}</span>,
+        render: row => <span className="stats-num">{formatCompact(row.resultChars)}</span>,
       },
       {
         key: "tokens",
@@ -551,7 +552,7 @@ function ToolModelTable({
         title: t("settingsPage.stats.tools.attributionNote"),
         align: "right",
         sort: row => row.totalTokensShare,
-        render: row => <span className="num">{formatCompact(Math.round(row.totalTokensShare))}</span>,
+        render: row => <span className="stats-num">{formatCompact(Math.round(row.totalTokensShare))}</span>,
       },
       {
         key: "cost",
@@ -559,7 +560,7 @@ function ToolModelTable({
         title: t("settingsPage.stats.tools.attributionNoteCost"),
         align: "right",
         sort: row => row.costShare,
-        render: row => <span className="num">{formatEstimatedCost(row.costShare, row.unpricedRequestsShare)}</span>,
+        render: row => <span className="stats-num">{formatEstimatedCost(row.costShare, row.unpricedRequestsShare)}</span>,
       },
       {
         key: "lastUsed",

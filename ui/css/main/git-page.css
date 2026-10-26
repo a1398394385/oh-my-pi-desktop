@@ -4,7 +4,7 @@
 #gitPage {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   color: var(--text);
   font-size: var(--ui-fs-base);
 }
@@ -119,6 +119,14 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   display: flex; flex-direction: column;
 }
 
+.gp-wt-head {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--dim); font-size: var(--ui-fs-sm);
+}
+
 .gp-wt-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
 .gp-wt-state {
   flex: none; padding: 4px 12px;
@@ -137,7 +145,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   overflow: hidden;
 }
 
-.gp-wt-row:hover { background: var(--panel-2); color: var(--text); }
+.gp-wt-row:hover { background: var(--hover-fill); color: var(--text); }
 .gp-wt-row.on { background: var(--panel-3); color: var(--text); }
 
 .gp-wt-name {
@@ -208,7 +216,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
 
 .gp-scope-row { cursor: pointer; }
 .gp-scope-row:hover,
-.gp-branch-row.pickable:hover { background: var(--panel-2); color: var(--text); }
+.gp-branch-row.pickable:hover { background: var(--hover-fill); color: var(--text); }
 .gp-scope-row.on,
 .gp-branch-row.on { background: var(--panel-3); color: var(--text); }
 
@@ -257,7 +265,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   flex: 0 1 300px; min-width: 180px;
   height: 26px; padding: 0 6px 0 8px;
   border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   color: var(--faint);
 }
 
@@ -281,7 +289,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   cursor: pointer;
 }
 
-.gp-filter-flag:hover { background: var(--panel-2); color: var(--text); }
+.gp-filter-flag:hover { background: var(--hover-fill); color: var(--text); }
 .gp-filter-flag.on { background: var(--panel-3); color: var(--accent); }
 
 .gp-chip {
@@ -294,7 +302,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   cursor: pointer; max-width: 220px;
 }
 
-.gp-chip:hover { background: var(--panel-2); color: var(--text); }
+.gp-chip:hover { background: var(--hover-fill); color: var(--text); }
 .gp-chip.on { border-color: var(--line); background: var(--panel-2); color: var(--text); }
 .gp-chip-k { flex: none; color: var(--faint); }
 .gp-chip.on .gp-chip-k { color: var(--dim); }
@@ -320,7 +328,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   background: none; color: var(--dim); cursor: pointer;
 }
 
-.gp-sort:hover { background: var(--panel-2); color: var(--text); }
+.gp-sort:hover { background: var(--hover-fill); color: var(--text); }
 .gp-sort svg { transition: transform var(--dur-snap) var(--swift); }
 .gp-sort.asc svg { transform: rotate(180deg); }
 
@@ -348,7 +356,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   border-radius: 4px; background: none; color: var(--faint);
 }
 
-.ctx-menu .gp-menu-clear:hover { background: var(--panel-2); color: var(--text); }
+.ctx-menu .gp-menu-clear:hover { background: var(--hover-fill); color: var(--text); }
 
 /* Hidden but still mounted (see the JSX comment): pointer clicks land on the row
    instead of a removed node, so the dropdown stays open. */
@@ -398,7 +406,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   text-align: left; cursor: pointer;
 }
 
-.gp-row:hover { background: var(--panel-2); }
+.gp-row:hover { background: var(--hover-fill); }
 .gp-row.on { background: var(--panel-3); }
 
 /* The strip carries its own width/height attributes: CSS must never shrink it
@@ -459,7 +467,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   font: inherit; font-size: var(--ui-fs-sm); cursor: pointer;
 }
 
-.gp-more:hover { background: var(--panel-2); color: var(--text); }
+.gp-more:hover { background: var(--hover-fill); color: var(--text); }
 
 .gp-empty { padding: 14px 16px; color: var(--faint); }
 .gp-error { color: var(--err); }
@@ -536,7 +544,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   cursor: pointer;
 }
 
-.gp-file:hover { background: var(--panel-2); }
+.gp-file:hover { background: var(--hover-fill); }
 .gp-file.on { background: var(--panel-3); }
 
 .gp-dir {
@@ -566,7 +574,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   background: none; color: var(--dim); cursor: pointer;
 }
 
-.gp-file-view:hover { background: var(--panel-2); color: var(--text); }
+.gp-file-view:hover { background: var(--hover-fill); color: var(--text); }
 
 .gp-file-path {
   flex: 1; min-width: 0;
@@ -647,7 +655,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
    minimap is the scrollbar, so the native one is hidden. */
 .gp-cmp-scroll {
   flex: 1; min-height: 0; overflow: auto;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   font-family: var(--mono); font-size: var(--ui-fs-sm);
   scrollbar-width: none;
 }
@@ -659,7 +667,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
    instead of panning the page, grab cursor because a press anywhere grips it. */
 .gp-cmp-map {
   flex: none; width: 12px; position: relative;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   border-left: 1px solid var(--line-soft);
   cursor: grab;
   touch-action: none;
@@ -720,7 +728,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
 
 .gp-cmp-gutter {
   padding: 0 8px;
-  background: var(--bg); border-right: 1px solid var(--line);
+  background: var(--bg); --hover-fill: var(--panel-2); border-right: 1px solid var(--line);
   color: var(--faint); text-align: right; user-select: none;
   font-variant-numeric: tabular-nums;
 }

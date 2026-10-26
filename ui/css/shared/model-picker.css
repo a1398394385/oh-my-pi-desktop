@@ -28,29 +28,34 @@
 
 #modelMenu .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 
-/* Hover / keyboard-active rows: --panel-3, two notches above the menu face
-   (--ctl-bg = --inset). A --panel-2 fill would sit one notch above the face
-   and read as the surface itself rather than a highlighted row. */
-#modelMenu .mi:hover { background: var(--panel-3); }
+/* Hover / keyboard-active rows: --menu-hl (one color per theme, set in
+   tokens.css / theme files), distinct from the menu face so a highlighted
+   row still reads as a row. */
+#modelMenu .mi:hover { background: var(--menu-hl); }
 
-#modelMenu .mi.prov.on { background: var(--panel-3); }
+#modelMenu .mi.prov.on { background: var(--menu-hl); }
 
-#modelMenu .mi.on { background: var(--panel-3); }
+/* Current model: the ✓ checkmark alone marks it (the permission menu marks the
+   current row the same way). The --menu-hl fill belongs to hover and to the
+   keyboard cursor, so a resting selection does not read as a hover. */
+#modelMenu .mi[data-model].on:not(.kb):not(:hover),
+#modelMenu .mi[data-role].on:not(.kb):not(:hover),
+#composer .menu.flyout .mi.on:not(.kb):not(:hover) { background: transparent; }
 
-/* Keyboard cursor: the same fill as hover plus a leading accent bar, so it stays legible on
-   the menu's own --ctl-bg and reads apart from the selected model row,
-   which carries .on without .kb */
-#modelMenu .mi.kb, .menu.flyout .mi.kb { background: var(--panel-3); box-shadow: inset 2px 0 0 var(--accent); }
+/* Keyboard cursor: the same fill as hover, so it stays legible on the menu's own
+   --ctl-bg and reads apart from the selected model row (which carries .on without .kb).
+   No leading accent bar — the fill alone marks the cursor. */
+#modelMenu .mi.kb, .menu.flyout .mi.kb { background: var(--menu-hl); }
 
 /* Keyboard cursor on the thinking slider (the row the ↑/↓ cursor can enter) */
-.think-sec.on { background: var(--panel-3); border-radius: 6px; box-shadow: inset 2px 0 0 var(--accent); }
+.think-sec.on { background: var(--menu-hl); border-radius: 6px; }
 
 /* ctrl+p cycle preview: the slot just switched to */
 .mp-role-sel .menu.flyout .mi { white-space: nowrap; }
 
 .mp-role-sel .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 
-.mp-role-sel .mi.prov.on, .mp-role-sel .mi.on { background: var(--panel-3); }
+.mp-role-sel .mi.prov.on, .mp-role-sel .mi.on { background: var(--menu-hl); }
 
 /* The flyout hangs under a narrow pill; absolute shrink-to-fit would be squeezed by the containing block's available width -> width:max-content escapes that limit */
 .mp-role-sel .menu.flyout { width: max-content; min-width: 250px; }

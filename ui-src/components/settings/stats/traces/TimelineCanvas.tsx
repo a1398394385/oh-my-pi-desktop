@@ -378,7 +378,7 @@ export function TimelineCanvas({
         onKeyDown={handleKeyDown}
       />
 
-      {tooltip && createPortal(tooltip, document.body)}
+      {tooltip && createPortal(<div className="stats-scope">{tooltip}</div>, document.body)}
     </div>
   );
 }

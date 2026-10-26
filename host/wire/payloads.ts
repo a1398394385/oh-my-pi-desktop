@@ -52,6 +52,8 @@ export interface AcpConfig {
   /** Protected tail: recent turns/tokens never compressed (host defaults 2 / 20000) */
   tailTurns?: number;
   tailTokens?: number;
+  /** Protected tail floor: at least this many recent user messages stay uncompressed (0 = off) */
+  tailUserMessages?: number;
 }
 
 /** Cache keepalive probe parameters (host/keepalive-config.ts ProbeConfig; the keepalive section of omp-desktop.json is the source of truth, independent per profile) */
@@ -91,6 +93,8 @@ export type SettingsPayload = SettingsSnapshot & {
   sessionContextEnabled: boolean;
   /** omp-desktop.json automations.agentTools: new sessions get automations_list/automations_manage (off by default) */
   automationAgentEnabled?: boolean;
+  /** omp-desktop.json automations.askTimeoutSec / approvalTimeoutSec: unattended-run dialog deadlines (seconds, 0 = forever) */
+  automationDialogTimeouts?: { askSec: number; approvalSec: number };
   keepaliveEnabled: boolean;
   keepaliveConfig?: KeepaliveConfig;
   hooksEnabled: boolean;

@@ -52,6 +52,12 @@ export interface AcpBlockInfo {
 	tokens: number;
 	/** Short intent line for manifest/index rendering. */
 	intent: string;
+	/**
+	 * kind "user" only: true when the block is an actual user request.
+	 * Developer injections and synthetic auto-continues also land here, so the
+	 * tail floor (tailUserMessages) must not count them as user messages.
+	 */
+	userInput?: boolean;
 }
 
 /** Index line of a compaction block (spec §9 `index: [{ id, tokens, intent }]`). */
@@ -75,9 +81,6 @@ export interface AcpCompactionBlock {
 		supersedes?: string[];
 	};
 }
-
-/** Rendered index zone stays under this many tokens; overflow drops the oldest segments (spec §11). */
-export const ACP_INDEX_RENDER_BUDGET = 4096;
 
 function truncIntent(s: string, n = 100): string {
 	const t = s.replace(/\s+/g, " ").trim();
@@ -164,7 +167,14 @@ export function splitBlocks(
 		};
 		if (message.role === "user" || message.role === "developer") {
 			const { text, imageTokens } = splitContent(message.content, countImage);
-			blocks.push({ id, kind: "user", sourceId: id, tokens: count(text) + imageTokens, intent: truncIntent(text) });
+			blocks.push({
+				id,
+				kind: "user",
+				sourceId: id,
+				tokens: count(text) + imageTokens,
+				intent: truncIntent(text),
+				userInput: message.role === "user" && message.synthetic !== true,
+			});
 		} else if (message.role === "toolResult") {
 			const { text, imageTokens } = splitContent(message.content, countImage);
 			blocks.push({
@@ -209,26 +219,20 @@ export function splitBlocks(
 }
 
 /**
- * Render one compaction block as its user-role text segment (spec §4.1).
+ * Render one compaction block as its user-role text segment (spec §4.1):
+ * header + summary only. The per-block index render was dropped together with
+ * recall_block (0 uses across 84 blocks in production journals): the index
+ * stays in the persisted data as the record of what each block folded, but it
+ * no longer costs context tokens.
  * `refOf` re-labels ids as short refs on model-facing surfaces (spec §3 v10);
  * the default keeps raw ids for pure-function callers.
  */
-export function renderCompactionBlock(b: AcpCompactionBlock, countTokens: CountTokens, refOf?: (id: string) => string): string {
+export function renderCompactionBlock(b: AcpCompactionBlock, refOf?: (id: string) => string): string {
 	const ref = refOf ?? ((id: string) => id);
-	const header =
+	return (
 		`[acp-summary id=${ref(b.id)} time=${new Date(b.meta.createdAt).toISOString()} ` +
-		`depth=${b.meta.depth} blocks=${b.index.length} method=${b.meta.method}]`;
-	const lines = b.index.map((l) => `${ref(l.id)} | ${l.tokens} | ${l.intent}`);
-	const render = (ls: readonly string[], trailer?: string): string =>
-		[header, b.summary, "Index:", ...ls, ...(trailer ? [trailer] : [])].join("\n");
-	let out = render(lines);
-	if (countTokens(out) <= ACP_INDEX_RENDER_BUDGET) return out;
-	// Over budget: drop the oldest segments (index lines are chronological) and
-	// point the model at recall_block for the full index (spec §11).
-	let kept = lines.length;
-	const trailer = () => `… ${lines.length - kept} more, recall_block(${ref(b.id)}) 取完整索引`;
-	while (kept > 0 && countTokens(render(lines.slice(lines.length - kept), trailer())) > ACP_INDEX_RENDER_BUDGET) kept--;
-	return render(lines.slice(lines.length - kept), trailer());
+		`depth=${b.meta.depth} blocks=${b.index.length} method=${b.meta.method}]\n${b.summary}`
+	);
 }
 
 /**
@@ -283,7 +287,7 @@ export function projectContext(
 		if (superseded.has(b.id)) continue;
 		const rendered: UserMessage = {
 			role: "user",
-			content: renderCompactionBlock(b, countTokens, refOf),
+			content: renderCompactionBlock(b, refOf),
 			synthetic: true,
 			timestamp: b.meta.createdAt,
 		};

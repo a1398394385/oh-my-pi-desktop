@@ -11,7 +11,7 @@ interface ShortcutItem {
 }
 interface ShortcutGroup {
   title: string;
-  desc: string;
+  desc?: string;
   items: ShortcutItem[];
 }
 const GROUPS = SHORTCUT_GROUPS as ShortcutGroup[];
@@ -24,7 +24,7 @@ export default function KeyboardPage() {
       {GROUPS.map((g) => (
         <div key={g.title}>
           <div className="set-group-tt">{g.title}</div>
-          <div className="set-group-desc">{g.desc}</div>
+          {g.desc ? <div className="set-group-desc">{g.desc}</div> : null}
           <div className="set-card">
             {g.items.map((it) => (
               <div className="srow" key={it.label + it.keys.join("")}>

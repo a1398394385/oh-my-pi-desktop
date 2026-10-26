@@ -42,7 +42,9 @@ export function Drawer({ open, onClose, title, subtitle, actions, width, childre
 
   if (!open) return null;
   return createPortal(
-    <>
+    // The stats scope carries the page tokens and shared primitives, which the
+    // portal would otherwise lose (it renders outside #pg-stats).
+    <div className="stats-scope">
       <div className="drawer-scrim" onClick={onClose} role="presentation" />
       <div
         ref={panelRef}
@@ -76,7 +78,7 @@ export function Drawer({ open, onClose, title, subtitle, actions, width, childre
         </header>
         <div className="drawer-body">{children}</div>
       </div>
-    </>,
+    </div>,
     document.body,
   );
 }

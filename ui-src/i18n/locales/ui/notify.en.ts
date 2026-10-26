@@ -8,17 +8,12 @@ export const notifyEn = {
   disconnected: "Disconnected",
   // Remote control (store/ws.ts, ConnBanner.tsx, KickedScreen.tsx — Spec §4.1)
   remoteNeedKey: "Missing access key",
-  kickedBadge: "Device takeover",
   kickedTitle: "Taken over by another device",
-  kickedBody: "Another remote device has connected; only one phone controller can be attached at a time.",
-  kickedNext: "Next steps",
-  kickedStep1: "Keep using the newly connected device.",
   kickedStep2: "To control from this device, rescan the desktop QR code.",
   kickedRelay: "Relay returned",
   kickedCode: "KICKED",
   kickedReclaim: "Reconnect",
   remoteKeyTitle: "Enter access key",
-  remoteKeyPlaceholder: "Access key",
   remoteKeySubmit: "Connect",
   // Working-state text (store/session.ts)
   working: "Working…",

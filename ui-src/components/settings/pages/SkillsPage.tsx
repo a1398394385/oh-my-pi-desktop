@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
-import { confirmDialog, emptyRow, EditWindowHead } from "../common";
+import { confirmDialog, emptyRow, EditWindowHead, FormRow } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources, refreshExtSources } from "../ExtSourceTag";
@@ -144,7 +144,7 @@ function SkillEditWindow({ skill, scope, onClose }: {
     <>
       <EditWindowHead
         title={isNew ? t("settingsPage.skills.newTitle") : t("settingsPage.skills.editTitle")}
-        sub={isNew ? t("settingsPage.skills.nameHint") : skill!.path}
+        sub={isNew ? undefined : skill!.path}
         onBack={onClose}
       >
         {!isNew && (
@@ -153,47 +153,54 @@ function SkillEditWindow({ skill, scope, onClose }: {
           </button>
         )}
         {isNew ? (
-          <button type="button" className="save-btn" onClick={create}>
+          <button type="button" className="frm-primary" onClick={create}>
             {t("settingsPage.shared.create")}
           </button>
         ) : (
-          <button type="button" className="save-btn" onClick={save}>
+          <button type="button" className="frm-primary" onClick={save}>
             {t("common.save")}
           </button>
         )}
       </EditWindowHead>
 
       <div className="set-card set-edit-card">
-        {isNew ? (
-          <div className="mcp-form-group">
-            <label className="mcp-form-label">{t("settingsPage.skills.nameLabel")}</label>
-            <input
-              type="text"
-              className="mcp-form-input mcp-form-code mcp-inp-name"
-              placeholder={t("settingsPage.skills.namePlaceholder")}
-              spellCheck={false}
-              autoFocus
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") create();
-              }}
-            />
-          </div>
-        ) : (
-          <div className="mcp-form-group">
-            <label className="mcp-form-label">{t("settingsPage.skills.editTitle")}</label>
-            <textarea
-              className="mcp-form-textarea mcp-form-code"
-              rows={24}
-              spellCheck={false}
-              placeholder={t("settingsPage.skills.editPlaceholder")}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-            />
-          </div>
-        )}
-        {status ? <div className="mcp-form-hint">{status}</div> : null}
+        <div className="frm-rows">
+          {isNew ? (
+            <FormRow label={t("settingsPage.skills.nameLabel")}>
+              <input
+                type="text"
+                className="mcp-form-input mcp-form-code"
+                placeholder={t("settingsPage.skills.namePlaceholder")}
+                spellCheck={false}
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") create();
+                }}
+              />
+              <div className="frm-hint">{t("settingsPage.skills.nameHint")}</div>
+              {status ? <div className="frm-hint">{status}</div> : null}
+            </FormRow>
+          ) : (
+            <>
+              <FormRow label={t("settingsPage.skills.nameLabel")}>
+                <input type="text" className="mcp-form-input mcp-form-code" value={skill!.name} readOnly />
+              </FormRow>
+              <FormRow label={t("settingsPage.skills.editTitle")}>
+                <textarea
+                  className="mcp-form-textarea mcp-form-code"
+                  rows={24}
+                  spellCheck={false}
+                  placeholder={t("settingsPage.skills.editPlaceholder")}
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                />
+                {status ? <div className="frm-hint">{status}</div> : null}
+              </FormRow>
+            </>
+          )}
+        </div>
       </div>
     </>
   );

@@ -11,7 +11,7 @@
 
 .dock {
   margin: 8px auto 12px;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 0;
   border-radius: 16px;
   /* Ring color per state. Idle is fully neutral — no tint survives the pointer leaving.
@@ -271,7 +271,7 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
 #statusCard, #capsule { pointer-events: auto; }
 
 #statusCard {
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 0;
   border-radius: var(--r-lg);
   padding: 10px 12px 6px;
@@ -360,7 +360,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   z-index: 0;
   margin: 8px auto -28px;
   padding: 3px 3px 28px;
-  background: var(--surface);
+  background: var(--surface); --hover-fill: var(--panel-2);
   border: 1px solid var(--line-soft);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
@@ -391,7 +391,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   z-index: 1; /* above .goal-card (z-0): the goal bar's bottom edge is covered by the queue card, never the other way around */
   margin: 8px auto -28px;
   padding: 3px 3px 28px;
-  background: var(--surface);
+  background: var(--surface); --hover-fill: var(--panel-2);
   border: 1px solid var(--line-soft);
   border-bottom: none;
   border-radius: 16px 16px 0 0;
@@ -462,7 +462,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   display: block;
 }
 
-.q-btn:hover { background: var(--panel-2); color: var(--text); }
+.q-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 .turn-acts {
   margin-top: 6px; /* 6px gap to the turn's output above (was flush); the reserved slot keeps the turn height stable */
@@ -529,7 +529,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .qk-acts {
   position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
   display: none; gap: 2px; align-items: center;
-  background: var(--ctl-bg); border: 1px solid var(--line); border-radius: 8px;
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line); border-radius: 8px;
   padding: 2px; box-shadow: 0 4px 14px var(--tint-black-350);
 }
 
@@ -562,7 +562,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   width: 15px; height: 15px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%; border: 1px solid var(--line-soft);
-  background: var(--panel); color: var(--dim);
+  background: var(--panel); --hover-fill: var(--menu-hl); color: var(--dim);
   cursor: pointer; font-size: 10px; line-height: 1;
 }
 
@@ -612,10 +612,10 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
    the labels); shed the text-side padding so each pill collapses to icon width */
 #composer.bar-6 .cbar #modeBtn, #composer.bar-6 .cbar #modelBtn { padding: 5px; }
 
-/* bar-7: hide the plan pill + its separator and the mic/screen icon buttons;
+/* bar-7: hide the plan pill + its separator and the screen icon button;
    the floor row is +, icon-only pills, ctxRing, send */
 #composer.bar-7 #planBtn, #composer.bar-7 #planSep,
-#composer.bar-7 #voiceBtn, #composer.bar-7 #computerBtn { display: none; }
+#composer.bar-7 #computerBtn { display: none; }
 
 /* background task terminal button */
 .bg-task-btn {
@@ -638,7 +638,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .bg-task-btn:hover,
 .bg-task-btn.active,
 .bg-task-btn.on {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   color: var(--text);
 }
 
@@ -670,7 +670,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 .plan-btn:hover .plan-ic > span:nth-child(2) { display: inline-flex; }
 
-.plan-btn:hover { background: var(--panel-2); color: var(--text); }
+.plan-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 /* computer-use toggle: screen icon between the plan button and background tasks; lit = the
    per-session opt-in is on, in the session accent (the input ring's color — falls back to
@@ -678,18 +678,6 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .computer-btn { padding: 5px 7px; }
 
 .computer-btn.on, .computer-btn.on:hover { color: var(--session-accent, var(--accent)); }
-/* voice-conversation mic toggle: left of send; lit (accent) = synthesis +
-   dictation mode; .rec pulses while a push-to-talk capture is live */
-.mic-btn { padding: 5px 7px; }
-
-.mic-btn.on, .mic-btn.on:hover { color: var(--accent); }
-
-.mic-btn.rec, .mic-btn.rec:hover { color: var(--err); animation: mic-pulse 1.2s ease-in-out infinite; }
-
-@keyframes mic-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
 
 /* context usage ring: grows clockwise from the top, temperature-colored; hover shows the detail card */
 .ctx-ring {
@@ -697,7 +685,8 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   padding: 4px; border-radius: 7px; /* reserve at rest; the hover plate appears without shifting layout (border-box: 24 = 16 ring + 4x2 padding) */
 }
 
-.ctx-ring:hover { background: var(--context-ring-hover); }
+/* hover plate = --panel-2, the same fill as every other composer-toolbar button */
+.ctx-ring:hover { background: var(--hover-fill); }
 
 /* hover-highlight rounded square plate */
 .ctx-ring svg { display: block; }
@@ -746,6 +735,19 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .send.stop, .send.stopping { background: var(--send-stop); color: var(--white); }
 .send.stop:hover:not(:disabled), .send.stopping:hover:not(:disabled) { filter: brightness(1.12); }
 
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* dictation form (.rec = a push-to-talk capture is live): the button pulses like
+   the old mic toggle; the icon swap itself is state-driven in Composer. The stop
+   form keeps its white icon on the red fill (--err on --send-stop is invisible). */
+.send.rec, .send.rec:hover:not(:disabled) { animation: mic-pulse 1.2s ease-in-out infinite; }
+
+.send.rec:not(.stop):not(.stopping),
+.send.rec:not(.stop):not(.stopping):hover:not(:disabled) { color: var(--err); }
+
 .highlight-mode {
   color: var(--orange) !important;
 }
@@ -761,7 +763,8 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   border-radius: 12px;
   background: var(--ctl-bg, var(--project-menu-surface));
   border: 1px solid var(--line);
-  box-shadow: 0 16px 36px var(--tint-black-500);
+  /* No drop shadow: the 1px border is the edge, a halo read as a fuzzy ring. */
+  box-shadow: none;
   display: none;
   flex-direction: column;
   overflow: hidden;
@@ -777,7 +780,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 :is([data-theme="light"], [data-theme-mode="light"]) #wbProjectMenu.wb-project-menu {
   background: var(--panel, var(--white));
   border-color: var(--line);
-  box-shadow: 0 12px 32px var(--tint-black-150);
+  box-shadow: none;
 }
 
 .wb-proj-search {
@@ -816,12 +819,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 
 .wb-proj-item:hover,
 .wb-proj-item.selected {
-  background: var(--tint-white-80);
-}
-
-:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-item:hover,
-:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-item.selected {
-  background: var(--tint-black-60);
+  background: var(--menu-hl);
 }
 
 .wb-proj-actions {
@@ -852,11 +850,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 }
 
 .wb-proj-action-item:hover {
-  background: var(--tint-white-80);
-}
-
-:is([data-theme="light"], [data-theme-mode="light"]) .wb-proj-action-item:hover {
-  background: var(--tint-black-60);
+  background: var(--menu-hl);
 }
 
 #wbBranchMenu {

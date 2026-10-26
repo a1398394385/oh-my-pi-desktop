@@ -135,9 +135,9 @@
 
 - `BAR_STAGES` 5→7;新档 CSS 续 `.bar-1..5` 既有命名。**非纯 CSS 改动**:`Composer.tsx` 两处必须同改——`:73` `BAR_STAGES` 常量 5→7,`:724` `fit()` 的 `classList.remove("bar-1",…,"bar-5")` 列表补 bar-6/7(否则新档永远加不上、旧档类清不掉):
   - `.bar-6`:mode/think/model 三 pill 全 icon-only(藏全部 label 与 caret;model 用既有 `#modelIcon` 先例,另两个补等价图标)。**`.bar-1/2/3/6` 均限定在 `.cbar` 作用域内**(`#composer.bar-N .cbar #xxx`):窄屏三胶囊已移到 `.pill-bar`,分级收缩不应再把它们截断;
-  - `.bar-7`:藏 plan pill 与 `planSep`、藏 mic/screen 图标钮。
+  - `.bar-7`:藏 plan pill 与 `planSep`、藏 screen 图标钮。
 - `remote.css` 窄屏补充:composer 卡片 padding 收紧;编辑区字号 ≥16px(防 iOS 聚焦放大);cbar 允许 `flex-wrap` 兜底换行;底部 tab 与 dock 垫 `env(safe-area-inset-bottom)`。
-- REMOTE 时 mic(语音)按钮不渲染;`voiceMode` 订阅结果在 REMOTE 下视为 false。
+- REMOTE 时听写不可用(`voiceInput` 视为 false:发送按钮只在本地桌面客户端长按进入听写,远程无麦克风)。
 
 ### 4.5 index.html
 

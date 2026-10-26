@@ -32,13 +32,15 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   // Header advisor toggle state (advisor_mode frame; same per-session seam as the composer's computer icon)
   const advisorMode = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.advisorMode ?? false : false));
   const isSubagent = Boolean(session?.isSubagent);
+  // The no-session fallback is gone: without a session the #chatTitle span is not rendered
+  // at all (MessagePage's empty state owns that copy), so the branch was unreachable.
   const title = gitManage
     ? t("gitPage.title")
     : isCreatingNew
       ? t("misc.newTask")
       : session
         ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
-        : t("misc.pickSession");
+        : "";
   const cwd = session?.cwd;
   // Remote workspace stubs show their host:path label instead of the stub dir basename
   const projectName = gitManage
@@ -122,7 +124,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
       <Icon name="folderOld" style={{ color: "var(--faint)" }} />
       {renaming && ctxEntry ? (
         <HeaderTitleRename entry={ctxEntry} onDone={() => setRenaming(false)} />
-      ) : (
+      ) : session || isCreatingNew || gitManage ? (
         <span
           className={"text-ui-md font-semibold truncate min-w-0" + (session?.streaming ? " title-shimmer" : "")}
           id="chatTitle"
@@ -130,7 +132,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           {title}
           {isSubagent && <span className="subagent-head-badge">{t("chat.subagentBadge")}</span>}
         </span>
-      )}
+      ) : null}
       {projectName && !isCreatingNew && !gitManage && (
         <span className="head-chip" title={cwd ?? undefined}><span>{projectName}</span></span>
       )}
@@ -138,7 +140,6 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
         <button
           type="button"
           className={"head-chip clickable" + (branchMenu ? " active" : "")}
-          title={t("misc.gitBranchTitle", { branch: git.current })}
           onClick={(e) => {
             e.stopPropagation();
             setMoreMenu(null); // exclusive menus (stopPropagation bypasses the global close)

@@ -373,18 +373,15 @@ export function railToolText(item: ToolItem): string {
     if (summary) parts.push(summary);
   }
   // ACP context management: the rail leads with the label rather than the raw tool name
-  // (recall_block also carries the block id it fetched back)
   const ctxLabel = (
     {
       context_status: t("chat.labelContextStatus"),
       compress_context: t("chat.labelCompressContext"),
-      recall_block: t("chat.labelRecallBlock"),
     } as Record<string, string>
   )[item.name || ""];
   if (ctxLabel) {
     parts.length = 0;
     parts.push(ctxLabel);
-    if (item.name === "recall_block" && item.args?.id) parts.push(String(item.args.id));
   }
   if (item.args?.command) parts.push(String(item.args.command));
   if (item.args?.query) parts.push(String(item.args.query));

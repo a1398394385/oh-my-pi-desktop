@@ -100,7 +100,7 @@
 /* drag handle between the content pane and the nav pane */
 .fp-split { flex: none; width: 5px; cursor: col-resize; }
 
-.fp-split:hover { background: var(--panel-2); }
+.fp-split:hover { background: var(--hover-fill); }
 
 /* nav column: the left divider is the boundary against the content pane (the splitter beside
    it stays invisible until dragged/hovered) */

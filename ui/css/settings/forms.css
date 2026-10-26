@@ -21,7 +21,7 @@
   display: block;
   width: 100%;
   box-sizing: border-box;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   border: 1px solid transparent;
   border-radius: 9px;
   padding: 6px 10px;
@@ -51,7 +51,7 @@
 
 /* Narrower field widths: the base .mcp-form-input is width:100%, which stretches
    short values (names, ids, numbers) across the whole card or column. */
-.mcp-form-input.mcp-inp-name { width: 320px; max-width: 100%; }
+.mcp-form-input.mcp-inp-name { width: 100%; max-width: 320px; }
 .mcp-form-input.mcp-inp-num { width: 120px; }
 .mcp-form-half.mcp-form-narrow { flex: 0 0 240px; }
 .mcp-form-quarter.mcp-form-narrow { flex: 0 0 120px; }
@@ -72,15 +72,20 @@
 .mcp-form-status { display: flex; align-items: center; gap: 8px; margin-top: 0; }
 
 /* Boxed select: same box metrics as .mcp-form-input (r9 border + 6/10 padding + 1.5 line-height); menu drops downward via .sel > .menu */
-.sel.mcp-form-sel { position: relative; display: flex; width: 100%; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--bg); padding: 0; }
+/* Edge = inset ring, not a border, so the HiDPI hairline rules below can halve it
+   like .mcp-form-input — a solid 1px border read thicker than its sibling inputs. */
+.sel.mcp-form-sel { position: relative; display: flex; width: 100%; border: 1px solid transparent; border-radius: 9px; background: var(--bg); --hover-fill: var(--panel-2); padding: 0; box-shadow: inset 0 0 0 1px var(--line-soft); }
 
-.sel.mcp-form-sel:hover, .sel.mcp-form-sel:has(.menu.open) { background: var(--panel-2); }
+.sel.mcp-form-sel:hover, .sel.mcp-form-sel:has(.menu.open) { background: var(--hover-fill); }
 
 .mcp-form-sel-btn { display: inline-flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box; padding: 6px 10px; background: none; border: 0; color: var(--text); font-size: var(--ui-fs-sm); line-height: 1.5; cursor: pointer; }
 
 .mcp-form-sel-btn:disabled { opacity: .5; cursor: default; }
 
 .mcp-form-sel-btn .caret-svg { margin-left: auto; display: inline-flex; color: var(--faint); }
+
+.mcp-edit-card .frm-pair .sel.mcp-form-sel { width: 220px; max-width: 100%; }
+.mcp-edit-card .frm-pair .sel.mcp-form-sel > .menu { left: 0; right: auto; }
 
 /* Collapsible env / headers section */
 .mcp-env-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; background: none; border: 0; color: var(--dim); font-size: var(--ui-fs-sm); cursor: pointer; }
@@ -98,14 +103,14 @@
 
 .mcp-form-cancel { padding: 4px 8px; background: none; border: 0; border-radius: 6px; color: var(--dim); font-size: var(--ui-fs-sm); cursor: pointer; }
 
-.mcp-form-cancel:hover { color: var(--text); background: var(--panel-2); }
+.mcp-form-cancel:hover { color: var(--text); background: var(--hover-fill); }
 
 /* Hairline: halve the converted inset ring on HiDPI */
 @media (min-resolution: 2dppx) {
-  .mcp-form-input, .mcp-form-textarea { box-shadow: inset 0 0 0 .5px var(--line-soft); }
+  .mcp-form-input, .mcp-form-textarea, .sel.mcp-form-sel { box-shadow: inset 0 0 0 .5px var(--line-soft); }
   .mcp-form-input:focus, .mcp-form-textarea:focus { box-shadow: inset 0 0 0 .5px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
 }
 @media (min-resolution: 3dppx) {
-  .mcp-form-input, .mcp-form-textarea { box-shadow: inset 0 0 0 .33px var(--line-soft); }
+  .mcp-form-input, .mcp-form-textarea, .sel.mcp-form-sel { box-shadow: inset 0 0 0 .33px var(--line-soft); }
   .mcp-form-input:focus, .mcp-form-textarea:focus { box-shadow: inset 0 0 0 .33px var(--tint-accent-500), 0 0 0 3px var(--tint-accent-130); }
 }

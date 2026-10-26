@@ -50,7 +50,7 @@
 
 .adv-card {
   margin: 16px 0;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   border-left: 3px solid var(--faint);
   border-radius: var(--r-md);

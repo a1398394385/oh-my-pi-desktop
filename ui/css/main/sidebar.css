@@ -103,25 +103,32 @@ body:has(#sidebar.collapsed) #left-resizer {
 .nav-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
 :is([data-theme="light"], [data-theme-mode="light"]) .nav-item:hover { background: var(--tint-black-60); }
 .nav-item svg { color: var(--dim); flex: none; display: block; }
+/* Rounded-rect segmented card: a recessed surface carrying three equal slots,
+   the active one filled with an inset chip. */
 .seg {
   position: relative;
-  display: flex; background: var(--tint-black-220);
-  border-radius: 999px; padding: 2px;
+  display: flex; flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg); padding: 3px;
 }
-:is([data-theme="light"], [data-theme-mode="light"]) .seg { background: var(--tint-black-80); }
 /* CDS segmented-control magnet: a pure-geometry thumb (::before) snaps between the slots —
-   Sidebar.tsx drives --seg-i (active slot index) / --seg-n (slot count) as inline vars */
+   Sidebar.tsx drives --seg-i (active slot index) / --seg-n (slot count) as inline vars.
+   The containing block is the padding box, so the content area is 100% - 6px
+   and each slot starts 3px from the padding-box origin. */
 .seg::before {
-  content: ""; position: absolute; top: 2px; bottom: 2px;
-  left: calc(1px + var(--seg-i, 0) * (100% - 2px) / var(--seg-n, 1));
-  width: calc((100% - 2px) / var(--seg-n, 1));
-  border-radius: 999px; background: var(--select); pointer-events: none;
+  content: ""; position: absolute; top: 3px; bottom: 3px;
+  left: calc(3px + var(--seg-i, 0) * ((100% - 6px) / var(--seg-n, 1)));
+  width: calc((100% - 6px) / var(--seg-n, 1));
+  /* --inset reads as a recessed chip on the --panel-2 surface in both themes
+     (dark: #2B2B2B on #353738; light: #ffffff on #e8e8ec). */
+  border-radius: var(--r-md); background: var(--inset); --hover-fill: var(--menu-hl); pointer-events: none;
   transition: left var(--dur-snap) var(--spring), width var(--dur-snap) var(--spring);
 }
 .seg button {
   border: 0; background: transparent; color: var(--dim);
   font: inherit; font-size: var(--ui-fs-base);
-  padding: 4px 12px; border-radius: 999px; cursor: pointer;
+  padding: 4px 12px; border-radius: var(--r-sm); cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 6px;
   flex: 1; /* equal slots so the ::before thumb lands exactly on the active button */
   position: relative; z-index: 1; /* labels paint above the ::before thumb */
@@ -194,7 +201,7 @@ body:has(#sidebar.collapsed) #left-resizer {
      otherwise a long press selects the title text instead of opening the context menu. */
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
-.task:is(:hover, .ctx-open) { background: var(--panel-2); color: var(--text); }
+.task:is(:hover, .ctx-open) { background: var(--hover-fill); color: var(--text); }
 .task.on { background: var(--select); color: var(--text); }
 .task .tt {
   flex: 1; min-width: 0;
@@ -369,7 +376,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 .proj:active { cursor: grabbing; }
 /* archive view groups reuse the project head visuals but are plain click-to-expand rows, not drag handles (no #tasklist.project-view there) */
 #tasklist:not(.project-view) .project-scroll > .proj { cursor: pointer; touch-action: auto; }
-.proj:hover { background: var(--panel-2); color: var(--text); }
+.proj:hover { background: var(--hover-fill); color: var(--text); }
 .proj svg { flex: none; opacity: .9; color: var(--dim); }
 /* the project icon slot matches ZCode's size-4 slot. */
 .proj .fic {
@@ -449,7 +456,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 .proj-add-pop {
   position: fixed; z-index: 500;
   display: flex; align-items: center; gap: 6px;
-  background: var(--ctl-bg); border: 1px solid var(--line-soft);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line-soft);
   border-radius: 10px; box-shadow: 0 12px 32px var(--tint-black-500);
   padding: 8px;
   animation: popIn .18s ease-out; --pop-from: -6px; /* pops down: slides in from above */
@@ -546,7 +553,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   color: var(--faint); font-size: var(--ui-fs-base);
   border-radius: var(--r-md); cursor: pointer; user-select: none;
 }
-.arch-head:hover { background: var(--panel-2); color: var(--text); }
+.arch-head:hover { background: var(--hover-fill); color: var(--text); }
 /* entry container: grid row height 0fr<->1fr transition, same animation set as the .proj-kids project groups */
 .arch-kids { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-sheet) var(--swift); }
 .arch-kids.closing { grid-template-rows: 0fr; }

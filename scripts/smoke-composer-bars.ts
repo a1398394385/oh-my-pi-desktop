@@ -63,10 +63,9 @@ const W: Record<string, number[]> = {
   ctxRing: [24],
   modelBtn: [96, 96, 96, 28, 22],
   thinkBtn: [96, 96, 28, 28, 22],
-  voiceBtn: [32],
   sendBtn: [32],
 };
-const BAR7_HIDDEN: Record<string, true> = { planSep: true, planBtn: true, computerBtn: true, voiceBtn: true };
+const BAR7_HIDDEN: Record<string, true> = { planSep: true, planBtn: true, computerBtn: true };
 let cbarClientWidth = 10000;
 
 function tierOf(el: Element): number {
@@ -123,17 +122,18 @@ const stage = () => {
 try {
   await act(async () => { root.render(createElement(Composer, { inWelcome: true })); });
   const comp = document.getElementById("composer")!;
-  assert.ok(document.getElementById("voiceBtn"), "mic button must render for the local client");
+  assert.ok(document.getElementById("sendBtn"), "send button must render for the local client");
 
-  // width table above: need = sum(widths) + GAP * (n - 1) with n = 10 visible children
-  // tier 0..7 -> 574, 506, 438, 370, 370, 370, 352, 184 (tiers 4/5 hide absent buttons)
+  // width table above: need = sum(widths) + GAP * (n - 1) with n = 8 visible children
+  // tier 0..7 -> 434, 366, 366, 298, 298, 298, 286, 156 (the welcome composer renders
+  // no think pill / background buttons, so tiers 2 and 4/5 are no-ops and the ladder
+  // lands on 1, 3, 6, 7)
   const cases: Array<[number, number]> = [
     [600, 0],
-    [573, 1],
-    [505, 2],
-    [437, 3],
-    [369, 6], // tiers 4/5 are no-ops here (no bg buttons) so the ladder jumps to 6
-    [351, 7],
+    [433, 1],
+    [365, 3],
+    [297, 6],
+    [285, 7],
   ];
   for (const [w, expect] of cases) {
     cbarClientWidth = w;

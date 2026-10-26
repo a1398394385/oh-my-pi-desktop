@@ -167,7 +167,7 @@
 
 .md-body [data-streamdown="code-block-wrap-button"]:hover,
 .md-body [data-streamdown="code-block-copy-button"]:hover {
-  background: var(--panel-2) !important;
+  background: var(--hover-fill) !important;
   color: var(--text) !important;
 }
 

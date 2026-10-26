@@ -19,7 +19,7 @@
   display: block;
 }
 
-.icon-btn:hover { background: var(--panel-2); color: var(--text); }
+.icon-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 .icon-btn.on { background: var(--select); color: var(--text); }
 
@@ -67,7 +67,7 @@ svg { vertical-align: middle; }
 .pi-ic { display: inline-flex; align-items: center; justify-content: center; vertical-align: -0.15em; }
 .pi-ic svg { display: block; }
 
-.pill-btn:hover { background: var(--panel-2); color: var(--text); }
+.pill-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 .pill-btn.yolo { color: var(--orange); }
 
@@ -84,7 +84,7 @@ svg { vertical-align: middle; }
 }
 
 .confirm-btn:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
 }
 
 .confirm-btn.danger {
@@ -131,14 +131,14 @@ svg { vertical-align: middle; }
 }
 
 .plus-btn:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   color: var(--text);
 }
 
 /* ── Dropdown menu (absolute inside the composer, bottom-positioned; scales with the container zoom without drifting; narrower for compactness) ── */
 .menu {
   position: absolute; bottom: 44px;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   padding: 5px;
@@ -147,7 +147,7 @@ svg { vertical-align: middle; }
   display: none; z-index: 500;
 }
 
-:is([data-theme="light"], [data-theme-mode="light"]) .menu { background: var(--panel); }
+:is([data-theme="light"], [data-theme-mode="light"]) .menu { background: var(--panel); --hover-fill: var(--menu-hl); }
 .menu.open { display: block; animation: popIn .18s ease-out; --pop-from: 6px; }
 
 /* pops up: slides in from below */
@@ -157,11 +157,11 @@ svg { vertical-align: middle; }
   /* full width: <button> defaults to shrink-to-fit (highlight would hug the text) while div rows already fill the menu */
   width: 100%; box-sizing: border-box;
   padding: 6px 9px; border-radius: 6px;
-  font-size: var(--ui-fs-base); color: var(--text); cursor: pointer;
+  font-size: var(--ui-fs-sm); color: var(--text); cursor: pointer;
   border: none; background: none; appearance: none; text-align: left;
 }
 
-.menu .mi:hover, .menu .mi.on { background: var(--panel-3); } /* .on = keyboard-active row (picker arrow-key navigation) */
+.menu .mi:hover, .menu .mi.on { background: var(--menu-hl); } /* .on = keyboard-active row (picker arrow-key navigation) */
 
 .menu .mi.empty { cursor: default; color: var(--dim); }
 
@@ -180,7 +180,7 @@ svg { vertical-align: middle; }
 .menu .mi .mi-ck { width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--green); }
 .menu .mi.disabled .mi-ck { color: var(--err); }
 .menu .mi .mi-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
-.menu .mi .mi-tt { font-size: var(--ui-fs-base); color: var(--text); }
+.menu .mi .mi-tt { font-size: var(--ui-fs-sm); color: var(--text); }
 .menu .mi .mi-note { font-size: var(--ui-fs-sm); color: var(--faint); }
 
 /* Options-mode menus size to their longest row: the 170px base min-width leaves short menus
@@ -205,7 +205,7 @@ svg { vertical-align: middle; }
 .srow.disabled:hover { background: none; }
 
 .inp {
-  display: inline-block; background: var(--bg); border: 1px solid transparent;
+  display: inline-block; background: var(--bg); --hover-fill: var(--panel-2); border: 1px solid transparent;
   border-radius: 9px; padding: 6px 10px; color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm);
   min-width: 240px; outline: none;
   box-shadow: inset 0 0 0 1px var(--line-soft);
@@ -228,7 +228,7 @@ svg { vertical-align: middle; }
 :is([data-theme="light"], [data-theme-mode="light"]) .save-btn:hover { background: var(--button-hover-light); }
 
 /* Danger variant (sign-out etc.): same size language as .save-btn, hover turns red to signal destructiveness */
-.save-btn.danger:hover { background: var(--panel-2); color: var(--err); }
+.save-btn.danger:hover { background: var(--hover-fill); color: var(--err); }
 
 /* Save in progress: button grayed out and unclickable; the busy variant spins the icon (reuses the shared spin keyframes) */
 .save-btn:disabled { opacity: .6; cursor: default; }
@@ -263,19 +263,19 @@ svg { vertical-align: middle; }
 .tg.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 
 /* Segmented pills inside settings srows: font size aligned with .sel, height aligned with the settings button system (31px, same as add-btn/refresh) */
-.srow .mcp-type-pill { font-size: var(--ui-fs-base); min-height: 31px; }
+.srow .mcp-type-pill { font-size: var(--ui-fs-sm); min-height: 31px; }
 
 /* Dropdown = the .pill-btn language: transparent pill, hover --panel-2 */
 .sel {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; border-radius: 999px; padding: 5px 10px;
-  font-size: var(--ui-fs-base); cursor: pointer; flex: none;
+  font-size: var(--ui-fs-sm); cursor: pointer; flex: none;
   background: transparent; color: var(--dim);
   position: relative;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
-.sel:hover, .sel:has(.menu.open) { background: var(--panel-2); color: var(--text); }
+.sel:hover, .sel:has(.menu.open) { background: var(--hover-fill); color: var(--text); }
 
 .sel i { color: var(--faint); font-style: normal; font-size: var(--ui-fs-sm); }
 
@@ -295,6 +295,12 @@ svg { vertical-align: middle; }
 .sel.sel-up:has(.menu.open) .caret-svg { transform: rotate(0deg); }
 .sel.sel-wide > .menu { min-width: 300px; width: max-content; max-width: 420px; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 .sel.sel-wide .mi { white-space: nowrap; }
+
+/* Opt-out from the sm control tier: a trigger that keeps the base size must keep its
+   portal menu in the same tier too (the menu is not a descendant of the trigger). */
+.sel.sel-base { font-size: var(--ui-fs-base); }
+.menu.mp-menu-base .mi { font-size: var(--ui-fs-base); }
+.menu.mp-menu-base .mi .mi-tt { font-size: var(--ui-fs-base); }
 .add-btn {
   margin-left: auto; border: 1px solid var(--line); background: transparent;
   color: var(--text); border-radius: 8px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
@@ -302,7 +308,7 @@ svg { vertical-align: middle; }
   /* CDS press physics: release from the :active squash rides the 15-stop spring */
   transition: transform var(--dur-slow) var(--spring-press);
 }
-.add-btn:hover { background: var(--panel-2); }
+.add-btn:hover { background: var(--hover-fill); }
 
 /* CDS press physics, shared: press-in squashes fast (60ms swift), let-go springs back over 450ms.
    Overrides the per-button release timing above only while pressed; .save-btn's disabled transform:none
@@ -338,7 +344,7 @@ svg { vertical-align: middle; }
 }
 
 .mcp-type-pill:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   color: var(--text);
 }
 
@@ -359,8 +365,6 @@ svg { vertical-align: middle; }
 .num i { font-style: normal; color: var(--faint); font-size: var(--ui-fs-xs); }
 
 .tag.on { color: var(--text); border-color: var(--dim); }
-
-.tag { font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; flex: none; }
 
 /* Hairline refinement on HiDPI: halve the 1px chrome of standalone controls —
    container-level borders are deliberately untouched */

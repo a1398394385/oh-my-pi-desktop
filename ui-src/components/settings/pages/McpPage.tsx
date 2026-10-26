@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
-import { confirmDialog, emptyRow, EditWindowHead, Sel } from "../common";
+import { confirmDialog, emptyRow, EditWindowHead, FormRow, Sel } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
@@ -113,7 +113,7 @@ function McpLogDialog({
               borderRadius: "var(--r-sm)",
               padding: "10px 12px",
               fontFamily: "var(--mono)",
-              fontSize: "12px",
+              fontSize: "var(--code-fs, 12px)",
               lineHeight: 1.5,
               color: "var(--text)",
               whiteSpace: "pre-wrap",
@@ -479,13 +479,8 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         ? t("settingsPage.mcp.connectOk")
         : result.error || t("settingsPage.mcp.connectFail")
       : "";
-  const statusColor = testing
-    ? "var(--dim)"
-    : result
-      ? result.status === "ok"
-        ? "var(--green)"
-        : "var(--err)"
-      : undefined;
+  // Status tone drives a class (mcp-edit-tone-{tone}); colors live in the page CSS
+  const statusTone = testing ? "dim" : result ? (result.status === "ok" ? "ok" : "err") : undefined;
   // The log link shows for a failed test result or a failed server row (the row's own log)
   const logAvailable = Boolean(
     (result && result.status !== "ok" && (result.log || result.error)) ||
@@ -506,6 +501,15 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
       : transport === "http"
       ? t("settingsPage.mcp.transportHttp")
       : t("settingsPage.mcp.transportSse");
+  // Optional JSON block: stdio sends environment variables, http/sse send request headers
+  const envLabel =
+    transport === "stdio" ? t("settingsPage.mcp.envOptional") : t("settingsPage.mcp.headersOptional");
+  // Required field marker for the shared form label
+  const reqLabel = (text: string) => (
+    <>
+      {text} <span className="req">*</span>
+    </>
+  );
 
   return (
     <>
@@ -518,147 +522,155 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         <button type="button" className="save-btn" disabled={testing} onClick={onTest}>
           {testing ? t("settingsPage.mcp.testingBtn") : t("settingsPage.mcp.testBtn")}
         </button>
-        <button type="button" className="save-btn" onClick={onSave}>
+        <button type="button" className="frm-primary" onClick={onSave}>
           {t("common.save")}
         </button>
       </EditWindowHead>
-      <div className="set-card set-edit-card">
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.mcp.nameLabel")} <span className="req">*</span></label>
-          <input
-            type="text"
-            className="mcp-form-input mcp-inp-name"
-            placeholder={t("settingsPage.mcp.namePlaceholder")}
-            spellCheck="false"
-            value={name}
-            disabled={!isNew}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-        <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
-            <label className="mcp-form-label">{t("settingsPage.mcp.transportLabel")}</label>
-            <Sel
-              className="mcp-form-sel"
-              btnClassName="mcp-form-sel-btn"
-              btnChildren={
-                <>
-                  <span className="mcp-form-sel-cur">{transportCurLabel}</span>
-                  <span className="caret-svg"><Icon name="caret" size={12} /></span>
-                </>
-              }
-              onPickMi={(mi) => setTransport(mi.dataset.v || "stdio")}
-            >
-              {[
-                ["stdio", t("settingsPage.mcp.transportStdio")],
-                ["http", t("settingsPage.mcp.transportHttp")],
-                ["sse", t("settingsPage.mcp.transportSse")],
-              ].map(([v, label]) => (
-                <div key={v} className="mi" data-v={v}>
-                  <span className="ck" style={{ visibility: transport === v ? "visible" : "hidden" }}>✓</span>
-                  <span className="mi-label">{label}</span>
-                </div>
-              ))}
-            </Sel>
-          </div>
-          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
-            <label className="mcp-form-label">{t("settingsPage.mcp.sharingFieldLabel")}</label>
-            <Sel
-              className="mcp-form-sel"
-              btnClassName="mcp-form-sel-btn"
-              btnChildren={
-                <>
-                  <span className="mcp-form-sel-cur">{sharingCurLabel}</span>
-                  <span className="caret-svg"><Icon name="caret" size={12} /></span>
-                </>
-              }
-              onPickMi={(mi) => setSharing((mi.dataset.v as "session" | "project" | "global") || "session")}
-            >
-              {(isProjectScope
-                ? [
-                    ["session", t("settingsPage.mcp.shareSession")],
-                    ["project", t("settingsPage.mcp.shareProjectWorkspace")],
-                  ]
-                : [
-                    ["session", t("settingsPage.mcp.shareSession")],
-                    ["project", t("settingsPage.mcp.shareProjectIsolated")],
-                    ["global", t("settingsPage.mcp.shareGlobal")],
-                  ]
-              ).map(([v, label]) => (
-                <div key={v} className="mi" data-v={v}>
-                  <span className="ck" style={{ visibility: sharing === v ? "visible" : "hidden" }}>✓</span>
-                  <span className="mi-label">{label}</span>
-                </div>
-              ))}
-            </Sel>
-          </div>
-        </div>
-        <div className="mcp-form-hint mcp-form-hint-share">
-          {sharing === "global"
-            ? t("settingsPage.mcp.shareHintGlobal")
-            : sharing === "project"
-            ? isProjectScope
-              ? t("settingsPage.mcp.shareHintProjectLocal")
-              : t("settingsPage.mcp.shareHintProjectSplit")
-            : t("settingsPage.mcp.shareHintSession")}
-        </div>
-        {transport === "stdio" ? (
-          <>
-            <div className="mcp-form-group">
-              <label className="mcp-form-label">{t("settingsPage.mcp.cmdLabel")} <span className="req">*</span></label>
-              <input
-                type="text"
-                className="mcp-form-input mcp-form-code"
-                placeholder={t("settingsPage.mcp.cmdPlaceholder")}
-                spellCheck="false"
-                value={cmd}
-                onChange={(e) => setCmd(e.target.value)}
-              />
-            </div>
-            <div className="mcp-form-group">
-              <label className="mcp-form-label">{t("settingsPage.mcp.argsLabel")}</label>
-              <input
-                type="text"
-                className="mcp-form-input mcp-form-code"
-                placeholder="-y @modelcontextprotocol/server-memory"
-                spellCheck="false"
-                value={args}
-                onChange={(e) => setArgs(e.target.value)}
-              />
-            </div>
-          </>
-        ) : (
-          <div className="mcp-form-group">
-            <label className="mcp-form-label">{t("settingsPage.mcp.urlLabel")} <span className="req">*</span></label>
+      <div className="set-card set-edit-card mcp-edit-card">
+        <div className="frm-rows">
+          <FormRow label={reqLabel(t("settingsPage.mcp.nameLabel"))}>
             <input
               type="text"
-              className="mcp-form-input mcp-form-code"
-              placeholder={t("settingsPage.mcp.urlPlaceholder")}
+              className="mcp-form-input mcp-inp-name"
+              placeholder={t("settingsPage.mcp.namePlaceholder")}
               spellCheck="false"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              value={name}
+              disabled={!isNew}
+              onChange={(e) => setName(e.target.value)}
             />
+          </FormRow>
+          <div className="frm-pair">
+            <FormRow label={t("settingsPage.mcp.transportLabel")}>
+              <Sel
+                className="mcp-form-sel"
+                btnClassName="mcp-form-sel-btn"
+                btnChildren={
+                  <>
+                    <span className="mcp-form-sel-cur">{transportCurLabel}</span>
+                    <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                  </>
+                }
+                onPickMi={(mi) => setTransport(mi.dataset.v || "stdio")}
+              >
+                {[
+                  ["stdio", t("settingsPage.mcp.transportStdio")],
+                  ["http", t("settingsPage.mcp.transportHttp")],
+                  ["sse", t("settingsPage.mcp.transportSse")],
+                ].map(([v, label]) => (
+                  <div key={v} className="mi" data-v={v}>
+                    <span className="ck" style={{ visibility: transport === v ? "visible" : "hidden" }}>✓</span>
+                    <span className="mi-label">{label}</span>
+                  </div>
+                ))}
+              </Sel>
+            </FormRow>
+            <FormRow label={t("settingsPage.mcp.sharingFieldLabel")}>
+              <Sel
+                className="mcp-form-sel"
+                btnClassName="mcp-form-sel-btn"
+                btnChildren={
+                  <>
+                    <span className="mcp-form-sel-cur">{sharingCurLabel}</span>
+                    <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                  </>
+                }
+                onPickMi={(mi) => setSharing((mi.dataset.v as "session" | "project" | "global") || "session")}
+              >
+                {(isProjectScope
+                  ? [
+                      ["session", t("settingsPage.mcp.shareSession")],
+                      ["project", t("settingsPage.mcp.shareProjectWorkspace")],
+                    ]
+                  : [
+                      ["session", t("settingsPage.mcp.shareSession")],
+                      ["project", t("settingsPage.mcp.shareProjectIsolated")],
+                      ["global", t("settingsPage.mcp.shareGlobal")],
+                    ]
+                ).map(([v, label]) => (
+                  <div key={v} className="mi" data-v={v}>
+                    <span className="ck" style={{ visibility: sharing === v ? "visible" : "hidden" }}>✓</span>
+                    <span className="mi-label">{label}</span>
+                  </div>
+                ))}
+              </Sel>
+              {!isNew ? (
+                <div className="frm-hint">
+                  {sharing === "global"
+                    ? t("settingsPage.mcp.shareHintGlobal")
+                    : sharing === "project"
+                    ? isProjectScope
+                      ? t("settingsPage.mcp.shareHintProjectLocal")
+                      : t("settingsPage.mcp.shareHintProjectSplit")
+                    : t("settingsPage.mcp.shareHintSession")}
+                </div>
+              ) : null}
+            </FormRow>
           </div>
-        )}
-        <div className="mcp-form-group">
-          <button type="button" className="mcp-env-toggle" onClick={() => setShowEnv((v) => !v)}>
-            <span className="caret-svg"><Icon name={showEnv ? "chevronUp" : "chevronDown"} size={12} /></span>
-            {transport === "stdio" ? t("settingsPage.mcp.envOptional") : t("settingsPage.mcp.headersOptional")}
-          </button>
-          {showEnv ? (
-            <textarea
-              className="mcp-form-textarea"
-              rows={4}
-              spellCheck="false"
-              placeholder={transport === "stdio" ? '{\n  "MY_API_KEY": "your-key"\n}' : '{\n  "Authorization": "Bearer your-token"\n}'}
-              value={transport === "stdio" ? env : headers}
-              onChange={(e) => (transport === "stdio" ? setEnv : setHeaders)(e.target.value)}
-            />
-          ) : null}
+          {transport === "stdio" ? (
+            <>
+              <FormRow label={reqLabel(t("settingsPage.mcp.cmdLabel"))}>
+                <input
+                  type="text"
+                  className="mcp-form-input mcp-form-code"
+                  placeholder={t("settingsPage.mcp.cmdPlaceholder")}
+                  spellCheck="false"
+                  value={cmd}
+                  onChange={(e) => setCmd(e.target.value)}
+                />
+              </FormRow>
+              <FormRow label={t("settingsPage.mcp.argsLabel")}>
+                <input
+                  type="text"
+                  className="mcp-form-input mcp-form-code"
+                  placeholder="-y @modelcontextprotocol/server-memory"
+                  spellCheck="false"
+                  value={args}
+                  onChange={(e) => setArgs(e.target.value)}
+                />
+              </FormRow>
+            </>
+          ) : (
+            <FormRow label={reqLabel(t("settingsPage.mcp.urlLabel"))}>
+              <input
+                type="text"
+                className="mcp-form-input mcp-form-code"
+                placeholder={t("settingsPage.mcp.urlPlaceholder")}
+                spellCheck="false"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+            </FormRow>
+          )}
+          <FormRow label={envLabel}>
+            <button
+              type="button"
+              className="mcp-env-toggle"
+              aria-expanded={showEnv}
+              aria-label={envLabel}
+              title={envLabel}
+              onClick={() => setShowEnv((v) => !v)}
+            >
+              <span className="caret-svg"><Icon name={showEnv ? "chevronUp" : "chevronDown"} size={12} /></span>
+            </button>
+            {showEnv ? (
+              <textarea
+                className="mcp-form-textarea"
+                rows={4}
+                spellCheck="false"
+                placeholder={
+                  transport === "stdio"
+                    ? '{\n  "MY_API_KEY": "your-key"\n}'
+                    : '{\n  "Authorization": "Bearer your-token"\n}'
+                }
+                value={transport === "stdio" ? env : headers}
+                onChange={(e) => (transport === "stdio" ? setEnv : setHeaders)(e.target.value)}
+              />
+            ) : null}
+          </FormRow>
         </div>
         {statusText || logAvailable ? (
-          <div className="mcp-form-hint mcp-form-status">
-            <span style={statusColor ? { color: statusColor } : undefined}>{statusText}</span>
+          <div className="frm-hint">
+            <span className={statusTone ? `mcp-edit-tone-${statusTone}` : undefined}>{statusText}</span>
             {logAvailable && onViewLog ? (
               <button
                 type="button"
@@ -768,7 +780,7 @@ export default function McpPage() {
   // The editor window replaces the whole page body (list + toolbar); rows and "new" lead here
   if (edit) {
     return (
-      <div className="set-page" id="pg-mcp">
+      <div className={edit.server ? "set-page" : "set-page set-page-compact"} id="pg-mcp">
         <McpEditor
           server={edit.server}
           defaultScope={activeScope}

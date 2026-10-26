@@ -5,14 +5,12 @@ const collabEn = {
   entry: "Collaborate",
   // Dialog
   title: "Collaborate",
-  desc: "Share this session live over a relay, or join someone else's room with a link.",
   hostTitle: "Host",
-  hostDesc: "Broadcast this session through a relay. Leave the relay address empty to use the configured default.",
+  hostDesc: "Broadcast this session through a relay.",
   relayPh: "wss://relay.example.com (empty = default)",
   start: "Start Sharing",
   joinTitle: "Join",
   joinDesc: "Paste the collab link (omp collab link or its web variant) shared by the host.",
-  joinPh: "collab link",
   join: "Join",
   // Active state
   hosting: "Sharing this session",

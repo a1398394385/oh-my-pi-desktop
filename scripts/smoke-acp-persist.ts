@@ -119,7 +119,7 @@ const kept = new Set(blocks.filter((bl) => !state.compressedBlockIds.has(bl.id))
 const out = projectContext(source, kept, state.zone, countTokens);
 assert.equal(out.length, 1, "nothing active — only the rendered compaction zone survives");
 assert.equal(out[0].role, "user");
-assert.equal(out[0].content, renderCompactionBlock(m, countTokens));
+assert.equal(out[0].content, renderCompactionBlock(m));
 assert.match(out[0].content as string, /method=strong/);
 console.log("ok: persist -> restart -> rebuild — zone/active split correct, feeds projection (native tokenizer)");
 

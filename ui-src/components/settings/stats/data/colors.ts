@@ -17,6 +17,18 @@ export const SERIES_COLORS = [
 
 export const OTHER_COLOR = "#6c6c74";
 
+/**
+ * Token mix palette (uncached input / cache read / cache write / output). Shared
+ * by Overview and Providers so one token always reads as one color — cache read
+ * is green here, not the accent blue, which would collide with uncached input.
+ */
+export const TOKEN_MIX_COLORS = {
+  input: "#5b8cff",
+  cacheRead: "#4ade80",
+  cacheWrite: "#f5b54a",
+  output: "var(--chart-secondary)",
+} as const;
+
 export function modelKey(model: string, provider: string): string {
   return `${model}::${provider}`;
 }

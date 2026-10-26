@@ -8,19 +8,15 @@
   min-height: 0;
 }
 
-/* directory header (title + refresh) */
+/* directory header (refresh) — the title span that used to fill this row is gone, so the
+   single button is pinned right explicitly */
 .btw-top {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
   padding: 0 0 6px;
   flex: none;
-}
-.btw-top-t {
-  flex: 1;
-  font-size: var(--ui-fs);
-  color: var(--dim);
-  font-weight: 500;
 }
 
 /* topic directory */
@@ -55,7 +51,7 @@
   transition: background var(--dur-snap) var(--swift);
 }
 .btw-item:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
 }
 .btw-dot {
   flex: none;
@@ -136,7 +132,7 @@
 .btw-u {
   align-self: flex-end;
   max-width: 88%;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border-radius: var(--r-lg);
   padding: 7px 11px;
   color: var(--text);
@@ -180,7 +176,7 @@
   flex: 1;
   min-width: 0;
   resize: none;
-  background: var(--ctl-bg);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
   border: 1px solid transparent;
   border-radius: var(--r-md);
   color: var(--text);

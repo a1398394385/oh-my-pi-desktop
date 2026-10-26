@@ -80,7 +80,7 @@ function SubagentDetail({ sub, sessionId, subagentId }: { sub: SubagentState; se
   return (
     <>
       <div className={"rb-head" + (kids ? " kids-in" : "")}>
-        <button className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-panel-2 hover:text-text" onClick={() => setBump({ selectedSubagent: null })}>
+        <button className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-hover-fill hover:text-text" onClick={() => setBump({ selectedSubagent: null })}>
           {t("right.backToList")}
         </button>
       </div>

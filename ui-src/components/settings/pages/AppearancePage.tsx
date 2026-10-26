@@ -165,7 +165,6 @@ export default function AppearancePage() {
     <div className="set-page" id="pg-appearance">
       <div className="set-tt">{t("settingsPage.nav.appearance")}</div>
       <div className="set-group-tt">{t("settingsPage.appearance.groupInterface")}</div>
-      <div className="set-group-desc">{t("settingsPage.appearance.interfaceDesc")}</div>
       <div className="set-card">
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.appearance.themeTitle")}</b><span>{t("settingsPage.appearance.themeDesc")}</span></div>
@@ -237,7 +236,6 @@ export default function AppearancePage() {
         </div>
       </div>
       <div className="set-group-tt">{t("settingsPage.appearance.groupCode")}</div>
-      <div className="set-group-desc">{t("settingsPage.appearance.codeDesc")}</div>
       <div className="set-card">
         <div className="srow">
           <div className="srow-tx"><b>{t("settingsPage.appearance.lightThemeTitle")}</b><span>{t("settingsPage.appearance.lightThemeDesc")}</span></div>
@@ -273,7 +271,6 @@ export default function AppearancePage() {
         </div>
       </div>
       <div className="set-group-tt">{t("settingsPage.appearance.groupPreview")}</div>
-      <div className="set-group-desc">{t("settingsPage.appearance.previewDesc")}</div>
       <div className="pv-grid">
         <div className="pv-card">
           <div className="pv-head">{t("settingsPage.appearance.previewLightTitle")}<span className="pv-sub">GitHub Light</span><span className={"tag" + (dark ? "" : " on")} id="pvTagLight">{dark ? t("settingsPage.appearance.previewLightTag") : t("settingsPage.appearance.previewActive")}</span></div>

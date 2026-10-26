@@ -1,7 +1,7 @@
 .pv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
 .pv-card {
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--tint-white-80);
   border-radius: var(--r-card);
   box-shadow: 0 8px 26px var(--tint-black-350);
@@ -18,7 +18,7 @@
 
 .pv-head .tag:not(.on) { margin-left: auto; font-size: var(--ui-fs-xs); color: var(--dim); border: 1px solid var(--line); border-radius: 999px; padding: 0 6px; line-height: 15px; }
 
-.pv-code { padding: 10px 12px; font: var(--code-fs, 11.5px)/1.6 var(--mono) !important; white-space: pre; overflow-x: auto; }
+.pv-code { padding: 10px 12px; font: var(--code-fs, 12px)/1.6 var(--mono) !important; white-space: pre; overflow-x: auto; }
 
 .pv-code .ln { display: inline-block; width: 18px; color: var(--preview-line-number); user-select: none; }
 .pv-code.light { background: var(--code-surface-light); color: var(--code-text-light); }

@@ -24,7 +24,21 @@
 // live progress (stt_download_progress); the stt.enabled switch is gated on a
 // cached model (rpc/settings.ts).
 import type { SttState, SttTarget } from "@oh-my-pi/pi-coding-agent/stt";
-import { STTController, isSttModelCached, downloadSttModel, resolveSttModelSpec, roleCandidatePool, resolveRoleChain } from "./bootstrap.ts";
+import type { CustomToolContext } from "@oh-my-pi/pi-coding-agent/extensibility/custom-tools/types";
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { unlink } from "node:fs/promises";
+import {
+  STTController,
+  isSttModelCached,
+  downloadSttModel,
+  resolveSttModelSpec,
+  roleCandidatePool,
+  resolveRoleChain,
+  resolveSpeechCandidates,
+  ttsTool,
+} from "./bootstrap.ts";
 import { H, stampEvent } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { safeStderr } from "./stderr.ts";
@@ -242,6 +256,62 @@ export async function pushVoiceStatus(ws: Ws): Promise<void> {
       }),
     ),
   );
+}
+
+/** Upper bound from the tts tool schema; longer replies are read truncated. */
+const SPEAK_MAX = 15000;
+
+/**
+ * One-shot reading of a finished reply (the per-turn speak button). The speech
+ * role decides the backend: unconfigured (the "auto voice" default) falls back
+ * to the UI system voice via backend "system", otherwise the tts tool renders a
+ * temp clip whose bytes go back base64 so the UI can play and stop them.
+ */
+export async function speakOnce(ws: Ws, sessionId: string, text: string): Promise<void> {
+  const spoken = text.trim().slice(0, SPEAK_MAX);
+  if (!spoken) return;
+  // Only an explicitly assigned speech role counts as a TTS provider; the
+  // implicit role chain always resolves *some* tts catalog model (local worker
+  // included), and the settings default is the OS voice.
+  if (!resolveSpeechCandidates(H.settings, H.modelRegistry, false).some((c) => c.explicit)) {
+    pushTts(ws, { type: "tts_audio", sessionId, backend: "system", text: spoken });
+    return;
+  }
+  const base = join(tmpdir(), `omp-speak-${randomUUID()}`);
+  const outputPath = `${base}.mp3`;
+  // The tool's ctx needs only these four members (tts.ts execute + its two
+  // synthesize helpers); the cwd is the temp dir so the absolute path wins.
+  const ctx = {
+    sessionManager: { getCwd: () => tmpdir(), getSessionId: () => sessionId },
+    settings: H.settings,
+    modelRegistry: H.modelRegistry,
+    fetch: globalThis.fetch,
+  } as unknown as CustomToolContext;
+  try {
+    const result = await ttsTool.execute("speak", { text: spoken, language: "zh", output_path: outputPath }, undefined, ctx);
+    if (result.isError || !result.details) {
+      const message = result.content.map((c) => (c.type === "text" ? c.text : "")).join(" ").trim();
+      pushTts(ws, { type: "tts_failed", sessionId, message: message || "speech synthesis failed" });
+      return;
+    }
+    const { codec, backend } = result.details;
+    const bytes = await Bun.file(codec === "wav" ? `${base}.wav` : outputPath).arrayBuffer();
+    pushTts(ws, {
+      type: "tts_audio",
+      sessionId,
+      backend,
+      data: Buffer.from(bytes).toString("base64"),
+      mime: codec === "wav" ? "audio/wav" : "audio/mpeg",
+    });
+  } catch (err) {
+    // Resolution/synthesis failures belong on the toast, not in a silent void
+    pushTts(ws, { type: "tts_failed", sessionId, message: err instanceof Error ? err.message : String(err) });
+  } finally {
+    // Only one container gets written (local synthesis substitutes .wav), so the
+    // absent one is expected — not an error worth surfacing.
+    await unlink(outputPath).catch(() => {});
+    await unlink(`${base}.wav`).catch(() => {});
+  }
 }
 
 let sttDownloadInFlight = false;

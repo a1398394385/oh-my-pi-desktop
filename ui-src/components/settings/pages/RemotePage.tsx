@@ -64,7 +64,6 @@ export default function RemotePage() {
   return (
     <div className="set-page" id="pg-remote">
       <div className="set-tt">{t("settingsPage.nav.remote")}</div>
-      <div className="set-group-desc">{t("settingsPage.remote.groupDesc")}</div>
       <div className="set-card">
         {/* 1. Master switch */}
         <div className="srow set-row">

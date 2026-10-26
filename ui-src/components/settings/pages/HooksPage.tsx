@@ -14,7 +14,7 @@ import type { HookAssetItem } from "../../../types/frames";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
 import Icon from "../../../Icon";
-import { EditWindowHead, Sel, emptyRow } from "../common";
+import { EditWindowHead, FormRow, Sel, emptyRow } from "../common";
 import ScopeSel from "../ScopeSel";
 
 // The eight events the host template supports (host/assets.ts HOOK_EVENTS). Tool events filter
@@ -85,34 +85,32 @@ function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => voi
         sub={hook.path}
         onBack={onClose}
       >
-        <button type="button" className="save-btn" onClick={save}>
+        <button type="button" className="frm-primary" onClick={save}>
           {t("common.save")}
         </button>
       </EditWindowHead>
       <div className="set-card set-edit-card">
-        <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
-            <label className="mcp-form-label">{t("settingsPage.hooks.eventLabel")}</label>
-            <input className="mcp-form-input mcp-form-code mcp-inp-num" value={EVENT_LABEL[rowEvent(hook)]} disabled readOnly />
-          </div>
+        <div className="frm-rows">
+          <FormRow label={t("settingsPage.hooks.eventLabel")}>
+            <input className="mcp-form-input mcp-form-code" value={EVENT_LABEL[rowEvent(hook)]} disabled readOnly />
+            <div className="frm-hint">{t("settingsPage.hooks.eventHint")}</div>
+          </FormRow>
           {isToolEvent(rowEvent(hook)) && (
-            <div className="mcp-form-group mcp-form-half mcp-form-narrow">
-              <label className="mcp-form-label">{t("settingsPage.hooks.toolLabel")}</label>
-              <input className="mcp-form-input mcp-form-code mcp-inp-num" value={hook.tool || "*"} disabled readOnly />
-            </div>
+            <FormRow label={t("settingsPage.hooks.toolLabel")}>
+              <input className="mcp-form-input mcp-form-code" value={hook.tool || "*"} disabled readOnly />
+            </FormRow>
           )}
-        </div>
-        <div className="mcp-form-hint mcp-form-hint-share">{t("settingsPage.hooks.nameLockedHint")}</div>
-        <div className="mcp-form-group">
-          <label className="mcp-form-label">{t("settingsPage.hooks.codeLabel")}</label>
-          <textarea
-            id="hookText"
-            className="mcp-form-textarea mcp-form-code"
-            rows={20}
-            spellCheck={false}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
+          <FormRow label={t("settingsPage.hooks.codeLabel")}>
+            <textarea
+              id="hookText"
+              className="mcp-form-textarea mcp-form-code"
+              rows={20}
+              spellCheck={false}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+            />
+            <div className="frm-hint">{t("settingsPage.hooks.nameLockedHint")}</div>
+          </FormRow>
         </div>
         {status ? <div className="mcp-form-hint">{status}</div> : null}
       </div>
@@ -186,62 +184,60 @@ function HookNewForm({ scope, onScopeChange, onClose }: {
         sub={t("settingsPage.hooks.newSub")}
         onBack={onClose}
       >
-        <button type="button" className="save-btn" onClick={create}>
+        <button type="button" className="frm-primary" onClick={create}>
           {t("settingsPage.hooks.createBtn")}
         </button>
       </EditWindowHead>
       <div className="set-card set-edit-card">
-        <div className="mcp-form-row">
-          <div className="mcp-form-group mcp-form-half mcp-form-narrow">
-            <label className="mcp-form-label">{t("settingsPage.hooks.eventLabel")}</label>
-            <Sel
-              id="hookEventSel"
-              className="mcp-form-sel"
-              btnClassName="mcp-form-sel-btn"
-              btnChildren={
-                <>
-                  <span className="mcp-form-sel-cur">{EVENT_LABEL[event]}</span>
-                  <span className="caret-svg"><Icon name="caret" size={12} /></span>
-                </>
-              }
-              onPickMi={(mi) => setEvent((mi.dataset.v as HookEvent) || "tool_call")}
-            >
-              {HOOK_EVENTS.map((e) => (
-                <div key={e} className="mi" data-v={e}>
-                  <span className="ck" style={{ visibility: event === e ? "visible" : "hidden" }}>✓</span>
-                  <span className="mi-label">{EVENT_LABEL[e]}</span>
-                </div>
-              ))}
-            </Sel>
-            <div className="mcp-form-hint">{t("settingsPage.hooks.eventHint")}</div>
+        <div className="frm-rows">
+          <div className="frm-pair">
+            <FormRow label={t("settingsPage.hooks.eventLabel")}>
+              <Sel
+                id="hookEventSel"
+                className="mcp-form-sel"
+                btnClassName="mcp-form-sel-btn"
+                btnChildren={
+                  <>
+                    <span className="mcp-form-sel-cur">{EVENT_LABEL[event]}</span>
+                    <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                  </>
+                }
+                onPickMi={(mi) => setEvent((mi.dataset.v as HookEvent) || "tool_call")}
+              >
+                {HOOK_EVENTS.map((e) => (
+                  <div key={e} className="mi" data-v={e}>
+                    <span className="ck" style={{ visibility: event === e ? "visible" : "hidden" }}>✓</span>
+                    <span className="mi-label">{EVENT_LABEL[e]}</span>
+                  </div>
+                ))}
+              </Sel>
+              <div className="frm-hint">{t("settingsPage.hooks.eventHint")}</div>
+              {!isToolEvent(event) ? <div className="frm-hint">{t("settingsPage.hooks.lifecycleHint")}</div> : null}
+            </FormRow>
+            <FormRow label={t("settingsPage.hooks.scopeLabel")}>
+              <div className="hook-form-scope">
+                <HookScopeSel value={scope} onChange={onScopeChange} />
+              </div>
+            </FormRow>
           </div>
-          <div className="flex items-center gap-2 ml-auto">
-            <span className="mcp-form-label mb-0">{t("settingsPage.hooks.scopeLabel")}</span>
-            <HookScopeSel value={scope} onChange={onScopeChange} />
-          </div>
+          {isToolEvent(event) ? (
+            <FormRow label={t("settingsPage.hooks.matcherLabel")}>
+              <input
+                type="text"
+                className="mcp-form-input mcp-form-code"
+                placeholder={t("settingsPage.hooks.matcherPlaceholder")}
+                spellCheck={false}
+                autoFocus
+                value={tool}
+                onChange={(e) => setTool(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") create();
+                }}
+              />
+              <div className="frm-hint">{t("settingsPage.hooks.matcherHint")}</div>
+            </FormRow>
+          ) : null}
         </div>
-        {isToolEvent(event) ? (
-          <div className="mcp-form-group">
-            <label className="mcp-form-label">{t("settingsPage.hooks.matcherLabel")}</label>
-            <input
-              type="text"
-              className="mcp-form-input mcp-form-code mcp-inp-name"
-              placeholder={t("settingsPage.hooks.matcherPlaceholder")}
-              spellCheck={false}
-              autoFocus
-              value={tool}
-              onChange={(e) => setTool(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") create();
-              }}
-            />
-            <div className="mcp-form-hint">{t("settingsPage.hooks.matcherHint")}</div>
-          </div>
-        ) : (
-          <div className="mcp-form-group">
-            <div className="mcp-form-hint">{t("settingsPage.hooks.lifecycleHint")}</div>
-          </div>
-        )}
         {status ? <div className="mcp-form-hint">{status}</div> : null}
       </div>
     </>
@@ -298,7 +294,7 @@ export default function HooksPage() {
   // Rows and the "new hook" button lead into the page-level editor window
   if (edit) {
     return (
-      <div className="set-page" id="pg-hooks">
+      <div className={edit.mode === "new" ? "set-page set-page-compact" : "set-page"} id="pg-hooks">
         {edit.mode === "new"
           ? <HookNewForm scope={scope} onScopeChange={setScope} onClose={() => setEdit(null)} />
           : <HookEditor hook={edit.hook} onClose={() => setEdit(null)} />}
@@ -339,13 +335,9 @@ export default function HooksPage() {
       </div>
 
       <div className="set-group-tt">{t("settingsPage.hooks.runConfigGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.hooks.runConfigDesc")}</div>
       <SchemaRows sections={PAGE_PLACEMENT["pg-hooks"]} />
 
       <div className="set-group-tt">{t("settingsPage.hooks.discoveredGroup")}</div>
-      <div className="set-group-desc">
-        {t("settingsPage.hooks.discoveredDescA")}<code>.omp/hooks/</code>{t("settingsPage.hooks.discoveredDescB")}
-      </div>
       <div className="agents-bar">
         <HookScopeSel value={scope} onChange={setScope} />
         <span className="truncate text-ui-sm text-faint" id="hooksScopePath" title={scopeDir}>{scopeDir}</span>

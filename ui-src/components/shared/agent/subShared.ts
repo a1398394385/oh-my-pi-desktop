@@ -63,6 +63,14 @@ export function timeSegments(sub: SubagentState, t: SegT, now: number): string[]
   return segs;
 }
 
+// Live progress line: the running tool call with its args, else the model's last stated
+// intent. Shared by the detail's "Current" section and a running roster row's task slot.
+export function currentProgress(sub: SubagentState): string {
+  const u = sub.usage;
+  if (u?.currentTool) return u.currentTool + (u.currentToolArgs ? ` · ${JSON.stringify(u.currentToolArgs)}` : "");
+  return u?.lastIntent ?? "";
+}
+
 // Roster status ordering (running first), matching the TUI Agent Hub's STATUS_ORDER
 export const STATUS_ORDER: Record<string, number> = { started: 0, running: 0, completed: 1, failed: 2, aborted: 3 };
 export function subStatus(sub: SubagentState): string {

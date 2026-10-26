@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getProviderDashboardStats, getProviderWindowStats } from "../api";
 import { Chart, type ChartSeries, Legend, ShareBar, TimeChart, useHiddenSeries } from "../charts";
-import { buildColorLookup, OTHER_COLOR } from "../data/colors";
+import { buildColorLookup, OTHER_COLOR, TOKEN_MIX_COLORS } from "../data/colors";
 import {
   formatCompact,
   formatCost,
   formatEstimatedCost,
+  formatErrorRate,
   formatInteger,
   formatPercent,
   formatTokensPerSecond,
@@ -51,10 +52,10 @@ const TOP_PROVIDERS = 6;
 
 // Labels come from i18n at render time; only stable key + color stay module-level.
 const TOKEN_MIX = [
-  { key: "input", color: "#5b8cff" },
-  { key: "cacheRead", color: "var(--chart-primary)" },
-  { key: "cacheWrite", color: "#f5b54a" },
-  { key: "output", color: "var(--chart-secondary)" },
+  { key: "input", color: TOKEN_MIX_COLORS.input },
+  { key: "cacheRead", color: TOKEN_MIX_COLORS.cacheRead },
+  { key: "cacheWrite", color: TOKEN_MIX_COLORS.cacheWrite },
+  { key: "output", color: TOKEN_MIX_COLORS.output },
 ] as const;
 
 const TOKEN_LABEL_KEYS: Record<(typeof TOKEN_MIX)[number]["key"], string> = {
@@ -66,7 +67,7 @@ const TOKEN_LABEL_KEYS: Record<(typeof TOKEN_MIX)[number]["key"], string> = {
 
 export function ProvidersRoute({ active, range }: ProvidersRouteProps) {
   const { t } = useTranslation();
-  const stats = useQuery(["providers", range], () => getProviderDashboardStats(range), { enabled: active });
+  const stats = useQuery(["providers", range], ({ signal }) => getProviderDashboardStats(range, signal), { enabled: active });
   const [metric, setMetric] = useState<BurnMetric>("tokens");
   const [hidden, toggleHidden] = useHiddenSeries();
   const meta = rangeMeta(range);
@@ -83,7 +84,7 @@ export function ProvidersRoute({ active, range }: ProvidersRouteProps) {
     [t],
   );
 
-  const windows = useQuery(["provider-windows", range], () => getProviderWindowStats(range, null), {
+  const windows = useQuery(["provider-windows", range], ({ signal }) => getProviderWindowStats(range, null, signal), {
     enabled: active,
   });
   const [picked, setPicked] = useState<WindowRef | null>(null);
@@ -91,7 +92,7 @@ export function ProvidersRoute({ active, range }: ProvidersRouteProps) {
   const selectedProvider = selected?.provider ?? null;
   const accounts = useQuery(
     ["provider-windows", range, selectedProvider],
-    () => getProviderWindowStats(range, selectedProvider),
+    ({ signal }) => getProviderWindowStats(range, selectedProvider, signal),
     { enabled: active && selectedProvider !== null },
   );
 
@@ -187,7 +188,7 @@ export function ProvidersRoute({ active, range }: ProvidersRouteProps) {
               />
               <Stat
                 label={t("settingsPage.stats.providers.statErrorRate")}
-                value={formatPercent(totals.requests > 0 ? totals.failed / totals.requests : 0)}
+                value={formatErrorRate(totals.requests > 0 ? totals.failed / totals.requests : 0)}
                 hint={t("settingsPage.stats.providers.statSucceededHint", {
                   count: totals.requests - totals.failed,
                 })}
@@ -352,9 +353,9 @@ function ProviderTotalsTable({
           const rate = p.totalRequests > 0 ? p.failedRequests / p.totalRequests : 0;
           return (
             <span className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
-              <span className="num dim">{formatInteger(p.failedRequests)}</span>
+              <span className="stats-num dim">{formatInteger(p.failedRequests)}</span>
               <Badge tone={p.failedRequests > 0 ? errorRateTone(rate) : "neutral"} mono>
-                {formatPercent(rate)}
+                {formatErrorRate(rate)}
               </Badge>
             </span>
           );
@@ -366,7 +367,7 @@ function ProviderTotalsTable({
         title: t("settingsPage.stats.providers.colModelsTitle"),
         align: "right",
         sort: p => p.models,
-        render: p => <span className="num">{formatInteger(p.models)}</span>,
+        render: p => <span className="stats-num">{formatInteger(p.models)}</span>,
       },
       {
         key: "tokens",
@@ -390,7 +391,7 @@ function ProviderTotalsTable({
         align: "right",
         sort: p => p.totalTokens,
         render: p => (
-          <span className="num muted">{formatPercent(grandTokens > 0 ? p.totalTokens / grandTokens : 0)}</span>
+          <span className="stats-num muted">{formatPercent(grandTokens > 0 ? p.totalTokens / grandTokens : 0)}</span>
         ),
       },
       {
@@ -401,7 +402,7 @@ function ProviderTotalsTable({
         sort: p => p.totalCost,
         render: p => (
           <span
-            className="num"
+            className="stats-num"
             title={
               p.unpricedRequests > 0
                 ? t("settingsPage.stats.providers.statUnpricedHint", { count: p.unpricedRequests })
@@ -418,7 +419,7 @@ function ProviderTotalsTable({
         title: t("settingsPage.stats.providers.colTpsTitle"),
         align: "right",
         sort: p => p.avgTokensPerSecond ?? -1,
-        render: p => <span className="num">{formatTokensPerSecond(p.avgTokensPerSecond)}</span>,
+        render: p => <span className="stats-num">{formatTokensPerSecond(p.avgTokensPerSecond)}</span>,
       },
       {
         key: "premium",
@@ -427,7 +428,7 @@ function ProviderTotalsTable({
         align: "right",
         sort: p => p.totalPremiumRequests,
         render: p => (
-          <span className={p.totalPremiumRequests > 0 ? "num" : "num dim"}>
+          <span className={p.totalPremiumRequests > 0 ? "stats-num" : "stats-num dim"}>
             {formatInteger(Math.round(p.totalPremiumRequests * 100) / 100)}
           </span>
         ),
@@ -604,7 +605,7 @@ function WindowInsightsTable({
         title: t("settingsPage.stats.providers.colAccountsTitle"),
         align: "right",
         sort: i => i.accounts,
-        render: i => <span className="num">{formatInteger(i.accounts)}</span>,
+        render: i => <span className="stats-num">{formatInteger(i.accounts)}</span>,
       },
       {
         key: "cycles",
@@ -612,7 +613,7 @@ function WindowInsightsTable({
         title: t("settingsPage.stats.providers.colResetsTitle"),
         align: "right",
         sort: i => i.cycles,
-        render: i => <span className="num muted">{formatInteger(i.cycles)}</span>,
+        render: i => <span className="stats-num muted">{formatInteger(i.cycles)}</span>,
       },
       {
         key: "consumed",
@@ -620,7 +621,7 @@ function WindowInsightsTable({
         title: t("settingsPage.stats.providers.colConsumedTitle"),
         align: "right",
         sort: i => i.fractionConsumed,
-        render: i => <span className="num">{i.fractionConsumed.toFixed(2)}</span>,
+        render: i => <span className="stats-num">{i.fractionConsumed.toFixed(2)}</span>,
       },
       {
         key: "capacity",
@@ -630,7 +631,7 @@ function WindowInsightsTable({
         sort: i => i.estTokensPerWindow ?? -1,
         render: i =>
           i.estTokensPerWindow !== null ? (
-            <span className="num">{formatCompact(i.estTokensPerWindow)}</span>
+            <span className="stats-num">{formatCompact(i.estTokensPerWindow)}</span>
           ) : (
             <span className="dim" title={t("settingsPage.stats.providers.tooLittleData")}>
               –
@@ -670,7 +671,7 @@ function WindowInsightsTable({
               })}
             </Badge>
           ) : (
-            <span className="num">{formatInteger(i.idealAccounts)}</span>
+            <span className="stats-num">{formatInteger(i.idealAccounts)}</span>
           ),
       },
       {
@@ -685,7 +686,7 @@ function WindowInsightsTable({
               {t("settingsPage.stats.providers.exhaustedBadge", { count: i.exhaustedEvents })}
             </Badge>
           ) : (
-            <span className="num dim">0</span>
+            <span className="stats-num dim">0</span>
           ),
       },
     ],

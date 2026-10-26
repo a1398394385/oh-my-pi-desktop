@@ -64,7 +64,7 @@ Call context_status first: its manifest lists this round's compressible blocks a
   3. remaining actions: what is still to be done, starting with your concrete next step.
   Unresolved issues recorded in the summary must be consistent with the remaining actions — never state an open problem and then propose to finish (summary self-consistency).
 
-One successful compress consumes the manifest — call context_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary with a per-block index; recall_block can fetch any of them back later. The protected tail and blocks outside the manifest are never compressed — do not list them in keep. A good habit: check context_status and compress after finishing a stage of work, before the context grows large.`;
+One successful compress consumes the manifest — call context_status again for the next round. Compressed blocks leave the context and are represented by a persistent summary; details folded into a summary are gone from the context, so record what later work depends on (paths, values, decisions) in the summary text itself. The protected tail and blocks outside the manifest are never compressed — do not list them in keep. A good habit: check context_status and compress after finishing a stage of work, before the context grows large.`;
 
 /** compress_context ToolDefinition (registered via createAgentSession({ customTools })). */
 export function createCompressContextTool(state: AcpRuntimeState) {

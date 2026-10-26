@@ -141,9 +141,6 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
       recurring: draft.endMode !== "count",
       maxRuns: draft.endMode === "count" ? clampInt(draft.maxRuns, 1, 100000, 1) : null,
       endAt: draft.endMode === "date" ? endAt : null,
-      // Dialog deadlines for this task's run sessions (0 = wait forever).
-      askTimeoutSec: clampInt(draft.askTimeout, 0, 86400, 300),
-      approvalTimeoutSec: clampInt(draft.approvalTimeout, 0, 86400, 300),
     };
     if (isNew) {
       send({ type: "automations_create", automation: { ...base, schedule: scheduleInput } });
@@ -229,7 +226,7 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
             {tab === "settings" && (
               <button
                 type="button"
-                className="al-primary aued-save"
+                className="frm-primary aued-save"
                 disabled={!canSave || !!initial?.deliverTo}
                 title={initial?.deliverTo ? t("autoEdit.deliveryLocked") : undefined}
                 onClick={save}
@@ -291,25 +288,25 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
             )}
           </aside>
 
-          <div className="aued-form">
-            <section className="aued-row">
-              <div className="aued-row-label">
+          <div className="aued-form frm-rows">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.basicInfo")}</strong>
-                <span>{t("autoEdit.basicInfoHint")}</span>
+                <span className="frm-hint">{t("autoEdit.basicInfoHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <input id="auedTitle" className="inp" spellCheck={false} maxLength={200} value={draft.title}
                   placeholder={t("settingsPage.automations.titlePlaceholder")}
                   onChange={(e) => patch({ title: e.target.value })} />
               </div>
             </section>
 
-            <section className="aued-row">
-              <div className="aued-row-label">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.scheduleSection")}</strong>
-                <span>{t("autoEdit.scheduleSectionHint")}</span>
+                <span className="frm-hint">{t("autoEdit.scheduleSectionHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <div className="aued-schedule-grid">
                   <div className="aued-schedule-note">
                     <strong>{schedSummary || t("settingsPage.automations.descNone")}</strong>
@@ -392,12 +389,12 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
               </div>
             </section>
 
-            <section className="aued-row">
-              <div className="aued-row-label">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.contentSection")}</strong>
-                <span>{t("autoEdit.contentSectionHint")}</span>
+                <span className="frm-hint">{t("autoEdit.contentSectionHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <div className="aued-promptwrap">
                   <textarea id="auedPrompt" className="aued-prompt" spellCheck={false} value={draft.prompt}
                     placeholder={t("settingsPage.automations.promptPlaceholder")}
@@ -439,12 +436,12 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
               </div>
             </section>
 
-            <section className="aued-row">
-              <div className="aued-row-label">
+            <section className="frm-row">
+              <div className="frm-label">
                 <strong>{t("autoEdit.boundarySection")}</strong>
-                <span>{t("autoEdit.boundarySectionHint")}</span>
+                <span className="frm-hint">{t("autoEdit.boundarySectionHint")}</span>
               </div>
-              <div className="aued-row-content">
+              <div className="frm-ctl">
                 <div className="aued-endrow">
                   <span className="aued-pills">
                     {["never", "count", "date"].map((m) => (
@@ -471,29 +468,6 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
                         {endBad && <span className="aued-err">{t("settingsPage.automations.endDateInvalid")}</span>}
                       </span>
                     )}
-                  </span>
-                </div>
-              </div>
-            </section>
-
-            <section className="aued-row">
-              <div className="aued-row-label">
-                <strong>{t("autoEdit.dialogSection")}</strong>
-                <span>{t("autoEdit.dialogSectionHint")}</span>
-              </div>
-              <div className="aued-row-content">
-                <div className="aued-endrow">
-                  <span className="aued-field-inline">
-                    <span className="aued-fl">{t("autoEdit.askTimeoutLabel")}</span>
-                    <input className="inp aued-inp-sm" inputMode="numeric" value={draft.askTimeout}
-                      onChange={(e) => patch({ askTimeout: e.target.value })} />
-                    <span className="aued-sep">{t("autoEdit.timeoutUnit")}</span>
-                  </span>
-                  <span className="aued-field-inline">
-                    <span className="aued-fl">{t("autoEdit.approvalTimeoutLabel")}</span>
-                    <input className="inp aued-inp-sm" inputMode="numeric" value={draft.approvalTimeout}
-                      onChange={(e) => patch({ approvalTimeout: e.target.value })} />
-                    <span className="aued-sep">{t("autoEdit.timeoutUnit")}</span>
                   </span>
                 </div>
               </div>

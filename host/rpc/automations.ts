@@ -10,7 +10,7 @@ import {
   type AutomationUpsertInput,
 } from "../automations/types.ts";
 import { computeAutomationNextRunAt } from "../automations/cron.ts";
-import { createAutomation, optCount, optSeconds, reqString, resolveSchedule } from "../automations/create.ts";
+import { createAutomation, optCount, reqString, resolveSchedule } from "../automations/create.ts";
 import { readAutomations, writeAutomations } from "../automations/store.ts";
 import { runAutomationNow } from "../automations/scheduler.ts";
 import { hostI18n } from "../i18n/host.ts";
@@ -83,13 +83,6 @@ export const automationsHandlers: Record<string, RpcHandler> = {
       const maxRuns = optCount(patch.maxRuns);
       if (maxRuns !== undefined) a.maxRuns = maxRuns;
       else delete a.maxRuns;
-    }
-    // Dialog deadlines: a number >= 0 is stored; null/junk resets to the default
-    // (absent field), never to an accidental 0 = wait forever.
-    for (const key of ["askTimeoutSec", "approvalTimeoutSec"] as const) {
-      const secs = optSeconds(patch[key]);
-      if (secs !== undefined) a[key] = secs;
-      else if (patch[key] !== undefined) delete a[key];
     }
     if (patch.endAt !== undefined) {
       if (typeof patch.endAt === "number" && Number.isFinite(patch.endAt)) a.endAt = patch.endAt;

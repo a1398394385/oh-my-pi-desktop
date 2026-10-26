@@ -49,7 +49,7 @@ const { createRoot } = await import("react-dom/client");
 
 const baseSettings = {
   acpEnabled: false,
-  acpConfig: { tierMode: "absolute", l1: 150000, l2: 250000, l3: 350000, tailTurns: 2, tailTokens: 20000 },
+  acpConfig: { tierMode: "absolute", l1: 150000, l2: 250000, l3: 350000, tailTurns: 2, tailTokens: 20000, tailUserMessages: 4 },
   sessionContextEnabled: false,
   keepaliveEnabled: false,
   keepaliveConfig: {
@@ -87,6 +87,7 @@ try {
   await render({ ...baseSettings, acpEnabled: true });
   assert.equal(blocks().length, 1, "ACP detail block appears");
   assert(text().includes("L1 档位阈值") && text().includes("尾部保护区(turn)"), "ACP detail rows visible");
+  assert(text().includes("尾部保护区(用户消息)"), "user-message tail row visible");
   assert(!text().includes("探测节奏"), "keepalive rows stay hidden");
 
   // 3. Keepalive on as well: two independent blocks

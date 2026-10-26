@@ -23,7 +23,7 @@ export function AggregatesPanel({ toolStats, index }: AggregatesPanelProps) {
       key: "calls",
       header: t("settingsPage.stats.traceView.aggregates.colCalls"),
       align: "right",
-      render: (row) => <span className="num">{formatInteger(row.calls)}</span>,
+      render: (row) => <span className="stats-num">{formatInteger(row.calls)}</span>,
       sort: (row) => row.calls,
     },
     {
@@ -36,7 +36,7 @@ export function AggregatesPanel({ toolStats, index }: AggregatesPanelProps) {
             {t("settingsPage.stats.traceView.aggregates.failed", { count: row.errors })}
           </Badge>
         ) : (
-          <span className="num dim">0</span>
+          <span className="stats-num dim">0</span>
         ),
       sort: (row) => row.errors,
     },
@@ -54,14 +54,14 @@ export function AggregatesPanel({ toolStats, index }: AggregatesPanelProps) {
       key: "avg",
       header: t("settingsPage.stats.traceView.aggregates.colAvg"),
       align: "right",
-      render: (row) => <span className="num">{formatDurationMs(row.calls > 0 ? row.totalMs / row.calls : 0)}</span>,
+      render: (row) => <span className="stats-num">{formatDurationMs(row.calls > 0 ? row.totalMs / row.calls : 0)}</span>,
       sort: (row) => (row.calls > 0 ? row.totalMs / row.calls : 0),
     },
     {
       key: "max",
       header: t("settingsPage.stats.traceView.aggregates.colMax"),
       align: "right",
-      render: (row) => <span className="num">{formatDurationMs(row.maxMs)}</span>,
+      render: (row) => <span className="stats-num">{formatDurationMs(row.maxMs)}</span>,
       sort: (row) => row.maxMs,
     },
   ];

@@ -2,14 +2,14 @@ import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { formatInteger } from "./data/formatters";
-import { useLive } from "./data/live";
+import { useLiveStatus } from "./data/live";
 import { Dot } from "./ui";
 
 const INDEXING_VISIBLE_HOURS = 24;
 
 export function LiveChip() {
   const { t } = useTranslation();
-  const { sync, indexingHours, connected, requestSync } = useLive();
+  const { sync, indexingHours, connected, requestSync } = useLiveStatus();
   const now = useNow(sync.phase === "idle" ? 15_000 : null);
 
   const ago = (ms: number): string => {

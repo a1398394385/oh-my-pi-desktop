@@ -26,7 +26,7 @@ const LEGEND_KINDS: TraceSpanKind[] = ["turn", "model", "tool", "subagent", "bac
 
 export function TraceView({ file, active, onBack }: TraceViewProps) {
   const { t } = useTranslation();
-  const query = useQuery(["trace", file], () => getSessionTrace(file), { pollMs: 15000, enabled: active });
+  const query = useQuery(["trace", file], ({ signal }) => getSessionTrace(file, signal), { pollMs: 15000, enabled: active });
   const trace = query.stale ? null : query.data;
 
   const [mode, setMode] = useState<AxisMode>("time");
@@ -284,7 +284,7 @@ export function TraceView({ file, active, onBack }: TraceViewProps) {
                     />
                     {search.trim() && (
                       <>
-                        <span className="num muted traces-match-count">
+                        <span className="stats-num muted traces-match-count">
                           {matches.length === 0
                             ? "0"
                             : `${(matchIndex % Math.max(matches.length, 1)) + 1}/${matches.length}`}

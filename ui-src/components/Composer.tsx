@@ -150,13 +150,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     (st) => st.hostSettings?.computerProvider === "kimi" && st.hostSettings?.kimiCuInstalled === true,
   );
   const computerIconOn = computerGateOn || kimiProviderOn;
-  // Voice conversation mode = synthesis + dictation switches both on; the mic
-  // button toggles them together and lights while they hold. Remote clients
-  // have no microphone (http is not a secure context): voiceMode reads false
-  const voiceModeOn = useAppStore(
-    (st) => st.hostSettings?.values?.["speech.enabled"] === true && st.hostSettings?.values?.["stt.enabled"] === true,
-  );
-  const voiceMode = !REMOTE && voiceModeOn;
+  // Voice input availability: dictation switch on + local model cached (the
+  // snapshot normally arrives with the settings page, so the composer asks once).
+  // Remote clients have no microphone (http is not a secure context).
+  const sttOn = useAppStore((st) => st.hostSettings?.values?.["stt.enabled"] === true);
+  const voiceReady = useAppStore((st) => st.voiceStatus?.ready === true);
+  const voiceInput = !REMOTE && sttOn && voiceReady;
   const voiceStt = useAppStore((st) => st.voiceStt);
   const sttSubmitSignal = useAppStore((st) => st.sttSubmitSignal);
   const lastSubmitSeqRef = useRef(0);
@@ -182,38 +181,48 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const modelBtnRef = useRef<HTMLButtonElement>(null);
   const [openMenu, setOpenMenu] = useState<MenuName | null>(null); // "mode" | "model" | null (mutually exclusive)
   const [stopPending, setStopPending] = useState(false); // stop-button double-click guard (reset on turn_end)
+  const [sendHover, setSendHover] = useState(false); // pointer over the send button (empty draft -> mic icon)
   const barStageRef = useRef(0); // last collapse stage (close open menus when it changes)
-  // Push-to-talk: the press arms a 180ms timer — a quick tap never reaches
-  // stt_start (its click toggles the voice mode); holding past the timer
-  // starts dictation and the release click is swallowed
+  // Push-to-talk on the send button: the press arms a 180ms timer — released
+  // before it, the release click runs the normal send/stop form; held past it,
+  // dictation starts and the release stops the capture without sending (the
+  // release click is swallowed, holdTalkRef marks the long press)
   const PTT_DELAY_MS = 180;
   const pttTimerRef = useRef<number | undefined>(undefined);
-  const pttDownRef = useRef(false);
+  const talkingRef = useRef(false);
   const holdTalkRef = useRef(false);
-  const beginMicTalk = () => {
-    if (pttTimerRef.current !== undefined) return;
+  const beginTalk = () => {
+    if (!voiceInput || pttTimerRef.current !== undefined) return;
     pttTimerRef.current = window.setTimeout(() => {
       pttTimerRef.current = undefined;
-      pttDownRef.current = true;
+      talkingRef.current = true;
       setTtsDuck(true);
       send({ type: "stt_start", sessionId: sessionId ?? "", anchor: getDraftText(draftKey) });
     }, PTT_DELAY_MS);
   };
-  const endMicTalk = () => {
+  // release = true only for the pointer-up on the button, i.e. when a click follows
+  const stopTalk = (release: boolean) => {
     if (pttTimerRef.current !== undefined) {
-      // Released before the delay: a quick tap, let the click toggle the mode
+      // Released before the delay: a quick press, the click owns the action
       clearTimeout(pttTimerRef.current);
       pttTimerRef.current = undefined;
       return;
     }
-    pttDownRef.current = false;
+    if (!talkingRef.current) return;
+    talkingRef.current = false;
     setTtsDuck(false);
-    holdTalkRef.current = true;
+    if (release) holdTalkRef.current = true;
     send({ type: "stt_stop" });
   };
 
   // Unmount safety: a pending press timer must not fire stt_start after the composer is gone
   useEffect(() => () => clearTimeout(pttTimerRef.current), []);
+
+  // The send button only offers dictation once the local model is cached; the
+  // status snapshot normally arrives with the settings page, so ask once here
+  useEffect(() => {
+    if (sttOn && useAppStore.getState().voiceStatus === null) send({ type: "voice_status" });
+  }, [sttOn]);
 
   // refreshes the send button ready state and the bash-mode class, equivalent to the
   // notify/forceRender in the old onInput
@@ -1088,58 +1097,52 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           <CtxRing ringRef={setCtxRingEl} />
           <CtxCard anchor={ctxRingEl} />
           {!narrow && modelThinkPills}
-          {/* Voice conversation: mic toggle left of send; lit = synthesis +
-              dictation. Click toggles both switches; hold while lit =
-              push-to-talk (the release click is swallowed). Not rendered on
-              remote clients: no microphone without a secure context. */}
-          {!REMOTE && (
+          {/* Send / stop. With voice input available the button also carries
+              push-to-talk: an empty draft swaps the icon to a mic on hover and a
+              long press dictates; the click runs only on a short release. The
+              stop form keeps its stop icon (same long-press dictation). */}
           <button
-            className={"pill-btn mic-btn" + (voiceMode ? " on" : "") + (voiceStt ? " rec" : "")}
-            id="voiceBtn"
+            className={
+              "send" +
+              (canAbort ? " stop" : hasDraft ? " ready" : "") +
+              (canAbort ? " stopping" : "") +
+              (voiceStt ? " rec" : "")
+            }
+            id="sendBtn"
+            disabled={stopping && stopPending}
             title={
               voiceStt
                 ? (voiceStt.state === "recording" ? t("composer.voiceListening") : t("composer.voiceTranscribing")) +
                   (voiceStt.message ? ` — ${voiceStt.message}` : "")
-                : voiceMode
-                  ? t("composer.voiceOnTitle")
-                  : t("composer.voiceOffTitle")
+                : escArmed
+                  ? t("composer.sendEscAgain")
+                  : stopping
+                    ? bashRunning && !streaming
+                      ? t("composer.stopCommand")
+                      : t("composer.stopGeneration")
+                    : streaming
+                      ? t("composer.sendQueued")
+                      : voiceInput && text.trim().length === 0
+                        ? t("composer.voiceHoldTitle")
+                        : t("composer.send")
             }
-            onPointerDown={(e) => {
-              if (!voiceMode || e.button !== 0) return;
-              beginMicTalk();
+            onPointerEnter={() => setSendHover(true)}
+            onPointerLeave={() => {
+              // Leaving cancels the hover swap and a live capture (no send)
+              setSendHover(false);
+              stopTalk(false);
             }}
-            onPointerUp={endMicTalk}
-            onPointerLeave={endMicTalk}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              beginTalk();
+            }}
+            onPointerUp={() => stopTalk(true)}
             onClick={() => {
-              // A release after push-to-talk is not a mode toggle
+              // A release after a push-to-talk capture is not a send/stop
               if (holdTalkRef.current) {
                 holdTalkRef.current = false;
                 return;
               }
-              const next = !voiceMode;
-              send({ type: "set_setting", key: "speech.enabled", value: next });
-              send({ type: "set_setting", key: "stt.enabled", value: next });
-            }}
-          >
-            <Icon name="mic" size={15} />
-          </button>
-          )}
-          <button
-            className={"send" + (canAbort ? " stop" : hasDraft ? " ready" : "") + (canAbort ? " stopping" : "")}
-            id="sendBtn"
-            disabled={stopping && stopPending}
-            title={
-              escArmed
-                ? t("composer.sendEscAgain")
-                : stopping
-                  ? bashRunning && !streaming
-                    ? t("composer.stopCommand")
-                    : t("composer.stopGeneration")
-                  : streaming
-                    ? t("composer.sendQueued")
-                    : t("composer.send")
-            }
-            onClick={() => {
               // Cancel form (stop generation / Esc warning window): abort
               // generation; send form: send/queue as usual
               if (canAbort) {
@@ -1154,7 +1157,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               sendPrompt();
             }}
           >
-            <Icon name={canAbort ? "stopSolid" : "arrowRight"} size={16} />
+            <Icon
+              name={voiceStt || (voiceInput && !canAbort && text.trim().length === 0 && sendHover) ? "mic" : canAbort ? "stopSolid" : "arrowRight"}
+              size={16}
+            />
           </button>
           </div>
         </div>

@@ -33,8 +33,7 @@ const ALLOWED_EDGES = new Set([
   "session-lifecycle.ts→acp-runtime.ts", "session-lifecycle.ts→acp-persist.ts", "session-lifecycle.ts→acp-plan.ts",
   "acp-runtime.ts→acp-projection.ts", "acp-runtime.ts→acp-plan.ts",
   "acp-runtime.ts→acp-persist.ts", "acp-runtime.ts→stderr.ts",
-  "acp-runtime.ts→acp-recall-tool.ts", "acp-recall-tool.ts→acp-projection.ts",
-  "acp-recall-tool.ts→acp-persist.ts", "session-lifecycle.ts→acp-recall-tool.ts",
+  // (acp-recall-tool.ts removed v12-2026-10-26: recall_block dropped, 0 uses / 84 blocks)
   // T11 acp-runtime split (pure refactor): the §6 compress validation/planning
   // moved to acp-compress (pure over plan/projection/persist shapes), and the
   // assembly layer (runtime factory + tool/extension definitions) to
@@ -78,6 +77,12 @@ const ALLOWED_EDGES = new Set([
   "models.ts→state.ts", "models.ts→bootstrap.ts",
   "assets.ts→state.ts", "assets.ts→bootstrap.ts", "assets.ts→profile.ts",
   "stats.ts→bootstrap.ts",
+  // Stats dashboard judge: profile.ts hands the host's settings + model registry to
+  // stats-judge.ts, which registers the judge omp-stats' frustration classification needs.
+  "profile.ts→stats-judge.ts", "stats-judge.ts→bootstrap.ts", "stats-judge.ts→stderr.ts",
+  // ACP compaction gain (stats Gain page): acp-gain scans the profile's session journals
+  // and needs the SDK's session dir path from bootstrap (getSessionsDir).
+  "acp-gain.ts→bootstrap.ts", "stats.ts→acp-gain.ts",
   // Extension center (transplanted from /extensions): extensions.ts gets SDK handles via bootstrap and reads H state;
   // main.ts mounts four RPC dispatches (same integration shape as assets.ts)
   "main.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
@@ -366,6 +371,9 @@ const ALLOWED_EDGES = new Set([
   "automations/scheduler.ts→automations/cron.ts", "automations/scheduler.ts→automations/store.ts",
   "automations/scheduler.ts→automations/types.ts", "automations/scheduler.ts→state.ts",
   "automations/scheduler.ts→session-lifecycle.ts", "automations/scheduler.ts→stderr.ts",
+  // Dispatch reads the automation settings page's dialog deadlines (omp-desktop.json
+  // automations.askTimeoutSec / approvalTimeoutSec) per run.
+  "automations/scheduler.ts→profile.ts",
   "rpc/index.ts→rpc/automations.ts",
   "rpc/automations.ts→rpc/types.ts",
   "rpc/automations.ts→automations/types.ts", "rpc/automations.ts→automations/cron.ts",

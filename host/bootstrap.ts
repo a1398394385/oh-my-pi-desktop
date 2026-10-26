@@ -99,6 +99,12 @@ export const { beginBtwTurn, runBtwTurn, patchLatestBtwTurn } = await import(
 export const { BtwHistoryStore, getBtwLatestTurn } = await import(
   "@oh-my-pi/pi-coding-agent/session/btw-history"
 );
+// Judgment chain for the stats dashboard's frustration classification: the host
+// registers a judge (host/stats.ts) so that page classifies messages with the
+// configured judge model instead of the regex fallback. Same judge role chain the
+// base CLI's `omp stats` uses; dynamic import like every SDK binding here
+// (setProfile must precede the SDK graph — header).
+export const { resolveJudge, sharedJudgmentCache } = await import("@oh-my-pi/pi-coding-agent/judgment");
 export const { loadCapability } = await import("@oh-my-pi/pi-coding-agent/discovery");
 export const { clearCache: clearCapabilityFsCache } = await import("@oh-my-pi/pi-coding-agent/capability/fs");
 export const {
@@ -268,3 +274,7 @@ export const { quotePosixArgument } = await import("@oh-my-pi/pi-coding-agent/ut
 // precede the coding-agent graph (file-header constraint).
 export const { STTController, isSttModelCached, downloadSttModel } = await import("@oh-my-pi/pi-coding-agent/stt");
 export const { resolveSttModelSpec } = await import("@oh-my-pi/pi-coding-agent/stt/models");
+// One-shot reading for the message speak button: the tts tool owns the backend
+// choice (speech role chain: local-inference / xai-tts / openai-speech, plus the
+// local WAV substitution) instead of a second hand-rolled provider table here.
+export const { ttsTool, resolveSpeechCandidates } = await import("@oh-my-pi/pi-coding-agent/tools/tts");

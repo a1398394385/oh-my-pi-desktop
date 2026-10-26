@@ -55,14 +55,44 @@ async function readErrorMessage(res: Response, endpoint: string): Promise<string
   return t("settingsPage.stats.api.httpError", { status: res.status, endpoint });
 }
 
+/**
+ * ETag + parsed body per endpoint. The stats server only tags session traces,
+ * and a 304 lets the polling trace view reuse the body it already holds
+ * instead of downloading megabytes again.
+ */
+const revalidations = new Map<string, { etag: string; body: unknown }>();
+const REVALIDATION_LIMIT = 8;
+
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   const base = getApiBase();
   const endpoint = `${base}${path}`;
-  const res = await fetch(endpoint, options);
+  const method = options?.method ?? "GET";
+  const cached = method === "GET" ? revalidations.get(path) : undefined;
+  let init = options;
+  if (cached) {
+    const headers = new Headers(options?.headers);
+    headers.set("If-None-Match", cached.etag);
+    init = { ...options, headers };
+  }
+  const res = await fetch(endpoint, init);
+  if (res.status === 304 && cached) return cached.body as T;
   if (!res.ok) {
     throw new ApiError(res.status, endpoint, await readErrorMessage(res, endpoint));
   }
-  return res.json() as Promise<T>;
+  const data = (await res.json()) as T;
+  if (method === "GET") {
+    revalidations.delete(path);
+    const etag = res.headers.get("ETag");
+    if (etag) {
+      revalidations.set(path, { etag, body: data });
+      while (revalidations.size > REVALIDATION_LIMIT) {
+        const oldest = revalidations.keys().next().value;
+        if (oldest === undefined) break;
+        revalidations.delete(oldest);
+      }
+    }
+  }
+  return data;
 }
 
 const ACTION_HEADERS = { "X-Omp-Stats-Action": "1" };

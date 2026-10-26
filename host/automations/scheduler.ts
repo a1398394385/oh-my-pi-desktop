@@ -10,11 +10,12 @@
 import { randomUUID } from "node:crypto";
 import { ensureSessionLoaded, spawnSession } from "../session-lifecycle.ts";
 import { H, eachUiWs, stampEvent } from "../state.ts";
+import { readAutomationDialogTimeouts } from "../profile.ts";
 import { safeStderr } from "../stderr.ts";
 import { computeAutomationNextRunAt, isOneShot } from "./cron.ts";
 import { deliveryText } from "./delivery.ts";
 import { readAutomations, trimRuns, writeAutomations } from "./store.ts";
-import { AUTOMATION_DELIVERY_CUSTOM_TYPE, AUTOMATION_DIALOG_TIMEOUT_SEC } from "./types.ts";
+import { AUTOMATION_DELIVERY_CUSTOM_TYPE } from "./types.ts";
 import type { Automation, AutomationRun, AutomationsFile, SpawnFn, SpawnOutcome, TickOpts } from "./types.ts";
 
 /** Poll cadence for the tick loop (ZCodium scheduler parity). */
@@ -323,6 +324,7 @@ async function deliverToSession(a: Automation): Promise<SpawnOutcome> {
  */
 const defaultSpawn: SpawnFn = async (a) => {
   if (a.deliverTo) return deliverToSession(a);
+  const dialogTimeouts = readAutomationDialogTimeouts();
   // Broadcast to every connected UI (local + remote); null while none is
   // connected — frames drop.
   const uiWs = {
@@ -334,9 +336,9 @@ const defaultSpawn: SpawnFn = async (a) => {
   const { sessionId, entry } = await spawnSession(uiWs, a.cwd, targetModel, undefined, {
     automation: { id: a.id, title: a.title, computer: a.computer === true },
     // Unattended run: nobody is at the machine, so dialogs answer themselves at
-    // the task's deadline (older records fall back to the default).
-    askTimeoutSec: a.askTimeoutSec ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
-    approvalTimeoutSec: a.approvalTimeoutSec ?? AUTOMATION_DIALOG_TIMEOUT_SEC,
+    // the automation settings page's deadlines (read per dispatch).
+    askTimeoutSec: dialogTimeouts.askSec,
+    approvalTimeoutSec: dialogTimeouts.approvalSec,
   });
   try {
     if (await entry.manager.setSessionName(a.title, "user")) {

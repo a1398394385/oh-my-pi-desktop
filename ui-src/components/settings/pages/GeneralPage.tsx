@@ -467,7 +467,7 @@ export default function GeneralPage() {
       <div className="set-group-tt">{t("settingsPage.general.groupApp")}</div>
       <div className="set-card">
         <div className="srow">
-          <div className="srow-tx"><b>{t("common.languageLabel")}</b><span>{t("settingsPage.general.langDesc")}</span></div>
+          <div className="srow-tx"><b>{t("common.languageLabel")}</b></div>
           <Sel
             label={LANG_NATIVE[lang]}
             dataSel={LANG_NATIVE[lang]}

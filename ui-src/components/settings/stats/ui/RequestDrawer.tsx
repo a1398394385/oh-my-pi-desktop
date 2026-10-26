@@ -51,7 +51,7 @@ export interface RequestDrawerProps {
 
 export function RequestDrawer({ id, onClose, onOpenSession }: RequestDrawerProps) {
   const { t } = useTranslation();
-  const query = useQuery(["request", id], () => getRequestDetails(id ?? 0), { enabled: id !== null });
+  const query = useQuery(["request", id], ({ signal }) => getRequestDetails(id ?? 0, signal), { enabled: id !== null });
   const details = query.stale ? null : query.data;
   const status = details ? REQUEST_STATUS[requestStatus(details)] : null;
 

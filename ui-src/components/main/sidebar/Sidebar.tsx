@@ -53,6 +53,7 @@ interface ProjDragGroup {
   cwd: string;
   top: number;
   h: number;
+  slot: number; // h + the sibling gap: how far a displaced row must travel
 }
 
 // Drag candidate (pressed but under the 5px threshold); groups non-null means dragging has begun
@@ -66,6 +67,7 @@ interface ProjDragPending {
 interface ProjDragActive extends Omit<ProjDragPending, "groups"> {
   groups: ProjDragGroup[];
   selfH: number;
+  headH: number;
   k0: number;
   base: ProjDragGroup[];
   idx: number;
@@ -161,7 +163,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const [projAdd, setProjAdd] = useState<{ rect: DOMRect } | null>(null); // { rect } manual add-project popover anchor
   const [wtRemove, setWtRemove] = useState<{ path: string } | null>(null); // worktree-remove confirm dialog target
   const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }: inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
-  const [drag, setDrag] = useState<ProjDragActive | null>(null); // { cwd, selfH, k0, base:[{cwd,top,h}], idx, x, y, left, w, grabY }
+  const [drag, setDrag] = useState<ProjDragActive | null>(null); // { cwd, selfH, headH, k0, base:[{cwd,top,h,slot}], idx, x, y, left, w, grabY }
   const dragRef = useRef<ProjDrag | null>(null); // latest drag state during pointer events; keeps high-frequency pointermove from reading a stale closure
   const suppressProjClickRef = useRef(false); // swallow the click produced by the same pointerup after a drag ends
   const listRef = useRef<HTMLDivElement>(null);
@@ -272,16 +274,21 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     // reorderable rows (otherwise the committed order shifts by one).
     const defaultWorkspace = useAppStore.getState().defaultWorkspace;
     const heads = [...listRef.current!.querySelectorAll<HTMLElement>(".project-scroll > .proj")].filter((h) => h.dataset.cwd !== defaultWorkspace); // the list is guaranteed mounted by event time
-    const base: ProjDragGroup[] = heads.map((head) => {
+    const rects = heads.map((head) => {
       const rect = head.getBoundingClientRect();
       const kids = head.nextElementSibling?.classList.contains("proj-kids") ? head.nextElementSibling : null;
       return {
         cwd: head.dataset.cwd!, // a .proj group head always carries data-cwd (guaranteed by ProjGroup rendering)
         // getBoundingClientRect returns screen pixels; yield transforms and drag displacement are both computed in zoomed CSS coordinates.
         top: rect.top / z,
+        headH: rect.height / z,
         h: (rect.height + (kids?.getBoundingClientRect().height ?? 0)) / z,
       };
     });
+    // Sibling margins live between rows, so no single rect contains them: a displaced row has to
+    // travel its whole slot (row + gap) or it stops one gap short of the vacated slot.
+    const gap = rects.length > 1 ? Math.max(0, rects[1].top - rects[0].top - rects[0].h) : 0;
+    const base: ProjDragGroup[] = rects.map((r) => ({ cwd: r.cwd, top: r.top, h: r.h, slot: r.h + gap }));
     const k0 = base.findIndex((g) => g.cwd === pending.cwd);
     const head = heads[k0];
     const rect = head?.getBoundingClientRect();
@@ -289,7 +296,8 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const project: ProjectIconSource = visible.find((p) => p.cwd === pending.cwd) || { cwd: pending.cwd };
     const drag: ProjDragActive = {
       ...pending,
-      selfH: base[k0].h,
+      selfH: base[k0].slot,
+      headH: rects[k0].headH,
       k0,
       base,
       groups: base,
@@ -315,7 +323,10 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     const z = effZoom();
     const dy = (e.clientY - d.startClientY) / z;
     const self = d.base[d.k0];
-    const dragMid = self.top + dy + self.h / 2;
+    // Judge by the ghost's visible head center, not the whole group: an expanded group's session
+    // rows hang below the pointer, so a whole-group midpoint only "arrives" long after the head
+    // has visually crossed the target.
+    const dragMid = self.top + dy + d.headH / 2;
     const others = d.base.filter((g) => g.cwd !== d.cwd);
     let idx = others.length;
     for (let i = 0; i < others.length; i++) {
@@ -613,10 +624,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
             </div>
             <div className="project-scroll">
               {(() => {
+                // The pinned default row is dropped from the drag geometry (see beginProjDrag),
+                // so it must be excluded from the ordinal here too: counting it shifts every
+                // later group by one slot and makes the row above the dragged one move first.
                 let oi = 0; // ordinal of the other groups (excluding the dragged one), for yield displacement
                 return visible.map((p) => {
                   const isSelf = drag && p.cwd === drag.cwd;
-                  const i = isSelf ? -1 : oi++;
+                  const i = isSelf || p.isDefault ? -1 : oi++;
                   // The dragged group's placeholder inserts at drag.idx: groups after it move
                   // down by selfH; groups after the dragged group's original slot first move up to backfill
                   const ty = drag && !isSelf

@@ -5,7 +5,7 @@
 // covered by scripts/translate-history-run-error.test.ts.
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/run-seal-error.test.ts
 import { describe, expect, test } from "bun:test";
-import { sealRunItems, turnEndedWithError } from "../ui-src/store/run-seal";
+import { endingErrorText, sealRunItems, turnEndedWithError } from "../ui-src/store/run-seal";
 import type { LoopItem, OpenSession, SessionItem } from "../ui-src/types/session";
 
 function session(items: SessionItem[]): OpenSession {
@@ -63,8 +63,53 @@ describe("sealRunItems", () => {
 			{ role: "error", text: "socket closed" },
 		]);
 		sealRunItems(s, null);
-		// Sidebar dot / desktop alert look for the error row; it now sits inside the group.
+		// Sidebar dot looks for the error row; it now sits inside the group.
 		expect(turnEndedWithError(s.items)).toBe(true);
 		expect(turnEndedWithError([{ role: "user", text: "go" }, { role: "assistant", text: "ok" }])).toBe(false);
+	});
+});
+
+// Desktop alert gating (session.ts turn_end): only a failure the run actually ended on alerts.
+describe("endingErrorText", () => {
+	test("a failure the base retried away is not the run's verdict", () => {
+		expect(
+			endingErrorText([
+				{ role: "user", text: "go" },
+				{ role: "error", text: "400 invalid request" },
+				{ role: "assistant", text: "recovered" },
+			]),
+		).toBeNull();
+	});
+
+	test("a trailing failure is reported with its text, past annotation rows", () => {
+		expect(endingErrorText([{ role: "user", text: "go" }, { role: "error", text: "quota" }])).toBe("quota");
+		expect(
+			endingErrorText([
+				{ role: "user", text: "go" },
+				{ role: "error", text: "quota" },
+				{ role: "mention", text: "", files: [] },
+			]),
+		).toBe("quota");
+	});
+
+	test("the last attempt's failure wins over earlier retries", () => {
+		expect(
+			endingErrorText([
+				{ role: "user", text: "go" },
+				{ role: "error", text: "attempt 1" },
+				{ role: "error", text: "attempt 2" },
+			]),
+		).toBe("attempt 2");
+	});
+
+	test("a completed turn and a previous turn's sealed error both stay silent", () => {
+		expect(endingErrorText([])).toBeNull();
+		expect(endingErrorText([{ role: "user", text: "go" }, { role: "assistant", text: "ok" }])).toBeNull();
+		expect(
+			endingErrorText([
+				{ role: "user", text: "go" },
+				{ role: "loop", text: "", collapsed: true, items: [{ role: "error", text: "old" } as SessionItem] } as SessionItem,
+			]),
+		).toBeNull();
 	});
 });

@@ -2,7 +2,7 @@
 
 > 本文件列出本仓库"被破坏过"或"绕过代价极大"的规则。AI 改代码前**必须**先读本文件;review 时**必须**检查是否违反。
 >
-> 当前 13 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
+> 当前 15 条:体系随 [documentation.md §8](../docs/documentation.md) 建立于 2026-09-20,新 RULE 待真实事故或 Accepted ADR 背书后立入(判据:背书真实 + 可执行,见 §8「何时新增 RULE」)。
 
 ## 规则总览
 
@@ -22,6 +22,7 @@
 | RULE-012 | 架构行数门禁走「域预算 + 单文件软硬线」,禁止再给单个文件写固定上限 | scripts/check-architecture.mjs |
 | RULE-013 | 双端都渲染的状态帧禁止 `ws.send` 只发请求方,必须走扇出原语;新增共享帧必须登记 + 双通道断言 | host/ 全部推送点 + scripts/frame-fanout.json |
 | RULE-014 | 相对时间（工作中 Ns / 已用时 / age）的起点必须由宿主随帧下发 epoch ms,禁止客户端就地取 `Date.now()` | host/wire + ui-src 展示层 |
+| RULE-015 | 编译版应用禁止可被外部进程远程接管：不得启用 tauri `devtools` feature,Windows 非 debug 构建必须清掉 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` | src-tauri/ 壳层 |
 
 ---
 
@@ -181,3 +182,13 @@
 **How to apply**:新增计时展示时，先在 host 侧找/加负责该状态的对象上的 `*StartedAt` 字段，把它加进快照帧；客户端用 `entry.turnStartAt = msg.busySince ?? null` 这类种子初始化，并在 `useEffect` 里做 250ms 轮询重算（`setInterval(1000)` 与起点不同相，主线程阻塞时会被压缩）。跨端一致性自检：两端在运行中打开同一会话，显示的秒数差应 < 2s。
 
 **关联**:BUG-100
+
+### RULE-015: 编译版应用禁止可被外部进程远程接管
+
+**规则**:`src-tauri/Cargo.toml` 的 `tauri` 依赖**禁止**启用 `devtools` feature;Windows 非 debug 构建必须在创建 webview 之前清掉 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`(`src-tauri/src/lib.rs` 的 `run()`)。debug 构建(`bun run dev`)不受影响——devtools 在 `cfg(debug_assertions)` 下自动可用。
+
+**Why**:tauri 的 `devtools` feature 语义是「让 **release** 构建也保留 devtools」;一旦打开,`tauri-runtime-wry` 会 `with_devtools(true)`,wry 随即在 macOS 上 `WKWebView.setInspectable(true)`(Safari Web Inspector 可附着并驱动页面)、Windows 上 `SetAreDevToolsEnabled(true)`——打包发布的应用就能被本机任意进程接管。Windows 还有第二条口子:WebView2 把 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 追加在自身参数**之后**(同名开关后者生效),因此继承来的 `--remote-debugging-port` 在 release 里同样能开 CDP。
+
+**How to apply**:验证通道需要 devtools / CDP 时只能跑 `bun run dev`(debug 构建),不要把 feature 加回 `[dependencies]`。Windows 侧要真机验证 CDP 时,同样用 `tauri dev`,release 构建里那条环境变量会被壳层丢弃。改动这两个位置后至少跑 `cargo check` 与 `cargo check --release`(后者确认 wry 的 devtools 代码在 release 里被编译掉)。
+
+**关联**:2026-10-24 安全加固(无 BUG 账),文档见 `docs/DEVELOPMENT.md` §Verification channels

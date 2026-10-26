@@ -301,9 +301,6 @@ function ManualBrowserView() {
           <div className="bpane-empty">
             <span className="bpane-empty-ic"><Icon name="globe" size={30} /></span>
             <div className="bpane-empty-tt">{t("right.browseEmptyTitle")}</div>
-            <div className="bpane-empty-sub">
-              {t("right.browseEmptySub")}
-            </div>
           </div>
         )}
         {current && (

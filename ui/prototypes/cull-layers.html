@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>四层改动对照</title>
+<link rel="stylesheet" href="../dist/assets/index-CxCHg-mi.css" onerror="document.documentElement.dataset.cssMissing='1'" />
+<link rel="stylesheet" href="cull-shell.css" />
+<style>
+  body { height: 100vh; overflow: hidden; padding: 0; display: flex; flex-direction: column; }
+  .nav { display: flex; gap: 8px; align-items: center; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--tint-white-80); flex: none; }
+  .nav b { font-weight: 600; }
+  .nav .hint { color: var(--faint); font-size: var(--ui-fs-sm); margin-left: 6px; flex: 1; }
+  iframe { flex: 1; width: 100%; border: 0; background: var(--base); }
+</style>
+</head>
+<body>
+<div class="nav">
+  <b>四层改动对照</b>
+  <span class="hint">每层独立页：左「现状」右「改后」。第 3 层含结构改动（新增标记为实线框）。</span>
+  <button class="cv-btn on" data-src="cull-l1.html">第 1 层 纯重复</button>
+  <button class="cv-btn" data-src="cull-l2.html">第 2 层 需落点</button>
+  <button class="cv-btn" data-src="cull-l3.html">第 3 层 改结构</button>
+  <button class="cv-btn" data-src="cull-l4.html">第 4 层 产品判断</button>
+  <button class="cv-btn" id="theme">切浅色</button>
+</div>
+<iframe id="view" src="cull-l1.html"></iframe>
+<script>
+  const view = document.getElementById("view");
+  for (const b of document.querySelectorAll("[data-src]")) {
+    b.addEventListener("click", () => {
+      view.src = b.dataset.src;
+      for (const o of document.querySelectorAll("[data-src]")) o.classList.toggle("on", o === b);
+      // Keep the inner page on the same theme as the nav.
+      view.addEventListener("load", () => {
+        view.contentDocument?.documentElement.setAttribute("data-theme", document.documentElement.dataset.theme || "dark");
+      }, { once: true });
+    });
+  }
+  document.getElementById("theme").addEventListener("click", (e) => {
+    const dark = document.documentElement.dataset.theme !== "light";
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    view.contentDocument?.documentElement.setAttribute("data-theme", next);
+    e.currentTarget.textContent = dark ? "切深色" : "切浅色";
+  });
+</script>
+</body>
+</html>

@@ -40,7 +40,7 @@ html[data-motion="off"] #welcomeTitle { animation: none; background-position: 15
 .wb-back-card {
   width: 100%;
   box-sizing: border-box;
-  background: var(--surface);
+  background: var(--surface); --hover-fill: var(--panel-2);
   border: 1px solid var(--line-soft);
   border-radius: 16px; /* ZCode rounded-2xl */
   box-shadow: 0 12px 40px var(--tint-black-280);
@@ -82,12 +82,12 @@ html[data-motion="off"] #welcomeTitle { animation: none; background-position: 15
 }
 
 .wb-pill:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   color: var(--white);
 }
 
 :is([data-theme="light"], [data-theme-mode="light"]) .wb-pill:hover {
-  background: var(--panel-2);
+  background: var(--hover-fill);
   color: var(--text);
 }
 
@@ -173,7 +173,7 @@ html[data-motion="off"] #welcomeTitle { animation: none; background-position: 15
 #composer.in-welcome {
   width: 100%;
   box-sizing: border-box;
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   border: 1px solid transparent;
   border-radius: 16px;
   box-shadow: inset 0 0 0 1px var(--line-soft), 0 12px 40px var(--tint-black-280);
@@ -184,7 +184,7 @@ html[data-motion="off"] #welcomeTitle { animation: none; background-position: 15
 }
 
 :is([data-theme="light"], [data-theme-mode="light"]) #composer.in-welcome {
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   box-shadow: inset 0 0 0 1px var(--line-soft), 0 12px 40px var(--tint-black-70);
 }
 

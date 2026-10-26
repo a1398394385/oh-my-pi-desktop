@@ -7,8 +7,11 @@
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/midrun-attach-fold.test.ts
 import "./dom-stub";
 import { describe, expect, test } from "bun:test";
+import { initI18n } from "../ui-src/i18n";
 import { useAppStore } from "../ui-src/store";
 import type { LoopItem, OpenSession, SessionItem } from "../ui-src/types/session";
+
+initI18n("zh-CN"); // session.ts builds the desktop-alert body via t() at turn_end
 
 const SID = "attach-1";
 const PATH = "/tmp/attach/session-a.jsonl";

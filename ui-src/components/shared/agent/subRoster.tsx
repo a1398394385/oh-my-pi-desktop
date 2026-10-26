@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs, openSessionByPath } from "../../../store";
 import { SubControls, SteerInput } from "./SubControls";
 import { SubStatusPill } from "./SubStatusPill";
-import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, subStatus, type SegT } from "./subShared";
+import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, subStatus, currentProgress, type SegT } from "./subShared";
 import type { SubagentState } from "../../../types/session";
 
 // The subset of the open-session snapshot the roster reads; both surfaces pass the live
@@ -157,6 +157,7 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
   const lastActivity = (sub.registeredAt ?? Date.now()) + (sub.usage?.durationMs ?? 0);
   const age = ageText(Math.max(1, Math.round((Date.now() - lastActivity) / 1000)), t);
   const model = modelShort(sub.usage?.resolvedModel);
+  const rowTask = sub.description || sub.task || sub.text.slice(0, 80) || "…";
   // Steer input expands in place below the row (div root: the controls are buttons, which
   // cannot nest inside the old <button> root)
   const [steerOpen, setSteerOpen] = useState(false);
@@ -185,7 +186,9 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
         {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
         {model ? <span className="hub-model">{model}</span> : null}
       </span>
-      <span className="hub-task text-faint">{sub.description || sub.task || sub.text.slice(0, 80) || "…"}</span>
+      {/* Running rows show the live progress line ("Current" in the detail) instead of the
+          static assignment; it falls back to the assignment until the first tool/intent lands */}
+      <span className="hub-task text-faint">{sub.streaming ? currentProgress(sub) || rowTask : rowTask}</span>
       {/* Metrics (left) and timing info (right) share one line */}
       <span className="hub-meta text-faint">
         <span className="hub-meta-usage">{segs.join(" · ")}</span>

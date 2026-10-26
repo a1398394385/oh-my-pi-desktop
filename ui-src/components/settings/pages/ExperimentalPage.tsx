@@ -148,11 +148,11 @@ export default function ExperimentalPage() {
     if (!raw || !Number.isFinite(n) || n < 0) return;
     updateAcp({ [key]: tierMode === "percent" ? n : Math.round(n * 1000) });
   };
-  // Protected-tail rows: tailTurns edits whole turns; tailTokens edits K tokens (×1000 on write).
-  const commitTail = (key: "tailTurns" | "tailTokens", raw: string) => {
+  // Protected-tail rows: tailUserMessages/tailTurns edit whole counts; tailTokens edits K tokens (×1000 on write).
+  const commitTail = (key: "tailUserMessages" | "tailTurns" | "tailTokens", raw: string) => {
     const n = Number(raw);
     if (!raw || !Number.isFinite(n) || n < 0) return;
-    updateAcp({ [key]: key === "tailTurns" ? Math.round(n) : Math.round(n * 1000) });
+    updateAcp({ [key]: key === "tailTokens" ? Math.round(n * 1000) : Math.round(n) });
   };
 
   const updateAcp = (patch: Partial<AcpConfig>) => {
@@ -174,7 +174,6 @@ export default function ExperimentalPage() {
 
       {/* Section 1: ACP context compaction */}
       <div className="set-group-tt">{t("settingsPage.exp.acpGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.exp.acpGroupDesc")}</div>
       <div className="set-card">
         {/* 1. Master switch */}
         <div className="srow">
@@ -235,29 +234,37 @@ export default function ExperimentalPage() {
                 </div>
               );
             })}
-            {/* 6..7. Protected tail: recent turns / tokens exempt from compression */}
-            {(["tailTurns", "tailTokens"] as const).map((key) => (
-              <div className="srow" key={key}>
-                <div className="srow-tx">
-                  <b>{t(`settingsPage.exp.${key}Title`)}</b>
-                  <span>{t(`settingsPage.exp.${key}Desc`)}</span>
+            {/* 6..8. Protected tail: user-message floor + recent turns / tokens exempt from compression */}
+            {(
+              [
+                { key: "tailUserMessages", placeholder: "4", suffix: "msg", decimalLimit: 0 },
+                { key: "tailTurns", placeholder: "2", suffix: "turn", decimalLimit: 0 },
+                { key: "tailTokens", placeholder: "20", suffix: "K", decimalLimit: 1 },
+              ] as const
+            ).map(({ key, placeholder, suffix, decimalLimit }) => {
+              const stored = acpConfig?.[key];
+              return (
+                <div className="srow" key={key}>
+                  <div className="srow-tx">
+                    <b>{t(`settingsPage.exp.${key}Title`)}</b>
+                    <span>{t(`settingsPage.exp.${key}Desc`)}</span>
+                  </div>
+                  <KaInput
+                    value={stored === undefined ? "" : String(key === "tailTokens" ? Math.round((stored / 1000) * 10) / 10 : stored)}
+                    placeholder={placeholder}
+                    suffix={suffix}
+                    decimalLimit={decimalLimit}
+                    onSubmit={(raw) => commitTail(key, raw)}
+                  />
                 </div>
-                <KaInput
-                  value={acpConfig?.[key] === undefined ? "" : String(key === "tailTurns" ? acpConfig[key] : Math.round((acpConfig[key] / 1000) * 10) / 10)}
-                  placeholder={key === "tailTurns" ? "2" : "20"}
-                  suffix={key === "tailTurns" ? "turn" : "K"}
-                  decimalLimit={key === "tailTurns" ? 0 : 1}
-                  onSubmit={(raw) => commitTail(key, raw)}
-                />
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
       {/* Section 2: project-shared terminals (experimental) */}
       <div className="set-group-tt">{t("settingsPage.exp.terminalGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.exp.terminalGroupDesc")}</div>
       <div className="set-card">
         <div className="srow">
           <div className="srow-tx">
@@ -276,7 +283,6 @@ export default function ExperimentalPage() {
 
       {/* Section 3: sessions & retrieval */}
       <div className="set-group-tt">{t("settingsPage.exp.sessionGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.exp.sessionGroupDesc")}</div>
       <div className="set-card">
         <div className="srow">
           <div className="srow-tx">
@@ -317,7 +323,6 @@ export default function ExperimentalPage() {
 
       {/* Section 4: cache keepalive */}
       <div className="set-group-tt">{t("settingsPage.exp.kaGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.exp.kaGroupDesc")}</div>
       <div className="set-card">
         {/* 1. Master switch: whether this app loads the extension */}
         <div className="srow">
@@ -534,7 +539,6 @@ export default function ExperimentalPage() {
       {/* Section 5: message-rail music reactivity (WASAPI loopback on Windows,
           ScreenCaptureKit on macOS) */}
       <div className="set-group-tt">{t("settingsPage.exp.railMusicGroup")}</div>
-      <div className="set-group-desc">{t("settingsPage.exp.railMusicGroupDesc")}</div>
       <div className="set-card">
         {/* 1. Master switch */}
         <div className="srow">

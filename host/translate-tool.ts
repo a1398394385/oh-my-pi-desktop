@@ -246,7 +246,7 @@ export function summarizeResult(name: string, args: any, result: any, pendingWri
     name === "web_search" || name === "ask" || name === "debug" || name === "github" || name === "lsp" ||
     name === "read_session_context" || name === "yield" ||
     name === "retain" || name === "recall" || name === "reflect" || name === "learn" || name === "memory_edit" ||
-    name === "context_status" || name === "compress_context" || name === "recall_block"
+    name === "context_status" || name === "compress_context"
   ) {
     const text = resultText(result);
     if (text) patch.output = text;

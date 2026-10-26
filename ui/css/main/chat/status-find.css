@@ -83,7 +83,7 @@
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
-.sc-plan:hover { background: var(--panel-2); color: var(--text); }
+.sc-plan:hover { background: var(--hover-fill); color: var(--text); }
 
 .sc-plan svg { flex: none; color: var(--faint); }
 
@@ -102,7 +102,7 @@
   display: flex; align-items: center; gap: 8px;
   width: 280px; max-width: 100%;
   margin: 0;
-  background: var(--inset); border: 0;
+  background: var(--inset); --hover-fill: var(--menu-hl); border: 0;
   color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-base);
   border-radius: 999px; padding: 8px 14px;
   cursor: pointer;
@@ -111,7 +111,7 @@
 }
 
 :is([data-theme="light"], [data-theme-mode="light"]) #capsule { box-shadow: 0 8px 22px var(--tint-black-120); }
-#capsule:hover { background: var(--panel-2); }
+#capsule:hover { background: var(--hover-fill); }
 
 #capsule .cap-ic { flex: none; color: var(--text); font-style: normal; }
 
@@ -129,7 +129,7 @@
      the ringpop entrance animation occupies transform, so translateX would be overridden and the element would jump when the animation ends */
   left: 0; right: 0; margin: 0 auto; width: max-content; max-width: calc(100% - 32px);
   display: flex; align-items: center; gap: 6px;
-  background: var(--ctl-bg); border: 1px solid var(--line);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line);
   border-radius: var(--r-md); box-shadow: 0 8px 26px var(--tint-black-400);
   padding: 5px 6px 5px 5px;
   animation: ringpop .18s ease-out; /* same entrance as the ring-pop family (fade in + slide up) */
@@ -138,7 +138,7 @@
 :is([data-theme="light"], [data-theme-mode="light"]) .find-bar { box-shadow: 0 8px 24px var(--tint-black-180); }
 /* input = the .inp language: --bg base + --line-soft border + r8 + blue focus glow */
 .find-inp {
-  background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px;
+  background: var(--bg); --hover-fill: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 8px;
   padding: 4px 9px; color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
   width: 200px; outline: none; min-width: 0;
   transition: border-color var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);

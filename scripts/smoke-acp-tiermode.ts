@@ -40,10 +40,11 @@ assert.equal(warned, 1, "module-level flag suppresses repeat warnings");
 process.stderr.write = stderrWrite;
 
 // --- 4. non-tier params pass through untouched; unknown tierMode = absolute ---
-const rest = acpParamsFromConfig({ tierMode: "percent", l1: 50, target: 80_000, tailTurns: 4 }, 200_000);
+const rest = acpParamsFromConfig({ tierMode: "percent", l1: 50, target: 80_000, tailTurns: 4, tailUserMessages: 3 }, 200_000);
 assert.equal(rest.l1, 100_000);
 assert.equal(rest.target, 80_000);
 assert.equal(rest.tailTurns, 4);
+assert.equal(rest.tailUserMessages, 3);
 assert.equal(acpParamsFromConfig({ tierMode: "bogus", l1: 7 }, 400_000).l1, 7);
 
 console.log("smoke-acp-tiermode: ok");

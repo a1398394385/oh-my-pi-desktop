@@ -13,7 +13,7 @@
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
   padding: 6px 10px;
   border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
 }
 
 .hub-keys .hub-title { font-weight: 600; margin-right: 6px; }

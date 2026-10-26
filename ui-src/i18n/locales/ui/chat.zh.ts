@@ -25,7 +25,6 @@ export const chatZh = {
   // ---- ACP context management rows (ToolRow.tsx + the shell rail summary) ----
   labelContextStatus: "上下文状态",
   labelCompressContext: "压缩上下文",
-  labelRecallBlock: "召回块",
   contextStatusBlocks: "共 {{count}} 活跃块",
   contextStatusOccupied: "占用 {{tokens}} 上下文",
   compressFolded: "上下文压缩完成 · 已压缩 {{count}} 活跃块 · 释放 {{tokens}} 上下文",
@@ -138,7 +137,6 @@ export const chatZh = {
   backToChat: "返回对话",
   filterMode: "过滤模式：",
   refreshTree: "刷新条目树",
-  backToStream: "返回对话流",
   // ---- session tree stream (SessionTreeStream.tsx) ----
   copiedToClipboard: "已复制到剪贴板",
   copySuccessFallback: "复制成功",
@@ -158,7 +156,6 @@ export const chatZh = {
   jump: "跳转",
   jumpAndSummarize: "跳转并摘要",
   forkSwitch: "分叉点切换 ({{count}} 个分支)",
-  forkHint: "滚轮左右滑动 · 点击切换分支",
   switchedToBranch: "已切换至分支 #{{index}}",
   branchSteps: "{{count}} 步",
   // ---- message rail (MsgRail.tsx) ----
@@ -166,6 +163,7 @@ export const chatZh = {
   railCommand: "命令",
   // ---- turn actions (TurnActs.tsx) ----
   copyReply: "复制这条回复",
+  speakReply: "朗读这条回复",
   replyCopied: "已复制回复",
   copyFailed: "复制失败",
   branchFromHere: "从此处分叉出新会话",

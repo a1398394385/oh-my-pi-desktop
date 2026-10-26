@@ -100,7 +100,7 @@ export function TranscriptList({ tracks, selection, onSelect, search, traceStart
                 )}
                 <span className="traces-row-label truncate">{label}</span>
                 {detail && <span className="traces-row-detail truncate">{detail}</span>}
-                <span className="traces-row-meta num">
+                <span className="traces-row-meta stats-num">
                   {row.span?.isError && (
                     <span className="tone-bad">{t("settingsPage.stats.traceView.transcript.rowError")}</span>
                   )}

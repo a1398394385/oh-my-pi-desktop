@@ -454,7 +454,7 @@ function FileNav() {
             return (
               <div
                 key={m.path}
-                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
+                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
                 style={{ paddingLeft: 20 + "px" }}
                 title={s.cwd + "/" + m.path}
                 onClick={() => (m.dir ? openDir(m.path) : openFileView(s.cwd + "/" + m.path))}
@@ -507,7 +507,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
           return (
             <Fragment key={full}>
               <div
-                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
+                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
                 style={{ paddingLeft: 6 + depth * 14 + "px" }}
                 onClick={() => {
                   // Expand/collapse: fresh Set + fresh rightState reference (subscribers notice by reference)
@@ -531,7 +531,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
         return (
           <div
             key={full}
-            className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-panel-2"
+            className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
             style={{ paddingLeft: 6 + depth * 14 + "px" }}
             title={full}
             onClick={() => openFileView(full)}

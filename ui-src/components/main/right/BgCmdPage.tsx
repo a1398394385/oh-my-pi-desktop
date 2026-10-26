@@ -230,33 +230,27 @@ export default function BgCmdPage() {
   );
 }
 
-// Expand card: head (op + cwd on line 1, name on line 2) + command or args + output
+// Expand card: head (cwd on line 1, name + collapse on line 2) + command or args + output
 function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="bgcmd-expand">
-      {/* 1. Card head: op + working dir on line 1 (the dir is the only truncating item,
-          since it is the long field); name + status + collapse on line 2 */}
-      <div className="bgcmd-meta-row">
-        <span className="bgcmd-meta-item op">
-          <b>{t("right.opLabel")}</b> {task.op}
-        </span>
-        {task.cwd && (
-          <>
-            <b className="bgcmd-meta-lbl">{t("right.workDirLabel")}</b>
-            <span className="bgcmd-meta-item wd" title={task.cwd}>
-              {task.cwd}
-            </span>
-          </>
-        )}
-      </div>
+      {/* 1. Card head: working dir on line 1 (it is the long, truncating field);
+          name + collapse on line 2 */}
+      {task.cwd && (
+        <div className="bgcmd-meta-row">
+          <b className="bgcmd-meta-lbl">{t("right.workDirLabel")}</b>
+          <span className="bgcmd-meta-item wd" title={task.cwd}>
+            {task.cwd}
+          </span>
+        </div>
+      )}
       <div className="bgcmd-meta-row">
         {task.procName && (
           <span className="bgcmd-meta-item name" title={task.procName}>
             <b>{t("right.nameLabel")}</b> {task.procName}
           </span>
         )}
-        <span className={"bgcmd-meta-tag" + (task.running ? " running" : "")}>{task.statusText}</span>
         <button
           type="button"
           className="save-btn"

@@ -349,14 +349,36 @@ export function EditWindowHead({ title, sub, onBack, children }: {
 }) {
   return (
     <div className="set-edit-head">
-      <button type="button" className="save-btn" onClick={onBack}>
-        {t("settingsPage.shared.back")}
+      <button type="button" className="icon-btn set-edit-back" title={t("settingsPage.shared.back")} onClick={onBack}>
+        <span><Icon name="back" size={17} /></span>
       </button>
       <div className="set-edit-tt">
         <div className="set-edit-title">{title}</div>
         {sub ? <div className="set-edit-sub" title={sub}>{sub}</div> : null}
       </div>
       {children ? <div className="set-edit-actions">{children}</div> : null}
+    </div>
+  );
+}
+
+// ── Shared create/edit form row ──
+// One labelled row of the shared form language (css/shared/form-layout.css): the label
+// column carries the field name plus an optional short hint, the control column carries
+// the inputs. Every create page (MCP, subagent, hook, skill, SSH) uses these rows so the
+// forms read the same as the main-column automation editor.
+export function FormRow({ label, hint, children }: {
+  label: ReactNode;
+  /** Short line under the label; omitted when absent. */
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="frm-row">
+      <div className="frm-label">
+        <strong>{label}</strong>
+        {hint ? <span className="frm-hint">{hint}</span> : null}
+      </div>
+      <div className="frm-ctl">{children}</div>
     </div>
   );
 }

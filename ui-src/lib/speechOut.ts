@@ -10,6 +10,11 @@
 // mid-turn); duck lowers the volume of later utterances while the user is
 // dictating so replies do not talk over them.
 //
+// One-shot "read this reply" (the turn-end speaker button) goes through the host
+// speak_text RPC instead: with a speech model configured the host synthesizes a
+// clip (playTtsClip), otherwise it answers backend "system" and lands here as
+// plain speakNow text.
+//
 // Voice selection: the persisted override (localStorage "omp-voice-tts",
 // written by the settings page picker) wins; otherwise the first voice whose
 // lang matches the UI language (zh → any zh-*, en → en-*). Voices load
@@ -24,6 +29,8 @@ const synth: SpeechSynthesis | undefined = typeof window !== "undefined" ? windo
 
 let buffer = "";
 let ducked = false;
+/** Clip element for one-shot host-rendered speech (speech model role). */
+let clip: HTMLAudioElement | null = null;
 /** Serial playback chain: each queued utterance awaits the previous one. */
 let chain: Promise<void> = Promise.resolve();
 let voicesReady = false;
@@ -151,9 +158,21 @@ export function flushTts(): void {
 /** Silence immediately and drop everything buffered (tts_stop frame). */
 export function stopTts(): void {
   buffer = "";
+  clip?.pause();
+  clip = null;
   if (!synth) return;
   synth.cancel();
   chain = Promise.resolve();
+}
+
+/** Play a host-synthesized clip (base64 body). Anything already speaking stops first. */
+export function playTtsClip(data: string, mime: string): void {
+  stopTts();
+  const el = new Audio(`data:${mime};base64,${data}`);
+  clip = el;
+  // Autoplay rejection after the request round-trip is not actionable (the click
+  // already expressed intent); the next click retries.
+  void el.play().catch(() => {});
 }
 
 /** Lower/restore the volume of later utterances while the user is dictating. */

@@ -11,6 +11,10 @@
   --card:      #445560;   /* middle/right cards (from openhanako --bg-card) */
   --inset:     #4B5A63;   /* input fields (from openhanako --jian-note-bg) */
   --select:    #515F69;   /* current session highlight (derived: card + 10% lighter) */
+  /* Dropdown option highlight: this theme's face is a cool blue-gray, so a
+     neutral gray reads as dirty; a lighter cool slate keeps the hue and
+     separates the row from the menu face. */
+  --menu-hl:   #56656E;
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);

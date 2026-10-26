@@ -25,7 +25,6 @@ export const chatEn = {
   // ---- ACP context management rows (ToolRow.tsx + the shell rail summary) ----
   labelContextStatus: "Context status",
   labelCompressContext: "Compress context",
-  labelRecallBlock: "Recall block",
   contextStatusBlocks_one: "{{count}} active block",
   contextStatusBlocks_other: "{{count}} active blocks",
   contextStatusOccupied: "uses {{tokens}} of context",
@@ -151,7 +150,6 @@ export const chatEn = {
   backToChat: "Back to chat",
   filterMode: "Filter mode:",
   refreshTree: "Refresh entry tree",
-  backToStream: "Back to conversation",
   // ---- session tree stream (SessionTreeStream.tsx) ----
   copiedToClipboard: "Copied to clipboard",
   copySuccessFallback: "Copy succeeded",
@@ -172,7 +170,6 @@ export const chatEn = {
   jumpAndSummarize: "Jump & summarize",
   forkSwitch_one: "Fork switch ({{count}} branch)",
   forkSwitch_other: "Fork switch ({{count}} branches)",
-  forkHint: "Scroll sideways · click to switch branches",
   switchedToBranch: "Switched to branch #{{index}}",
   branchSteps_one: "{{count}} step",
   branchSteps_other: "{{count}} steps",
@@ -181,6 +178,7 @@ export const chatEn = {
   railCommand: "Command",
   // ---- turn actions (TurnActs.tsx) ----
   copyReply: "Copy this reply",
+  speakReply: "Read this reply aloud",
   replyCopied: "Reply copied",
   copyFailed: "Copy failed",
   branchFromHere: "Branch into a new session from here",

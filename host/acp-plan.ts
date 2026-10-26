@@ -30,6 +30,13 @@ export interface AcpParams {
 	tailTurns: number;
 	/** Protected tail: at least this many recent tokens stay uncompressed (0 = off). */
 	tailTokens: number;
+	/**
+	 * Protected tail floor: the walk always reaches back to the latest N real
+	 * user inputs, even past the turn/token limits (0 = off). Counts role user
+	 * messages only — synthetic auto-continues and developer injections also
+	 * split into user blocks but are not user requests.
+	 */
+	tailUserMessages: number;
 	/** L1 milestone sub-lines between L1 and L2 (spec §7 v10.4); 0 silences the L1 segment. */
 	milestoneSteps: number;
 }
@@ -44,6 +51,7 @@ export const ACP_DEFAULT_PARAMS: AcpParams = {
 	summaryDivisor: 3,
 	tailTurns: 2,
 	tailTokens: 20_000,
+	tailUserMessages: 0,
 	milestoneSteps: 10,
 };
 
@@ -136,7 +144,7 @@ export function acpParamsFromConfig(section: unknown, contextWindow?: number): A
 		const v = s[key];
 		if (typeof v === "number" && v >= 0) p[key] = percent && windowOk ? Math.round((v / 100) * contextWindow!) : v;
 	}
-	for (const key of ["target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens", "milestoneSteps"] as const) {
+	for (const key of ["target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens", "tailUserMessages", "milestoneSteps"] as const) {
 		const v = s[key];
 		if (typeof v === "number" && v >= 0) p[key] = v;
 	}

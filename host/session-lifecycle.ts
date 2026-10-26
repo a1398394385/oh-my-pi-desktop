@@ -29,7 +29,6 @@ import {
 import { GoalController, type GoalSession } from "./goal.ts";
 import { acpParamsFromConfig } from "./acp-plan.ts";
 import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension, ACP_CONTEXT_BUDGET_PROMPT } from "./acp-assembly.ts";
-import { createRecallBlockTool } from "./acp-recall-tool.ts";
 import { createAcpStatusTool } from "./acp-status-tool.ts";
 import { rebuildAcpState } from "./acp-persist.ts";
 import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
@@ -108,8 +107,9 @@ export async function createSessionCore(
   initialModel?: any,
   // Reopened child transcript: keep its persisted spawn contract. The main
   // prompt would re-render AGENTS.md/device blocks and make a scout act as primary.
-  // askTimeoutSec: automation runs bound their ask dialogs with the task's own
-  // deadline instead of the host-wide ask.timeout (0 = wait forever, as there).
+  // askTimeoutSec: automation runs bound their ask dialogs with the automation
+  // settings page's deadline instead of the host-wide ask.timeout (0 = wait
+  // forever, as there).
   opts?: {
     subagent?: boolean;
     subagentInit?: { systemPrompt: string[]; tools: string[] };
@@ -244,10 +244,10 @@ export async function createSessionCore(
     // flipping it lands on new sessions only) and the subagent rule (a delegated step must not
     // schedule follow-up work on the user's behalf, so their surface never gets the tools).
     customTools: [
-      ...(acpRuntime ? [createCompressContextTool(acpRuntime), createRecallBlockTool(acpRuntime), createAcpStatusTool(acpRuntime, () => Number(settingsGet(sessionSettings, "tools.artifactSpillThreshold")) * 1024)] : []),
+      ...(acpRuntime ? [createCompressContextTool(acpRuntime), createAcpStatusTool(acpRuntime, () => Number(settingsGet(sessionSettings, "tools.artifactSpillThreshold")) * 1024)] : []),
       ...(sessionContextEnabled ? createSessionContextTools() : []),
       ...(opts?.subagent || !automationAgentEnabled ? [] : createAutomationTools(cwd)),
-    ] as never, // ACP compress_context + recall_block + context_status (host/acp-runtime.ts · acp-recall-tool.ts · acp-status-tool.ts) + read_session_context + automations_list/automations_manage; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
+    ] as never, // ACP compress_context + context_status (host/acp-runtime.ts · acp-status-tool.ts) + read_session_context + automations_list/automations_manage; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
       ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime, () => sessionManager.getSessionId())] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
       ...(keepaliveOn ? [createKeepaliveExtension({
@@ -424,7 +424,6 @@ export async function spawnSession(
     SessionManager.create(workDir),
     [],
     targetModel,
-    undefined,
     { askTimeoutSec: opts?.askTimeoutSec },
   );
   // Scheduler-spawned session: stamps the pool entry (session_list marker) and

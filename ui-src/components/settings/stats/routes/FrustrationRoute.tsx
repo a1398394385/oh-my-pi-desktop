@@ -40,7 +40,7 @@ const ALL_CLASSES = "*";
 export function FrustrationRoute({ active, range }: FrustrationRouteProps) {
   const { t } = useTranslation();
   const [running, setRunning] = useState(false);
-  const stats = useQuery(["frustration", range], () => getFrustrationDashboardStats(range), {
+  const stats = useQuery(["frustration", range], ({ signal }) => getFrustrationDashboardStats(range, signal), {
     enabled: active,
     pollMs: running ? RUNNING_POLL_MS : undefined,
   });
@@ -517,7 +517,7 @@ function FrustrationTable({
         header: t("settingsPage.stats.frustration.colMessages"),
         align: "right",
         sort: row => row.messages,
-        render: row => <span className="num">{formatInteger(row.messages)}</span>,
+        render: row => <span className="stats-num">{formatInteger(row.messages)}</span>,
       },
       {
         key: "judged",
@@ -531,10 +531,10 @@ function FrustrationTable({
               title={t("settingsPage.stats.frustration.regexBadgeTitle")}
             >
               <Badge tone="warn">{t("settingsPage.stats.frustration.badgeRegex")}</Badge>
-              <span className="num dim">{rate(row.judged, row.messages)}</span>
+              <span className="stats-num dim">{rate(row.judged, row.messages)}</span>
             </span>
           ) : (
-            <span className="num">{rate(row.judged, row.messages)}</span>
+            <span className="stats-num">{rate(row.judged, row.messages)}</span>
           ),
       },
       {
@@ -543,7 +543,7 @@ function FrustrationTable({
         align: "right",
         sort: row => percent(row.annoyed, row.messages),
         render: row => (
-          <span className="num" title={t("settingsPage.stats.frustration.countMessages", { count: formatInteger(row.annoyed) })}>
+          <span className="stats-num" title={t("settingsPage.stats.frustration.countMessages", { count: formatInteger(row.annoyed) })}>
             {rate(row.annoyed, row.messages)}
           </span>
         ),
@@ -554,7 +554,7 @@ function FrustrationTable({
         align: "right",
         sort: row => percent(row.atAssistant, row.messages),
         render: row => (
-          <span className="num" title={t("settingsPage.stats.frustration.countMessages", { count: formatInteger(row.atAssistant) })}>
+          <span className="stats-num" title={t("settingsPage.stats.frustration.countMessages", { count: formatInteger(row.atAssistant) })}>
             {rate(row.atAssistant, row.messages)}
           </span>
         ),
@@ -565,7 +565,7 @@ function FrustrationTable({
         align: "right",
         sort: row => percent(row.angry, row.messages),
         render: row => (
-          <span className={row.angry > 0 ? "num tone-bad" : "num"} title={t("settingsPage.stats.frustration.countMessages", { count: formatInteger(row.angry) })}>
+          <span className={row.angry > 0 ? "stats-num tone-bad" : "stats-num"} title={t("settingsPage.stats.frustration.countMessages", { count: formatInteger(row.angry) })}>
             {rate(row.angry, row.messages)}
           </span>
         ),

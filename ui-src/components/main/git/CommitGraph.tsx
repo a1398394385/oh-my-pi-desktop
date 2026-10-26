@@ -235,7 +235,9 @@ export default function CommitGraph({
           onClick={(e) => openChipMenu("branch", e.currentTarget)}
         >
           <span className="gp-chip-k">{t("gitPage.filterBranch")}</span>
-          <span className="gp-chip-v">{scope || currentBranch || "HEAD"}</span>
+          {/* An empty scope IS "all refs" (the host logs --branches --tags
+              --remotes), so the chip must not show the current branch there. */}
+          <span className="gp-chip-v">{scope || t("gitPage.allBranches")}</span>
           {scope && (
             <span
               className="gp-chip-x"

@@ -7,7 +7,7 @@ import { useEffect, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../../store";
 import { bgJobsKey } from "../../../store/session";
-import { modelShort, fmtClock, subStatus, type SegT } from "../../shared/agent/subShared";
+import { modelShort, fmtClock, subStatus, currentProgress, type SegT } from "../../shared/agent/subShared";
 import { rowSpec } from "./subRowSpec";
 import { Ellip, Spin } from "../../chat/parts";
 import Icon from "../../../Icon";
@@ -75,9 +75,7 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
     if (sessionId) sendGetBgJobs(sessionId, subagentId);
   }, [sessionId, subagentId]);
   const model = modelShort(u?.resolvedModel);
-  const current = u?.currentTool
-    ? u.currentTool + (u.currentToolArgs ? ` · ${JSON.stringify(u.currentToolArgs)}` : "")
-    : (u?.lastIntent ?? "");
+  const current = currentProgress(sub);
   // Task block renders as markdown; the raw transcript fallback stays truncated
   const task = sub.description || sub.task || (sub.text ? sub.text.slice(0, 300) : "");
   const segs: string[] = [];

@@ -326,7 +326,7 @@ export default function SessionTreeStream({
               <div className="detail-actions">
                 <button
                   type="button"
-                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded hover:bg-panel-2 cursor-pointer flex items-center gap-1"
+                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded hover:bg-hover-fill cursor-pointer flex items-center gap-1"
                   onClick={(e) => {
                     e.stopPropagation();
                     onCopyText(node.text || "");
@@ -337,7 +337,7 @@ export default function SessionTreeStream({
                 </button>
                 <button
                   type="button"
-                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded-md hover:bg-panel-2"
+                  className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded-md hover:bg-hover-fill"
                   disabled={navigating}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -411,14 +411,14 @@ export default function SessionTreeStream({
             <div className="lp-row flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
-                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-panel-2 cursor-pointer"
+                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-hover-fill cursor-pointer"
                 onClick={() => setConfirmNode(null)}
               >
                 {t("common.cancel")}
               </button>
               <button
                 type="button"
-                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-panel-2 cursor-pointer"
+                className="save-btn px-3 py-1.5 text-ui-sm border border-line rounded-md hover:bg-hover-fill cursor-pointer"
                 disabled={navigating}
                 onClick={() => {
                   const node = confirmNode;
@@ -531,7 +531,6 @@ function ForkSwitcher({
             <Icon name="fork" size={13} />
             {t("chat.forkSwitch", { count: item.options.length })}
           </span>
-          <span className="fork-hint">{t("chat.forkHint")}</span>
         </div>
 
         <div ref={pillsRef} className="fork-pills">

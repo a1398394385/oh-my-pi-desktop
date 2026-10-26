@@ -100,6 +100,7 @@
 | BUG-104 | 等后台命令期间发的消息在发送端页面上消失——bg job 让 agent_end isTerminal:false、UI streaming 长期滞留 true，host-idle 直通消费既无 steer_consumed 也无回声，气泡永不落地（BUG-080 气泡侧残留转正） | 2026-10-22 |
 | BUG-105 | 流式期间发的斜杠命令（如 `/advisor on`）被本地消费后仍留在待发送队列——UI 无条件乐观入队，消费型命令不入底座队列也触发不了 onQueueChange，没有校准帧清行 | 2026-10-23 |
 | BUG-106 | kimi provider 下 `/computer on` 开启的 computer use 点输入框图标关不掉——setComputerMode 的 kimi 关闭分支只卸载 kimi-cu，不清底座命令写的 computer.enabled overlay，帧亮态 overlay‖mounted 恒真 | 2026-10-23 |
+| BUG-109 | 会话右键菜单开着时该会话流式状态翻转 → 整窗黑屏（React #310）——`streaming \|\| useAppStore(...)` 把 store hook 挂在 `\|\|` 右操作数上，hook 数随数据变 | 2026-10-26 |
 
 ---
 
@@ -1578,3 +1579,15 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：真机通道（`scripts/dev-browser.ts` + 真实会话，`#stream` 帧采样）：切回底部的会话连续 3 轮稳定落在 settle 后的最新位置（21641/21674），中途位置（12037）连续 3 轮原样还原；切换后无 B 的位置残留帧。预览通道（`?preview=1` + `__dbg.activateSession`）：贴底/中途位置各 3 轮稳定；流式追加 12 次保持贴底（6752/6785）；流式中滚轮上滑不被拉回；切换 settle 窗口内的滚轮上滑同样不被拉回。
 
 **教训**：浏览器在布局 settle 时自己会改 `scrollTop` 并派发滚动事件——「有滚动事件」≠「用户滚动」。手势判定必须给出时间窗口（本例：切换恢复后到真实输入为止），否则自动调整会被当成用户意图写进持久状态，且顺手武装本用于保护手势的 latch，形成「记错位置 + 不再回底」的双重症状。
+
+### BUG-109: 会话右键菜单开着时该会话流式状态翻转 → 整窗黑屏（React #310）——store hook 挂在 `||` 右操作数上
+
+**现象**：会话行右键菜单打开期间该会话流式状态发生变化（turn 开始/结束），整窗口黑屏，控制台 `Minified React error #310`，栈顶渲染方为侧栏 `aside` 内的菜单组件。
+
+**根因**（`ui-src/components/main/sidebar/SessCtxMenu.tsx`）：`const running = streaming || useAppStore((st) => st.busyPaths.has(entry.path))` 把第二次 store 订阅写在 `||` 右操作数——`streaming` 为真时该 hook 不执行，为假时才执行。菜单的 `streaming` 选择器订阅着 `openSessions`，翻转必然重渲染，hook 数从 N 变 N+1（或反之），React 抛 #310 并卸载整棵树（无 error boundary）。
+
+**修复**：两个订阅都无条件调用，合并放到下一行：`const poolBusy = useAppStore(...)` / `const running = streaming || poolBusy`。同文件其余选择器是一行一个 store hook，语义不变。
+
+**验证**：happy-dom + 源码直渲（临时脚本，已删）——挂载 `SessCtxMenu` 后把 `openSessions` 的 `streaming` 依次 true→false→true：改前行抛 `Rendered more hooks than during the previous render.`，改后无错误、菜单按钮正常渲染。`bun run ui:typecheck` 通过；`bun run ui:build` 通过；`bun run smoke:react` 19 项断言失败与改前逐一相同（存量，与本次无关）。
+
+**教训**：`a || useHook(...)` / `a ? useHook() : x` 这类「短路里的 hook」是 #310 的经典入口，而 ESLint 的 rules-of-hooks 能拦——本项目 UI 无 lint 兜底时，只能靠扫描保护：凡是 store 选择器，一行一个，永远不进条件式。附带收获：黑屏栈里的组件名是压缩后的短名，靠 `aside` 这一层定位到侧栏子树比猜组件名可靠。

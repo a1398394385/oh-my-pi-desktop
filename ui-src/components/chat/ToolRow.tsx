@@ -427,7 +427,7 @@ function renderSessionContext(item: ToolItem) {
     : `${String(args.sessionId || "")}${args.fromTurn !== undefined || args.toTurn !== undefined ? ` · ${args.fromTurn ?? 0}–${args.toTurn ?? "end"}` : ""}`;
   return <ExpandableRow item={item} iconName="search" label={t("chat.labelSessionContext")} summary={summary || item.text || ""} />;
 }
-// ---------- ACP context-management rows (host/acp-status-tool.ts · acp-assembly.ts · acp-recall-tool.ts) ----------
+// ---------- ACP context-management rows (host/acp-status-tool.ts · acp-assembly.ts) ----------
 // context_status dashboard: `[context-status] tier=L1 compress=normal zone=N tokens active=N tokens projected=N tokens activeBlocks=N`
 const ACP_REPORT_RE = /tier=(\S+)\s+compress=\S+\s+zone=\d+ tokens active=(\d+) tokens projected=\d+ tokens activeBlocks=(\d+)/;
 function renderContextStatus(item: ToolItem) {
@@ -441,22 +441,6 @@ function renderContextStatus(item: ToolItem) {
         .join(" · ")
     : "";
   return <ExpandableRow item={item} iconName="stats" label={t("chat.labelContextStatus")} summary={summary} noInput />;
-}
-// An xd:// device call journals the target tool's arguments as a JSON string in the
-// wrapper's `content` (the call itself is recorded under `write`), so decode that form too.
-function deviceCallArgs(content: unknown): Record<string, unknown> | null {
-  if (typeof content !== "string") return null;
-  try {
-    const v = JSON.parse(content) as unknown;
-    return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
-  } catch {
-    return null; // not JSON (truncated stream): callers fall back to their plain label
-  }
-}
-// recall_block: its only argument is the short id (bN) of the block it fetches back
-function renderRecallBlock(item: ToolItem) {
-  const id = item.args?.id ?? deviceCallArgs(item.args?.content)?.id;
-  return <ExpandableRow item={item} iconName="archive" label={t("chat.labelRecallBlock")} summary={id ? String(id) : item.text || ""} />;
 }
 // compress_context result (the JSON CompressOutcome). Folding half the context is a turn
 // milestone, so it renders as the centered phase separator row, not a tool row; a rejection
@@ -699,14 +683,13 @@ function toolKind(item: ToolItem) {
   if (name === "web_search") return "websearch";
   if (name === "ask") return "ask";
   if (name === "read_session_context") return "sessionctx";
-  // ACP context management (host/acp-assembly.ts · acp-status-tool.ts · acp-recall-tool.ts).
+  // ACP context management (host/acp-assembly.ts · acp-status-tool.ts).
   // They are also reachable as `write` + xd://<name> device calls — the harness journals
   // those under `write` with the device path as the argument — so resolve the name from the
   // device path first, otherwise they fall through to the device row below.
   const acpTarget = isDevicePath(item.args?.path) ? deviceNameOf(item.args?.path) : name;
   if (acpTarget === "context_status") return "ctxstatus";
   if (acpTarget === "compress_context") return "ctxcompress";
-  if (acpTarget === "recall_block") return "ctxrecall";
   if (name === "debug") return "debug";
   if (name === "github") return "github";
   if (name === "lsp") return "lsp";
@@ -777,8 +760,6 @@ export default memo(function ToolRow({ item }: ToolRowProps) {
       return renderContextStatus(item);
     case "ctxcompress":
       return renderCompressContext(item);
-    case "ctxrecall":
-      return renderRecallBlock(item);
     case "debug":
       return renderDebug(item);
     case "github":

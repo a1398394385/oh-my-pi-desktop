@@ -81,7 +81,7 @@ Eight resizable, drag-reorderable tabs, each with independent state per session:
 
 ### Configuration
 
-A 26-page settings center with search that jumps to and highlights any key. Real CRUD, not JSON editing:
+A 28-page settings center with search that jumps to and highlights any key. Real CRUD, not JSON editing:
 
 - **Models and providers** — OAuth sign-in or API key + base URL, per-model enable and connectivity test, model metadata editor, multi-account disable/reorder, plan quota lookup, custom OpenAI-compatible provider wizard, model roles, and a quick-switch cycle
 - **MCP servers** — add / edit / delete with transport, sharing scope, env and headers, per-server test, log viewer, and test-all
@@ -121,7 +121,7 @@ Updates are delivered in-app; you can also trigger a check manually under Settin
 
 ## Project status
 
-**v0.2.0** (2026-10-17). Tracks omp **18.12.5**, the current upstream release.
+**v0.3.0** (2026-10-23). Tracks omp **18.12.5**, the current upstream release.
 
 - **macOS** (Apple Silicon) and **Windows** (x64) — unsigned builds, see Install
 - Linux packaging not yet produced

@@ -8,12 +8,14 @@ import {
   formatCompact,
   formatDurationMs,
   formatEstimatedCost,
+  formatErrorRate,
   formatInteger,
   formatMessageCost,
   formatPercent,
   formatRelativeTime,
   formatTokensPerSecond,
 } from "../data/formatters";
+import { TOKEN_MIX_COLORS } from "../data/colors";
 import { useQuery } from "../data/query";
 import { bucketAxis, rangeMeta } from "../data/range";
 import { densify } from "../data/series";
@@ -48,20 +50,13 @@ type TokenMixKey = "input" | "cacheRead" | "cacheWrite" | "output";
 const AGENT_COLOR: Record<AgentType, string> = {
   main: "var(--chart-primary)",
   subagent: "var(--chart-secondary)",
-  advisor: "#9d7bff",
-};
-
-const TOKEN_MIX_COLORS: Record<TokenMixKey, string> = {
-  input: "#5b8cff",
-  cacheRead: "var(--chart-primary)",
-  cacheWrite: "#f5b54a",
-  output: "var(--chart-secondary)",
+  advisor: "#ff7a59",
 };
 
 export function OverviewRoute({ active, range, onRequestClick, onNavigate }: OverviewRouteProps) {
   const { t } = useTranslation();
-  const overview = useQuery(["overview", range], () => getOverviewStats(range), { enabled: active });
-  const recent = useQuery(["recent-requests"], () => getRecentRequests(12), { enabled: active });
+  const overview = useQuery(["overview", range], ({ signal }) => getOverviewStats(range, signal), { enabled: active });
+  const recent = useQuery(["recent-requests"], ({ signal }) => getRecentRequests(12, signal), { enabled: active });
   const [metric, setMetric] = useState<ActivityMetric>("requests");
   const meta = rangeMeta(range);
 
@@ -201,7 +196,7 @@ export function OverviewRoute({ active, range, onRequestClick, onNavigate }: Ove
               />
               <Stat
                 label={t("settingsPage.stats.overview.stat.errorRate")}
-                value={formatPercent(overall.errorRate)}
+                value={formatErrorRate(overall.errorRate)}
                 hint={t("settingsPage.stats.overview.hint.succeeded", {
                   count: formatInteger(overall.successfulRequests),
                 })}
@@ -278,6 +273,7 @@ export function OverviewRoute({ active, range, onRequestClick, onNavigate }: Ove
 
         <Card
           index={2}
+          className="stats-fill-card"
           title={t("settingsPage.stats.overview.tokenMixCardTitle")}
           description={t("settingsPage.stats.overview.tokenMixCardDescription")}
           stale={overview.stale}
@@ -312,7 +308,7 @@ export function OverviewRoute({ active, range, onRequestClick, onNavigate }: Ove
                       }))}
                     />
                   </div>
-                  <div className="stack" style={{ gap: 10 }}>
+                  <div className="stack token-agent-stack" style={{ gap: 10 }}>
                     <div className="section-label" style={{ marginBottom: 0 }}>
                       {t("settingsPage.stats.overview.byAgent")}
                     </div>
@@ -325,22 +321,18 @@ export function OverviewRoute({ active, range, onRequestClick, onNavigate }: Ove
                       }))}
                     />
                     {agents.segments.map(s => (
-                      <div key={s.agentType} className="row" style={{ justifyContent: "space-between" }}>
+                      <div key={s.agentType} className="token-agent-row">
                         <span className="row">
                           <span className="swatch" style={{ background: AGENT_COLOR[s.agentType] }} />
                           {agentLabel[s.agentType]}
-                          <span className="dim num">
+                          <span className="dim stats-num">
                             {t("settingsPage.stats.overview.reqCount", {
                               count: formatInteger(s.requests),
                             })}
                           </span>
                         </span>
-                        <span className="row">
-                          <span className="dim num">{formatCompact(s.tokens)}</span>
-                          <span className="num" style={{ minWidth: 48, textAlign: "right" }}>
-                            {formatPercent(s.share)}
-                          </span>
-                        </span>
+                        <span className="stats-num dim">{formatCompact(s.tokens)}</span>
+                        <span className="stats-num">{formatPercent(s.share)}</span>
                       </div>
                     ))}
                   </div>
@@ -404,19 +396,19 @@ function buildRequestColumns(t: TFunction) {
       key: "tokens",
       header: t("settingsPage.stats.overview.columns.tokens"),
       align: "right" as const,
-      render: (row: MessageStats) => <span className="num">{formatInteger(row.usage.totalTokens)}</span>,
+      render: (row: MessageStats) => <span className="stats-num">{formatInteger(row.usage.totalTokens)}</span>,
     },
     {
       key: "cost",
       header: t("settingsPage.stats.overview.columns.cost"),
       align: "right" as const,
-      render: (row: MessageStats) => <span className="num">{formatMessageCost(row, 4)}</span>,
+      render: (row: MessageStats) => <span className="stats-num">{formatMessageCost(row, 4)}</span>,
     },
     {
       key: "duration",
       header: t("settingsPage.stats.overview.columns.duration"),
       align: "right" as const,
-      render: (row: MessageStats) => <span className="num">{formatDurationMs(row.duration)}</span>,
+      render: (row: MessageStats) => <span className="stats-num">{formatDurationMs(row.duration)}</span>,
     },
     {
       key: "status",

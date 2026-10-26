@@ -7,3 +7,12 @@
 .srow.hook-row { cursor: pointer; }
 
 #hookPhasePills .mcp-type-pill { min-height: 26px; padding: 0 10px; font-size: var(--ui-fs-sm); }
+
+/* scope dropdown inside the create form row: read as a field face, not a pill */
+.hook-form-scope .scope-sel { display: flex; width: 100%; box-sizing: border-box; border-radius: 9px; padding: 6px 10px; background: var(--inset); --hover-fill: var(--menu-hl); color: var(--text); font-size: var(--ui-fs-sm); }
+
+.hook-form-scope .scope-sel:hover, .hook-form-scope .scope-sel:has(.menu.open) { background: var(--hover-fill); }
+
+.hook-form-scope .scope-sel-btn { flex: 1; }
+
+.hook-form-scope .scope-sel-btn .caret-svg { margin-left: auto; }

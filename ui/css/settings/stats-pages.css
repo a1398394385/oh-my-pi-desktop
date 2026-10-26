@@ -1,0 +1,281 @@
+/* Stats route pages — ported from the upstream omp-stats route stylesheets
+   (routes/models.css, routes/providers.css, routes/errors.css, routes/tools.css,
+   routes/projects.css).
+   Every selector is scoped to :is(#pg-stats, .stats-scope) so the stats page keeps its own layout
+   without leaking into the rest of the settings surface.
+   Colors/motion come from the token bridge declared in ui/css/settings/stats.css
+   (--ink-*, --line-*, --panel, --bg, --hover, --bad, --ease-out, --st-dur-*). */
+
+/* ── Models page: expandable model rows ─────────────────────────────────── */
+
+:is(#pg-stats, .stats-scope) .models-chevron {
+	display: inline-flex;
+	color: var(--ink-3);
+	transition: transform var(--st-dur-2) var(--ease-out);
+}
+
+:is(#pg-stats, .stats-scope) .models-chevron[data-open="true"] {
+	transform: rotate(90deg);
+	color: var(--ink-1);
+}
+
+:is(#pg-stats, .stats-scope) .models-detail {
+	display: grid;
+	grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+	gap: 24px;
+	padding: 16px 16px 18px 44px;
+	background: var(--panel);
+	border-bottom: 1px solid var(--line-1);
+	animation: rise var(--st-dur-3) var(--ease-out) both;
+}
+
+:is(#pg-stats, .stats-scope) .models-detail-facts {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	min-width: 0;
+}
+
+:is(#pg-stats, .stats-scope) .models-detail-chart {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+}
+
+/* Upstream collapses the detail grid on narrow viewports; the desktop shell
+   keeps the same two-column split, so the rule stays meaningful here. */
+@media (max-width: 1100px) {
+	:is(#pg-stats, .stats-scope) .models-detail {
+		grid-template-columns: minmax(0, 1fr);
+		padding-left: 16px;
+	}
+}
+
+/* ── Providers page ─────────────────────────────────────────────────────── */
+
+:is(#pg-stats, .stats-scope) .providers-select {
+	max-width: 220px;
+}
+
+:is(#pg-stats, .stats-scope) .providers-mix {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 12px 16px 14px;
+	background: var(--bg);
+	border-top: 1px solid var(--line-1);
+}
+
+/* Keeps account names aligned whether or not the row has a chart swatch. */
+:is(#pg-stats, .stats-scope) .providers-swatch-slot {
+	display: inline-flex;
+	width: 10px;
+	flex: none;
+}
+
+:is(#pg-stats, .stats-scope) .providers-account {
+	max-width: 280px;
+}
+
+:is(#pg-stats, .stats-scope) .providers-accounts {
+	margin: 0 -16px -16px;
+	border-top: 1px solid var(--line-1);
+}
+
+/* ── Errors page ────────────────────────────────────────────────────────── */
+
+:is(#pg-stats, .stats-scope) .errors-signature {
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--ink-1);
+	overflow-wrap: anywhere;
+}
+
+:is(#pg-stats, .stats-scope) .errors-message {
+	display: block;
+	max-width: 520px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--font-mono);
+	font-size: 12px;
+	color: var(--bad);
+}
+
+:is(#pg-stats, .stats-scope) .errors-filter {
+	max-width: 260px;
+}
+
+:is(#pg-stats, .stats-scope) .errors-filter .truncate {
+	min-width: 0;
+}
+
+:is(#pg-stats, .stats-scope) .errors-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 4px 16px 14px;
+	background: var(--hover);
+	border-bottom: 1px solid var(--line-1);
+}
+
+:is(#pg-stats, .stats-scope) .errors-detail-message {
+	max-height: 200px;
+	color: var(--ink-1);
+}
+
+:is(#pg-stats, .stats-scope) .errors-detail-meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	flex-wrap: wrap;
+	font-size: 12.5px;
+}
+
+:is(#pg-stats, .stats-scope) .errors-detail-models {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+/* ── Tools page ─────────────────────────────────────────────────────────── */
+
+:is(#pg-stats, .stats-scope) .tools-filter {
+	width: 200px;
+}
+
+:is(#pg-stats, .stats-scope) .tools-name {
+	max-width: 220px;
+}
+
+:is(#pg-stats, .stats-scope) .tools-share {
+	display: inline-block;
+	min-width: 32px;
+	margin-left: 8px;
+	text-align: right;
+}
+
+/* ── Projects page ──────────────────────────────────────────────────────── */
+
+/* Long temp-dir names must not stretch the table. */
+:is(#pg-stats, .stats-scope) .projects-folder {
+	gap: 8px;
+	max-width: 280px;
+	min-width: 0;
+}
+
+/* ── Frustration page ───────────────────────────────────────────────────── */
+
+/* Judge card body (page-level; the estimate dialog is styled separately). */
+:is(#pg-stats, .stats-scope) .frustration-judge {
+	gap: 10px;
+	font-size: 13px;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-spacer {
+	flex: 1;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-progress {
+	gap: 8px;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-progress-head {
+	gap: 10px;
+}
+
+/* .frustration-progress-track rides on .meter, which already sets the 6px/3px
+   track geometry — no extra rule needed. */
+
+/* The judge progress bar paints the accent gradient, not the flat accent the
+   generic .meter-fill uses — the compound selector outranks .meter-fill. */
+:is(#pg-stats, .stats-scope) .meter-fill.frustration-progress-fill {
+	background: var(--accent-gradient);
+}
+
+:is(#pg-stats, .stats-scope) .frustration-progress-meta {
+	flex-wrap: wrap;
+	gap: 4px 18px;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-chart-body {
+	gap: 14px;
+}
+
+/* Many model classes: scroll sideways rather than wrap (the thumb tracks one row). */
+:is(#pg-stats, .stats-scope) .frustration-classes {
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-filters {
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 8px 16px;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-filters .legend {
+	flex: 1 1 320px;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-key {
+	padding-top: 10px;
+	border-top: 1px solid var(--line-1);
+	color: var(--ink-3);
+}
+
+/* .frustration-key-wide needs no rule: the desktop .legend-item has no
+   max-width cap to lift. */
+
+:is(#pg-stats, .stats-scope) .frustration-key-swatch[data-variant="assistant"] {
+	background: var(--ink-2);
+}
+
+:is(#pg-stats, .stats-scope) .frustration-key-swatch[data-variant="angry"] {
+	background: color-mix(in srgb, var(--ink-2) 55%, var(--black));
+}
+
+:is(#pg-stats, .stats-scope) .frustration-key-swatch[data-variant="other"] {
+	background: color-mix(in srgb, var(--ink-2) 32%, transparent);
+}
+
+:is(#pg-stats, .stats-scope) .frustration-key-swatch[data-variant="hatch"] {
+	background: repeating-linear-gradient(
+		45deg,
+		var(--ink-2) 0 1.6px,
+		color-mix(in srgb, var(--ink-2) 14%, transparent) 1.6px 3.5px
+	);
+}
+
+:is(#pg-stats, .stats-scope) .frustration-key-line {
+	width: 12px;
+	height: 2px;
+	flex: none;
+	border-radius: 1px;
+	background: var(--ink-1);
+}
+
+:is(#pg-stats, .stats-scope) .frustration-chart-empty {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 340px;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-tooltip-extra {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+:is(#pg-stats, .stats-scope) .frustration-judged {
+	justify-content: flex-end;
+	gap: 6px;
+}

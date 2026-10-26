@@ -18,7 +18,7 @@
 #agentScopeMenu .mi, #skillScopeMenu .mi, #mcpScopeMenu .mi, .scope-menu .mi {
   padding: 9px 12px;
   font-family: var(--ui-font);
-  font-size: var(--ui-fs-base);
+  font-size: var(--ui-fs-sm);
 }
 
 #agentScopeMenu .mi .mi-label, #skillScopeMenu .mi .mi-label, #mcpScopeMenu .mi .mi-label, .scope-menu .mi .mi-label {
@@ -89,7 +89,7 @@
 #settings {
   position: fixed; inset: 0; z-index: 300;
   display: grid; grid-template-columns: var(--setnav-w, 180px) 1fr;
-  background: var(--base);
+  background: var(--base); --hover-fill: var(--panel-2);
   padding: 0 var(--shell-gap) var(--shell-gap) 0;
 }
 
@@ -115,7 +115,7 @@
   display: flex; align-items: center; gap: 7px;
   padding: 7px 10px; color: var(--dim); cursor: pointer;
   border-radius: 10px; font-size: var(--ui-fs-base);
-  border: 0; background: var(--base); width: 100%; text-align: left; font: inherit;
+  border: 0; background: var(--base); --hover-fill: var(--panel-2); width: 100%; text-align: left; font: inherit;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
@@ -147,7 +147,7 @@
   width: 100%;
   height: 28px;
   padding: 0 24px 0 28px;
-  background: var(--bg);
+  background: var(--bg); --hover-fill: var(--panel-2);
   border: 1px solid transparent;
   border-radius: 8px;
   color: var(--text);
@@ -192,7 +192,7 @@
 }
 
 .set-search-count {
-  font-size: 10px;
+  font-size: var(--ui-fs-xs);
   letter-spacing: .05em;
   color: var(--faint);
   padding: 6px 10px 4px;
@@ -249,16 +249,16 @@
 }
 
 .set-search-item-page {
-  font-size: 10px;
+  font-size: var(--ui-fs-xs);
   color: var(--faint);
-  background: var(--inset);
+  background: var(--inset); --hover-fill: var(--menu-hl);
   padding: 1px 5px;
   border-radius: 4px;
   flex: none;
 }
 
 .set-search-item-desc {
-  font-size: 11px;
+  font-size: var(--ui-fs-sm);
   color: var(--faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -278,7 +278,7 @@
 }
 
 .set-sec {
-  font-size: 10.5px; letter-spacing: .08em; color: var(--faint);
+  font-size: var(--ui-fs-xs); letter-spacing: .08em; color: var(--faint);
   padding: 22px 12px 8px; user-select: none;
 }
 
@@ -313,12 +313,12 @@
   /* pixel-aligned with the main sidebar's .side-foot (avatar left edge 14px, vertical center 34px, gap 10px),
      so the bottom-left avatar/title doesn't move a pixel when entering/leaving settings */
   position: sticky; bottom: 0;
-  background: var(--base);
+  background: var(--base); --hover-fill: var(--panel-2);
 }
 
 #setBody {
   overflow-y: auto; padding: 32px 40px 60px;
-  background: var(--card);
+  background: var(--card); --hover-fill: var(--panel-2);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0 0;
   min-width: 0;
@@ -332,6 +332,8 @@
   margin-right: auto;
   min-width: 0;
 }
+
+.set-page.set-page-compact { max-width: min(860px, 50vw, calc(100% - clamp(24px, 6vw, 100px))); }
 
 .set-page > * { animation: setRise .45s var(--swift) backwards; }
 
@@ -385,7 +387,7 @@
 .gtt-hint::after {
   content: attr(data-hint);
   position: absolute; left: 0; top: calc(100% + 8px);
-  background: var(--ctl-bg); border: 1px solid var(--line);
+  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line);
   border-radius: var(--r-md); box-shadow: 0 12px 32px var(--tint-black-500);
   color: var(--dim); font-size: var(--ui-fs-base); font-weight: 400;
   padding: 6px 10px; white-space: nowrap; z-index: 600;
@@ -406,7 +408,7 @@
 
 /* settings card: standalone card language (--panel base + 8% white border + r-card + deep shadow) */
 .set-card {
-  background: var(--panel);
+  background: var(--panel); --hover-fill: var(--menu-hl);
   border: 1px solid var(--tint-white-80);
   border-radius: var(--r-card);
   box-shadow: 0 8px 26px var(--tint-black-350);
@@ -419,7 +421,7 @@
 
 .set-note {
   margin: 16px 0 0; padding: 12px 14px;
-  background: var(--panel); border: 1px solid var(--tint-white-80);
+  background: var(--panel); --hover-fill: var(--menu-hl); border: 1px solid var(--tint-white-80);
   border-left: 2px solid var(--accent); border-radius: var(--r-lg);
   display: flex; flex-direction: column; gap: 4px;
 }
@@ -434,6 +436,10 @@
 .srow-tx b { font-size: var(--ui-fs-base); font-weight: 500; }
 
 .srow-tx span { font-size: var(--ui-fs-sm); color: var(--faint); line-height: 1.55; }
+
+/* Badges inside a row title must stay in the xs tier: .srow-tx span (0,1,1) would
+   otherwise outrank .tag (0,1,0) and render them one step larger. */
+.srow-tx .tag { font-size: var(--ui-fs-xs); }
 
 .srow-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
 
@@ -463,7 +469,7 @@
 /* number stepper = the .plus-btn language; tabular numerals don't jitter */
 .num-ctl {
   display: inline-flex; align-items: center; gap: 2px; flex: none;
-  background: var(--bg); border: 1px solid var(--line-soft);
+  background: var(--bg); --hover-fill: var(--panel-2); border: 1px solid var(--line-soft);
   border-radius: 9px; padding: 2px;
 }
 
@@ -474,7 +480,7 @@
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-fast) var(--swift);
 }
 
-.num-btn:hover { background: var(--panel-2); color: var(--text); }
+.num-btn:hover { background: var(--hover-fill); color: var(--text); }
 
 .num-btn:active { transform: scale(.88); }
 
@@ -609,19 +615,32 @@
    (.mcp-form-* / .inp / textareas). Head actions use the small .save-btn family
    (danger variant for delete); the form card carries the padding the inline-expansion
    body used to provide. */
-.set-edit-head { display: flex; align-items: flex-start; gap: 12px; }
+.set-edit-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
-.set-edit-head > .save-btn { flex: none; }
+.set-edit-back { flex: none; }
 
-.set-edit-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.set-edit-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 
-.set-edit-title { display: flex; align-items: center; gap: 10px; font-size: calc(var(--ui-fs) * 1.5); font-weight: 500; line-height: 1.35; }
+.set-edit-title { display: flex; align-items: center; gap: 10px; font-size: var(--ui-fs-xl); font-weight: 600; line-height: 1.35; }
 
 .set-edit-sub { font-size: var(--ui-fs-sm); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .set-edit-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 
-.set-card.set-edit-card { margin-top: 18px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+/* Create/edit window body: same face as the main-column automation editor
+   (--card panel, --line edge), so every create form is the same object. */
+.set-card.set-edit-card {
+  margin-top: 18px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--card); --hover-fill: var(--panel-2);
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+:is([data-theme="light"], [data-theme-mode="light"]) .set-card.set-edit-card { border-color: var(--line); box-shadow: none; }
 
 /* Voice sections (InteractionPage VoiceSection): language code input width + the
    dictation test button's live-recording look */
@@ -629,7 +648,7 @@
 
 .voice-test-btn.rec { color: var(--err); }
 
-.voice-test-btn.rec:hover { background: var(--panel-2); }
+.voice-test-btn.rec:hover { background: var(--hover-fill); }
 
 /* Hairline: halve the converted inset rings on HiDPI */
 @media (min-resolution: 2dppx) {

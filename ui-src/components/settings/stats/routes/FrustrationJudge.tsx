@@ -205,7 +205,13 @@ function EstimateBody({ estimate }: { estimate: EstimateState }) {
   if (estimate.status === "loading") return <p className="muted">{t("settingsPage.stats.frustration.judge.estimating")}</p>;
   if (estimate.status === "error") return <p className="tone-bad">{estimate.message}</p>;
   const quote = estimate.estimate;
-  if (!quote.available) return <p>{quote.reason}</p>;
+  if (!quote.available)
+    return (
+      <>
+        <p className="micro dim">{t("settingsPage.stats.frustration.judge.unavailableHint")}</p>
+        <p>{quote.reason}</p>
+      </>
+    );
   if (quote.messages === 0) {
     return <p>{t("settingsPage.stats.frustration.judge.allJudged")}</p>;
   }
@@ -213,7 +219,7 @@ function EstimateBody({ estimate }: { estimate: EstimateState }) {
     <>
       <div className="frustration-quote">
         <span className="dim micro">{t("settingsPage.stats.frustration.judge.estimatedCost")}</span>
-        <span className="num frustration-quote-value">≈ {formatCost(quote.cost)}</span>
+        <span className="stats-num frustration-quote-value">≈ {formatCost(quote.cost)}</span>
       </div>
       <KeyValues
         items={[
@@ -255,13 +261,13 @@ function JudgeProgress({
   return (
     <div className="stack frustration-progress">
       <div className="row frustration-progress-head">
-        <span className="num">
+        <span className="stats-num">
           {t("settingsPage.stats.frustration.judge.progressText", {
             done: formatInteger(job.done),
             total: formatInteger(job.total),
           })}
         </span>
-        <span className="num dim">{formatPercent(share)}</span>
+        <span className="stats-num dim">{formatPercent(share)}</span>
         <span className="frustration-spacer" />
         <button
           type="button"
@@ -289,7 +295,7 @@ function JudgeProgress({
         </span>
         <span>
           {t("settingsPage.stats.frustration.judge.costSoFar")}{" "}
-          <span className="num">{formatCost(job.cost)}</span>
+          <span className="stats-num">{formatCost(job.cost)}</span>
         </span>
         {job.judge && <span className="mono">{job.judge}</span>}
         {job.startedAt !== null && (
@@ -298,14 +304,14 @@ function JudgeProgress({
           </span>
         )}
         {job.startedAt !== null && job.done > 0 && (
-          <span className="num">
+          <span className="stats-num">
             {t("settingsPage.stats.frustration.judge.perSecond", {
               rate: (job.done / Math.max(1, (Date.now() - job.startedAt) / 1000)).toFixed(0),
             })}
           </span>
         )}
         {job.concurrency > 0 && (
-          <span className="num">
+          <span className="stats-num">
             {t("settingsPage.stats.frustration.judge.inFlight", { count: formatInteger(job.concurrency) })}
           </span>
         )}

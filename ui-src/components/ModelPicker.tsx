@@ -398,7 +398,7 @@ export function EnabledModelPicker({
  * entry), narrowed by `filter` (role accepted kinds / chat-only creation form).
  */
 export function ConfiguredModelPicker({
-  label, selectedId, filter, disabled, onPick, selClassName,
+  label, selectedId, filter, disabled, onPick, selClassName, menuClassName,
 }: {
   label: ReactNode;
   selectedId?: string;
@@ -406,6 +406,9 @@ export function ConfiguredModelPicker({
   disabled?: boolean;
   onPick: (id: string) => void;
   selClassName?: string;
+  // Level-1 menu base classes; override only when the trigger opts out of the
+  // sm control tier, so the menu keeps matching its trigger.
+  menuClassName?: string;
 }) {
   const modelCatalog = useAppStore((s) => s.modelCatalog);
   const models = modelCatalog.filter((m) => !filter || filter(m));
@@ -414,6 +417,7 @@ export function ConfiguredModelPicker({
       label={label}
       disabled={disabled}
       selClassName={selClassName}
+      menuClassName={menuClassName}
       models={models}
       selectedId={selectedId}
       onPick={onPick}
