@@ -197,6 +197,7 @@ declare global {
     __TAURI__?: {
       core?: { invoke: <T = any>(cmd: string, args?: Record<string, unknown>) => Promise<T> };
       event?: { listen: (event: string, handler: (e: { payload?: any }) => void) => Promise<unknown> };
+      app?: { getVersion: () => Promise<string> };
       window?: { getCurrentWindow(): import("./titlebar-window").TauriWindow };
     };
   }
