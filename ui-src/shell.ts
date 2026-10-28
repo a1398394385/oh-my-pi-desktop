@@ -442,6 +442,24 @@ export function initShell(): void {
   window.addEventListener("click", closeAllMenus);
   window.addEventListener("blur", closeAllMenus);
 
+  // Packaged-webview hardening. tauri.conf.json sets dragDropEnabled=false so HTML5
+  // drop reaches the app (Windows requires it for any in-page drag & drop), which
+  // leaves the native handlers in charge: a file dropped outside the composer
+  // navigates the whole window to that file, and the native context menu still
+  // offers Reload / Inspect Element. Cancelling those defaults here is the only
+  // layer that exists in release builds (the devtools feature is compiled out, so
+  // nothing native can turn them off). Text fields keep the native edit menu.
+  window.addEventListener("dragover", (e) => {
+    if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+  });
+  window.addEventListener("drop", (e) => {
+    if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
+  });
+  window.addEventListener("contextmenu", (e) => {
+    if ((e.target as Element | null)?.closest("input, textarea, [contenteditable]")) return;
+    e.preventDefault();
+  });
+
   // Soft keyboard (phones): iOS Safari keeps the layout viewport at full height when the
   // keyboard opens, so the height:100% shell leaves the composer underneath it and Safari
   // pans the visual viewport up to reach the focused field — the page reads as jumping while
