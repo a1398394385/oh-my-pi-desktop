@@ -67,6 +67,22 @@ describe("sealRunItems", () => {
 		expect(turnEndedWithError(s.items)).toBe(true);
 		expect(turnEndedWithError([{ role: "user", text: "go" }, { role: "assistant", text: "ok" }])).toBe(false);
 	});
+
+	test("a failure the base retried away does not light the sidebar dot", () => {
+		// Live shape (session 01a17be3, 2026-10-27): two dropped provider streams mid-turn, the
+		// base retried, the run delivered its answer. The rows fold into the group above the
+		// retry's output, so only the group's tail decides.
+		const s = session([
+			{ role: "user", text: "go" },
+			{ role: "error", text: "socket closed" },
+			{ role: "tool", text: "bash", name: "bash" },
+			{ role: "assistant", text: "done" },
+		]);
+		sealRunItems(s, null);
+		expect(roles(s.items)).toEqual(["user", "loop", "assistant"]);
+		expect(group(s).items.map((it) => it.role)).toEqual(["error", "tool"]);
+		expect(turnEndedWithError(s.items)).toBe(false);
+	});
 });
 
 // Desktop alert gating (session.ts turn_end): only a failure the run actually ended on alerts.

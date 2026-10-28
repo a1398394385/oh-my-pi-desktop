@@ -65,14 +65,18 @@ export function endingErrorText(items: readonly SessionItem[]): string | null {
 }
 
 // A run that ended on an error row (sidebar dot): the row folds into the
-// group instead of sitting last, so scan the turn's tail for it.
+// group instead of sitting last, so scan the turn's tail for it. The fold is
+// opaque to the scan, so a group only counts when its own tail is the failure
+// (same rule as endingErrorText): a failure the base retried away sits mid-group
+// above the retry's output and must not light the dot — turn_end's alert already
+// judges that run as completed.
 export function turnEndedWithError(items: readonly SessionItem[]): boolean {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
     if (it.role === "user") return false;
     if (it.role === "error") return true;
     if (it.role === "loop") {
-      if (it.items?.some((x) => x.role === "error")) return true;
+      if (endingErrorText(it.items ?? []) !== null) return true;
       continue;
     }
   }
