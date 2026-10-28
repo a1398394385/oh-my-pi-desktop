@@ -13,10 +13,16 @@ import { H, eachUiWs, stampEvent } from "../state.ts";
 import { readAutomationDialogTimeouts } from "../profile.ts";
 import { safeStderr } from "../stderr.ts";
 import { computeAutomationNextRunAt, isOneShot } from "./cron.ts";
-import { deliveryText } from "./delivery.ts";
 import { readAutomations, trimRuns, writeAutomations } from "./store.ts";
-import { AUTOMATION_DELIVERY_CUSTOM_TYPE } from "./types.ts";
-import type { Automation, AutomationRun, AutomationsFile, SpawnFn, SpawnOutcome, TickOpts } from "./types.ts";
+import {
+  type Automation,
+  type AutomationRun,
+  type AutomationsFile,
+  type SpawnFn,
+  type SpawnOutcome,
+  type TickOpts,
+} from "./types.ts";
+import { appendDeliveryMarker } from "./delivery.ts";
 
 /** Poll cadence for the tick loop (ZCodium scheduler parity). */
 const POLL_INTERVAL_MS = 20_000;
@@ -272,12 +278,6 @@ export async function runAutomationNow(id: string, spawn: SpawnFn = defaultSpawn
 }
 
 /**
- * Framing the model sees. The first line is machine-readable (the transcript
- * renderer splits it back off to show only the prompt), the rest is the prompt:
- * without the header a scheduled reminder is indistinguishable from the user
- * typing it live.
- */
-/**
  * Session-targeted dispatch: wake an existing session with the automation prompt
  * instead of spawning one. The target is resolved from the pool or reopened from
  * its transcript, so a delivery still lands after the user closed the session.
@@ -291,16 +291,16 @@ async function deliverToSession(a: Automation): Promise<SpawnOutcome> {
     sessionId,
     sessionPath: entry.path,
     sendPrompt: async () => {
-      const admitted = await entry.session.promptCustomMessage(
-        {
-          customType: AUTOMATION_DELIVERY_CUSTOM_TYPE,
-          content: deliveryText(a, Date.now()),
-          display: true,
-          attribution: "agent",
-        },
-        { streamingBehavior: "followUp" },
-      );
-      if (admitted === false) throw new Error("automation delivery was not admitted");
+      const automation = { id: a.id, title: a.title };
+      // Durable marker first: the message entry the base writes below cannot carry it, so
+      // an evicted-then-reopened session reads it back from this record.
+      appendDeliveryMarker(entry.session.sessionManager, automation);
+      entry.transcript.push({ role: "user", text: a.prompt, automation });
+      // No composer sent this prompt: draw the same user bubble on every UI.
+      const echo = JSON.stringify(stampEvent({ type: "event", sessionId, kind: "user_message", text: a.prompt, automation }));
+      eachUiWs((w) => w.send(echo));
+      const agentInvoked = await entry.session.prompt(a.prompt, { streamingBehavior: "followUp" });
+      if (agentInvoked === false) throw new Error("prompt consumed locally, no agent turn started");
       // Settle on the turn, not on admission: a delivery queued behind a live turn
       // keeps the run "running" until the session works through it.
       await entry.session.waitForIdle();

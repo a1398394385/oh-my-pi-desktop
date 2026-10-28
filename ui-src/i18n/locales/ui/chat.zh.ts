@@ -164,6 +164,7 @@ export const chatZh = {
   // ---- turn actions (TurnActs.tsx) ----
   copyReply: "复制这条回复",
   speakReply: "朗读这条回复",
+  openAutomation: "本回合创建了定时任务「{{title}}」，点击打开",
   replyCopied: "已复制回复",
   copyFailed: "复制失败",
   branchFromHere: "从此处分叉出新会话",
@@ -175,6 +176,7 @@ export const chatZh = {
   imageN: "图片 {{n}}",
   clickToZoom: "点击查看大图",
   automationDelivery: "自动化投递",
+  automationTaskLabel: "定时任务",
   copyMsg: "复制这条消息",
   editResend: "编辑重发（原对话保留为分支）",
   editResendSend: "发送（Enter）",

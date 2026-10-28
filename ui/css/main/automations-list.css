@@ -68,6 +68,10 @@
   transition: box-shadow var(--dur-snap) var(--swift);
 }
 .al-card:hover { box-shadow: inset 0 0 0 1px var(--line); }
+/* Completed (terminal) cards read as inert: the whole card dims to the disabled-control
+   opacity; still clickable into the edit view, so hover keeps its ring lift */
+.al-card.done { opacity: .5; }
+.al-card.done:hover { opacity: .65; }
 /* House focus ring (global controls rule covers .icon-btn/.add-btn/.tg already) */
 .al-card:focus-visible, .al-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 

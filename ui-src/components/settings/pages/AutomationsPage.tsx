@@ -23,15 +23,22 @@ export default function AutomationsPage() {
     setApprovalSec(String(timeouts.approvalSec));
   }, [timeouts]);
 
-  const saveTimeouts = () => {
-    const ask = Math.floor(Number(askSec));
-    const approval = Math.floor(Number(approvalSec));
-    if (!Number.isFinite(ask) || !Number.isFinite(approval) || ask < 0 || approval < 0) {
+  // One RPC writes both deadlines, so any blur commits the pair (the edited field from
+  // the event, the other from state). Invalid text stays in the box with a toast instead
+  // of snapping back to the host value.
+  const commitTimeouts = (next: { ask?: string; approval?: string }) => {
+    const askRaw = next.ask ?? askSec;
+    const approvalRaw = next.approval ?? approvalSec;
+    const ask = Math.floor(Number(askRaw));
+    const approval = Math.floor(Number(approvalRaw));
+    // Empty reads as 0 through Number(), and 0 means "never time out" — reject it instead
+    // of silently disabling the unattended-run deadline.
+    if (askRaw.trim() === "" || approvalRaw.trim() === "" || !Number.isFinite(ask) || !Number.isFinite(approval) || ask < 0 || approval < 0) {
       toast(t("settingsPage.auto.timeoutInvalid"));
       return;
     }
+    if (ask === timeouts?.askSec && approval === timeouts.approvalSec) return;
     send({ type: "set_automation_dialog_timeouts", askSec: ask, approvalSec: approval });
-    toast(t("settingsPage.auto.timeoutSaved"));
   };
 
   return (
@@ -66,7 +73,8 @@ export default function AutomationsPage() {
           </div>
           <div className="srow-ctl">
             <input className="inp" style={{ width: 100, minWidth: 0 }} type="number" min="0" step="1"
-              value={askSec} disabled={!timeouts} onChange={(e) => setAskSec(e.target.value)} />
+              value={askSec} disabled={!timeouts} onChange={(e) => setAskSec(e.target.value)}
+              onBlur={(e) => commitTimeouts({ ask: e.target.value })} />
           </div>
         </div>
         <div className="srow">
@@ -76,8 +84,8 @@ export default function AutomationsPage() {
           </div>
           <div className="srow-ctl">
             <input className="inp" style={{ width: 100, minWidth: 0 }} type="number" min="0" step="1"
-              value={approvalSec} disabled={!timeouts} onChange={(e) => setApprovalSec(e.target.value)} />
-            <button className="save-btn" disabled={!timeouts} onClick={saveTimeouts}>{t("common.save")}</button>
+              value={approvalSec} disabled={!timeouts} onChange={(e) => setApprovalSec(e.target.value)}
+              onBlur={(e) => commitTimeouts({ approval: e.target.value })} />
           </div>
         </div>
       </div>

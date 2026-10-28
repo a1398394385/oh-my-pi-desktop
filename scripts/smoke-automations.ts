@@ -9,15 +9,12 @@
 // rejection surfaces, the automations_list push) and the session_list automation
 // badge backfill.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-automations.ts
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { H, activeWs } from "../host/state.ts";
+import { H, activeWs, sessions, type PoolEntry } from "../host/state.ts";
 import { SessionManager } from "../host/bootstrap.ts";
-import { createAutomationTools } from "../host/automations-tool.ts";
-import { translateEvent } from "../host/translate.ts";
-import { entriesToTranscript } from "../host/translate-history.ts";
-import { AUTOMATION_DELIVERY_CUSTOM_TYPE } from "../host/automations/types.ts";
+import { createAutomationTools, type AutomationToolSession } from "../host/automations-tool.ts";
 import { handleListSessions } from "../host/rpc/session.ts";
 import {
   AUTOMATION_CREATE_LIMIT,
@@ -34,6 +31,7 @@ import {
   isValidCronExpr,
 } from "../host/automations/cron.ts";
 import { runAutomationNow, tickAutomations } from "../host/automations/scheduler.ts";
+import { entriesToTranscript } from "../host/translate-history.ts";
 
 // ---------- isolation: point the store at a throwaway agentDir ----------
 const agentDir = mkdtempSync(path.join(tmpdir(), "omp-automations-smoke-"));
@@ -459,7 +457,10 @@ async function main(): Promise<void> {
   {
     const frames: { type?: string }[] = [];
     activeWs.value = { send: (d: string) => frames.push(JSON.parse(d)) };
-    const [listTool, manageTool] = createAutomationTools("/repo/session-cwd");
+    // Session facts are host-injected now: xd:// device dispatch hands the tool the
+    // device's AgentToolContext, which carries no session accessor at all.
+    const freshSession: AutomationToolSession = { sessionFile: () => null, ensureOnDisk: async () => {} };
+    const [listTool, manageTool] = createAutomationTools("/repo/session-cwd", freshSession);
     ok("tool: list declares read approval", listTool.approval === "read", listTool.approval);
     ok("tool: manage declares write approval", manageTool.approval === "write", manageTool.approval);
     type ToolResult = { content: { text: string }[]; isError?: boolean };
@@ -467,6 +468,12 @@ async function main(): Promise<void> {
       (await manageTool.execute("tool-call-1", params, undefined, undefined, ctx)) as ToolResult;
     const callList = async (ctx?: Record<string, unknown>): Promise<ToolResult> =>
       (await listTool.execute("tool-call-list", {}, undefined, undefined, ctx)) as ToolResult;
+    /** Same manage tool, bound to a session with a transcript (one instance per session). */
+    const asSession = (session: AutomationToolSession) => {
+      const [, manage] = createAutomationTools("/repo/session-cwd", session);
+      return async (params: Record<string, unknown>, ctx?: Record<string, unknown>): Promise<ToolResult> =>
+        (await manage.execute("tool-call-2", params, undefined, undefined, ctx)) as ToolResult;
+    };
     const base = readAutomations().automations.length;
 
     const daily = await call({ action: "create", title: "Standup brief", prompt: "summarize yesterday" });
@@ -479,6 +486,13 @@ async function main(): Promise<void> {
     ok("tool: nextRunAt computed", typeof d?.nextRunAt === "number", d?.nextRunAt);
     ok("tool: no delivery mode by default", d?.deliverTo === undefined, d?.deliverTo);
     ok("tool: automations_list pushed", frames.some((f) => f.type === "automations_list"), frames.length);
+    // The turn's action row offers the jump to the editor from these details, not from prose.
+    const createdDetails = (daily as ToolResult & { details?: { automation?: { id?: string; title?: string } } }).details?.automation;
+    ok(
+      "tool: create reports the new task in details",
+      createdDetails?.id === d?.id && createdDetails?.title === "Standup brief",
+      createdDetails,
+    );
 
     const weekly = await call({
       action: "create",
@@ -522,29 +536,98 @@ async function main(): Promise<void> {
 
     const targetFile = path.join(agentDir, "delivery-target.jsonl");
     writeFileSync(targetFile, "{}\n");
-    const targetCtx = { sessionManager: { getSessionFile: () => targetFile } };
-    const delivery = await call(
-      { action: "create", title: "Remind me", prompt: "check the build", every: "minute", interval: 30, deliverToSession: true },
-      targetCtx,
-    );
+    const targetCall = asSession({ sessionFile: () => targetFile, ensureOnDisk: async () => {} });
+    const delivery = await targetCall({
+      action: "create",
+      title: "Remind me",
+      prompt: "check the build",
+      every: "minute",
+      interval: 30,
+      deliverToSession: true,
+    });
     ok("tool: delivery create ok", !delivery.isError, delivery.content[0].text);
     const dv = readAutomations().automations.find((a) => a.title === "Remind me");
     ok("tool: delivery target persisted", dv?.deliverTo?.sessionPath === targetFile, dv?.deliverTo);
     ok("tool: delivery defaults to a bounded cap", dv?.recurring === false && dv?.maxRuns === 10, dv);
-    const forcedRecurring = await call(
-      { action: "create", title: "Forced bounded", prompt: "x", deliverToSession: true, recurring: true },
-      targetCtx,
+
+    // This is the shape the bug hit: `write xd://automations_manage` forwards the
+    // device's AgentToolContext (addAdditionalContext only, no session accessor),
+    // so anything read off ctx would be undefined for a live session.
+    const viaDevice = await targetCall(
+      { action: "create", title: "Via device", prompt: "x", deliverToSession: true },
+      { addAdditionalContext: () => {} },
     );
+    ok("tool: delivery works when dispatched as an xd:// device", !viaDevice.isError, viaDevice.content[0].text);
+
+    // Lazy persistence: the manager hands out a path before the JSONL exists,
+    // so the tool must cross the gate itself — the scheduler reopens the bound
+    // path on every run.
+    const lazyFile = path.join(agentDir, "lazy-target.jsonl");
+    let ensureCalls = 0;
+    const lazyCall = asSession({
+      sessionFile: () => lazyFile,
+      ensureOnDisk: async () => {
+        ensureCalls += 1;
+        writeFileSync(lazyFile, "{}\n");
+      },
+    });
+    const lazy = await lazyCall({ action: "create", title: "Lazy transcript", prompt: "x", deliverToSession: true });
+    const lazyRecord = readAutomations().automations.find((a) => a.title === "Lazy transcript");
+    ok(
+      "tool: delivery materializes the transcript before binding",
+      !lazy.isError && ensureCalls === 1 && lazyRecord?.deliverTo?.sessionPath === lazyFile,
+      { error: lazy.content[0].text, ensureCalls, deliverTo: lazyRecord?.deliverTo },
+    );
+
+    // A path that leads nowhere and has no gate to cross is refused, not bound.
+    const ghostCall = asSession({ sessionFile: () => path.join(agentDir, "ghost.jsonl"), ensureOnDisk: async () => {} });
+    const ghost = await ghostCall({ action: "create", title: "Ghost", prompt: "x", deliverToSession: true });
+    ok("tool: delivery refuses a path with no file and no gate", ghost.isError === true, ghost.content[0].text);
+    ok("tool: refused ghost persists nothing", !readAutomations().automations.some((a) => a.title === "Ghost"));
+
+    const forcedRecurring = await targetCall({
+      action: "create",
+      title: "Forced bounded",
+      prompt: "x",
+      deliverToSession: true,
+      recurring: true,
+    });
     ok("tool: delivery ignores recurring true", !forcedRecurring.isError, forcedRecurring.content[0].text);
     const fb = readAutomations().automations.find((a) => a.title === "Forced bounded");
     ok("tool: delivery stays bounded", fb?.recurring === false && fb?.maxRuns === 10, fb);
-    const overCap = await call({ action: "create", title: "Too many", prompt: "x", deliverToSession: true, maxRuns: 101 }, targetCtx);
+    const overCap = await targetCall({ action: "create", title: "Too many", prompt: "x", deliverToSession: true, maxRuns: 101 });
     ok("tool: delivery cap enforced", overCap.isError === true, overCap.content[0].text);
+
+    // The host wires these accessors to the real manager (session-lifecycle.ts).
+    // A fresh manager allocates its path before writing anything: binding must
+    // materialize the JSONL, or the scheduler's reopen fails on every run.
+    const liveManager = SessionManager.create(path.join(agentDir, "live-cwd"), path.join(agentDir, "live-sessions"));
+    const liveFile = liveManager.getSessionFile();
+    const liveCall = asSession({
+      sessionFile: () => liveManager.getSessionFile() ?? null,
+      ensureOnDisk: () => liveManager.ensureOnDisk(),
+    });
+    const live = await liveCall({ action: "create", title: "Live manager", prompt: "x", deliverToSession: true });
+    const liveRecord = readAutomations().automations.find((a) => a.title === "Live manager");
+    ok(
+      "tool: a real manager's allocated path is materialized and bound",
+      !live.isError && !!liveFile && existsSync(liveFile) && liveRecord?.deliverTo?.sessionPath === liveFile,
+      { error: live.content[0].text, liveFile, exists: liveFile ? existsSync(liveFile) : false, deliverTo: liveRecord?.deliverTo },
+    );
+
+    // Per-run desktop control is per-automation and off unless asked: the tool must
+    // round-trip the flag (the desktop "default on" switch never applies to these runs).
+    ok("tool: computer off by default", d?.computer === undefined, d);
+    const desktop = await call({ action: "create", title: "Desktop job", prompt: "click the button", computer: true });
+    ok("tool: computer create ok", !desktop.isError, desktop.content[0].text);
+    const dj = readAutomations().automations.find((a) => a.title === "Desktop job");
+    ok("tool: computer opt-in persisted", dj?.computer === true, dj);
 
     // ---- list: ids and delivery marker the model can act on ----
     const listed = await callList();
     ok("tool: list reports automations", !listed.isError && listed.content[0].text.includes("Standup brief"), listed.content[0].text);
     ok("tool: list marks delivery targets", listed.content[0].text.includes("this-session"), listed.content[0].text);
+    ok("tool: list marks computer opt-in", listed.content[0].text.includes("| computer"), listed.content[0].text);
 
     // ---- delete: removes the definition and its run history ----
     const del = await call({ action: "delete", id: dv?.id });
@@ -581,57 +664,107 @@ async function main(): Promise<void> {
     mkdirSync(childDir, { recursive: true });
     const childFile = path.join(childDir, "Child.jsonl");
     writeFileSync(childFile, "{}\n");
-    const withCtx = (sessionFile: string) => ({ sessionManager: { getSessionFile: () => sessionFile } });
-    const childCall = await call({ action: "create", title: "Child", prompt: "x" }, withCtx(childFile));
+    const withSession = (sessionFile: string) => asSession({ sessionFile: () => sessionFile, ensureOnDisk: async () => {} });
+    const childCall = await withSession(childFile)({ action: "create", title: "Child", prompt: "x" });
     ok("tool: child transcript refused without taskDepth", childCall.isError === true, childCall);
     eq("tool: refused child persists nothing", readAutomations().automations.length, depthBefore + 1);
-    const mainCall = await call({ action: "create", title: "Main file", prompt: "x" }, withCtx(mainFile));
+    const mainCall = await withSession(mainFile)({ action: "create", title: "Main file", prompt: "x" });
     ok("tool: main-session transcript still creates", mainCall.isError !== true, mainCall);
   }
 
-  // ================= 7. delivery journal entry → transcript bubble =================
-  // The delivery is persisted as a custom message; reload must show the prompt (not the
-  // framing header) plus the automation marker, and must hide every other custom type.
+  // ================= 7. session delivery → ordinary user prompt =================
+  // A delivery must take the same prompt path as typed input: a normal user
+  // journal entry, one agent turn, and the live bubble for attached UIs.
   {
-    const deliveryId = "automation-delivery-1";
-    const header = JSON.stringify({ id: deliveryId, title: "Nightly check", at: "2026-10-20T00:00:00.000Z" });
-    const items = entriesToTranscript([
-      {
-        type: "message",
-        timestamp: new Date().toISOString(),
-        message: {
-          role: "custom",
-          customType: AUTOMATION_DELIVERY_CUSTOM_TYPE,
-          content: `[automation] ${header}\n\ncheck the deploy`,
+    const sessionId = "automation-delivery-target";
+    const sessionPath = path.join(agentDir, "ordinary-delivery.jsonl");
+    const promptCalls: { text: string; options: { streamingBehavior?: string } }[] = [];
+    // Journal markers the scheduler writes before the prompt (durable automation link).
+    const customEntries: { customType: string; data?: unknown }[] = [];
+    let customCalls = 0;
+    // Partial pool fake: the delivery path only touches these session fields.
+    const entry = {
+      path: sessionPath,
+      previousPaths: [],
+      transcript: [],
+      session: {
+        prompt: async (text: string, options: { streamingBehavior?: string }) => {
+          promptCalls.push({ text, options });
+          return true;
+        },
+        promptCustomMessage: async () => {
+          customCalls += 1;
+          return true;
+        },
+        waitForIdle: async () => {},
+        getLastAssistantMessage: () => ({ stopReason: "stop" }),
+        sessionManager: {
+          appendCustomEntry: (customType: string, data?: unknown) => {
+            customEntries.push({ customType, data });
+            return "custom-entry";
+          },
         },
       },
-    ]);
-    eq("delivery: one bubble from the journal", items.length, 1);
-    ok("delivery: renders the prompt without the framing header", items[0]?.text === "check the deploy", items[0]?.text);
-    ok(
-      "delivery: carries the automation marker",
-      items[0]?.automation?.id === deliveryId && items[0]?.automation?.title === "Nightly check",
-      items[0]?.automation,
-    );
-    const hidden = entriesToTranscript([
-      { type: "message", timestamp: new Date().toISOString(), message: { role: "custom", customType: "goal-continuation", content: "x" } },
-    ]);
-    eq("delivery: other custom types stay hidden", hidden.length, 0);
-    // Live path: the delivery is admitted into a session that no composer sent from, so
-    // the message_end echo is what draws the bubble (and what a pooled snapshot replays).
-    const liveEntry: any = { transcript: [], cwd: "/tmp" };
-    const live: any = translateEvent(
-      {
-        type: "message_end",
-        message: { role: "custom", customType: AUTOMATION_DELIVERY_CUSTOM_TYPE, content: `[automation] ${header}\n\ncheck the deploy` },
-      },
-      liveEntry,
-    );
-    ok("delivery: live echo is a user_message with the marker", live?.kind === "user_message" && live?.automation?.id === deliveryId, live);
-    ok("delivery: live echo strips the framing header", live?.text === "check the deploy", live?.text);
-    eq("delivery: live echo lands in the pooled transcript", liveEntry.transcript.length, 1);
-    const liveOther = translateEvent({ type: "message_end", message: { role: "custom", customType: "goal-continuation", content: "x" } }, { transcript: [], cwd: "/tmp" } as any);
-    ok("delivery: other custom types never echo", liveOther === null, liveOther);
+    } as unknown as PoolEntry;
+    const frames: { type?: string; kind?: string; text?: string; automation?: { id: string; title: string } }[] = [];
+    const previousWs = activeWs.value;
+    activeWs.value = { send: (data: string) => frames.push(JSON.parse(data)) };
+    sessions.set(sessionId, entry);
+    try {
+      const a = makeAutomation({
+        id: "automation-ordinary-delivery",
+        title: "Nightly check",
+        prompt: "check the deploy",
+        recurring: false,
+        maxRuns: 1,
+        deliverTo: { sessionPath },
+      });
+      persist(a);
+      await runAutomationNow(a.id);
+      await flushAsync();
+      eq("delivery: ordinary prompt called once", promptCalls.length, 1);
+      ok("delivery: prompt text is unchanged", promptCalls[0]?.text === "check the deploy", promptCalls);
+      ok("delivery: prompt queues behind a live turn", promptCalls[0]?.options.streamingBehavior === "followUp", promptCalls);
+      eq("delivery: custom message path is unused", customCalls, 0);
+      ok(
+        "delivery: pooled transcript has an ordinary user bubble",
+        entry.transcript.length === 1 && entry.transcript[0]?.role === "user" && entry.transcript[0]?.text === "check the deploy",
+        entry.transcript,
+      );
+      const echo = frames.find((f) => f.type === "event" && f.kind === "user_message");
+      const marker = customEntries[0];
+      ok(
+        "delivery: durable automation marker written before the prompt",
+        customEntries.length === 1 &&
+          marker?.customType === "automation_delivery" &&
+          (marker.data as { id?: string })?.id === a.id,
+        customEntries,
+      );
+      ok(
+        "delivery: live user bubble carries the automation marker",
+        echo?.text === "check the deploy" && echo?.automation?.id === a.id && echo?.automation?.title === a.title,
+        frames,
+      );
+      // Replay of a session written BEFORE the durable marker: the runs ledger plus the
+      // exact prompt text is the only surviving record (evicted-then-reopened sessions).
+      const userEntry = (text: string) => ({
+        type: "message",
+        id: `u-${text.slice(0, 4)}`,
+        timestamp: new Date().toISOString(),
+        message: { role: "user", content: [{ type: "text", text }] },
+      });
+      const replayed = entriesToTranscript([userEntry("check the deploy")], sessionPath);
+      ok(
+        "replay: ledger fallback marks a marker-less delivery",
+        replayed[0]?.role === "user" && replayed[0]?.automation?.id === a.id,
+        replayed,
+      );
+      const plainReplay = entriesToTranscript([userEntry("typed by hand")], sessionPath);
+      ok("replay: non-matching text stays unmarked", plainReplay[0]?.automation === undefined, plainReplay);
+    } finally {
+      sessions.delete(sessionId);
+      activeWs.value = previousWs;
+    }
   }
 }
 

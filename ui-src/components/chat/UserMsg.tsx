@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import type { OpenSession, UserItem } from "../../types/session";
 import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
 import { REMOTE } from "../../store/layout";
@@ -52,7 +52,7 @@ function PendingActs({ item }: { item: UserItem }) {
 // has been removed: forking now hangs at the end of a turn's output (see TurnActs.jsx);
 // only the queued/steer action group remains beside the bubble.
 // pending is a captured mutation snapshot (T2): applySteerConsumed flips it in place
-export default memo(function UserMsg({ item, fk }: { item: UserItem; fk?: string; pending?: UserItem["pending"] }) {
+export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?: string; pending?: UserItem["pending"]; branch?: ReactNode }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState(item.text);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
@@ -127,42 +127,13 @@ export default memo(function UserMsg({ item, fk }: { item: UserItem; fk?: string
 
   // Queued/steer pending-consumption message: hover shows the action group to the left of
   // the bubble (once consumed, pending clears and it becomes an ordinary historical message)
-  const cls = item.pending ? "user-bubble pending" : item.automation ? "user-bubble automation" : "user-bubble";
+  const delivery = item.automation;
+  const cls = item.pending ? "user-bubble pending" : delivery ? "user-bubble delivery" : "user-bubble";
   // Remote clients hide the edit entry point entirely (edit_resend is denylisted there)
   const showEditBtn = !item.pending && !item.automation && !REMOTE && !editing;
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls}>
-        {showEditBtn ? (
-          <button
-            className="ub-edit-btn q-btn"
-            title={canEdit ? t("chat.editResend") : item.entryId ? t("chat.editWhileStreaming") : t("chat.editAfterSaved")}
-            disabled={!canEdit}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!canEdit || !item.entryId) return;
-              setDraft(item.text);
-              useAppStore.setState({ editingEntryId: item.entryId });
-            }}
-          >
-            <Icon name="pencil" size={13} />
-          </button>
-        ) : null}
-        {item.text && !editing ? (
-          <button
-            className="ub-copy q-btn"
-            title={t("chat.copyMsg")}
-            onClick={(e) => {
-              e.stopPropagation();
-              copyText(item.text || "").then(
-                () => useAppStore.getState().toast(t("chat.copiedToClipboard")),
-                () => useAppStore.getState().toast(t("chat.copyFailed")),
-              );
-            }}
-          >
-            <Icon name="copy" size={13} />
-          </button>
-        ) : null}
         {images.length > 0 && (
           <div className="user-msg-images mb-2 flex flex-wrap gap-2">
             {images.map((img, idx) => {
@@ -191,13 +162,24 @@ export default memo(function UserMsg({ item, fk }: { item: UserItem; fk?: string
             })}
           </div>
         )}
-        {item.automation ? (
-          // Scheduler delivery: the bubble carries a marker so it never passes for typed
-          // input (the transcript stores the automation id/title, not just the text)
-          <div className="user-msg-automation" title={item.automation.id || undefined}>
+        {delivery ? (
+          // Scheduler delivery: a card header instead of a plain bubble, so it never passes
+          // for typed input. The header is the way back to the task that sent it (the
+          // transcript stores the automation id/title, not just the text).
+          <button
+            className="ud-head"
+            title={t("chat.openAutomation", { title: delivery.title })}
+            onClick={(e) => {
+              e.stopPropagation();
+              useAppStore.getState().openAutomationEditor(delivery.id);
+            }}
+          >
             <Icon name="clock" size={12} />
-            <span>{item.automation.title || t("chat.automationDelivery")}</span>
-          </div>
+            <span className="ud-kind">{t("chat.automationTaskLabel")}</span>
+            <span className="ud-sep">/</span>
+            <span className="ud-task">{delivery.title || t("chat.automationDelivery")}</span>
+            <Icon name="chevronRight" size={12} className="ud-go" />
+          </button>
         ) : null}
         {editing ? (
           <div className="ub-edit">
@@ -221,6 +203,41 @@ export default memo(function UserMsg({ item, fk }: { item: UserItem; fk?: string
         ) : null}
         {item.pending ? <PendingActs item={item} /> : null}
       </div>
+      {branch || showEditBtn || (item.text && !editing) || editing ? (
+        <div className="ub-actions">
+          {branch}
+          {showEditBtn ? (
+            <button
+              className="ub-edit-btn q-btn"
+              title={canEdit ? t("chat.editResend") : item.entryId ? t("chat.editWhileStreaming") : t("chat.editAfterSaved")}
+              disabled={!canEdit}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!canEdit || !item.entryId) return;
+                setDraft(item.text);
+                useAppStore.setState({ editingEntryId: item.entryId });
+              }}
+            >
+              <Icon name="pencil" size={13} />
+            </button>
+          ) : null}
+          {item.text && !editing ? (
+            <button
+              className="ub-copy q-btn"
+              title={t("chat.copyMsg")}
+              onClick={(e) => {
+                e.stopPropagation();
+                copyText(item.text || "").then(
+                  () => useAppStore.getState().toast(t("chat.copiedToClipboard")),
+                  () => useAppStore.getState().toast(t("chat.copyFailed")),
+                );
+              }}
+            >
+              <Icon name="copy" size={13} />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {lightboxIndex !== null && (
         <ImageLightbox
           images={lightboxList}

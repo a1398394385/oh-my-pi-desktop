@@ -27,6 +27,10 @@ export interface UiSlice {
   /** Full-page scheduled-tasks view in the main column (sidebar top entry); lives outside
    *  the settings overlay and closes whenever the welcome page or a session takes over. */
   automationsOpen: boolean;
+  /** Deep link into one automation's editor (TurnActs' clock on an automation-delivered
+   *  turn): AutomationsPage consumes the id on mount and clears it, so the page opens
+   *  straight into the edit view instead of the list. */
+  automationEditId: string | null;
   /** Middle-column Git manager page (project cwd; null = closed). A project-level view:
    *  opened from the project row's "more" menu, closed by any session taking over. */
   gitManage: string | null;
@@ -126,6 +130,7 @@ export interface UiSlice {
   setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
   setMainViewMode(mode: "chat" | "tree"): void;
   openAutomations(): void;
+  openAutomationEditor(id: string): void;
   closeAutomations(): void;
   openGitManage(cwd: string): void;
   closeGitManage(): void;
@@ -191,6 +196,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   rightCollapsed: true,
   isCreatingNew: false,
   automationsOpen: false,
+  automationEditId: null,
   gitManage: null,
   gitPageStatus: null,
   newSessionProject: "",
@@ -341,6 +347,12 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     // Available from anywhere (incl. the welcome page): entering the tasks
     // view leaves the new-session page, a session click takes over as usual.
     set({ automationsOpen: true, isCreatingNew: false, gitManage: null });
+  },
+
+  openAutomationEditor(id) {
+    // Same takeover as openAutomations, plus the id the page consumes to land on
+    // that task's editor (the clock on an automation-delivered turn).
+    set({ automationsOpen: true, automationEditId: id, isCreatingNew: false, gitManage: null });
   },
 
   closeAutomations() {

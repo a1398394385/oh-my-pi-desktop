@@ -99,6 +99,8 @@ export interface ToolDetails {
   shownRange?: { start: number; end: number }; // truncated read: lines actually shown (meta.truncation.shownRange via the host)
   summary?: { lines: number; elidedSpans?: number; elidedLines?: number }; // summarized read: shown line count with elided spans
   async?: { state?: string; jobId?: string; type?: string }; // auto-backgrounded tool call: job liveness ("Backgrounded as job" bash/eval rows; bgTaskCount / BgCmdPage)
+  // xd:// device dispatch wrapper: the tool's own details arrive under .inner
+  xdev?: { tool?: string; mode?: string; inner?: { automation?: { id: string; title: string } } };
   [key: string]: unknown;
 }
 

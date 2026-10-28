@@ -179,6 +179,7 @@ export const chatEn = {
   // ---- turn actions (TurnActs.tsx) ----
   copyReply: "Copy this reply",
   speakReply: "Read this reply aloud",
+  openAutomation: "This turn created the task “{{title}}” — open it",
   replyCopied: "Reply copied",
   copyFailed: "Copy failed",
   branchFromHere: "Branch into a new session from here",
@@ -190,6 +191,7 @@ export const chatEn = {
   imageN: "Image {{n}}",
   clickToZoom: "Click to view full size",
   automationDelivery: "Automation delivery",
+  automationTaskLabel: "Scheduled task",
   copyMsg: "Copy this message",
   editResend: "Edit & resend (keeps this chat as a branch)",
   editResendSend: "Send (Enter)",

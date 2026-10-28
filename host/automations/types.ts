@@ -4,14 +4,6 @@
 // trimmed for omp-desktop: JSON persistence, single-process scheduler, new session per run.
 import { randomUUID } from "node:crypto";
 
-/**
- * Journal marker of a session-delivered run. Persisted with the message and
- * rendered back by host/translate.ts — part of the on-disk format, never rename
- * without a migration. Lives here because translate.ts reads it and must not
- * pull in the scheduler graph.
- */
-export const AUTOMATION_DELIVERY_CUSTOM_TYPE = "automation-delivery";
-
 /** Max number of retained automation definitions, all lifecycle states counted (ZCodium parity). */
 export const AUTOMATION_CREATE_LIMIT = 20;
 
@@ -119,6 +111,15 @@ export interface AutomationsFile {
   automations: Automation[];
   runs: Record<string, AutomationRun[]>;
 }
+
+/**
+ * Session-file custom entry written right before a delivery prompt, carrying
+ * `{ id, title }`. The live transcript push carries the marker directly, but the
+ * on-disk message entry has no room for it: without this record an evicted-then-reopened
+ * session loses the "this turn came from a task" link (translate-history.ts re-attaches
+ * it to the next user message).
+ */
+export const AUTOMATION_DELIVERY_CUSTOM_TYPE = "automation_delivery";
 
 /** Wire shape submitted by the UI editor for a schedule (create/update/preview). */
 export type AutomationScheduleInput =

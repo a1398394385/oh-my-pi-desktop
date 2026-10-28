@@ -48,12 +48,20 @@ const patch = async (values: Parameters<typeof useAppStore.setState>[0]) => { aw
 try {
   await act(async () => root.render(createElement(MainColumn)));
   assert(host.querySelector("#stream .msg.assistant"));
-  // Automation delivery: transcript items carrying the marker render a distinct bubble, so a
-  // scheduler wake-up never passes for typed input.
-  const delivered = host.querySelector("#stream .msg.user .user-bubble.automation");
-  assert(delivered, "delivered automation message renders the automation bubble");
-  assert.equal(delivered.querySelector(".user-msg-automation")?.textContent, "Nightly check");
-  assert.equal(host.querySelectorAll("#stream .user-bubble.automation").length, 1, "only the delivery is marked");
+  // Automation delivery: transcript items carrying the marker render as a card with a
+  // clickable header (opens the task's editor), so a scheduler wake-up never passes for
+  // typed input.
+  const delivered = host.querySelector("#stream .msg.user .user-bubble.delivery");
+  assert(delivered, "delivered automation message renders the delivery card");
+  const head = delivered.querySelector(".ud-head") as HTMLButtonElement | null;
+  assert(head, "delivery card carries a header");
+  assert.equal(head?.querySelector(".ud-task")?.textContent, "Nightly check");
+  assert.equal(host.querySelectorAll("#stream .user-bubble.delivery").length, 1, "only the delivery is marked");
+  // The header is the way back to the task: it deep-links the editor through the store.
+  assert.equal(useAppStore.getState().automationEditId, null);
+  await act(async () => head?.click());
+  assert.equal(useAppStore.getState().automationEditId, "automation-1", "header deep-links the automation editor");
+  await patch({ automationEditId: null, automationsOpen: false });
   const chatWheelCount = wheelListeners.size;
   assert(chatWheelCount > 0);
   const composer = host.querySelector("#composer");

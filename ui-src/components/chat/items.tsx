@@ -33,22 +33,27 @@ import { t } from "../../i18n";
 // cleared before it returns — a later pass without a map never wraps stale.
 let branchCtx: BranchRenderCtx | null = null;
 
-// Wrap a bubble element with the branch pager when its entry is a fork host.
 // lastFk records the render-order-latest bubble per entryId (multi-bubble
-// entries host the pager on their last bubble); BranchSwitcher itself decides
-// at React render time — after the traversal finished — whether its fk is
-// that latest one.
-function withBranchPager(node: ReactElement, item: UserItem | AssistantItem, key: string): ReactElement {
+// entries host the pager on their last bubble); BranchSwitcher reads it after
+// the traversal has finished.
+function makeBranchPager(item: UserItem | AssistantItem, key: string): ReactElement | null {
   const ctx = branchCtx;
   const eid = item.entryId;
-  if (!ctx || !eid) return node;
+  if (!ctx || !eid) return null;
   const info = ctx.map.get(eid);
-  if (!info) return node;
+  if (!info) return null;
   ctx.lastFk.set(eid, key);
+  return <BranchSwitcher fk={key} entryId={eid} info={info} ctx={ctx} />;
+}
+
+function withBranchPager(node: ReactElement, item: AssistantItem, key: string): ReactElement {
+  const pager = makeBranchPager(item, key);
+  if (!pager) return node;
   return (
-    <BranchSwitcher key={key} fk={key} entryId={eid} info={info} ctx={ctx}>
+    <div className="bsw" data-eid={item.entryId} key={key}>
       {node}
-    </BranchSwitcher>
+      <div className="bsw-actions">{pager}</div>
+    </div>
   );
 }
 
@@ -59,7 +64,7 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
     railEntries.push({ key, role: "user", text: item.text });
     // pending rides along as a captured scalar: applySteerConsumed mutates it in place,
     // so memo cannot rely on the item reference alone (same pattern as the tool row below)
-    return withBranchPager(<UserMsg item={item} fk={key} key={key} pending={item.pending} />, item, key);
+    return <UserMsg item={item} fk={key} key={key} pending={item.pending} branch={makeBranchPager(item, key)} />;
   }
   if (item.role === "assistant") {
     if (isJunkPlaceholder(item.text)) return null; // junk placeholder messages render nothing and stay off the rail
@@ -131,6 +136,22 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   if (item.role === "advisor") return null;
   railEntries.push({ key, role: "err", text: item.text });
   return <div className="act err" key={key}>{`✗ ${item.text}`}</div>;
+}
+
+/** Automation created by this item, if any: the device result's details (xd:// dispatch
+ *  wraps the tool's own details under .inner). A reloaded session folds the turn's tool
+ *  rows into a loop group, so the folded items count too. */
+function createdAutomationOf(item: ChatItem): { id: string; title: string } | undefined {
+  const ofTool = (it: ChatItem) => (it.role === "tool" ? it.details?.xdev?.inner?.automation : undefined);
+  const direct = ofTool(item);
+  if (direct?.id) return direct;
+  if (item.role === "loop") {
+    for (const sub of item.items ?? []) {
+      const hit = ofTool(sub);
+      if (hit?.id) return hit;
+    }
+  }
+  return undefined;
 }
 
 // Mutation signature of a folded read-only run (T2): the run's tool rows mutate in place
@@ -362,6 +383,9 @@ export function renderItems(
     // would otherwise repeat the card inline) plus every batch the concise live view hid
     // (blockers included — with no process row to sit in the card is their only home).
     advice: AdvisorNote[];
+    /** Automation this turn created (automations_manage details): TurnActs then offers the
+     *  jump to that task's editor. */
+    createdAutomation?: { id: string; title: string };
   }
 
   const initialNodes: ReactElement[] = [];
@@ -405,6 +429,14 @@ export function renderItems(
     }
 
     let node: ReactElement | null = null;
+
+    // A task created in this turn: its id rides the tool result's details (xd:// wraps the
+    // tool's own details under .inner), so the turn's action row can offer the jump. Read
+    // here, before the fold/merge scans swallow this row (i jumps past merged items).
+    if (currentTurn) {
+      const created = createdAutomationOf(item);
+      if (created) currentTurn.createdAutomation = created;
+    }
 
     // Advisor batch in a visible process: blocking notes keep their position, everything
     // else joins the turn's closing card. Bypassing the fold scans is the point — an
@@ -502,7 +534,15 @@ export function renderItems(
     }
 
     if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
-        const actsNode = <TurnActs item={item} entryId={item.entryId} endMs={item.endMs} key={key + "-acts"} />;
+      const actsNode = (
+        <TurnActs
+          item={item}
+          entryId={item.entryId}
+          endMs={item.endMs}
+          automation={currentTurn?.createdAutomation}
+          key={key + "-acts"}
+        />
+      );
       if (currentTurn) {
         currentTurn.actsNode = actsNode;
       } else {

@@ -121,6 +121,17 @@ export default function AutomationsPage() {
     send({ type: "automations_list" });
   }, []);
 
+  // Deep link from an automation-delivered turn (store.openAutomationEditor): land on that
+  // task's editor. The list may not have landed yet, so this retries on every frame; an id
+  // missing from a non-empty list is gone for good and is dropped instead of sticking.
+  const editId = useAppStore((s) => s.automationEditId);
+  useEffect(() => {
+    if (!editId || automations.length === 0) return;
+    const target = automations.find((a) => a.id === editId);
+    useAppStore.setState({ automationEditId: null });
+    if (target) setView({ mode: "edit", automation: target });
+  }, [editId, automations]);
+
   useEffect(() => {
     if (!closeOnNextList.current) return;
     closeOnNextList.current = false;
@@ -244,7 +255,7 @@ export default function AutomationsPage() {
               : next ? `${scheduleText} · ${t("autoList.cardNext", { time: next })}`
               : scheduleText;
             return (
-              <div key={a.id} className="al-card" role="button" tabIndex={0}
+              <div key={a.id} className={"al-card" + (status === "completed" ? " done" : "")} role="button" tabIndex={0}
                 onClick={() => setView({ mode: "edit", automation: a })}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {

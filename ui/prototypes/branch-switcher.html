@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>分支切换块 · 布局方案</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--page);
+      color: #e8e8e8;
+      --muted: #a0a0a0;
+      --line: #484848;
+      --control: #292929;
+      --bubble: #303030;
+      --page: #1b1b1b;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    button { font: inherit; }
+    button:focus-visible { outline: 2px solid #75a7ff; outline-offset: 3px; }
+    ::selection { color: #fff; background: #375f9e; }
+    .page { width: min(880px, calc(100% - 48px)); margin: 0 auto; padding: 64px 0 140px; }
+    header { margin-bottom: 52px; }
+    h1 { margin: 0 0 12px; font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+    .intro { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .variant-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+    .variant-heading h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    .variant-heading span { color: var(--muted); font-size: 13px; }
+    .tradeoff { min-height: 22px; margin: 0 0 36px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .transcript { padding: 30px 0 46px; border-top: 1px solid #333; border-bottom: 1px solid #333; }
+    .message { position: relative; display: flex; flex-direction: column; align-items: flex-end; padding-left: 118px; }
+    .bubble { position: relative; max-width: 100%; padding: 13px 18px; border-radius: 16px 16px 4px 16px; background: var(--bubble); font-size: 21px; line-height: 1.25; }
+    .answer { align-self: flex-start; margin: 22px 0 0; color: #d4d4d4; font-size: 16px; line-height: 1.7; }
+    .control { position: absolute; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--control); color: #dedede; box-shadow: 0 4px 14px #0003; }
+    .control button, .branch-row button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #c9c9c9; cursor: pointer; }
+    .control button:hover, .branch-row button:hover { background: #414141; color: #fff; }
+    .control svg, .branch-row svg, .switcher svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .count { min-width: 32px; text-align: center; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .horizontal .control { right: calc(100% + 8px); top: 50%; transform: translateY(-50%); height: 32px; padding: 1px 3px; border-radius: 9px; }
+    .horizontal .count { min-width: 38px; }
+
+    .fitted .control { right: calc(100% + 8px); top: 0; bottom: 0; width: 32px; flex-direction: column; border-radius: 9px; }
+    .fitted .control button { width: 26px; height: 17px; }
+    .fitted .control svg { width: 11px; height: 11px; }
+    .fitted .count { min-width: 0; font-size: 12px; line-height: 17px; }
+
+    .reveal .control { right: calc(100% + 8px); top: 50%; height: 30px; padding: 0 3px; border-radius: 9px; transform: translateY(-50%); transition: width 160ms ease-out; width: 38px; overflow: hidden; }
+    .reveal .control button { position: absolute; top: 0; width: 26px; height: 28px; opacity: 0; pointer-events: none; transition: opacity 120ms ease-out; }
+    .reveal .prev { left: 3px; }
+    .reveal .next { right: 3px; }
+    .reveal .control:hover, .reveal .control:focus-within { width: 94px; }
+    .reveal .control:hover button, .reveal .control:focus-within button { opacity: 1; pointer-events: auto; }
+
+    .below .message { padding-left: 0; }
+    .branch-row { display: flex; align-items: center; gap: 2px; margin-top: 5px; color: var(--muted); }
+    .branch-row button { width: 24px; height: 22px; }
+    .branch-row .count { min-width: 34px; font-size: 12px; }
+    .action-row { display: flex; align-items: center; gap: 2px; height: 20px; margin-top: 4px; background: var(--page); color: var(--muted); opacity: 0; pointer-events: none; }
+    .message:hover .action-row, .message:focus-within .action-row { opacity: 1; pointer-events: auto; }
+    .action-row button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: var(--page); color: #b5b5b5; cursor: pointer; }
+    .action-row button:hover { background: #303030; color: #fff; }
+    .action-row svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .action-row .count { min-width: 30px; font-size: 12px; }
+    .action-row .edit { margin-left: 5px; }
+    .scroll-demo { max-height: 300px; overflow-y: auto; padding: 0 0 28px; scrollbar-color: #555 #1b1b1b; scrollbar-width: thin; }
+    .scroll-demo .message { position: sticky; top: 0; z-index: 2; padding-bottom: 0; background: var(--page); }
+    .scroll-demo .message::after { content: ""; position: absolute; left: 0; right: 0; top: calc(100% - 24px); height: 36px; background: linear-gradient(to bottom, var(--page) 0%, color-mix(in srgb, var(--page) 85%, transparent) 30%, color-mix(in srgb, var(--page) 40%, transparent) 65%, transparent 100%); pointer-events: none; }
+    .scroll-demo .message:hover::after, .scroll-demo .message:focus-within::after { top: 100%; }
+    .scroll-demo .answer { margin-top: 16px; white-space: pre-line; }
+
+    .switcher { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px; border: 1px solid #555; border-radius: 12px; background: #242424; box-shadow: 0 8px 28px #0006; }
+    .switcher button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #eee; cursor: pointer; }
+    .switcher button:hover { background: #3b3b3b; }
+    .switcher-label { min-width: 142px; text-align: center; font-size: 13px; }
+    .hint { position: fixed; right: 22px; bottom: 18px; color: #858585; font-size: 12px; }
+    @media (max-width: 640px) {
+      .page { width: calc(100% - 32px); padding-top: 36px; }
+      header { margin-bottom: 36px; }
+      .variant-heading { display: block; }
+      .variant-heading span { display: block; margin-top: 5px; }
+      .message { padding-left: 104px; }
+      .bubble { font-size: 18px; }
+      .hint { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { .reveal .control, .reveal .control button { transition: none; } }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <h1>分支切换块</h1>
+      <p class="intro">同一消息，五种占位方式。A–D 控件常驻便于比较；E 按实际行为在悬停或键盘聚焦时出现。</p>
+    </header>
+    <section aria-live="polite">
+      <div class="variant-heading"><h2 id="variant-name"></h2><span id="variant-tag"></span></div>
+      <p class="tradeoff" id="tradeoff"></p>
+      <div class="transcript" id="transcript">
+        <div class="message" id="message">
+          <div class="bubble" id="bubble">你好</div>
+        </div>
+        <p class="answer" id="answer">你好。定时任务已就绪，我会按设定的时间继续处理。</p>
+      </div>
+    </section>
+  </main>
+  <nav class="switcher" aria-label="切换布局方案">
+    <button type="button" id="previous" aria-label="上一个方案"><svg viewBox="0 0 16 16"><path d="m10 3-5 5 5 5"/></svg></button>
+    <span class="switcher-label" id="switcher-label"></span>
+    <button type="button" id="next" aria-label="下一个方案"><svg viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></svg></button>
+  </nav>
+  <span class="hint">← → 切换方案</span>
+  <script>
+    const chevron = (direction) => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${direction === "up" ? "m3 10 5-5 5 5" : direction === "down" ? "m3 6 5 5 5-5" : direction === "left" ? "m10 3-5 5 5 5" : "m6 3 5 5-5 5"}"/></svg>`;
+    const button = (step, direction) => `<button type="button" class="${step < 0 ? "prev" : "next"}" data-step="${step}" aria-label="${step < 0 ? "上一个分支" : "下一个分支"}">${chevron(direction)}</button>`;
+    const count = () => `<span class="count" data-count>${branch}/2</span>`;
+    const actionIcon = (name) => name === "edit"
+      ? `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10.5 2.5 3 3M4 12l1-4 6-6 3 3-6 6-4 1Z"/></svg>`
+      : `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8" height="8" rx="1"/><path d="M11 5V3H3v8h2"/></svg>`;
+    const variants = [
+      {
+        key: "A", name: "横向分页", tag: "推荐", tradeoff: "32px 高，不再超过单行气泡；左右方向也符合“上一个 / 下一个”的顺序。",
+        className: "horizontal",
+        control: () => `<div class="control">${button(-1, "left")}${count()}${button(1, "right")}</div>`,
+      },
+      {
+        key: "B", name: "等高竖排", tag: "保留现有方向", tradeoff: "跟随气泡高度，短消息不再显得突兀；多行气泡时会随之一同增高。",
+        className: "fitted",
+        control: () => `<div class="control">${button(-1, "up")}${count()}${button(1, "down")}</div>`,
+      },
+      {
+        key: "C", name: "数字驻留", tag: "默认最安静", tradeoff: "平时只显示 2/2，悬停或键盘聚焦后展开箭头；视觉最轻，但箭头发现成本稍高。",
+        className: "reveal",
+        control: () => `<div class="control" tabindex="0">${button(-1, "left")}${count()}${button(1, "right")}</div>`,
+      },
+      {
+        key: "D", name: "气泡下方分支行", tag: "完全不挤侧边", tradeoff: "把分支信息变成气泡的附属元信息，彻底消除高度冲突；代价是多占一行纵向空间。",
+        className: "below",
+        control: () => "",
+        row: () => `<div class="branch-row">${button(-1, "left")}${count()}${button(1, "right")}</div>`,
+      },
+      {
+        key: "E", name: "右下操作行", tag: "20px · 4px 间距 · 羽化", tradeoff: "图标隐藏时从气泡下边界羽化；悬停或聚焦显示图标后，起点移到操作行下边界，保留 36px 渐隐。",
+        className: "below actions",
+        control: () => "",
+        row: () => `<div class="action-row">${button(-1, "left")}${count()}${button(1, "right")}<button type="button" class="edit" aria-label="编辑消息">${actionIcon("edit")}</button><button type="button" class="copy" aria-label="复制消息">${actionIcon("copy")}</button></div>`,
+      },
+    ];
+    let branch = 2;
+    let current = Math.max(0, variants.findIndex(v => v.key === new URLSearchParams(location.search).get("variant")?.toUpperCase()));
+    const message = document.getElementById("message");
+    const transcript = document.getElementById("transcript");
+    const answer = document.getElementById("answer");
+    const shortAnswer = "你好。定时任务已就绪，我会按设定的时间继续处理。";
+    const longAnswer = `你好。定时任务已就绪，我会按设定的时间继续处理。
+
+这里是持续向上滚动的 agent output。气泡与操作行保持在顶部，正文从它们下方经过。
+
+操作行始终使用页面的实色背景，因此文字不会穿透分支箭头、编辑或复制图标。下边界延续现有的 36px 羽化，让经过的输出逐渐淡出，而不是被硬切掉。
+
+任务仍在运行。新的状态、工具调用与结果会按顺序追加到下方；滚动查看时，粘性消息保持可读，操作入口的位置也不会跳动。
+
+最后一段输出用于验证滚动末端。图标仍是实色底上的安静工具，不额外添加边框或阴影。`;
+    function render() {
+      const variant = variants[current];
+      transcript.className = `transcript${variant.key === "E" ? " scroll-demo" : ""}`;
+      answer.textContent = variant.key === "E" ? longAnswer : shortAnswer;
+      message.className = `message ${variant.className}`;
+      message.innerHTML = `<div class="bubble">${branch === 1 ? "你好，换一个版本" : "你好"}${variant.control()}</div>${variant.row?.() ?? ""}`;
+      document.getElementById("variant-name").textContent = `${variant.key} · ${variant.name}`;
+      document.getElementById("variant-tag").textContent = variant.tag;
+      document.getElementById("tradeoff").textContent = variant.tradeoff;
+      document.getElementById("switcher-label").textContent = `${variant.key} / ${variants.at(-1).key} · ${variant.name}`;
+      history.replaceState(null, "", `?variant=${variant.key}`);
+    }
+    function cycle(step) { current = (current + step + variants.length) % variants.length; render(); }
+    document.getElementById("previous").addEventListener("click", () => cycle(-1));
+    document.getElementById("next").addEventListener("click", () => cycle(1));
+    message.addEventListener("click", event => {
+      const target = event.target.closest("[data-step]");
+      if (!target) return;
+      branch = branch === 1 ? 2 : 1;
+      render();
+    });
+    document.addEventListener("keydown", event => {
+      if (event.target.matches("input, textarea, [contenteditable]")) return;
+      if (event.key === "ArrowLeft") { event.preventDefault(); cycle(-1); }
+      if (event.key === "ArrowRight") { event.preventDefault(); cycle(1); }
+    });
+    render();
+  </script>
+</body>
+</html>

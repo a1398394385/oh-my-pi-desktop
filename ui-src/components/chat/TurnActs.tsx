@@ -24,7 +24,17 @@ function fmtClock(ms: number) {
 }
 
 // entryId/endMs are captured mutation snapshots (T2): turn_end backfills them in place
-export default memo(function TurnActs({ item }: { item: AssistantItem; entryId?: string; endMs?: number }) {
+export default memo(function TurnActs({
+  item,
+  automation,
+}: {
+  item: AssistantItem;
+  entryId?: string;
+  endMs?: number;
+  /** Set when this turn created an automation (the create tool result's details): the
+   *  button opens that task's editor. */
+  automation?: { id: string; title: string };
+}) {
   const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
   // Forking is unavailable while entryId is not yet backfilled (not persisted during live
   // streaming): grayed out rather than hidden, to avoid layout jumps
@@ -62,6 +72,20 @@ export default memo(function TurnActs({ item }: { item: AssistantItem; entryId?:
         >
           <Icon name="fork" />
         </button>
+        {/* This turn created a task: jump to it (same clock as the delivery marker on the
+            user bubble, so the icon reads as "this came from a task"). */}
+        {automation ? (
+          <button
+            className="q-btn"
+            title={t("chat.openAutomation", { title: automation.title })}
+            onClick={(e) => {
+              e.stopPropagation();
+              useAppStore.getState().openAutomationEditor(automation.id);
+            }}
+          >
+            <Icon name="clock" />
+          </button>
+        ) : null}
         {/* Read aloud: the host resolves the speech role (tts model) and answers
             with a clip, or with backend "system" when only the OS voice is set. */}
         <button

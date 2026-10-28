@@ -128,7 +128,10 @@
   top: 0;
   z-index: 20;
   width: 100%;
-  background: var(--bg); --hover-fill: var(--panel-2);
+  /* The opaque backdrop ends at the bubble bottom so the reserved action row
+     does not hide the fade covering the content below. */
+  background: linear-gradient(var(--bg), var(--bg)) top / 100% calc(100% - 28px) no-repeat;
+  --hover-fill: var(--panel-2);
   padding: 12px 0 4px;
   border-bottom: none;
   user-select: none;
@@ -140,7 +143,9 @@
   position: absolute;
   left: 0;
   right: 0;
-  top: 100%;
+  /* Start at the original bubble bottom by excluding the reserved 24px
+     action row and this container's 4px bottom padding. */
+  top: calc(100% - 28px);
   height: 36px;
   background: linear-gradient(
     to bottom,
@@ -197,7 +202,8 @@
 
 .msg.user {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   /* Top margin = spacing from the previous turn's Agent answer: collapses to max with .msg's 14px, so it must reach 90px itself */
   margin: 90px 0 22px; /* 22px to the Agent reply below (14+8) */
   user-select: none; /* row itself carries no text: keep the whole row out of drag-selection (trailing flex space was painted blue); text re-enabled on .user-msg-text */
@@ -232,16 +238,32 @@
   box-shadow: 0 2px 8px var(--tint-black-50);
 }
 
-/* Scheduled delivery into this session (UserMsg.tsx): a bordered, slightly recessed
-   bubble plus a marker row, so it never reads as something the user typed */
-.msg.user .user-bubble.automation { background: var(--panel-2); border: 1px solid var(--line); }
-.user-msg-automation {
-  display: flex; align-items: center; gap: 4px;
-  margin-bottom: 6px;
-  font-size: var(--ui-fs-xs);
-  color: var(--dim);
+/* Scheduled delivery into this session (UserMsg.tsx): a full card with a clickable header
+   instead of a plain bubble — the prompt came from a task, not from the keyboard. The
+   header is the way back to that task's editor (store.openAutomationEditor). */
+.msg.user .user-bubble.delivery {
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: none;
+  overflow: hidden;
+  /* The card face is --surface, not the inset/dropdown face the base rule assumes */
+  --hover-fill: var(--panel-2);
+}
+.ud-head {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; padding: 9px 14px;
+  background: none; border: 0; border-bottom: 1px solid var(--line-soft);
+  font: inherit; font-size: var(--ui-fs-xs); white-space: nowrap;
+  color: var(--accent); text-align: left; cursor: pointer;
   user-select: none; -webkit-user-select: none;
 }
+.ud-head:hover { background: var(--hover-fill); }
+.ud-sep { color: var(--faint); }
+.ud-task { color: var(--text); font-size: var(--ui-fs-sm); overflow: hidden; text-overflow: ellipsis; }
+.ud-go { margin-left: auto; color: var(--faint); flex: none; }
+.msg.user .user-bubble.delivery .user-msg-text { width: 100%; padding: 11px 14px 13px; }
 
 /* user-select:text counters .msg.user's none: only the text line boxes get the selection color, not the bubble around them */
 .user-msg-text { width: fit-content; max-width: 100%; user-select: text; -webkit-user-select: text; }
@@ -257,21 +279,41 @@
   height: 75px;
 }
 
-/* Copy button pinned inside the bubble's top-right corner (UserMsg.tsx): hidden until the
-   bubble is hovered; the bubble shrinks to the text (width fit-content), so while visible
-   the button carries the bubble background to stay legible over the first line's tail */
-.ub-copy { position: absolute; top: 5px; right: 5px; opacity: 0; transition: opacity var(--dur-snap) var(--swift); }
-.msg.user .user-bubble:hover .ub-copy { opacity: 1; background: var(--inset); }
-.msg.user .user-bubble:hover .ub-copy:hover { background: var(--hover-fill); }
-
-/* Edit-resend button (UserMsg.tsx): pinned left of .ub-copy, revealed by the same hover
-   mechanism; grayed (not hidden) while the entryId is not backfilled or the session is
-   streaming, so the hover row never jumps. Remote clients render no button at all. */
-.ub-edit-btn { position: absolute; top: 5px; right: 28px; opacity: 0; transition: opacity var(--dur-snap) var(--swift); }
-.msg.user .user-bubble:hover .ub-edit-btn { opacity: 1; background: var(--inset); }
-.msg.user .user-bubble:hover .ub-edit-btn:hover { background: var(--hover-fill); }
-.msg.user .user-bubble:hover .ub-edit-btn:disabled { opacity: .45; cursor: default; }
-.msg.user .user-bubble:hover .ub-edit-btn:disabled:hover { background: none; color: var(--faint); }
+/* Message actions live below the bubble so they never cover its text. Their 20px
+   row is always reserved; hover or keyboard focus reveals the controls. */
+.ub-actions, .bsw-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  height: 20px;
+  margin-top: 4px;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-snap) var(--swift);
+}
+/* Keep controls above the bubble-edge fade. Only their backing surface feathers
+   at the left and bottom; the icons themselves stay fully opaque. */
+.ub-actions { position: relative; z-index: 1; background: transparent; }
+.ub-actions::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(var(--bg), var(--bg)) right top / calc(100% - 12px) calc(100% - 8px) no-repeat,
+    linear-gradient(to right, transparent, var(--bg)) left top / 12px calc(100% - 8px) no-repeat,
+    linear-gradient(to bottom, var(--bg), transparent) right bottom / calc(100% - 12px) 8px no-repeat,
+    linear-gradient(to top right, transparent, var(--bg)) left bottom / 12px 8px no-repeat;
+  pointer-events: none;
+}
+.ub-actions > * { position: relative; z-index: 1; }
+.msg.user:hover .ub-actions, .ub-actions:focus-within,
+.bsw:hover .bsw-actions, .bsw-actions:focus-within { opacity: 1; pointer-events: auto; }
+.bsw-actions:empty { display: none; }
+.ub-actions .q-btn, .bsw-actions .q-btn { width: 20px; height: 20px; flex: none; color: var(--faint); }
+.ub-actions .q-btn:disabled, .bsw-actions .q-btn:disabled { opacity: .45; cursor: default; }
+.ub-actions .q-btn:disabled:hover, .bsw-actions .q-btn:disabled:hover { background: none; color: var(--faint); }
 
 /* In-place edit box (UserMsg.tsx editing state): the bubble's text row swaps to a
    textarea + send button; image thumbnails above stay read-only. min-width keeps the
@@ -795,14 +837,17 @@
    BUG-030); the column cap lives on the inner .turn-acts-in via the shared capped rule in
    center.css (same max-width + margin-auto mechanism as .turn-flow — a mirrored padding
    calc drifts from the column under WKWebView zoom, see TurnActs.tsx) */
-/* Scroll-gesture ownership (Chat.tsx): while a wheel-driven stream scroll is in progress
+/* Scroll-gesture ownership (MessagePage.tsx): while a wheel-driven stream scroll is in progress
    (the .wheel-through class, armed by stream-targeted wheels and expired 1s after the last
    one), inline expand cards AND message-content scrollers become pointer-transparent so a
    pointer drifting over them cannot hijack the wheel — the event passes through to the
    stream natively in every web engine. After 1s of wheel idle the class lifts and the
    inner scrollers own their wheels again (with their own overscroll containment).
-   Selector = union of INLINE_CARD_SELECTOR and SCROLL_OWNER_SELECTOR in Chat.tsx. */
-#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .ro-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text) {
+   `.wheel-owner` is the one card that owns the gesture because the wheel started on its own
+   scroll body: it stays addressable (its body keeps scrolling) while every other card,
+   including expansions nested inside it, is transparent.
+   Selector = union of INLINE_CARD_SELECTOR and SCROLL_OWNER_SELECTOR in MessagePage.tsx. */
+#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .ro-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text):not(.wheel-owner) {
   pointer-events: none;
 }
 
@@ -830,37 +875,10 @@
 #todoList::-webkit-scrollbar-thumb:active {
   background-color: color-mix(in srgb, var(--dim) 80%, var(--text));
 }
-/* ── Branch pager (BranchSwitcher): vertical up / k-n / down pill floating left of a
-   fork-host bubble on hover. The pill is portaled to body (fixed) — it cannot live in
-   the flow, where .turn-flow's overflow:clip would cut it at the content-column edge;
-   .bsw itself stays layout-transparent (no padding/border/overflow, so the wrapped
-   .msg margins collapse through exactly as before). ── */
-.bsw-pop {
-  position: fixed;
-  width: 36px; /* keep in sync with PILL_W in BranchSwitcher.tsx */
-  transform: translateY(-50%);
-  z-index: 200; /* ring-pop fixed-overlay tier (overlays.css scale) */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 0;
-  background: var(--ctl-bg); --hover-fill: var(--menu-hl);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-popover);
-  animation: ringpop .18s ease-out;
-}
-
-.bsw-pop .q-btn { width: 20px; height: 20px; color: var(--faint); }
-
-.bsw-pop .q-btn:disabled { opacity: .45; cursor: default; }
-
-.bsw-pop .q-btn:disabled:hover { background: none; color: var(--faint); }
-
+/* Inline branch pager: UserMsg places it before edit/copy in .ub-actions;
+   assistant messages use the same controls in .bsw-actions. */
 .bsw-kn { font-size: var(--ui-fs-xs); color: var(--dim); line-height: 1.2; font-variant-numeric: tabular-nums; user-select: none; -webkit-user-select: none; }
 
-/* Transparent wrapper note (see block comment): the flow's last-child bottom reset must
-   reach the wrapped .msg — its margin collapses out of the wrapper and would otherwise
-   re-add trailing space the !important rule removed */
+/* The flow's last-child bottom reset must reach the wrapped .msg — its margin
+   collapses out of the wrapper and would otherwise re-add trailing space. */
 .turn-flow > .bsw:last-child .msg { margin-bottom: 0 !important; }
