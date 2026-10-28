@@ -466,7 +466,7 @@ async function dispatchSlashInput(
         .then(async () => {
           const entries = entry.manager.getEntries();
           if (entriesSig(entries) !== baseline) {
-            entry.transcript = entriesToTranscript(entries);
+            entry.transcript = entriesToTranscript(entries, entry.path);
             entry.mentionScanIndex = entries.length; // Align the read-back cursor, avoiding re-sending historical mentions
             ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
             pushContext(ws, sessionId, entry);

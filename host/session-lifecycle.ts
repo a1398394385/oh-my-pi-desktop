@@ -43,7 +43,7 @@ import {
   pushSessionStats,
   pushTodos,
 } from "./session-snapshot.ts";
-import { replaySubagentHistory } from "./subagent-view.ts";
+import { replaySubagentHistory, resyncSubagentTranscript } from "./subagent-view.ts";
 import { readKeepaliveEnabled } from "./keepalive-config.ts";
 import { gateKimiAutoThinking } from "./kimi-thinking.ts";
 import { readAcpRaw, readAcpEnabled, readAutomationAgentEnabled, readSessionContextEnabled } from "./profile.ts";
@@ -228,7 +228,10 @@ export async function createSessionCore(
     // appendSystemPrompt channel) — same condition as the ACP tools below: the
     // text names context_status/compress_context, which only ACP sessions
     // carry (wording + rationale in host/acp-assembly.ts).
-    appendSystemPrompt: acpRuntime ? ACP_CONTEXT_BUDGET_PROMPT : undefined,
+    // Second part is UI-language `i` guidance: the template states the intent style
+    // in English only, so a non-English UI overrides it (creation-time snapshot like
+    // the tools above — switching locale lands on new sessions).
+    appendSystemPrompt: [acpRuntime ? ACP_CONTEXT_BUDGET_PROMPT : "", hostI18n.t("flows.intentLanguage")].filter(Boolean).join("\n\n"),
     // Auto session title: the desktop host is an interactive surface, so it
     // arms the base's own titling (AgentSession notes the operator message on
     // message_end and asks the title model / a reply fork once the answer
@@ -245,8 +248,15 @@ export async function createSessionCore(
     // schedule follow-up work on the user's behalf, so their surface never gets the tools).
     customTools: [
       ...(acpRuntime ? [createCompressContextTool(acpRuntime), createAcpStatusTool(acpRuntime, () => Number(settingsGet(sessionSettings, "tools.artifactSpillThreshold")) * 1024)] : []),
-      ...(sessionContextEnabled ? createSessionContextTools() : []),
-      ...(opts?.subagent || !automationAgentEnabled ? [] : createAutomationTools(cwd)),
+      ...(sessionContextEnabled ? createSessionContextTools(() => sessionManager.getSessionFile() ?? null) : []),
+      ...(opts?.subagent || !automationAgentEnabled
+        ? []
+        : createAutomationTools(cwd, {
+            sessionFile: () => sessionManager.getSessionFile() ?? null,
+            ensureOnDisk: async () => {
+              await sessionManager.ensureOnDisk?.();
+            },
+          })),
     ] as never, // ACP compress_context + context_status (host/acp-runtime.ts · acp-status-tool.ts) + read_session_context + automations_list/automations_manage; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
       ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime, () => sessionManager.getSessionId())] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
@@ -395,7 +405,7 @@ export async function ensureSessionLoaded(sessionPath: string): Promise<{ sessio
   }
   const manager = await SessionManager.open(sessionPath);
   const entries = manager.getEntries();
-  const transcript = entriesToTranscript(entries);
+  const transcript = entriesToTranscript(entries, sessionPath);
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const { sessionId, entry, eventBus } = await createSessionCore(peek?.cwd ?? defaultCwd, manager, transcript, undefined);
   entry.mentionScanIndex = entries.length;
@@ -465,6 +475,7 @@ export async function spawnSession(
     // every connected UI). Attaching it would double-send once a real UI also
     // subscribes to this session, and it never detaches on close — attach the
     // real sockets instead.
+    attachEntryCore(sessionId, entry, eventBus);
     eachUiWs((w) => attachEntryUi(w, sessionId, entry, eventBus));
   } else {
     attachEntry(ws, sessionId, entry, eventBus);
@@ -566,6 +577,9 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     if (entry.path !== sessionPath && !(entry.previousPaths?.includes(sessionPath) ?? false)) continue;
     // The user opening/switching back to this session = seen (stop probing)
     markSeen(entry);
+    // A pooled child entry's transcript stops at the last detach while the SDK keeps
+    // appending to the file (BUG-111): align it before it is pushed
+    await resyncSubagentTranscript(entry);
     // Attach only when this socket is not subscribed yet: local desktop and
     // remote control watch the same entry concurrently (the core fans out
     // over entry.uiSockets), so unlike the old single-attachedWs model there
@@ -590,7 +604,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   }
   const manager = await SessionManager.open(sessionPath);
   const entries = manager.getEntries();
-  const transcript = entriesToTranscript(entries);
+  const transcript = entriesToTranscript(entries, sessionPath);
   // The session's original cwd: getEntries() excludes the session header, so
   // read it via peekSessionInit (same source as open's internals; it returns
   // null when the directory is unreachable — fall back to HOME)

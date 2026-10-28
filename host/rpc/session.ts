@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
-import { H, sessions, findPooledSession, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus } from "../state.ts";
+import { H, sessions, findPooledSession, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus, broadcastSessionUnloaded } from "../state.ts";
 import type { PoolEntry } from "../state.ts";
 import type { SessionListFrame } from "../wire/frames-session.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
@@ -283,9 +283,7 @@ async function evictPoolEntry(key: string, e: PoolEntry): Promise<void> {
   }
   // Every path the frontend may still key this session by (persistence moves
   // included), so the slot clears on whichever channel holds it
-  for (const p of [e.path, ...e.previousPaths]) {
-    eachUiWs((ws) => ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded: true })));
-  }
+  broadcastSessionUnloaded([e.path, ...e.previousPaths]);
 }
 
 // N2: idle LRU eviction. The pool only shrank via explicit RPCs, so ws churn
@@ -406,6 +404,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       releaseMcpForSession(key, e);
       e.unsubscribe();
       sessions.delete(key);
+      // Every channel drops its slot, not just the requester: this loop used to
+      // leave other channels holding a pool UUID that no longer resolves.
+      broadcastSessionUnloaded([e.path, ...(e.previousPaths ?? [])]);
       try {
         await e.session.dispose();
       } catch (err) {
@@ -414,7 +415,6 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       unloaded = true;
     }
     if (unloaded) pushPoolSnapshot(ws);
-    ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded })); // fan-out: requester-only — every channel already got it from evictPoolEntry's eachUiWs
   },
   async list_sessions(ws) {
     await handleListSessions(ws);
@@ -467,6 +467,10 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         safeStderr(`[host] delete_session unsubscribe failed: ${err}\n`);
       }
       sessions.delete(key);
+      // Same slot invalidation as session_unload: a channel that never ran this
+      // RPC must drop the slot too, or its next session-scoped RPC answers
+      // "session not found" with a pool UUID nothing resolves.
+      broadcastSessionUnloaded([entry.path, ...(entry.previousPaths ?? [])]);
       // Full teardown, not just unsubscribe: a surviving session keeps its
       // cache-warmer/keepalive and any straggler writers alive and would keep
       // persisting into the (now deleted) file. dispose() is the sanctioned
@@ -701,7 +705,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     }
     try {
       await entry.session.compact();
-      entry.transcript = entriesToTranscript(entry.manager.getEntries());
+      entry.transcript = entriesToTranscript(entry.manager.getEntries(), entry.path);
       // The rebuilt history already contains mention rows: align the cursor to avoid re-sending them on later read-backs
       entry.mentionScanIndex = entry.manager.getEntries().length;
       // Cross-channel: the other attached UI still holds the pre-compaction transcript;
@@ -745,7 +749,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // Create an independent AgentSession instance for the new session and add it to the sessions pool
       const newManager = await SessionManager.open(newSessionFile);
       const newEntries = newManager.getEntries();
-      const newTranscript = entriesToTranscript(newEntries);
+      const newTranscript = entriesToTranscript(newEntries, newSessionFile);
       const peek = await SessionManager.peekSessionInit(newSessionFile);
       const workCwd = peek?.cwd ?? entry.cwd;
       const { sessionId: newSessionId, entry: newEntry, eventBus: newBus } = await createSessionCore(
@@ -897,7 +901,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // getEntries() returns every entry in the file (abandoned branches are
       // still in there); the active transcript only wants the root→leaf path
       // — same scope as the base's renderInitialMessages
-      entry.transcript = entriesToTranscript(entry.manager.getBranch());
+      entry.transcript = entriesToTranscript(entry.manager.getBranch(), entry.path);
       ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
       // Mirror the branch's own title into the header: the sidebar, the CLI and
       // the window title all read the header, so a branch switch must move it.
@@ -963,7 +967,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         return;
       }
       // Same rebuild scope as navigate_tree: only the root→leaf path is active
-      entry.transcript = entriesToTranscript(entry.manager.getBranch());
+      entry.transcript = entriesToTranscript(entry.manager.getBranch(), entry.path);
       // entryBus, not navigate_tree's requester-only ws.send: the rewind must
       // drop the abandoned tail on every attached channel, and the user_message
       // echo below then lands the new bubble on all of them (a sender-drawn
@@ -1061,7 +1065,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // Fresh manager on the new file, then a pooled session like branch_session
       const newManager = await SessionManager.open(newSessionFile);
       const newEntries = newManager.getEntries();
-      const newTranscript = entriesToTranscript(newEntries);
+      const newTranscript = entriesToTranscript(newEntries, newSessionFile);
       const newPeek = await SessionManager.peekSessionInit(newSessionFile);
       const workCwd = newPeek?.cwd ?? entry.cwd;
       const { sessionId: newSessionId, entry: newEntry, eventBus: newBus } = await createSessionCore(

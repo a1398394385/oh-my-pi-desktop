@@ -194,6 +194,38 @@ export function findPooledSession(path: string): PoolEntry | undefined {
 }
 
 /**
+ * Tell every UI channel these paths left the pool, so each one drops the slot it
+ * keys them by. Callers pass the entry's `path` AND `previousPaths`: a frontend
+ * handed the pre-move spelling keeps that slot alive otherwise, and its next
+ * session-scoped RPC fails with errors.session.notFound (the pool UUID in it no
+ * longer resolves) while the view keeps its frozen "working" line.
+ */
+export function broadcastSessionUnloaded(paths: Iterable<string>): void {
+  const sent = new Set<string>();
+  for (const p of paths) {
+    if (sent.has(p)) continue;
+    sent.add(p);
+    eachUiWs((ws) => ws.send(JSON.stringify({ type: "session_unloaded", path: p, unloaded: true })));
+  }
+}
+
+/**
+ * Drop the whole pool for a profile switch: unsubscribe each entry and invalidate
+ * every channel's slot. No dispose — these AgentSessions belong to the profile
+ * being left behind (its registry/settings), and the base's wind-down would write
+ * into a profile the host no longer serves.
+ */
+export function releasePoolForProfileSwitch(): void {
+  for (const [, entry] of sessions) {
+    try {
+      entry.unsubscribe?.();
+    } catch {}
+    broadcastSessionUnloaded([entry.path, ...(entry.previousPaths ?? [])]);
+  }
+  sessions.clear();
+}
+
+/**
  * Pool residency snapshot (sidebar "active tasks" list): every session the host
  * still holds in memory, disk rows or not. Pushed on attach / release and with
  * every session_list refresh — the frontend slot map (openSessions) has an LRU

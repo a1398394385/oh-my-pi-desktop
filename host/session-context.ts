@@ -263,8 +263,12 @@ function textResult(text: string, useless?: boolean) {
   return useless ? { content: [{ type: "text" as const, text }], useless: true } : { content: [{ type: "text" as const, text }] };
 }
 
-/** Build the ReadSessionContext tool (stateless; the same array can be shared across sessions). */
-export function createSessionContextTools() {
+/**
+ * Build the ReadSessionContext tool. `sessionFile` is host-injected rather than
+ * read from the execute ctx: `write`/`read` to `xd://<tool>` dispatches with the
+ * device's AgentToolContext, which carries no session accessor.
+ */
+export function createSessionContextTools(sessionFile: () => string | null) {
   return [
     {
       name: "read_session_context",
@@ -272,13 +276,7 @@ export function createSessionContextTools() {
       description: READ_SESSION_CONTEXT_DESCRIPTION,
       parameters: readSessionContextParams,
       approval: "read" as const,
-      execute: async (
-        _id: string,
-        params: Record<string, unknown>,
-        _signal?: unknown,
-        _onUpdate?: unknown,
-        ctx?: { sessionManager?: { getSessionFile?: () => string | null } },
-      ) => {
+      execute: async (_id: string, params: Record<string, unknown>, _signal?: unknown, _onUpdate?: unknown) => {
         const query = typeof params?.query === "string" ? params.query.trim() : "";
         const sessionId = typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
         if (!query && !sessionId) {
@@ -286,7 +284,8 @@ export function createSessionContextTools() {
             "Error: pass either query (search mode) or sessionId (expand mode). See the tool description for examples.",
           );
         }
-        const excludePath = ctx?.sessionManager?.getSessionFile?.() ?? null;
+        // Self-search never includes the asking session.
+        const excludePath = sessionFile();
         const days = typeof params?.days === "number" && params.days > 0 ? params.days : undefined;
         const cwd = typeof params?.cwd === "string" && params.cwd.trim() ? params.cwd.trim() : undefined;
 

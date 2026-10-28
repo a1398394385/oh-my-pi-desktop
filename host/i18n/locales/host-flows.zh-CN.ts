@@ -3,6 +3,10 @@
 // Keys are prefixed `flows.`; consumed via the host i18n instance.
 export const hostFlowsZh = {
   extProjectScope: "项目 · {{name}}",
+  // Model-facing guidance (appended to the system prompt), not UI copy: it
+  // overrides the prompt template's English-only `i` style rule.
+  intentLanguage:
+    "工具参数 `i`（意图说明）一律用中文写：2–6 个词，动词开头，例如「读取会话文件」。system prompt 里 “capitalized 2–6-word present-participle intent” 这条英文风格要求不适用于 `i`。",
   login: {
     starting: "正在启动登录…",
     browserOpened: "已在浏览器打开登录页面，请完成授权…",

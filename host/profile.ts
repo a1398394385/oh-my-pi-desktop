@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { readdir } from "node:fs/promises";
-import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, sessions, eachUiWs } from "./state.ts";
+import { H, DesktopEnv, DesktopProjects, defaultCwd, defaultWorkspaceDir, ensureDefaultWorkspaceDir, eachUiWs, releasePoolForProfileSwitch } from "./state.ts";
 import { Settings, ModelRegistry, discoverAuthStorage, saveProfileToDisk, initializeWithSettings, lookupSetting } from "./bootstrap.ts";
 import { initVoiceMode } from "./voice.ts";
 import { rebuildScopedModels, syncAvailableModels } from "./models.ts";
@@ -272,13 +272,10 @@ export async function applyProfile(profileName: string) {
   saveProfileToDisk(target);
   setProfile(target === "default" ? undefined : target);
 
-  // Clear the existing session pool
-  for (const [, entry] of sessions) {
-    try {
-      entry.unsubscribe?.();
-    } catch {}
-  }
-  sessions.clear();
+  // Clear the existing session pool. Slots are invalidated inside (every channel
+  // drops them): the pool keys these sessions by are about to stop resolving, and
+  // a frontend that keeps one answers session-scoped RPCs with notFound.
+  releasePoolForProfileSwitch();
 
   H.agentDir = getAgentDir();
   // Startup segment timing (performance.now() zeroed at process start): locate the big cost centers before the ready frame

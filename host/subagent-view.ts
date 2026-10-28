@@ -9,6 +9,8 @@ import path from "node:path";
 import fs from "node:fs";
 import { H, stampEvent, type PoolEntry } from "./state.ts";
 import { translateSubagentEvent } from "./translate.ts";
+import { entriesToTranscript, sumRunDurationMs } from "./translate-history.ts";
+import { SessionManager } from "./bootstrap.ts";
 
 // The whole spawn tree shares the root session's eventBus (sdk.ts:1341):
 // subagent lifecycle/event/progress frames all travel on it. Derived data
@@ -438,4 +440,21 @@ export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: s
     }
     ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, registeredAt: agg.registeredAt, ...agg.progress }));
   }
+}
+
+// A child transcript is also appended to by the SDK's own subagent session (and by a CLI on
+// the same file), while this pool only accumulates events while a socket is attached: the
+// entry's transcript freezes at the last detach, and reopening it pushed a snapshot cut off
+// mid-run — neither the wake-turn prompt nor the child's final report (BUG-111). Re-read the
+// file when its tail moved past the in-memory index; a still-streaming entry owns the newer
+// state itself.
+export async function resyncSubagentTranscript(entry: PoolEntry): Promise<void> {
+  if (!entry.isSubagent || entry.session.isStreaming) return;
+  const disk = await SessionManager.open(entry.path);
+  const diskEntries = disk.getEntries();
+  if (diskEntries.at(-1)?.id !== entry.manager.getEntries().at(-1)?.id) {
+    entry.transcript = entriesToTranscript(diskEntries);
+    entry.activeMs = sumRunDurationMs(diskEntries);
+  }
+  await disk.close();
 }
