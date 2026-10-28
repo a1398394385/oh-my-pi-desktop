@@ -3,10 +3,10 @@
 // a few exports from translate.ts, and keeping them together kept tripping the line cap.
 import { hostI18n } from "./i18n/host.ts";
 import { collectFiles, isDevicePath, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
-import { parseDelivery } from "./automations/delivery.ts";
 import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
 import { PHASE_TEXT, isJunkPlaceholderText, errorTextOf, stripDcpTags } from "./translate.ts";
 import { BRANCH_TITLE_CUSTOM_TYPE } from "./session-titles.ts";
+import { deliveryMarkerOf, deliveryMarkersForSession, type DeliveryMarker } from "./automations/delivery.ts";
 import { advisorHistoryRow } from "./translate-advisor.ts";
 
 // Disk history entries → frontend transcript (thinking blocks expandable;
@@ -45,7 +45,9 @@ function approvedPlanBody(content: unknown): string | undefined {
   return text.slice(nl + 1, close).replace(/\n$/, "");
 }
 
-export function entriesToTranscript(entries: any[]): TranscriptItem[] {
+// sessionPath: replay falls back to the automations runs ledger for deliveries written
+// before the durable marker existed (deliveryMarkersForSession). Omitted = no fallback.
+export function entriesToTranscript(entries: any[], sessionPath?: string): TranscriptItem[] {
   const out: TranscriptItem[] = [];
   const byId = new Map<string, TranscriptItem>();
   const fileHistory = new Map<string, string>();
@@ -88,6 +90,12 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
   // Sessions without branch titles keep the original title_change rendering.
   const hasBranchTitles = entries.some((e) => e.type === "custom" && e.customType === BRANCH_TITLE_CUSTOM_TYPE);
 
+  // Scheduler delivery waiting for the user message it introduces (the scheduler writes
+  // the custom entry, then the base writes the prompt entry). Markers predating that
+  // record fall back to the runs ledger, matched on the exact prompt text.
+  let pendingDelivery: DeliveryMarker | null = null;
+  const ledgerMarkers = sessionPath ? deliveryMarkersForSession(sessionPath) : null;
+
   for (const e of entries) {
     // Execution-trace entries → phase separator rows: whichever end executed
     // (CLI/desktop), loading the session on the other end shows the record.
@@ -113,6 +121,13 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       // rename row on every settled turn, because each refresh writes one with
       // source "user" to unlock the header.
       continue;
+    }
+    if (e.type === "custom") {
+      const marker = deliveryMarkerOf(e);
+      if (marker) {
+        pendingDelivery = marker;
+        continue;
+      }
     }
     if (e.type !== "message") {
       if (e.type === "ttsr_injection") {
@@ -186,19 +201,6 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       out.push({ role: "mention", text: "", files: (msg.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")) });
       continue;
     }
-    if (role === "custom") {
-      // Automation delivery (host/automations/scheduler.ts): a scheduled prompt that
-      // woke this session. The model sees the framing header, the reader sees only the
-      // prompt plus an automation marker, so the bubble cannot pass for the user's own
-      // words. Other custom types (goal continuation, ACP notes) stay invisible.
-      const delivery = parseDelivery(msg);
-      if (delivery) {
-        finalizeRun();
-        out.push({ role: "user", text: delivery.text, entryId: e.id, automation: delivery.marker });
-        run = { items: [], usage: null, startMs: ts, endMs: ts };
-      }
-      continue;
-    }
     // The approved-plan execution turn: map the synthetic developer message
     // back to the user bubble the live dispatch echoed (approvedPlanBody);
     // the execution turn groups like an operator turn. Other synthetic
@@ -245,14 +247,17 @@ export function entriesToTranscript(entries: any[]): TranscriptItem[] {
       }
       if (!isJunkPlaceholderText(text) || images.length > 0) {
         finalizeRun(); // Valid user input opens a new turn
+        const marker = pendingDelivery ?? ledgerMarkers?.get(text.trim()) ?? null;
         out.push({
           role: "user",
           text,
           entryId: e.id,
           ...(images.length > 0 ? { images } : {}),
+          ...(marker ? { automation: marker } : {}),
         });
         run = { items: [], usage: null, startMs: ts, endMs: ts };
       }
+      pendingDelivery = null;
       continue;
     }
     if (run) {

@@ -8,7 +8,6 @@ import { hostI18n } from "./i18n/host.ts";
 import { collectFiles, isDevicePath, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 import { advisorEvent, advisorHistoryRow } from "./translate-advisor.ts";
-import { parseDelivery } from "./automations/delivery.ts";
 
 // Compat regex for journals written by the retired ACP nudge prototype: old
 // sessions carry <dcp-message-id>mNNNNN</dcp-message-id> tags that UI
@@ -276,18 +275,6 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // configured. Pass through only; the frontend decides display.
       return { kind: "thinking_level", configured: ev.configured, resolved: ev.resolved };
     case "message_end": {
-      // An automation delivery wakes this session with a custom user message; the
-      // composer never sent it, so this echo is the only thing that draws the
-      // bubble (pooled snapshots replay entry.transcript, hence the push).
-      const delivered = parseDelivery(ev.message ?? {});
-      if (delivered) {
-        entry.transcript.push({ role: "user", text: delivered.text, automation: delivered.marker });
-        return {
-          kind: "user_message",
-          text: delivered.text,
-          ...(delivered.marker.id ? { automation: delivered.marker } : {}),
-        };
-      }
       const advice = advisorEvent(ev.message, entry);
       if (advice) return advice;
       // A failed request emits an error assistant message (stopReason "error",
@@ -442,12 +429,6 @@ export const PHASE_TEXT: Record<string, [string, string]> = {
   },
 };
 
-/**
- * Split an automation-delivery custom message back into the bubble the reader
- * sees. The header is host-authored (host/automations/scheduler.ts deliveryText),
- * so a message of that type always carries one; an unparsable header still yields
- * a bubble without labels rather than dropping the delivery.
- */
 // Subagent events → frontend narrow events (pure forwarding, not persisted into the parent session's transcript; text is accumulated by the frontend keyed on subagentId)
 export function translateSubagentEvent(ev: any): UiEvent | null {
   switch (ev.type) {
