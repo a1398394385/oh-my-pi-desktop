@@ -3,7 +3,7 @@
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { REMOTE } from "../ws";
-import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, landPoolSessions, updateSession } from "../session";
+import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, landPoolSessions, settleAbortedRunLater, updateSession } from "../session";
 import { pathOfSessionId } from "../session-lookup";
 import { pushInputHistory } from "../../components/composer/lexical/draft";
 import { closeAllMenus } from "../../shell";
@@ -412,8 +412,9 @@ export const sessionHandlers = {
       useAppStore.getState().toast(archivedErr.error ?? t("notify.archiveFailed"));
     }
   },
-  session_aborted() {
+  session_aborted(msg) {
     useAppStore.getState().toast(t("notify.generationStopped"));
+    settleAbortedRunLater(msg.sessionId);
   },
   session_compacted(msg) {
     useAppStore.getState().toast(msg.ok ? t("notify.contextCompacted") : (msg.error ?? t("notify.compactFailed")));

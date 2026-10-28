@@ -280,6 +280,33 @@ function clearRunningTools(s: OpenSession): void {
   walk(s.items);
 }
 
+// Abort-receipt fallback. host/rpc/session.ts acks `abort_session` as soon as the base's
+// abort() returns, which does NOT mean the run ended: a run wedged in a provider request
+// that never answers emits no turn_end, so the working row keeps counting, the tool rows
+// keep spinning, and (because Composer's stop button only re-arms when canAbort flips)
+// the user cannot retry. Settle what the user can see once no turn_end follows the receipt.
+// turnItemStart stays untouched: a late turn_end still seals the run normally, and the
+// draft is pushed as a plain assistant row so the text produced before the abort is kept.
+// busyPaths is deliberately NOT cleared here — the sidebar spinner comes from the host's
+// own busy flag, and that is the honest signal that the run has not actually ended yet.
+const ABORT_SETTLE_GRACE_MS = 2000;
+export function settleAbortedRunLater(sessionId: string): void {
+  setTimeout(() => {
+    const s = findBySessionId(sessionId);
+    if (!s?.streaming) return; // a real turn_end already settled it
+    updateSession(sessionId, (x) => {
+      if (x.assistantDraft && !isJunkPlaceholder(x.assistantDraft)) {
+        x.items.push({ role: "assistant", text: x.assistantDraft });
+        x.assistantDraft = "";
+      }
+      x.streaming = false;
+      x.workingText = null;
+      x.pendingApprovals = [];
+      clearRunningTools(x);
+    });
+  }, ABORT_SETTLE_GRACE_MS);
+}
+
 // ---------- Run sealing / queued messages (moved over from core.js; render calls now bump) ----------
 // Run sealing lives in ./run-seal.ts (advisor rows split the run, so the logic no longer
 // fits this file's ratchet); re-exported for the existing callers.
