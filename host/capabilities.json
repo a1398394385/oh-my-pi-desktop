@@ -306,19 +306,19 @@
       "id": "git_stage",
       "kind": "git",
       "risk": "write",
-      "note": "git add -- <paths>"
+      "note": "git add -- <paths>；行级：path + lines 走 diff/裁剪/git apply --cached -"
     },
     {
       "id": "git_unstage",
       "kind": "git",
       "risk": "write",
-      "note": "git reset HEAD -- <paths>"
+      "note": "git reset HEAD -- <paths>；行级：path + lines 走 diff --cached/裁剪/git apply --cached --reverse -"
     },
     {
       "id": "git_discard",
       "kind": "git",
       "risk": "destructive",
-      "note": "丢弃工作区改动：checkout -- 恢复 tracked，clean -f 删 untracked"
+      "note": "丢弃工作区改动：checkout -- 恢复 tracked，clean -f 删 untracked；行级：path + lines 走 diff/裁剪/git apply --reverse -"
     },
     {
       "id": "git_commit",

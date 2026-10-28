@@ -74,6 +74,21 @@ export const gitPageEn = {
   sortAsc: "Sort oldest first",
   sortDesc: "Sort newest first",
   noMatch: "No matching commits",
+  stageSelected: "Stage selected lines",
+  unstageSelected: "Unstage selected lines",
+  discardSelected: "Discard selected lines",
+  selectLinesHint: "Select lines in the diff first",
+  linesTruncated: "Diff truncated: line actions are off",
+  discardLinesMsg: "The changes of {{n}} selected line(s) are lost for good.",
+  sendToAgent: "Send to agent ({{n}})",
+  commentsSent: "Review comments sent",
+  commentTitle: "Comment on line {{line}}",
+  commentPh: "What should change here?",
+  commentSave: "Add comment",
+  markViewed: "Mark as viewed",
+  unmarkViewed: "Mark as unread",
+  generated: "Generated",
+  generatedHint: "Generated file: click to unfold",
 };
 
 export default gitPageEn;

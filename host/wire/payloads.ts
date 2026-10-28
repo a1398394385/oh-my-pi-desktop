@@ -282,10 +282,16 @@ export interface GitStatusFile {
   /** Raw two-column porcelain XY, untrimmed: "??" untracked, " M" worktree-only, "UU" conflict. */
   code: string;
   path: string;
+  /** porcelain v2 `2 ` record: where a rename came from. */
+  origPath?: string;
   staged: string; // empty string = none
   unstaged: string; // empty string = none
   /** Unmerged entry (UU/AA/DD/AU/UD/UA/DU): stage/unstage are refused on it. */
   conflict?: boolean;
+  /** Lockfile, minified/compiled output, dependency dir, or a "@generated" header. */
+  generated: boolean;
+  /** Content fingerprint for the "seen" marker; empty when unchanged or unhashable. */
+  fingerprint: string;
 }
 
 /**
@@ -623,6 +629,8 @@ export interface McpAssetsPayload {
     cwd?: string;
     enabled: boolean;
     source: { provider: string; providerName: string; path: string; level: "user" | "project" | "native" };
+    /** Source file is not an mcp.json this app writes for the scope (plugin package, another tool's config): toggle only */
+    readOnly: boolean;
     scope: string; // "profile" | `project:${cwd}`
     projectName?: string;
     status: "connected" | "error" | "disabled" | "unknown";

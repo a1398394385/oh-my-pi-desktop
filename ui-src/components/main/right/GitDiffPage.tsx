@@ -1,19 +1,26 @@
 // Git Diff page: toolbar above the list (commit message/commit/push) + file tree/flat view +
 // inline write operations + per-file in-house lightweight diff detail (fixed rb-head +
 // scrolling rb-scroll skeleton).
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, send, activeOpen, refreshGitDiff, pathBase } from "../../../store";
+import { useAppStore, setBump, send, toast, activeOpen, refreshGitDiff, pathBase } from "../../../store";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
 import ConfirmDialog from "../../shared/ConfirmDialog";
-import LightweightDiff from "../../diff/LightweightDiff";
+import LightweightDiff, { isSelectableRow, parseDiff } from "../../diff/LightweightDiff";
+import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../../ui/dialog";
+import { Textarea } from "../../ui/textarea";
+import { commentsMarkdown } from "../git/comments";
+import type { ReviewComment } from "../git/comments";
+import { subscribeViewed, toggleViewed, viewedKey, viewedSnapshot } from "../git/git-viewed";
 import { langOfPath } from "../../../lib/highlighter";
 import type { GitStatusFile } from "../../../types/frames";
 
-// A git diff file entry uses types/frames' GitStatusFile (staged/unstaged are status chars; empty string = none)
-type GitFileEntry = GitStatusFile;
+// A git diff file entry uses types/frames' GitStatusFile (staged/unstaged are status chars; empty string = none),
+// plus the fields the host adds for rename display, generated-file folding and viewed marks. All optional, so a
+// frame from a host that predates them still renders.
+type GitFileEntry = GitStatusFile & { origPath?: string; generated?: boolean; fingerprint?: string };
 
 // Path tree node (product of buildTree)
 interface GitTreeNode {
@@ -78,8 +85,66 @@ function startGitBusy(op: GitWriteOp) {
 // Clicking a file row enters the detail: request the per-file diff
 function requestFileDiff(s: { cwd: string }, filePath: string) {
   setBump({ selectedFile: filePath });
+  loadFileDiff(s, filePath);
+}
+
+// Fetch one file's diff without entering the detail (generated rows unfold in place first)
+function loadFileDiff(s: { cwd: string }, filePath: string) {
   useAppStore.setState((st) => ({ fileDiffCache: { ...st.fileDiffCache, loading: true, path: filePath } }));
   send({ type: "get_file_diff", cwd: s.cwd, path: filePath });
+}
+
+// Generated files (lockfiles, bundles, vendored trees) stay folded: their diff is
+// requested only after an explicit unfold click. Unfold state is per cwd and
+// module level (same shape as gitBusy) so it survives detail/list switches.
+const generatedOpen = new Map<string, ReadonlySet<string>>();
+const generatedSubs = new Set<() => void>();
+function generatedSnapshot(cwd: string): ReadonlySet<string> {
+  let open = generatedOpen.get(cwd);
+  if (!open) generatedOpen.set(cwd, (open = new Set()));
+  return open;
+}
+function subscribeGenerated(fn: () => void): () => void {
+  generatedSubs.add(fn);
+  return () => {
+    generatedSubs.delete(fn);
+  };
+}
+function toggleGenerated(cwd: string, path: string): void {
+  const next = new Set(generatedSnapshot(cwd));
+  if (!next.delete(path)) next.add(path);
+  generatedOpen.set(cwd, next);
+  for (const fn of generatedSubs) fn();
+}
+function useGeneratedOpen(cwd: string) {
+  return useSyncExternalStore(subscribeGenerated, () => generatedSnapshot(cwd));
+}
+function useViewed(cwd: string) {
+  return useSyncExternalStore(subscribeViewed, () => viewedSnapshot(cwd));
+}
+
+// Review comments, bucketed by cwd+path+rev: switching file or commit never
+// shows another file's comments. They outlive the detail view and are cleared
+// only by sending them.
+const NO_LINES: ReadonlySet<number> = new Set();
+const NO_COMMENTS: readonly ReviewComment[] = [];
+const commentStore = new Map<string, readonly ReviewComment[]>();
+const commentSubs = new Set<() => void>();
+function commentBucket(cwd: string, path: string, rev?: string): string {
+  return `${cwd}\u0000${path}\u0000${rev ?? ""}`;
+}
+function subscribeComments(fn: () => void): () => void {
+  commentSubs.add(fn);
+  return () => {
+    commentSubs.delete(fn);
+  };
+}
+function useComments(bucket: string) {
+  return useSyncExternalStore(subscribeComments, () => commentStore.get(bucket) ?? NO_COMMENTS);
+}
+function setComments(bucket: string, list: readonly ReviewComment[]): void {
+  commentStore.set(bucket, list);
+  for (const fn of commentSubs) fn();
 }
 
 export default function GitDiffPage() {
@@ -98,7 +163,8 @@ export default function GitDiffPage() {
     return <div className="py-3 text-faint text-ui-base">{t("right.notGitRepoParen")}</div>;
   }
   if (selectedFile) {
-    return <GdFileDetail />;
+    // Keyed by path: switching files remounts the detail, which drops its line selection
+    return <GdFileDetail key={selectedFile} />;
   }
 
   const busy = !!gitBusy;
@@ -107,6 +173,12 @@ export default function GitDiffPage() {
   // Unstage/discard/branch-switch are refused host-side while an operation is
   // open; hiding them here keeps the row honest about what will actually work.
   const opLocked = opState !== "NORMAL" && opState !== "DETACHED_HEAD";
+  // Upstream divergence badge (MyGit's counts()): only meaningful for the cwd on display,
+  // so a cached frame from another repo never shows here.
+  const syncText =
+    gitDiffCache.cwd === s.cwd
+      ? [gitDiffCache.ahead > 0 ? `↑${gitDiffCache.ahead}` : "", gitDiffCache.behind > 0 ? `↓${gitDiffCache.behind}` : ""].filter(Boolean).join(" ")
+      : "";
   // Discard is destructive: goes through a confirm (cwd taken from activeOpen at initiation,
   // aligned with the old gitCwd semantics)
   const onDiscard = (f: GitFileEntry) => {
@@ -137,8 +209,13 @@ export default function GitDiffPage() {
           <span>{t(`right.gitOpState.${opState}` as any)}</span>
         </div>
       )}
-      {/* Toolbar: commit message input (value kept in rightState.commitMsg across repaints) + commit (all staged) + push */}
+      {/* Toolbar: upstream sync badge + commit message input (value kept in rightState.commitMsg across repaints) + commit (all staged) + push */}
       <div className="flex items-center gap-1.5 pt-0.5 pb-2">
+        {syncText && (
+          <span className="text-ui-xs text-faint flex-none" title={gitDiffCache.upstream || undefined}>
+            {syncText}
+          </span>
+        )}
         <input
           className="inp gd-commit-inp"
           type="text"
@@ -190,11 +267,71 @@ export default function GitDiffPage() {
   );
 }
 
-// File detail: back + path pinned at top, diff area scrolls (rendered by the in-house LightweightDiff component)
+// File detail: back + path + line-level ops pinned at top, diff area scrolls (rendered by the in-house
+// LightweightDiff component)
 function GdFileDetail() {
   const { t } = useTranslation();
   const selectedFile = useAppStore((st) => st.selectedFile); // the entry if (selectedFile) already guards non-null, same as the original
   const fileDiffCache = useAppStore((st) => st.fileDiffCache);
+  const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
+  const file = useAppStore((st) => st.gitDiffCache.files.find((f) => f.path === st.selectedFile));
+  const gitBusy = useGitBusy();
+  const [selected, setSelected] = useState<ReadonlySet<number>>(NO_LINES);
+  const [anchor, setAnchor] = useState<number | null>(null); // shift-click range start
+  const [commentAt, setCommentAt] = useState<number | null>(null);
+  const [draft, setDraft] = useState("");
+  const [discardAsk, setDiscardAsk] = useState(false);
+  const cwd = activeOpen()?.cwd ?? "";
+  const bucket = commentBucket(cwd, selectedFile ?? "");
+  const comments = useComments(bucket);
+  const { rows } = useMemo(() => parseDiff(fileDiffCache.diff), [fileDiffCache.diff]);
+  // New-side numbers actually picked out; a shift range only spans these, so it
+  // never asks the host for lines the diff did not show (unchanged gaps between
+  // hunks) nor for context lines, which carry no change of their own.
+  const lineNumbers = useMemo(
+    () => rows.filter((r) => isSelectableRow(r)).map((r) => r.no as number),
+    [rows],
+  );
+  const lineList = useMemo(() => [...selected].sort((a, b) => a - b), [selected]);
+  const busy = !!gitBusy;
+  // The host truncates file_diff at 500k chars; staging lines off a partial diff
+  // would pick the wrong ones, so line ops are refused rather than guessed.
+  const truncated = fileDiffCache.diff.length >= 500_000;
+  const linesHint = truncated ? t("gitPage.linesTruncated") : lineList.length ? "" : t("gitPage.selectLinesHint");
+
+  const toggleLine = (newNo: number, extend: boolean) => {
+    const from = extend && anchor != null ? lineNumbers.indexOf(anchor) : -1;
+    const to = lineNumbers.indexOf(newNo);
+    setSelected((cur) => {
+      const next = new Set(cur);
+      if (from >= 0 && to >= 0) {
+        for (const n of lineNumbers.slice(Math.min(from, to), Math.max(from, to) + 1)) next.add(n);
+      } else if (!next.delete(newNo)) {
+        next.add(newNo);
+      }
+      return next;
+    });
+    if (!extend) setAnchor(newNo);
+  };
+
+  const sendLines = (op: "stage" | "unstage" | "discard") => {
+    if (!cwd || !selectedFile || lineList.length === 0) return;
+    if (op === "discard") send({ type: "git_discard", cwd, path: selectedFile, lines: lineList });
+    else if (op === "unstage") send({ type: "git_unstage", cwd, path: selectedFile, lines: lineList });
+    else send({ type: "git_stage", cwd, path: selectedFile, lines: lineList });
+    startGitBusy(op);
+    setSelected(NO_LINES);
+    setAnchor(null);
+  };
+
+  const saveComment = () => {
+    const body = draft.trim();
+    if (commentAt == null || !body || !selectedFile) return;
+    const code = rows.filter((r) => r.kind !== "removed" && r.no === commentAt).map((r) => r.text);
+    setComments(bucket, [...comments, { path: selectedFile, lines: String(commentAt), code, body }]);
+    setCommentAt(null);
+  };
+
   return (
     <>
       <div className="rb-head">
@@ -207,6 +344,51 @@ function GdFileDetail() {
           {t("right.backToList")}
         </button>
         <div className="text-ui-sm text-faint mb-1.5 break-all">{selectedFile}</div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {!!file?.unstaged && (
+            <button
+              className="save-btn"
+              title={linesHint || t("gitPage.stageSelected")}
+              disabled={busy || truncated || lineList.length === 0}
+              onClick={() => sendLines("stage")}
+            >
+              {t("gitPage.stageSelected")}
+            </button>
+          )}
+          {!!file?.staged && (
+            <button
+              className="save-btn"
+              title={linesHint || t("gitPage.unstageSelected")}
+              disabled={busy || truncated || lineList.length === 0}
+              onClick={() => sendLines("unstage")}
+            >
+              {t("gitPage.unstageSelected")}
+            </button>
+          )}
+          {!!file?.unstaged && (
+            <button
+              className="save-btn danger"
+              title={linesHint || t("gitPage.discardSelected")}
+              disabled={busy || truncated || lineList.length === 0}
+              onClick={() => setDiscardAsk(true)}
+            >
+              {t("gitPage.discardSelected")}
+            </button>
+          )}
+          <button
+            className="save-btn ml-auto"
+            title={t("gitPage.sendToAgent", { n: comments.length })}
+            disabled={comments.length === 0 || !sessionId}
+            onClick={() => {
+              if (!sessionId) return;
+              send({ type: "prompt", sessionId, text: commentsMarkdown(comments) });
+              setComments(bucket, NO_COMMENTS);
+              toast(t("gitPage.commentsSent"));
+            }}
+          >
+            {t("gitPage.sendToAgent", { n: comments.length })}
+          </button>
+        </div>
       </div>
       <div className="rb-scroll">
         {fileDiffCache.loading && fileDiffCache.path === selectedFile ? (
@@ -214,22 +396,85 @@ function GdFileDetail() {
         ) : fileDiffCache.path !== selectedFile || !fileDiffCache.diff ? (
           <div className="py-3 text-faint text-ui-base">{t("right.noDiffContent")}</div>
         ) : (
-          <LightweightDiff diff={fileDiffCache.diff} lang={langOfPath(selectedFile)} className="fd-holder" />
+          <LightweightDiff
+            diff={fileDiffCache.diff}
+            lang={langOfPath(selectedFile)}
+            className="fd-holder"
+            selectable
+            selected={selected}
+            onToggleLine={toggleLine}
+            comments={comments.map((c) => ({ line: parseInt(c.lines, 10), body: c.body }))}
+            onAddComment={(newNo: number) => {
+              setDraft("");
+              setCommentAt(newNo);
+            }}
+            folded={false}
+          />
         )}
       </div>
+      {commentAt != null && (
+        <Dialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setCommentAt(null);
+          }}
+        >
+          <DialogContent className="confirm-box" style={{ width: "480px", maxWidth: "92vw" }}>
+            <DialogTitle className="confirm-title">{t("gitPage.commentTitle", { line: commentAt })}</DialogTitle>
+            <Textarea
+              className="w-full mt-3"
+              rows={4}
+              autoFocus
+              value={draft}
+              placeholder={t("gitPage.commentPh")}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) saveComment();
+              }}
+            />
+            <DialogFooter className="confirm-actions mt-4">
+              <button className="confirm-btn" onClick={() => setCommentAt(null)}>
+                {t("common.cancel")}
+              </button>
+              <button className="confirm-btn" disabled={!draft.trim()} onClick={saveComment}>
+                {t("gitPage.commentSave")}
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {discardAsk && (
+        <ConfirmDialog
+          title={t("gitPage.discardSelected")}
+          message={t("gitPage.discardLinesMsg", { n: lineList.length })}
+          confirmText={t("right.discard")}
+          danger
+          onDone={(yes) => {
+            setDiscardAsk(false);
+            if (yes) sendLines("discard");
+          }}
+        />
+      )}
     </>
   );
 }
 
-// File row: status badge + file name + inline write ops (hover-revealed; shared by tree/flat views)
+// File row: viewed toggle + status badge + file name + inline write ops (hover-revealed; shared by tree/flat views)
 function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; displayPath: string; depth: number; onDiscard: (f: GitFileEntry) => void }) {
   const { t } = useTranslation();
   const gitBusy = useGitBusy();
   const busy = !!gitBusy;
   // Unstage/discard/branch-switch are refused host-side while an operation is
-  // open; hiding them keeps the row honest about what will actually work.
+  // open; hiding them here keeps the row honest about what will actually work.
   const opLocked = useAppStore((s) => s.gitDiffCache.state !== "NORMAL" && s.gitDiffCache.state !== "DETACHED_HEAD");
-  const cwd = () => activeOpen()?.cwd; // cwd resolution aligned with refreshGitDiff (activeOpen().cwd)
+  const cwd = activeOpen()?.cwd ?? ""; // cwd resolution aligned with refreshGitDiff (activeOpen().cwd)
+  const viewedSet = useViewed(cwd);
+  const generatedSet = useGeneratedOpen(cwd);
+  const fingerprint = f.fingerprint ?? "";
+  const viewed = !!fingerprint && viewedSet.has(viewedKey(cwd, f.path, fingerprint));
+  // Generated rows open folded: the first click unfolds (and fetches the diff),
+  // the next one opens the detail.
+  const folded = !!f.generated && !generatedSet.has(f.path);
   // The pulse flag is read via getState at render (not subscribed): setting it rides the
   // expandedDirs write driving this render; the silent macrotask reset triggers no
   // subscription — the kids-in class survives until the next render so the entrance animation
@@ -237,19 +482,51 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
   const animateGdKids = useAppStore.getState().animateGdKids;
   return (
     <div
-      className={"flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer text-dim hover:bg-hover-fill hover:text-text group" + (animateGdKids ? " kids-in" : "")} /* style-token-ignore */
+      className={
+        "flex items-center gap-[5px] text-ui-sm py-[3px] px-2 rounded-[5px] min-w-0 cursor-pointer hover:bg-hover-fill hover:text-text group" + /* style-token-ignore */
+        (viewed ? " text-faint" : " text-dim") +
+        (animateGdKids ? " kids-in" : "")
+      }
       style={{ paddingLeft: 4 + depth * 14 + 14 + "px", animationDelay: depth * 15 + "ms" }}
-      title={f.path}
+      title={folded ? t("gitPage.generatedHint") : f.path}
       onClick={() => {
         const s = activeOpen();
-        if (s) requestFileDiff(s, f.path);
+        if (!s) return;
+        if (folded) {
+          toggleGenerated(s.cwd, f.path);
+          loadFileDiff(s, f.path);
+          return;
+        }
+        requestFileDiff(s, f.path);
       }}
     >
+      {f.generated && (
+        <span className={"gd-caret" + (folded ? "" : " open")}>
+          <Icon name="chevronRight" size={10} />
+        </span>
+      )}
       {/* Stage stays enabled on a conflict: `git add` is how you mark it resolved.
           Unstage/discard are refused host-side mid-operation and are hidden rather
           than left to fail with a raw git error. */}
       <span className={"gd-badge " + badgeClass(f.code, !!f.conflict)}>{badgeLetter(f.code, !!f.conflict)}</span>
-      <span className="whitespace-nowrap overflow-hidden text-ellipsis text-text">{pathBase(displayPath)}</span>
+      <span className={"whitespace-nowrap overflow-hidden text-ellipsis " + (viewed ? "text-faint" : "text-text")}>{pathBase(displayPath)}</span>
+      {/* porcelain v2 rename record: the old name, kept on one line like the name itself */}
+      {f.origPath && f.origPath !== f.path && (
+        <span className="text-ui-xs text-faint whitespace-nowrap overflow-hidden text-ellipsis flex-none">← {f.origPath}</span>
+      )}
+      {f.generated && <span className="text-ui-xs text-faint flex-none">{t("gitPage.generated")}</span>}
+      <button
+        className={"gd-act" + (viewed ? " on" : "")}
+        title={viewed ? t("gitPage.unmarkViewed") : t("gitPage.markViewed")}
+        aria-pressed={viewed}
+        disabled={!fingerprint}
+        onClick={(e) => {
+          e.stopPropagation(); // don't trigger the row click's unfold/enter-detail
+          if (fingerprint) toggleViewed(cwd, f.path, fingerprint);
+        }}
+      >
+        <Icon name="check" />
+      </button>
       <span className="ml-auto flex-none inline-flex items-center gap-0.5 opacity-0 transition-opacity duration-[var(--dur-snap)] ease-[var(--swift)] group-hover:opacity-100 focus-within:opacity-100">
         {f.unstaged && (
           <button
@@ -258,9 +535,8 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
             disabled={busy}
             onClick={(e) => {
               e.stopPropagation(); // don't trigger the row click's enter-detail
-              const c = cwd();
-              if (!c) return;
-              send({ type: "git_stage", cwd: c, paths: [f.path] });
+              if (!cwd) return;
+              send({ type: "git_stage", cwd, paths: [f.path] });
               startGitBusy("stage");
             }}
           >
@@ -274,9 +550,8 @@ function GitFileRow({ f, displayPath, depth, onDiscard }: { f: GitFileEntry; dis
             disabled={busy}
             onClick={(e) => {
               e.stopPropagation();
-              const c = cwd();
-              if (!c) return;
-              send({ type: "git_unstage", cwd: c, paths: [f.path] });
+              if (!cwd) return;
+              send({ type: "git_unstage", cwd, paths: [f.path] });
               startGitBusy("unstage");
             }}
           >

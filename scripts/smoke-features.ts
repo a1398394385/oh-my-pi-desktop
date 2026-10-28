@@ -6,6 +6,7 @@
 // WARNING: all git write operations land in a temp repo/temp bare repo (file:// remote); never tested against a real repo.
 // Assertions cover:
 //   1. git_stage / git_unstage: staging in and out (fixture-side git diff --cached verifies the on-disk truth)
+//   1b. line-level git_stage / git_unstage: only the selected change block moves, the rest stays in the worktree
 //   2. git_discard: tracked files restored, untracked files gone
 //   3. git_commit: committing with paths returns a sha; without paths commits everything staged
 //   4. git_push: pushes to the local bare repo with the remote branch pointing at the new commit; write ops in a non-git dir return an error field
@@ -166,6 +167,27 @@ r = await waitType("git_unstaged", mark).catch((e) => fail(String(e)));
 assert(r.ok === true, `git_unstage 回 ok（error=${r.error ?? "无"}）`);
 const cached2 = g("diff --cached --name-only");
 assert(!cached2.includes("a.txt") && !cached2.includes("b.txt"), `git_unstage 后暂存区已清空（${cached2 || "空"}）`);
+
+// ---- Assertion 2b: line-level stage stages only the selected change block ----
+// Base is "line1\nline2\n"; rewriting line 1 and appending line 3 makes two
+// separate blocks, so selecting new-side line 3 must leave the line-1 rewrite behind.
+await writeFile(path.join(repoDir, "a.txt"), "line1-changed\nline2\nline3-added\n");
+mark = frames.length;
+ws.send(JSON.stringify({ type: "git_stage", cwd: repoDir, path: "a.txt", lines: [3] }));
+r = await waitType("git_staged", mark).catch((e) => fail(String(e)));
+assert(r.ok === true, `行级 git_stage 回 ok（error=${r.error ?? "无"}）`);
+const cachedLines = g("diff --cached -U0 -- a.txt");
+assert(cachedLines.includes("+line3-added"), `行级暂存只含选中的第 3 行（${JSON.stringify(cachedLines)}）`);
+assert(!cachedLines.includes("line1-changed"), "行级暂存不含未选中的第 1 行改动");
+const workLines = g("diff -U0 -- a.txt");
+assert(workLines.includes("line1-changed") && !workLines.includes("line3-added"), "未选中的改动仍留在工作区");
+
+// ---- Assertion 2c: line-level unstage takes just that block back out of the index ----
+mark = frames.length;
+ws.send(JSON.stringify({ type: "git_unstage", cwd: repoDir, path: "a.txt", lines: [3] }));
+r = await waitType("git_unstaged", mark).catch((e) => fail(String(e)));
+assert(r.ok === true, `行级 git_unstage 回 ok（error=${r.error ?? "无"}）`);
+assert(g("diff --cached -- a.txt") === "", "行级取消暂存后索引回到空");
 
 // ---- Assertion 3: git_discard restores tracked + removes untracked ----
 await writeFile(path.join(repoDir, "c.txt"), "throwaway\n");

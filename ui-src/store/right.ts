@@ -21,7 +21,15 @@ export interface RightSlice {
   briefDiffPending: string | null; // inline diff path with a request in flight
   todoCollapsed: boolean;
   rightState: RightState;
-  gitDiffCache: { cwd: string | null; files: GitStatusFile[]; loading: boolean; state: GitOperationState };
+  gitDiffCache: {
+    cwd: string | null;
+    files: GitStatusFile[];
+    loading: boolean;
+    state: GitOperationState;
+    ahead: number; // commits ahead of upstream (0 without one)
+    behind: number; // commits behind upstream
+    upstream: string; // tracking branch, empty without one
+  };
   fileDiffCache: { path: string | null; diff: string; loading: boolean };
   briefDiffCache: Map<string, string | undefined>; // inline diffs for edit rows, path -> text (LRU, see setBriefDiff)
   setBriefDiff(path: string, diff: string | undefined): void;
@@ -61,7 +69,7 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   // Launch starts with the right panel collapsed, so the process card starts expanded
   todoCollapsed: false,
   rightState: rightStateInit,
-  gitDiffCache: { cwd: null, files: [], loading: false, state: "NORMAL" },
+  gitDiffCache: { cwd: null, files: [], loading: false, state: "NORMAL", ahead: 0, behind: 0, upstream: "" },
   fileDiffCache: { path: null, diff: "", loading: false },
   briefDiffCache: new Map(),
   browserTabs: [],

@@ -14,10 +14,52 @@ import { quotePosixArgument } from "../bootstrap.ts";
 import { resolveRemoteTarget, readUserSshHost } from "../remote-workspaces.ts";
 import { runSshCommand, formatSshError, type SshHostConfigShape } from "./ssh.ts";
 import { forEachRef, gitError, gitRead, gitWrite, isGitWorktree, operationState, type GitOperationState } from "../git.ts";
+import { applyLines, type GitRunner } from "../git-patch.ts";
+import type { GitStatusFile } from "../wire/payloads.ts";
+import { generatedByName, generatedByHeader } from "../git-generated.ts";
 
 // paths parameter of git write RPCs: string array, empties dropped
 function stringPaths(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.map((x) => String(x)).filter((x) => x.trim()) : [];
+}
+
+/**
+ * Line-level request of the git write RPCs: a single path plus new-side line
+ * numbers (1-based). Absent or empty means the whole-file form.
+ */
+function lineSelection(msg: unknown): { path: string; lines: number[] } | null {
+  if (!msg || typeof msg !== "object") return null;
+  const { path: rawPath, lines: rawLines } = msg as { path?: unknown; lines?: unknown };
+  const p = typeof rawPath === "string" ? rawPath.trim() : "";
+  const lines = Array.isArray(rawLines)
+    ? rawLines.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0)
+    : [];
+  return p && lines.length > 0 ? { path: p, lines } : null;
+}
+
+/** The two locking classes git-patch.ts needs, bound to one repo. */
+function gitRunner(cwd: string): GitRunner {
+  return {
+    read: (args, input) => gitRead(cwd, args, { input }),
+    write: (args, input) => gitWrite(cwd, args, { input }),
+  };
+}
+
+/** First lines of a working-tree file, or null when absent, binary or huge. */
+function readHeadLines(absPath: string): string[] | null {
+  const stat = fs.statSync(absPath, { throwIfNoEntry: false });
+  if (!stat?.isFile() || stat.size > 1_000_000) return null;
+  const buf = Buffer.alloc(8000);
+  const fd = fs.openSync(absPath, "r");
+  let read = 0;
+  try {
+    read = fs.readSync(fd, buf, 0, buf.length, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const bytes = buf.subarray(0, read);
+  if (bytes.includes(0)) return null; // binary: never a generated header
+  return bytes.toString("utf8").split("\n").slice(0, 5);
 }
 
 /** Unmerged porcelain XY codes: both sides differ and the file needs resolving. */
@@ -214,6 +256,12 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // Deliberately NOT blocked mid-rebase/merge: `git add` on a resolved conflict is
     // how the user finishes that operation.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+    const line = lineSelection(msg);
+    if (line) {
+      const error = await applyLines(gitRunner(cwd), cwd, line.path, line.lines, "stage");
+      ws.send(JSON.stringify(error ? { type: "git_staged", cwd, error } : { type: "git_staged", cwd, ok: true }));
+      return;
+    }
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
     const r = await gitWrite(cwd, ["add", "--", ...paths]);
@@ -223,6 +271,17 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // Unstage: git reset HEAD -- <paths>. Refused while a rebase/merge is open —
     // resetting the index there silently rewrites the operation's own state.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+    const line = lineSelection(msg);
+    if (line) {
+      const refused = await checkAllowed(cwd, "unstage");
+      if (refused) {
+        ws.send(JSON.stringify({ type: "git_unstaged", cwd, error: refused }));
+        return;
+      }
+      const error = await applyLines(gitRunner(cwd), cwd, line.path, line.lines, "unstage");
+      ws.send(JSON.stringify(error ? { type: "git_unstaged", cwd, error } : { type: "git_unstaged", cwd, ok: true }));
+      return;
+    }
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
     const refused = await checkAllowed(cwd, "unstage");
@@ -241,6 +300,17 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // One ls-files -z run partitions the list; a pathspec naming a directory
     // still counts as tracked when any listed file sits beneath it.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
+    const line = lineSelection(msg);
+    if (line) {
+      const refused = await checkAllowed(cwd, "discard");
+      if (refused) {
+        ws.send(JSON.stringify({ type: "git_discarded", cwd, error: refused }));
+        return;
+      }
+      const error = await applyLines(gitRunner(cwd), cwd, line.path, line.lines, "discard");
+      ws.send(JSON.stringify(error ? { type: "git_discarded", cwd, error } : { type: "git_discarded", cwd, ok: true }));
+      return;
+    }
     const paths = stringPaths(msg.paths);
     if (paths.length === 0) throw new Error(hostI18n.t("errors.param.missingPaths"));
     const refused = await checkAllowed(cwd, "discard");
@@ -327,37 +397,123 @@ export const filesHandlers: Record<string, RpcHandler> = {
     // verbatim, so a non-ASCII filename arrives as text instead of git's
     // octal-escaped quoted form — which would render as garbage in the UI and
     // make stage/unstage fail against a path that does not exist on disk.
-    // `--no-renames` keeps one record per path (a rename becomes D + A), which
-    // is what the per-row action buttons assume.
+    // `--porcelain=v2` additionally reports a rename as one `2 ` record naming
+    // its source, and its `# branch.ab` header carries ahead/behind.
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;
-    const p = await gitRead(cwd, ["status", "--porcelain", "-z", "--no-renames"]);
+    const p = await gitRead(cwd, ["--no-optional-locks", "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"]);
     if (!p.ok) {
       throw new Error(hostI18n.t("errors.git.statusFailed", {
         detail: gitError(p, 200) || hostI18n.t("errors.git.notARepo"),
       }));
     }
-    const files: Array<{ code: string; path: string; staged: string; unstaged: string; conflict: boolean }> = [];
-    // tformat of a -z status still emits one record per NUL; split keeps empty tails out
-    for (const rec of p.stdout.split("\0")) {
-      if (!rec) continue;
-      // "XY path": two status columns, one space, then the path. Anything shorter
-      // is a format change we must not silently mis-slice (git4idea treats the
-      // same case as a hard error).
-      if (rec.length < 4) {
-        throw new Error(hostI18n.t("errors.git.statusFailed", { detail: hostI18n.t("errors.git.statusMalformed", { line: rec }) }));
-      }
-      const code = rec.slice(0, 2);
-      const filePath = rec.slice(3);
+    const files: GitStatusFile[] = [];
+    let ahead = 0;
+    let behind = 0;
+    let upstream = "";
+    // One NUL per record; split keeps empty tails out.
+    const recs = p.stdout.split("\0");
+    const addFile = (code: string, filePath: string, origPath?: string) => {
       const [x, y] = code;
       files.push({
         code,
         path: filePath,
+        ...(origPath ? { origPath } : {}),
         staged: x === " " || x === "?" ? "" : x,
         unstaged: y === " " ? "" : y,
         conflict: CONFLICT_CODES.has(code),
+        generated: false,
+        fingerprint: "",
+      });
+    };
+    for (let i = 0; i < recs.length; i++) {
+      const rec = recs[i];
+      if (!rec) continue;
+      if (rec.startsWith("# branch.ab ")) {
+        const m = /\+(\d+) -(\d+)/.exec(rec);
+        if (m) {
+          ahead = Number(m[1]);
+          behind = Number(m[2]);
+        }
+        continue;
+      }
+      if (rec.startsWith("# branch.upstream ")) {
+        upstream = rec.slice("# branch.upstream ".length);
+        continue;
+      }
+      if (rec[0] === "#") continue;
+      if (rec[0] === "?") {
+        addFile("??", rec.slice(2));
+        continue;
+      }
+      if (rec[0] === "!") continue;
+      // 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+      // 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path>\0<origPath>
+      // u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+      const kind = rec[0];
+      const pathAt = kind === "1" ? 8 : kind === "u" ? 10 : 9;
+      const parts = rec.split(" ");
+      // v2 writes "." for an unchanged column; the frame keeps v1's " " so the
+      // UI's badge letters and staged/unstaged semantics stay as they were.
+      const code = parts[1]?.replace(/\./g, " ");
+      // Anything shorter is a format change we must not silently mis-slice
+      // (git4idea treats the same case as a hard error).
+      if ((kind !== "1" && kind !== "2" && kind !== "u") || !code || code.length !== 2 || parts.length <= pathAt) {
+        throw new Error(hostI18n.t("errors.git.statusFailed", { detail: hostI18n.t("errors.git.statusMalformed", { line: rec }) }));
+      }
+      // A `2 ` record's source path is the next NUL field, not part of this one.
+      addFile(code, parts.slice(pathAt).join(" "), kind === "2" ? recs[++i] : undefined);
+    }
+
+    // Generated: the name table needs no IO, the file's first lines and the
+    // repository's linguist-generated attribute do (one batch for all paths).
+    const byName = new Set(files.filter((f) => generatedByName(f.path)).map((f) => f.path));
+    const byHeader = new Set<string>();
+    for (const f of files) {
+      if (byName.has(f.path)) continue;
+      const head = readHeadLines(path.join(cwd, f.path));
+      if (head && generatedByHeader(head)) byHeader.add(f.path);
+    }
+    const byAttr = new Set<string>();
+    if (files.length > 0) {
+      const attr = await gitRead(cwd, ["check-attr", "-z", "--stdin", "linguist-generated"], {
+        input: files.map((f) => f.path).join("\0"),
+      });
+      if (attr.ok) {
+        const t = attr.stdout.split("\0");
+        for (let i = 0; i + 2 < t.length; i += 3) if (t[i + 2] === "set" || t[i + 2] === "true") byAttr.add(t[i]);
+      }
+    }
+
+    // Fingerprint: the blob oid the row's content hashes to. Rows with unstaged
+    // edits hash the working tree in one batched call, the rest reuse the index
+    // blob; a row whose content cannot be hashed keeps "".
+    const indexOid = new Map<string, string>();
+    const ls = await gitRead(cwd, ["ls-files", "-s", "-z"]);
+    if (ls.ok) {
+      for (const rec of ls.stdout.split("\0")) {
+        const tab = rec.indexOf("\t");
+        if (tab > 0) indexOid.set(rec.slice(tab + 1), rec.slice(0, tab).split(" ")[1]);
+      }
+    }
+    const workPaths = files
+      .filter((f) => f.unstaged !== "" || f.code === "??")
+      .map((f) => f.path)
+      .filter((rel) => fs.statSync(path.join(cwd, rel), { throwIfNoEntry: false })?.isFile() === true);
+    const workOid = new Map<string, string>();
+    if (workPaths.length > 0) {
+      // shortcut: --stdin-paths pairs one oid per line, so a path containing a
+      // newline would shift the results; such paths just lose their fingerprint.
+      const h = await gitRead(cwd, ["hash-object", "--stdin-paths"], { input: workPaths.map((w) => `${w}\n`).join("") });
+      if (h.ok) h.stdout.split("\n").forEach((oid, i) => {
+        if (oid && workPaths[i]) workOid.set(workPaths[i], oid);
       });
     }
-    ws.send(JSON.stringify({ type: "git_status", cwd, files, state: await operationState(cwd) }));
+    for (const f of files) {
+      f.generated = byName.has(f.path) || byHeader.has(f.path) || byAttr.has(f.path);
+      f.fingerprint = workOid.get(f.path)
+        ?? (f.unstaged !== "" || f.code === "??" ? "" : indexOid.get(f.path) ?? "");
+    }
+    ws.send(JSON.stringify({ type: "git_status", cwd, files, state: await operationState(cwd), ahead, behind, upstream }));
   },
   async get_git_branches(ws, msg) {
     const cwd = typeof msg.cwd === "string" && msg.cwd ? msg.cwd : defaultCwd;

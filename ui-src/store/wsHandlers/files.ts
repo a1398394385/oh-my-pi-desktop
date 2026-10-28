@@ -71,7 +71,15 @@ export const filesHandlers = {
     }
     const st = useAppStore.getState();
     useAppStore.setState((s) => ({
-      gitDiffCache: { cwd: msg.cwd, files: msg.files, loading: false, state: msg.state ?? "NORMAL" },
+      gitDiffCache: {
+        cwd: msg.cwd,
+        files: msg.files,
+        loading: false,
+        state: msg.state ?? "NORMAL",
+        ahead: msg.ahead,
+        behind: msg.behind,
+        upstream: msg.upstream,
+      },
       rightState: { ...s.rightState, expandedDirs: dirs },
       // The Git page reads its own cwd only: a session-diff refresh landing while the
       // page is open must not empty its left column.

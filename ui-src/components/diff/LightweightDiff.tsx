@@ -10,129 +10,120 @@
 // Line filtering matches ZCode collectPlainTextPreviewLines: file headers
 // (diff --git/index/---/+++ etc.) and hunk headers (@@) are never rendered —
 // only hunk bodies are drawn, so previews do not expose protocol headers.
+// Optional layers, all driven by props and inert by default: new-side line
+// selection (stage/discard a line), per-line comments drawn as note rows below
+// the line, and a folded single-row summary. Row/comment/fold rules live in
+// render-rows.ts so they stay testable without React.
 import { useMemo } from "react";
 import { CodeTokens, useCodeTokens } from "../../lib/CodeTokens.jsx";
 import { useTranslation } from "react-i18next";
+import { buildRenderItems, isSelectableRow, newLineOf, parseDiff, type DiffComment } from "./render-rows.js";
 
-// Render line cap: the host truncates file_diff responses at 500k chars;
-// oversized diffs draw only the first MAX lines plus a trailing omission
-// notice, preventing a single huge file diff from stalling rendering
-const MAX_RENDER_LINES = 4000;
-
-const HUNK_RE = /^@@(?:\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?)?/;
-const META_RE = /^(?:diff --git |index |--- |\+\+\+ |new file mode |deleted file mode |similarity index |rename from |rename to |old mode |new mode )/;
-const NOTE_RE = /^\\ /;
-// Line-number format of the base edit tool's details.diff (same as the TUI):
-// "sign + line number + |/│ + text", where the sign is space (context) /
-// - (old) / + (new); the separator may also be the full-width │. Not a unified
-// diff — no hunk headers
-const LN_RE = /^([-+\s])\s*(\d+)[|│](.*)$/;
-
-export interface DiffRow {
-  kind: "note" | "added" | "removed" | "context";
-  text: string;
-  no?: number;
-  oldNo?: number;
-}
-
-interface ParsedDiff {
-  rows: DiffRow[];
-  omitted: number;
-}
-
-// Parse unified diff text into row structures: body lines are classified by
-// their +/-/space prefix while old/new line numbers are tracked from hunk
-// headers; file headers and hunk headers are skipped for rendering (line
-// numbers still align at hunk headers; truncated hunks are tolerated).
-function parseUnifiedDiff(diff: string | null | undefined): ParsedDiff {
-  const lines = String(diff ?? "").split("\n");
-  const rows: DiffRow[] = [];
-  let oldLine = 0;
-  let newLine = 0;
-  let omitted = 0;
-  let inHunk = false; // Same filter as ZCode: before entering a hunk only hunk headers count; once inside, @@/file headers are all skipped
-  for (let i = 0; i < lines.length; i++) {
-    if (rows.length >= MAX_RENDER_LINES) {
-      omitted = lines.length - i;
-      break;
-    }
-    const raw = lines[i];
-    const hunk = HUNK_RE.exec(raw);
-    if (hunk) {
-      oldLine = Number(hunk[1] || 1);
-      newLine = Number(hunk[3] || 1);
-      inHunk = true;
-      continue;
-    }
-    if (!inHunk || META_RE.test(raw)) continue;
-    if (NOTE_RE.test(raw)) {
-      rows.push({ kind: "note", text: raw });
-    } else if (raw.startsWith("+")) {
-      rows.push({ kind: "added", text: raw.slice(1), no: newLine++ });
-    } else if (raw.startsWith("-")) {
-      rows.push({ kind: "removed", text: raw.slice(1), no: oldLine++ });
-    } else {
-      // Space-prefixed context line; a fully empty line falls back to context (git bodies never emit blank lines)
-      rows.push({ kind: "context", text: raw.startsWith(" ") ? raw.slice(1) : raw, no: newLine++, oldNo: oldLine++ });
-    }
-  }
-  return { rows, omitted };
-}
-
-// Parse the base's line-number diff (edit tool details.diff): each line carries its own old/new line number, no hunk-header alignment needed
-function parseLnDiff(diff: string | null | undefined): ParsedDiff {
-  const lines = String(diff ?? "").split("\n");
-  const rows: DiffRow[] = [];
-  let omitted = 0;
-  for (let i = 0; i < lines.length; i++) {
-    if (rows.length >= MAX_RENDER_LINES) {
-      omitted = lines.length - i;
-      break;
-    }
-    const m = LN_RE.exec(lines[i]);
-    if (!m) continue;
-    const no = Number(m[2]);
-    if (m[1] === "-") rows.push({ kind: "removed", text: m[3], no });
-    else if (m[1] === "+") rows.push({ kind: "added", text: m[3], no });
-    else rows.push({ kind: "context", text: m[3], no });
-  }
-  return { rows, omitted };
-}
-
-// Unified entry point: unified diff first; falls back to line-number parsing when there is no hunk body (base line-number format)
-export function parseDiff(diff: string | null | undefined): ParsedDiff {
-  const unified = parseUnifiedDiff(diff);
-  if (unified.rows.length > 0) return unified;
-  return parseLnDiff(diff);
-}
+export type { DiffComment, DiffRow, ParsedDiff } from "./render-rows.js";
+export { isSelectableRow } from "./render-rows.js";
+export { parseDiff } from "./render-rows.js";
 
 interface LightweightDiffProps {
   diff?: string | null;
   lang?: string | null;
   className?: string;
+  selectable?: boolean;
+  // New-side line numbers (1-based)
+  selected?: ReadonlySet<number>;
+  // extend = shift-click range selection
+  onToggleLine?: (newNo: number, extend: boolean) => void;
+  comments?: readonly DiffComment[];
+  onAddComment?: (newNo: number) => void;
+  folded?: boolean;
+  foldedSummary?: React.ReactNode;
+  onFoldToggle?: () => void;
 }
 
-export default function LightweightDiff({ diff, lang = null, className = "" }: LightweightDiffProps) {
+const NO_COMMENTS: readonly DiffComment[] = [];
+
+export default function LightweightDiff({
+  diff,
+  lang = null,
+  className = "",
+  selectable = false,
+  selected,
+  onToggleLine,
+  comments = NO_COMMENTS,
+  onAddComment,
+  folded = false,
+  foldedSummary,
+  onFoldToggle,
+}: LightweightDiffProps) {
   const { t } = useTranslation();
   const { rows, omitted } = useMemo(() => parseDiff(diff), [diff]);
-  // Tokenize the whole content (line texts joined in order) in one pass and paste back by line index; empty lang or oversized content renders as plain text
+  // Tokenize the whole content (line texts joined in order) in one pass and paste back by line index; empty lang or oversized content renders as plain text.
+  // Comment rows are not part of this join, so token line indices stay aligned with row indices.
   const code = useMemo(() => rows.map((r) => r.text).join("\n"), [rows]);
   const tokens = useCodeTokens(code, lang);
+  const items = useMemo(() => buildRenderItems(rows, comments, folded), [rows, comments, folded]);
+  if (folded) {
+    return (
+      <div className={"ldiff" + (className ? " " + className : "")}>
+        <div
+          className="ldiff-fold"
+          role={onFoldToggle ? "button" : undefined}
+          tabIndex={onFoldToggle ? 0 : undefined}
+          onClick={onFoldToggle}
+          onKeyDown={(e) => {
+            if (!onFoldToggle || (e.key !== "Enter" && e.key !== " ")) return;
+            e.preventDefault();
+            onFoldToggle();
+          }}
+        >
+          {foldedSummary}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className={"ldiff" + (className ? " " + className : "")}>
       <div className="ldiff-scroll">
-        {rows.map((row, i) => (
-          <div key={i} className={"ldiff-row ldiff-" + row.kind}>
-            {"no" in row || "oldNo" in row ? (
-              <span className="ldiff-gutter" aria-hidden="true">{row.no}</span>
-            ) : (
-              <span className="ldiff-gutter" aria-hidden="true" />
-            )}
-            <code className="ldiff-code">
-              {tokens?.[i] ? <CodeTokens line={tokens[i]} /> : row.text || " "}
-            </code>
-          </div>
-        ))}
+        {items.map((item, i) => {
+          if (item.kind === "comment") {
+            return (
+              <div key={"c" + i} className="ldiff-note">
+                {item.body}
+              </div>
+            );
+          }
+          const { row, index } = item;
+          const newNo = newLineOf(row);
+          const pickable = selectable && isSelectableRow(row);
+          const showAdd = onAddComment !== undefined && newNo !== null;
+          const isSel = newNo !== null && selectable && selected?.has(newNo) === true;
+          return (
+            <div
+              key={i}
+              className={"ldiff-row ldiff-" + row.kind + (pickable ? " ldiff-pick" : "") + (isSel ? " ldiff-row-sel" : "")}
+              onClick={pickable && newNo !== null ? (e) => onToggleLine?.(newNo, e.shiftKey) : undefined}
+            >
+              <span className="ldiff-gutter" aria-hidden={showAdd ? undefined : true}>
+                {showAdd && (
+                  <button
+                    type="button"
+                    className="ldiff-add"
+                    aria-label="+"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddComment?.(newNo);
+                    }}
+                  >
+                    +
+                  </button>
+                )}
+                {row.no}
+              </span>
+              <code className="ldiff-code">
+                {tokens?.[index] ? <CodeTokens line={tokens[index]} /> : row.text || " "}
+              </code>
+            </div>
+          );
+        })}
         {omitted > 0 && <div className="py-[4px] px-[12px] text-faint">{t("chat.diffOmitted", { count: omitted })}</div>}
       </div>
     </div>

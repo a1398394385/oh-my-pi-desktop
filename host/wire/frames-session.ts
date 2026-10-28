@@ -491,11 +491,17 @@ export interface GitPushedFrame {
   error?: string; // failure only
 }
 
-/** Changed-files list reply (host/host.ts get_git_diff) */
+/** Changed-files list reply (host/rpc/files.ts get_git_diff) */
 export interface GitStatusFrame {
   type: "git_status";
   cwd: string;
   files: GitStatusFile[];
+  /** Commits the branch is ahead of its upstream (0 when it has none). */
+  ahead: number;
+  /** Commits behind the upstream (0 when it has none). */
+  behind: number;
+  /** Tracking branch name, empty when the branch has no upstream. */
+  upstream: string;
   /** Mutating operation in flight, so the UI can explain refused actions. */
   state?: GitOperationState;
 }

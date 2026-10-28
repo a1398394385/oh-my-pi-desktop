@@ -74,6 +74,21 @@ export const gitPageZh = {
   sortAsc: "切换为时间升序",
   sortDesc: "切换为时间降序",
   noMatch: "没有匹配的提交",
+  stageSelected: "暂存所选行",
+  unstageSelected: "取消暂存所选行",
+  discardSelected: "丢弃所选行",
+  selectLinesHint: "请先在 diff 中选择行",
+  linesTruncated: "diff 已截断，无法按行操作",
+  discardLinesMsg: "所选 {{n}} 行的改动将永久丢失。",
+  sendToAgent: "发送给 agent（{{n}}）",
+  commentsSent: "批注已发送",
+  commentTitle: "批注第 {{line}} 行",
+  commentPh: "这里需要怎么改？",
+  commentSave: "添加批注",
+  markViewed: "标记为已读",
+  unmarkViewed: "标记为未读",
+  generated: "生成文件",
+  generatedHint: "生成文件：点击展开",
 };
 
 export default gitPageZh;

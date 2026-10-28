@@ -63,3 +63,7 @@
 .gd-act:disabled:hover { background: none; color: var(--faint); }
 
 .gd-act.danger:hover { background: var(--panel-3); color: var(--err); }
+
+/* Viewed toggle of a file row: the mark itself stays visible (unlike the hover actions)
+   and reads as done in the git-added color */
+.gd-act.on { color: var(--green-soft); }

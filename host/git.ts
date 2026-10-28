@@ -9,10 +9,11 @@
 //                     collides with the agent's own git runs in the same repo
 //                     and with a concurrently open IDE. We never want the index
 //                     rewritten by a read.
-//   locking "write" → same, plus GIT_TERMINAL_PROMPT=0. stdin is ignored (a
-//                     GUI has no terminal), so a credential or identity prompt
-//                     has nowhere to go: git would block until the timeout.
-//                     Failing fast beats blocking the host.
+//   locking "write" → same, plus GIT_TERMINAL_PROMPT=0. stdin is closed unless
+//                     the call supplies input (a GUI has no terminal), so a
+//                     credential or identity prompt has nowhere to go: git
+//                     would block until the timeout. Failing fast beats
+//                     blocking the host.
 //
 // Global `-c` flags, applied to every call:
 //   core.quotepath=false → git stops octal-escaping non-ASCII paths. Status
@@ -42,6 +43,8 @@ export type GitLocking = "read" | "write";
 export interface GitOptions {
   /** Overrides the default timeout for this locking class. */
   timeoutMs?: number;
+  /** Written to the child's stdin, which is otherwise closed (a GUI has no terminal). */
+  input?: string;
 }
 
 /** Read commands must never wait on a lock; give a huge index room to answer. */
@@ -83,7 +86,7 @@ export async function git(
       : READ_TIMEOUT_MS);
 
   const proc = Bun.spawn(["git", "-C", cwd, ...GLOBAL_FLAGS, ...args], {
-    stdin: "ignore",
+    stdin: opts.input === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",
     env: envFor(locking),
@@ -96,6 +99,12 @@ export async function git(
   }, timeoutMs);
 
   try {
+    // Without input, stdin stays closed so a credential/identity prompt fails
+    // fast instead of blocking until the timeout.
+    if (opts.input !== undefined) {
+      proc.stdin.write(opts.input);
+      proc.stdin.end();
+    }
     const [code, stdout, stderr] = await Promise.all([
       proc.exited,
       new Response(proc.stdout).text(),
