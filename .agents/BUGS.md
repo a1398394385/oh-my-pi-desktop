@@ -101,7 +101,16 @@
 | BUG-105 | 流式期间发的斜杠命令（如 `/advisor on`）被本地消费后仍留在待发送队列——UI 无条件乐观入队，消费型命令不入底座队列也触发不了 onQueueChange，没有校准帧清行 | 2026-10-23 |
 | BUG-106 | kimi provider 下 `/computer on` 开启的 computer use 点输入框图标关不掉——setComputerMode 的 kimi 关闭分支只卸载 kimi-cu，不清底座命令写的 computer.enabled overlay，帧亮态 overlay‖mounted 恒真 | 2026-10-23 |
 | BUG-109 | 会话右键菜单开着时该会话流式状态翻转 → 整窗黑屏（React #310）——`streaming \|\| useAppStore(...)` 把 store hook 挂在 `\|\|` 右操作数上，hook 数随数据变 | 2026-10-26 |
-
+| BUG-110 | 点停止后界面永远「工作中」——host 在底座 abort() 返回时就回执，请求卡死的 turn 永不发 turn_end，UI 的 streaming 只认 turn_end | 2026-10-27 |
+| BUG-111 | 已结束的子 agent 点进去内容停在最后一轮中途——复用池条目直推冻结的 `entry.transcript`，不读磁盘新增 | 2026-10-27 |
+| BUG-112 | 会话内定时任务不走普通用户消息——custom_message 历史回放漏接且无标准气泡 | 2026-10-27 |
+| BUG-113 | 思考事件标签与其它标签错开——图标尺寸和 DOM 结构不统一 | 2026-10-27 |
+| BUG-114 | 定时会话能执行但打开报「会话不存在」——自动任务创建分支漏注册内存池 | 2026-10-27 |
+| BUG-115 | macOS 全屏后侧栏收起/展开按钮仍停在红绿灯右侧——顶部横向留白未随全屏切换 | 2026-10-27 |
+| BUG-116 | 用户气泡左侧分支切换块错位——锚定包裹层且 fixed 纵坐标漏除 UI 缩放 | 2026-10-27 |
+| BUG-117 | macOS 顶部右侧图标比左侧低——三组头部各自对齐且终端按钮额外下移 | 2026-10-27 |
+| BUG-118 | 编译版 webview 保留浏览器行为——拖入图片整页导航成图片、右键出 Reload/检查 | 2026-10-27 |
+| BUG-119 | ACP 把持久化图片引用按未知尺寸上限计价——8 张图虚增 96K，明细合计反超总量 | 2026-10-28 |
 ---
 
 ## 详情
@@ -1591,3 +1600,125 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：happy-dom + 源码直渲（临时脚本，已删）——挂载 `SessCtxMenu` 后把 `openSessions` 的 `streaming` 依次 true→false→true：改前行抛 `Rendered more hooks than during the previous render.`，改后无错误、菜单按钮正常渲染。`bun run ui:typecheck` 通过；`bun run ui:build` 通过；`bun run smoke:react` 19 项断言失败与改前逐一相同（存量，与本次无关）。
 
 **教训**：`a || useHook(...)` / `a ? useHook() : x` 这类「短路里的 hook」是 #310 的经典入口，而 ESLint 的 rules-of-hooks 能拦——本项目 UI 无 lint 兜底时，只能靠扫描保护：凡是 store 选择器，一行一个，永远不进条件式。附带收获：黑屏栈里的组件名是压缩后的短名，靠 `aside` 这一层定位到侧栏子树比猜组件名可靠。
+
+### BUG-110: 点「停止」后界面永远停在「工作中 N 分」——abort 回执被当成 turn 结束，卡死的 turn 永不发 turn_end
+
+**现象**：一个会话的 turn 跑起来后点停止，弹出「已停止」toast，但对话区仍显示「工作中 47 分 45 秒 / 正在处理…」，左侧会话行持续转圈，停止按钮灰掉后再点没反应。切走再切回可以再点一次停止，仍只弹 toast、状态不变；关掉 tab 重开也一样。
+
+**根因**（`host/rpc/session.ts` abort_session + `ui-src/store/wsHandlers/session.ts`）：host 在 `await entry.session.abort()` 返回的瞬间就回 `session_aborted{ok:true}`，而底座 `abort()` 返回只代表「取消等待」，不代表这一轮结束——turn 卡在一个不返回的 provider 请求上时，底座永远不会发出 agent_end，host 也就不会发 `turn_end(runEnd)`。而 UI 侧 `session_aborted` 的处理只有一句 toast，`streaming`/`workingText`/工具行 running/`pendingApprovals` 一个都不碰；这些状态唯一的权威清理点是 `turn_end` 分支（`ui-src/store/session.ts`）。于是 `streaming` 永久为 true：工作行一直计时、Composer 的 `stopPending` 因 `canAbort` 不翻转而永远不重置（`disabled={stopping && stopPending}`）、侧栏 `running = streaming || poolBusy` 一直转。宿主侧日志证据：`keepalive probe failed … HTTP 400` 之后 host 再无任何 turn 结束记录。
+
+**修复**：`ui-src/store/session.ts` 新增 `settleAbortedRunLater(sessionId)`——收到 abort 回执后等 2s，若期间没有 `turn_end` 把 `streaming` 收掉，则自行收敛：draft 落成 assistant 行（不丢已产文字）、`streaming=false`、`workingText=null`、清 `pendingApprovals`、`clearRunningTools`。`session_aborted` 处理器调用它。刻意不动 `turnItemStart`（迟到的 `turn_end` 仍能正常 seal 整轮），也刻意不清 `busyPaths`（它来自宿主 `session.isStreaming`，是「这一轮其实还没结束」的诚实信号）。
+
+**验证**：`scripts/abort-settle.test.ts`（3 例：无 turn_end 时收敛、turn_end 先到时不重复落行、会话已关闭时静默）全过；`bun run check` 全绿；`bun run ui:build` 通过；真机 `dev:browser` + 浏览器注入「丢弃 turn_end 帧」复现原 bug 形态——点停止后 1s 按钮 `disabled`、工作行仍在（原 bug），3.5s 时按钮恢复可用、工作行消失、transcript 正常收尾；不注入的对照组正常路径无回归。产物已同步到打包 app 的 `Resources/ui/dist`（备份 `dist.bak-20261027`）。
+
+**教训**：任何「宿主回执」都不等于「状态机到达终态」——回执只证明请求被受理。去掉一个终态帧（这里是 `turn_end`）后，所有只认该帧的 UI 状态都变成泄漏位，且漏在「按钮自己锁死」这种无法自我恢复的地方。给终态帧加兜底时要选不可逆性最小的落点：能保留的（draft、turnItemStart）一律保留，让迟到的真帧继续按原路径工作。
+
+### BUG-111: 已结束的子 agent 点进去内容停在最后一轮中途——复用池条目直推冻结的 `entry.transcript`，不读磁盘新增
+
+**现象**：同一次并行派发的两个子 agent，一个已提交、一个失败。点进失败那个能看到主 agent 的 IRC 打断消息和子 agent 的最终报告；点进已完成那个只看到初始任务卡 + 一行「已工作 41 分 40 秒，总消耗 input 256.8K, output 262.5K, cache read 5.9M」，下面什么都没有，像被 RUN 打断。磁盘会话文件里 IRC 条目与 13,714 字符的最终报告都在，`entriesToTranscript` 对完整 entries 也能正常产出 4 个 item。
+
+**根因**（`host/session-lifecycle.ts` 的 `handleLoadSession` 复用分支 + `host/session-entry-core.ts:83-89`）：池条目的 `entry.transcript` 只在有 UI socket 订阅时随事件增长，`detachEntryUi` 在最后一个 socket 离开时 `entry.unsubscribe()`；而子 agent 的会话文件同时被底座自己的 subagent 会话 append。于是「用户切走 → transcript 冻结 → 底座继续写盘 → 用户切回」时，复用分支直接 `pushSessionSnapshot(mode:"reuse")` 推送这份冻结快照，不读磁盘。冻结时刻 = 该子 agent 最后一次进入 transcript 的事件（07:38:23.750Z），截断到该时刻跑翻译器得到 loop 2500s / input 256,791 / output 262,479 / cacheRead 5,859,194，与界面数字逐位吻合。失败的另一个首次打开时池里没有它的条目，走 `rebuild` 分支全量读盘，所以完整。池条目要 30 分钟 idle 才被驱逐（`host/rpc/session.ts:295`）。
+
+**修复**：`host/subagent-view.ts` 新增 `resyncSubagentTranscript(entry)`，复用分支在推送前调用——`isSubagent && !session.isStreaming` 时用 `SessionManager.open(path).getEntries()` 重读磁盘，尾部 entry id 与内存索引不一致就重建 `entry.transcript` 与 `entry.activeMs`，然后 `close()`。只对子会话生效：主会话的外部写入已有 `session_external_write` 提示条与手动 reload 路径，不为它加每次切换的文件读取。新依赖边已在 `scripts/check-host-boundaries.mjs` 登记并附理由。
+
+**验证**：`scripts/subagent-resync.test.ts`（3 例：尾部前移时重读并拿到 IRC + 最终报告、尾部一致时不动、streaming 时不重读）全过；用真实冻结快照（该会话前 206 条）跑 `resyncSubagentTranscript`，输出 `user,loop,user,assistant`、IRC 存在、末条为审阅结论、`activeMs` 从 0 变为 2,698,220；`bun run check` 全绿（域预算 2187/2200）。
+
+**教训**：长驻池条目的内存派生状态（transcript）是「最后一次有人在看」的快照，不是事实。凡是文件还有别的写者（底座的子会话、CLI），重新打开时必须与磁盘对齐，否则丢的不是某一条消息，而是「谁在什么时候改的」这条因果链——这里丢掉的恰好是主 agent 的中断指令和子 agent 的回答，让人误判成执行失败。
+
+### BUG-112: 会话内定时任务不走普通用户消息——custom_message 历史回放漏接且无标准气泡
+
+**现象**：绑定当前会话的定时任务能触发模型回答，但定时提示词没有普通用户气泡；重载会话后该提示词也不在历史中。
+
+**根因**：`host/automations/scheduler.ts` 的会话投递使用 `promptCustomMessage(automation-delivery)`，底座将其持久化为顶层 `custom_message`，而不是普通 `message(role=user)`。实时翻译和历史翻译各自补了一套 custom 特判，但历史入口先过滤 `type !== "message"`，导致真正的磁盘记录被跳过；这套投递从入口就偏离了普通 prompt 契约。
+
+**修复**：会话投递改为 `entry.session.prompt(a.prompt, { streamingBehavior: "followUp" })`，与普通输入一样写入用户消息并启动或排队一轮 agent run；宿主同步写入 `entry.transcript` 并广播带 automation 标记的 `user_message`。删除 custom delivery helper、类型常量及实时/历史翻译特判。
+
+**验证**：`scripts/smoke-automations.ts` 新增真实 `runAutomationNow()` 入口回归，改前 6 失败 / 143 通过，改后 149 全通过；`bun run check` 与 `bun run host:build` 通过。真实宿主 + 模型冒烟完成初始 run 和定时 run，收到实时用户气泡，JSONL 中定时提示词为普通 `role=user`，`automation-delivery` custom 记录为 0。
+
+**教训**：需求是“像普通用户消息一样触发一轮”时，必须复用普通 `prompt()` 入口，不能用 custom message 再在多个投影层模拟用户消息；入口语义不同，实时、持久化和历史回放迟早会分叉。
+
+### BUG-113: 思考事件标签与其它标签错开——图标尺寸和 DOM 结构不统一
+
+**现象**：消息流中的「思考」标签与读取、写入等事件标签没有严格左对齐，图标大小也不一致。
+
+**根因**：`ThinkingRow` 使用 13px 图标并额外包一层 `.th-ic`，其它事件行直接使用 15px `Icon`。共享 `.act` 的 6px 间距因此从不同宽度的图标单元后开始排文字；真实浏览器实测思考文字 `x=459`、读取文字 `x=461`。
+
+**修复**：思考行改为与其它事件相同的直接 `Icon` 子节点和 15px 尺寸，保留 `th-ic` 颜色类。
+
+**验证**：真实 `dev:browser` 会话中，修复后思考/读取行图标均为 `x=440、15px`，文字均为 `x=461`；`smoke-think-follow.tsx`、`bun run ui:typecheck`、`bun run ui:build` 通过。
+
+**教训**：同类事件行应复用相同的图标单元尺寸和直接子节点结构；仅对齐外层行容器不足以保证标签文字对齐。
+
+### BUG-114: 定时会话能执行但打开报「会话不存在」——自动任务创建分支漏注册内存池
+
+**现象**：定时任务触发后会话稍后出现在侧栏，磁盘已有独立会话 ID，但点击打开时正文插入 `Session not found: <运行时 ID>`。任务本身已经执行，不是调度失败或磁盘会话丢失。
+
+**根因**：`spawnSession` 的自动任务分支为广播去重只调用 `attachEntryUi`，遗漏 `attachEntryCore`；而 `sessions.set(sessionId, entry)` 位于核心订阅末尾，因此 UI 已收到 `session_created`，池里却没有对应条目，后续 `get_entry_tree` 等 RPC 全部按运行时 ID 查池失败。磁盘会话 ID 与池 ID 不同是既有设计，不是错误来源。
+
+**修复**：自动任务分支先调用 `attachEntryCore(sessionId, entry, eventBus)`，再给真实 UI socket 调用 `attachEntryUi`；保留广播 adapter 不入 UI 订阅集合的去重约束。新增 `scripts/smoke-automation-pool.ts`，通过真实 host 创建并立即运行任务，再对自动会话调用 `get_entry_tree`。
+
+**验证**：定向回归改前稳定得到 `Session not found`、改后返回 `entry_tree`；`scripts/smoke-automations.ts` 149 项断言通过。真实 `dev:browser` 创建下一分钟触发的任务，调度器自动创建会话后点击可正常打开，无错误正文；测试任务与会话已清理。
+
+**教训**：把一次会话订阅拆成 core 与 UI 两层后，每条创建路径都必须先完成 core 注册；只验证任务执行或 `session_created` 推送，覆盖不到「界面已知、内存池未知」的半初始化状态。
+
+### BUG-115: macOS 全屏后侧栏收起/展开按钮仍停在红绿灯右侧——顶部横向留白未随全屏切换
+
+**现象**：macOS 原生全屏后窗口红绿灯消失，但侧栏收起/展开按钮仍保留普通窗口的 94px 左侧偏移，没有贴到左边。
+
+**根因**：`ui/css/global/tokens.css` 将 macOS 的 `--top-toggle-left` 固定为 94px，用于避开普通窗口红绿灯；前端没有同步原生全屏状态，因此全屏后仍沿用这段留白。
+
+**修复**：`ui-src/main.tsx` 在 macOS 上通过 `getCurrentWindow().isFullscreen()` 初始化并用 `onResized` 同步 `html[data-fullscreen]`；全屏选择器将 `--top-toggle-left` 改为 14px，普通窗口保持 94px。同步补齐 `TauriWindow` 类型和浏览器窗口桩。
+
+**验证**：真实 host 浏览器中，普通展开为 left=94/top=14，全屏展开与收起均为 left=14/top=14，退出全屏恢复 94px；收起状态聊天头 paddingLeft=40px。`bun run ui:typecheck`、`bun run ui:build`、`bun run check` 全绿。独立原生 Tauri 全屏配置启动成功，窗口边界实测为 2400×1350；系统未授予辅助控制与屏幕录制权限，未做原生切换和截图验证。
+
+**教训**：为系统窗口控件预留的布局偏移必须跟随窗口模式，而不是按平台写死；全屏与最大化不是同一状态。
+
+### BUG-116: 用户气泡左侧分支切换块错位——锚定包裹层且 fixed 纵坐标漏除 UI 缩放
+
+**现象**：用户消息左侧的分支切换块没有与气泡垂直居中；界面缩放后偏移进一步放大。
+
+**根因**：`BranchSwitcher` 用 `.bsw` 包裹层的矩形定位，而不是真实 `.user-bubble`；同时 fixed portal 的 `left` 已按 `effZoom()` 换算，`top` 却直接使用视口坐标，非 100% 缩放时两套坐标系混用。
+
+**修复**：初版先改为读取真实气泡矩形并统一缩放坐标；随后按确认的布局方案删除 fixed portal，改为文档流内联分支行。用户消息的气泡外右下操作行依次放分支、编辑、复制，行高 20px、距气泡 4px，悬停或键盘聚焦显示；助手消息复用同一分支控件。粘性容器的实色背景止于原气泡下边界，主羽化从该边界完整覆盖 36px；编辑态也保留 20px 空操作行，避免容器缩短后固定羽化偏移截进气泡。操作行明确置于其上，背景直接分层绘制中间实色、左侧 12px 与下侧 8px 羽化及左下角过渡，图标本身保持不透明。
+
+**验证**：真实 `dev:browser` 页面挂载生产组件：操作顺序、20px 行高、4px 间距及悬停/聚焦显隐正确；主羽化相对气泡下边界偏移小于 0.001px、高度 36px，滚动时图标透明度为 1；局部背景包含四层直接绘制区域且不再使用 mask，隔离主羽化后可见操作区遮挡及边缘过渡；编辑态空操作行高 20px，主羽化起点与气泡下边界均为 104.812px，截图无黑色截断；390px 视口无横向溢出，旧 portal 不再存在。`bun run check`、`bun run ui:build` 通过，impeccable detector 无问题。未跑自然分支的后端导航链路。
+
+**教训**：portal 使用视口矩形定位时，锚点与所有坐标必须统一缩放换算。父容器的实色背景会遮住其内部渐变，羽化起点在容器内部时必须同步裁短实色背景；操作控件与羽化同区时必须明确层叠，局部背景与图标分别处理。
+
+### BUG-117: macOS 顶部右侧图标比左侧低——三组头部各自对齐且终端按钮额外下移
+
+**现象**：macOS 顶部左侧侧栏开关与右侧终端、右栏开关及右栏头部图标不在同一水平线上，右侧图标明显偏低。
+
+**根因**：左侧开关固定为 `top:14px`，中心线为 27px；43px 主顶栏和 48px 右栏头部分别按自身高度居中，终端按钮还保留下移 2.5px 的旧补偿，右栏收起按钮也固定得更低。三组规则没有共享中心线。
+
+**修复**：仅在 macOS 下将主顶栏图标上移 2px、右栏头部图标上移 4.5px；右栏收起按钮统一为 `top:14px`，终端按钮移除旧下移补偿并同步上移。头部高度和布局不变。
+
+**验证**：真实 `dev:browser` 中，右栏展开与收起两种状态下，左侧、终端、右栏开关及右栏头部全部图标的 `centerY` 均为 27px；截图已目视。`bun run ui:build`、`bun run check` 通过，impeccable detector 无问题。
+
+**教训**：跨容器的同一排窗口控制图标应按共享视口中心线验收，分别在各自身高的容器里居中会产生系统性错位。
+
+### BUG-118: 编译版 webview 保留浏览器行为——拖入图片整页导航成图片、右键出 Reload/检查
+
+**现象**：打包后的应用里，把图片/文件拖到窗口任意位置（输入框以外），整个窗口变成一个图片查看页，只能靠右键菜单的 Back 回去；同一菜单还带 Reload 与「检查元素」。
+
+**根因**：`tauri.conf.json` 的 `dragDropEnabled: false` 是 Windows 上用 HTML5 拖放的必需品（wry 接管拖放会吞掉页面的 dragover/drop），代价是 WebKit/WebView2 恢复原生 drag-drop 处理——落点不在 Composer 内就没有任何 JS 取消默认行为，浏览器按「导航到该 file URL」处理。右键同理：WKWebView 的默认上下文菜单由 WebKit 自己生成，页面没阻止 contextmenu 就会弹出。release 二进制本身没有 devtools（`strings` 里 `setInspectable:` / `developerExtrasEnabled` 命中数为 0），所以不可能是 Tauri 侧开了检查器，能关掉这两个入口的只剩页面层。
+
+**修复**：`ui-src/shell.ts` 的 `initShell` 注册三个全局守卫：`dragover`/`drop` 在 `dataTransfer.types` 含 `Files` 时 `preventDefault()`（Composer 内部的处理器先跑并已自行取消，不受影响）；`contextmenu` 在目标不在 `input, textarea, [contenteditable]` 内时 `preventDefault()`，文本框保留原生编辑菜单（粘贴/复制）。
+
+**验证**：`bun run ui:build` 后在 happy-dom 里加载 `ui/dist/assets/app.js` 派发事件，`contextmenu(body)` / `dragover(Files)` / `drop(Files)` 三处 `defaultPrevented=true`，`contextmenu(textarea)` 为 `false`；`bun run check` 全绿。真实 WKWebView 的拖放落点与原生菜单需重新打包后手测。
+
+**教训**：`dragDropEnabled: false` 不是「关掉拖放」，而是「把拖放还给 webview」——关掉它必须同时接管页面侧的默认导航；release 构建里 devtools 编译掉了也不等于右键没有入口，WebKit 的默认菜单来自系统层。
+
+### BUG-119: ACP 把持久化图片引用按未知尺寸上限计价——8 张图虚增 96K，明细合计反超总量
+
+**日期**：2026-10-28
+
+**现象**：会话 `01a17de4-4702-71a5-9192-56ff97bd3a67` 的上下文卡片总量为 75.2K，但非消息区、压缩区与活跃区明细合计约 141.9K，仅活跃区就显示 119.7K（159.2%）。
+
+**根因**：底座持久化图片时把字节外置为 `blob:sha256:` 引用；`createAcpRuntime` 的 `countImage` 却直接把该引用交给 `base64ImageSize`。引用无法解析出像素尺寸，ACP 因而对每张图都按未知尺寸上限计 12K。该会话对应区间 8 张图共虚计 96K；总量仍以 provider usage 为锚点，明细中的 ACP 双区则是本地重估，两套数字因此被显著拉开。
+
+**修复**：`host/acp-assembly.ts` 通过底座 `BlobStore` + `resolveImageDataSync` 还原图片字节后再读取尺寸，并按图片引用缓存尺寸，避免每轮投影重复读盘。缺失或不可解析图片仍沿用底座未知尺寸估价，不伪造尺寸。
+
+**验证**：`scripts/acp-projection-pairing.test.ts` 新增真实 `createAcpRuntime` + 真实 blob 引用回归：1×1 PNG 在修复前计 12000、修复后计 2，与 `Tokenizer.imageTokens({width:1,height:1})` 一致；同文件 7 项测试全绿。原会话 8 个真实图片引用复验从合计 96000 降为 4265，逐张结果与真实尺寸计数一致；`bun run host:build`、`bun run check` 全绿。
+
+**教训**：持久层引用进入任何本地计数/渲染路径前，都必须先走底座解析入口；引用字符串能穿过类型系统，不代表它能替代原始字节。上下文卡混用 provider 锚定总量与本地估算分区时，分区估价异常会直接表现为百分比和合计失真。
