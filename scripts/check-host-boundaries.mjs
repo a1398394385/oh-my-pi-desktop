@@ -83,9 +83,16 @@ const ALLOWED_EDGES = new Set([
   // ACP compaction gain (stats Gain page): acp-gain scans the profile's session journals
   // and needs the SDK's session dir path from bootstrap (getSessionsDir).
   "acp-gain.ts→bootstrap.ts", "stats.ts→acp-gain.ts",
+  // ACP per-compression rows (usage-stats "ACP" section): acp-stats replays the same
+  // journals and needs the SDK's session dir path from bootstrap (getSessionsDir).
+  "acp-stats.ts→bootstrap.ts", "stats.ts→acp-stats.ts",
   // Extension center (transplanted from /extensions): extensions.ts gets SDK handles via bootstrap and reads H state;
   // main.ts mounts four RPC dispatches (same integration shape as assets.ts)
   "main.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
+  // The MCP per-item switch must not write read-only sources (plugin packages,
+  // other tools' configs): it resolves the writable mcp.json set per scope via
+  // the shared path leaf instead of rewriting whatever path the entry carries.
+  "extensions.ts→asset-paths.ts",
   "translate.ts→state.ts",
   "state.ts→bootstrap.ts",
   // Safe stderr logging (EPIPE-swallowing wrapper): every host module that
@@ -230,6 +237,12 @@ const ALLOWED_EDGES = new Set([
   // acpSummary block), so the constant is imported instead of re-spelled.
   "session-snapshot.ts→acp-persist.ts",
   "subagent-view.ts→state.ts", "subagent-view.ts→translate.ts",
+  // BUG-111 resync: a pooled child entry's transcript stops at the last detach
+  // while the SDK keeps appending to the same child file, so the reuse path
+  // must rebuild it from disk — the same parser (translate-history) and
+  // SessionManager the rebuild branch already uses. Kept next to the roster's
+  // own disk-replay code (game place: both read child transcript files).
+  "subagent-view.ts→translate-history.ts", "subagent-view.ts→bootstrap.ts",
   // Cache keepalive (an inline-extension domain conditionally injected behind an experiment switch;
   // three flat files keepalive/keepalive-config/keepalive-lib)
   "session-lifecycle.ts→keepalive.ts",
@@ -399,6 +412,9 @@ const ALLOWED_EDGES = new Set([
   "translate.ts→automations/delivery.ts",
   "automations/scheduler.ts→automations/delivery.ts",
   "automations/delivery.ts→automations/types.ts",
+  // Falls back to the runs ledger for deliveries written before the durable marker
+  // existed: read-only store access, no writes from the replay side
+  "automations/delivery.ts→automations/store.ts",
   // type-only: buildSessionListPayload's return is checked against the wire frame
   "rpc/session.ts→wire/frames-session.ts",
   // /btw side conversations: btw.ts owns the topic lifecycle over the SDK primitives;
@@ -428,6 +444,18 @@ const ALLOWED_EDGES = new Set([
   // it imports nothing from the host but node builtins, so no edge points back.
   "rpc/files.ts→git.ts", "rpc/git-graph.ts→git.ts", "rpc/git-compare.ts→git.ts", "rpc/worktree.ts→git.ts",
   "session-lifecycle.ts→git.ts",
+  // Line-level staging: git-patch.ts cuts a file's patch down to chosen lines
+  // (MyGit's patch.Select port) and drives `git apply`. It imports git.ts only
+  // for the GitResult/GitOptions types and gitError's text; the runner itself
+  // is injected, so the module stays testable without a process.
+  "git-patch.ts→git.ts", "rpc/files.ts→git-patch.ts",
+  // git-generated.ts classifies lockfiles / compiled output / dependency dirs /
+  // "@generated" headers so a diff can fold them away. Pure leaf, node builtins
+  // only (that is why no edge points back out of it).
+  "rpc/files.ts→git-generated.ts",
+  // get_git_diff builds the wire-shaped GitStatusFile rows (generated +
+  // fingerprint fields live on the payload type, not a local copy).
+  "rpc/files.ts→wire/payloads.ts",
   // /btw slash input dispatches a side question straight from the composer
   "rpc/prompt.ts→btw.ts",
   // Host i18n (A8): the host-owned i18next instance lives in host/i18n/ (moved
