@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Icon from "../../../Icon";
 import type { TimerHandle } from "../../../store";
+import { armMarquee } from "./marquee";
 
 export interface PickerModel {
   id: string;
@@ -172,6 +173,8 @@ export default function ModelCascadeMenu({ models, selectedId, onPick, roles = [
         else openGroup(key);
       }}>
       {label}<span className="sub"><Icon name="chevronRight" size={arrowSize} /></span>
+      {/* Level 1 marks the provider owning the selected model, mirroring the ✓ in its flyout */}
+      <span className="ck">{key !== ROLE_GROUP && (groups.get(key) ?? []).some((m) => m.id === selectedId) ? "✓" : ""}</span>
     </div>
   );
   return <>
@@ -180,7 +183,7 @@ export default function ModelCascadeMenu({ models, selectedId, onPick, roles = [
       {[...groups.keys()].map((provider) => providerRow(provider, provider))}
       {models.length === 0 && roles.length === 0 && emptyContent}
     </div>
-    {group && <div className="menu flyout open" ref={flyRef}
+    {group && <div className="menu flyout open" ref={flyRef} onMouseOver={armMarquee}
       onMouseEnter={() => { clearTimeout(hideTimer.current); clearTimeout(switchTimer.current); }}
       onMouseLeave={() => {
         clearTimeout(hideTimer.current);
@@ -190,13 +193,16 @@ export default function ModelCascadeMenu({ models, selectedId, onPick, roles = [
         ref={(el) => { if (el) flyRows.current.set(role.id, el); else flyRows.current.delete(role.id); }}
         onClick={(e) => { e.stopPropagation(); onPickRole!(role); }}>
         <span className="ck">{selectedRoleId === role.id || selectedId === role.resolved ? "✓" : ""}</span>
-        {role.name} : {role.resolvedName ?? role.resolved}
+        <span className="mi-name"><span className="mq-run">{role.name} : {role.resolvedName ?? role.resolved}</span></span>
       </div>) : (groups.get(group) ?? []).map((model) => <div
         className={"mi" + (hlK === model.id || (highlightSelected && selectedId === model.id) ? " on" : "")}
         data-model={model.id} key={model.id}
         ref={(el) => { if (el) flyRows.current.set(model.id, el); else flyRows.current.delete(model.id); }}
         onClick={(e) => { e.stopPropagation(); onPick(model.id); }}>
-        <span className="ck">{selectedId === model.id ? "✓" : ""}</span>{model.name}{renderModelMeta?.(model)}
+        <span className="ck">{selectedId === model.id ? "✓" : ""}</span>
+        {/* the name rides inside .mi-name so a squeezed flyout can scroll it on hover */}
+        <span className="mi-name"><span className="mq-run">{model.name}</span></span>
+        {renderModelMeta?.(model)}
       </div>)}
     </div>}
   </>;

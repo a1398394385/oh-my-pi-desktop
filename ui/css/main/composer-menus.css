@@ -44,11 +44,6 @@
 
 .menu.palette .mi .sub { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Model menu: checkmark pushed to the row's right end; model/permission use the same gray checkmark */
-#modelMenu .mi .ck { order: 1; margin-left: auto; }
-
-#modeMenu .mi .ck,
-#modelMenu .mi .ck { color: var(--menu-check); }
 /* Permission mode menu (single-line rows: icon + title, shrunk to 172px) */
 .menu.mode { min-width: min(172px, 100%); padding: 6px; }
 

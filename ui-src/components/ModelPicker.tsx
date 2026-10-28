@@ -15,7 +15,8 @@
 // math; the pickers here portal both menus to body (fixed overlay, Pick parity) so they
 // are never clipped by the enclosing scroll surface (.aued, #setBody, .rb-scroll) — the
 // level-1 menu drops under the trigger flipping up only at the viewport bottom edge, and
-// the flyout keeps its bottom-anchored-upward default with viewport-bounded flips.
+// the flyout keeps its bottom-anchored-upward default, sits 2px right of level 1 and is
+// squeezed (not flipped back over it) when the viewport leaves no room.
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -24,6 +25,7 @@ import type { TimerHandle } from "../store";
 import type { ModelCaps } from "../store/models";
 import Icon from "../Icon";
 import { claimDropdown, releaseDropdown } from "../lib/dropdownExclusive";
+import { armMarquee } from "./shared/models/marquee";
 
 // Catalog model entry (modelCatalog field, landed from the models_catalog reply; fields sent by host)
 export interface CatalogModel {
@@ -132,7 +134,9 @@ function ModelRow({
       key={m.id}
       onClick={(e) => { e.stopPropagation(); onPick(m.id); }}
     >
-      <span className="ck">{on ? "✓" : ""}</span>{m.name}
+      <span className="ck">{on ? "✓" : ""}</span>
+      {/* the name rides inside .mi-name so a squeezed flyout can scroll it on hover */}
+      <span className="mi-name"><span className="mq-run">{m.name}</span></span>
       <CapBadges caps={m.caps} />
     </div>
   );
@@ -234,8 +238,8 @@ function SettingsCascadePicker({
   // row's bottom edge (both menus pad 5px; +5 aligns the last row with the row height);
   // when space above is insufficient, flip to top-anchored growing downward if more room
   // remains below (long model lists stay visible instead of clamping to a few rows),
-  // capping height + scrolling internally on the tighter side; the flyout overlaps the
-  // level-1 menu border by 4px and flips left on right-edge overflow.
+  // capping height + scrolling internally on the tighter side; the flyout sits 2px right of the
+  // level-1 menu and, with no room left to the right, is squeezed instead of flipped back over it.
   useLayoutEffect(() => {
     const menu = menuRef.current;
     const fly = flyRef.current;
@@ -246,6 +250,9 @@ function SettingsCascadePicker({
     (fly.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
+    fly.style.maxWidth = "";
+    fly.style.minWidth = "";
+    void fly.offsetHeight; // flush the cleared inline min-width so the CSS floor is what gets read below
     fly.style.top = "auto";
     fly.style.bottom = "auto";
     const rowRect = row.getBoundingClientRect();
@@ -268,16 +275,26 @@ function SettingsCascadePicker({
     } else {
       fly.style.bottom = bottomAnchor / z + "px";
     }
-    let left = menuRect.right - 4;
-    if (left + fly.getBoundingClientRect().width > window.innerWidth - 8) {
-      left = Math.max(8, menuRect.left - fly.getBoundingClientRect().width + 4);
-    }
+    // 2px of air between the level-1 menu and the flyout (they used to overlap by a border width)
+    const left = menuRect.right + 2;
+    // No room to the right: squeeze the flyout instead of flipping it back over the level-1 menu.
+    // Clipped names then scroll on hover (armMarquee); the floor keeps a few characters readable.
+    const room = Math.max(120, Math.round((window.innerWidth - 8 - left) / z));
+    const cssMin = parseFloat(getComputedStyle(fly).minWidth) || 0;
+    fly.style.maxWidth = room + "px";
+    fly.style.minWidth = Math.min(cssMin, room) + "px";
     fly.style.left = left / z + "px";
     return undefined;
   }, [flyProv, open]);
 
   const groups = onPick ? groupByProvider(models) : null;
   const activeRows = groups?.get(flyProv ?? "");
+  // Provider that owns the current value: level 1 marks it so the cascade shows where the
+  // selection lives without opening every flyout. Values that are not a listed model id
+  // (e.g. "@role") simply match nothing.
+  const selProv = groups && selectedId
+    ? [...groups].find(([, list]) => list.some((m) => m.id === selectedId))?.[0]
+    : undefined;
   const menuEmpty = !groups && (!pinnedRows || pinnedRows.length === 0);
 
   const pick = (id: string) => {
@@ -328,6 +345,7 @@ function SettingsCascadePicker({
               >
                 {prov}
                 <span className="sub"><Icon name="chevronRight" size={14} /></span>
+                <span className="ck">{prov === selProv ? "✓" : ""}</span>
               </div>
             ))}
           {menuEmpty && emptyText !== undefined ? <div className="mi empty disabled">{emptyText}</div> : null}
@@ -336,7 +354,7 @@ function SettingsCascadePicker({
         )}
       {activeRows && onPick &&
         createPortal(
-          <div className="menu flyout open mp-menu-portal" ref={flyRef} {...flyoutProps}>
+          <div className="menu flyout open mp-menu-portal" ref={flyRef} {...flyoutProps} onMouseOver={armMarquee}>
             {activeRows.map((m) => (
               <ModelRow key={m.id} m={m} selectedId={selectedId} highlight onPick={pick} />
             ))}

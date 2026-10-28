@@ -106,7 +106,7 @@ export function roleSelLabel(role: ModelRole): string {
 /**
  * Generic two-level cascade picker: level-1 provider rows + hover right flyout,
  * interaction aligned with the composer model menu (180ms hover-intent delay /
- * 150ms grace close / flip left on right-edge overflow). The flyout is mounted
+ * 150ms grace close / squeeze instead of a flip-left on right-edge overflow). The flyout is mounted
  * under .sel rather than inside the level-1 menu — .menu.model carries
  * overflow-y:auto which would clip absolutely positioned children. Widths
  * unified by .mp-role-sel / .mp-role-menu. `models` is the already-filtered
@@ -188,14 +188,18 @@ export function ModelCascadePicker({
   // (both menus pad 5px; +5 aligns the last row with the row height), so it never pushes past
   // the settings scroll area's bottom; when space above is insufficient, flip to top-anchored
   // growing downward if more room remains below (long model lists stay visible instead of
-  // clamping to a few rows), capping height + scrolling internally on the tighter side;
-  // the flyout overlaps the level-1 menu border by 4px and flips left on right-edge overflow.
+  // clamping to a few rows), capping height + scrolling internally on the tighter side.
+  // 2px of air separates it from the level-1 menu; no room to the right squeezes the flyout
+  // (clipped names then scroll on hover) instead of flipping it back over level 1.
   const positionFlyout = (menu: HTMLDivElement, fly: HTMLDivElement, row: HTMLDivElement) => {
     const sel = selRef.current;
     if (!sel) return;
     const z = effZoom();
     fly.style.maxHeight = "";
     fly.style.overflowY = "";
+    fly.style.maxWidth = "";
+    fly.style.minWidth = "";
+    void fly.offsetHeight; // flush the cleared inline min-width so the CSS floor is what gets read below
     const rowTop = menu.offsetTop + row.offsetTop - menu.scrollTop;
     const rowBottom = rowTop + row.offsetHeight;
     fly.style.top = "auto";
@@ -216,10 +220,13 @@ export function ModelCascadePicker({
       }
       fly.style.overflowY = "auto";
     }
-    fly.style.left = menu.offsetLeft + menu.offsetWidth - 4 + "px";
-    if (fly.getBoundingClientRect().right > boundRect.right - 8) {
-      fly.style.left = Math.max(0, menu.offsetLeft - fly.offsetWidth + 4) + "px";
-    }
+    fly.style.left = menu.offsetLeft + menu.offsetWidth + 2 + "px";
+    // Squeeze into the room left of the settings edge rather than flipping back over level 1
+    const flyLeft = fly.getBoundingClientRect().left;
+    const room = Math.max(120, Math.round((boundRect.right - 8 - flyLeft) / z));
+    const cssMin = parseFloat(getComputedStyle(fly).minWidth) || 0;
+    fly.style.maxWidth = room + "px";
+    fly.style.minWidth = Math.min(cssMin, room) + "px";
   };
 
   const pick = (id: string) => {

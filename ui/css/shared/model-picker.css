@@ -15,9 +15,9 @@
 /* Composer model menu: fixed width — the row set (model names, badges) changes with
    the picked provider, and a content-fitted box would jitter on every switch. The
    name cell absorbs the slack so a long id ellipsizes instead of wrapping the row.
-   286px = 250px + 4 uppercase letters (4 × ~9px at the 13px UI font): provider ids
-   and model names were clipped one or two characters short. */
-#modelMenu { width: 286px; }
+   276px = 250px + 4 uppercase letters (4 × ~9px at the 13px UI font), tightened by
+   10px slack; provider ids and model names still fit without clipping. */
+#modelMenu { width: 276px; }
 #modelMenu .mi-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .menu.flyout { gap: 5px; border-radius: 8px; padding: 4px; }
@@ -55,10 +55,27 @@
 
 .mp-role-sel .mi.prov .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 
+/* Provider rows already end with a caret; the selected-provider ✓ rides next to it instead of
+   sharing the auto margin (two auto margins would split the free space and strand the caret). */
+.menu .mi.prov .ck { margin-left: 0; }
+
 .mp-role-sel .mi.prov.on, .mp-role-sel .mi.on { background: var(--menu-hl); }
 
 /* The flyout hangs under a narrow pill; absolute shrink-to-fit would be squeezed by the containing block's available width -> width:max-content escapes that limit */
 .mp-role-sel .menu.flyout { width: max-content; min-width: 250px; }
+
+/* Level-2 rows: the name cell is the flexible child, so a flyout pressed against the viewport
+   edge shrinks the names instead of growing past it (JS sets max-width on that flyout). */
+.menu.flyout .mi .mi-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Billboard scroll for a name wider than the squeezed flyout: armMarquee measures the clipped
+   remainder into --mq on hover, so the keyframes need no width assumption (0px = no overflow). */
+.menu.flyout .mi .mq-run { display: inline-block; }
+.menu.flyout .mi:hover .mi-name.mq > .mq-run { animation: mqRun 3s ease-in-out infinite alternate; }
+@keyframes mqRun {
+  from { transform: translateX(0); }
+  to { transform: translateX(var(--mq, 0px)); }
+}
 
 /* Second-level flyout: reuses the .menu base class (background/border/radius/shadow/popIn); left/top are written by JS in
    #composer's coordinate system (mounted under #composer to avoid clipping by .menu.model's overflow-y).
@@ -71,8 +88,6 @@
   overscroll-behavior: contain;
   z-index: 501;
 }
-
-.menu.flyout .mi .ck { order: 1; margin-left: auto; }
 
 /* Portaled cascade menus (settings pickers): fixed body-level overlay so they escape any
    enclosing scroll container (.aued, #setBody, .rb-scroll) instead of being clipped;

@@ -208,23 +208,30 @@ export function modelsDefaults() {
 // fallback);
 // builtin = whether the id is one of the SDK's built-in roles (the composer
 // model menu groups custom roles under its "Model Role" section).
-export function modelRolesPayload() {
-  return getKnownRoleIds(H.settings).map((role) => {
-    const info = getRoleInfo(role, H.settings);
-    const value = H.settings.getModelRole(role) ?? null;
-    const { model } = resolveModelRoleValue(formatModelRoleAlias(role), H.allModels, { settings: H.settings });
+// Roles with no desktop consumer: `widget` only authors TUI job-widget specs and
+// the session overlay pins async.widgets off (session-lifecycle.ts), so showing
+// the row would offer a setting that changes nothing here.
+const HIDDEN_ROLES: Record<string, true> = { widget: true };
 
-    return {
-      id: role,
-      builtin: (MODEL_ROLE_IDS as readonly string[]).includes(role),
-      section: info.section,
-      name: info.name,
-      tag: info.tag ?? null,
-      value,
-      resolved: model ? `${model.provider}/${model.id}` : null,
-      resolvedName: (model?.name as string) ?? null,
-    };
-  });
+export function modelRolesPayload() {
+  return getKnownRoleIds(H.settings)
+    .filter((role) => !HIDDEN_ROLES[role])
+    .map((role) => {
+      const info = getRoleInfo(role, H.settings);
+      const value = H.settings.getModelRole(role) ?? null;
+      const { model } = resolveModelRoleValue(formatModelRoleAlias(role), H.allModels, { settings: H.settings });
+
+      return {
+        id: role,
+        builtin: (MODEL_ROLE_IDS as readonly string[]).includes(role),
+        section: info.section,
+        name: info.name,
+        tag: info.tag ?? null,
+        value,
+        resolved: model ? `${model.provider}/${model.id}` : null,
+        resolvedName: (model?.name as string) ?? null,
+      };
+    });
 }
 
 // Auth ids consumed only by non-chat runners — the key-based web-search engines and the

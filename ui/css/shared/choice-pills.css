@@ -5,7 +5,10 @@
   overflow-y: hidden;
   gap: 6px;
   padding: 2px 2px 6px 2px;
-  scroll-behavior: smooth;
+  /* No scroll-behavior here: wheel handlers write scrollLeft += delta, and WebKit runs that
+     write as an animation whose getter keeps returning the animation start — every tick then
+     re-computes from the same origin and the strip snaps back. Programmatic smooth scrolls
+     pass behavior: "smooth" explicitly at their call sites instead. */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;

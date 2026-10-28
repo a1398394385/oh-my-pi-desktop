@@ -169,7 +169,7 @@ export function useDropdownClose(open: boolean, close: () => void): void {
 export interface SelOption {
   v: string;
   label: ReactNode;
-  /** Check-column content ("✓" on the current option; "" keeps the column for alignment) */
+  /** Right-edge mark ("✓" on the current option; "" keeps the slot so the row's trailing edge does not shift) */
   ck?: string;
   /** Second line under the label (small, faint) — rendered only when present, so noteless options stay single-line */
   note?: string;
@@ -297,7 +297,7 @@ export function Sel(props: SelProps) {
               onPick(o.v);
             }}
           >
-            {/* Fixed left column: ✕ for unavailable options, otherwise the checkmark (empty keeps the column for alignment) */}
+            {/* Right column: ✕ for unavailable options, otherwise the checkmark (empty keeps the slot so the row's trailing edge does not shift) */}
             <span className="mi-ck">{o.disabled ? <Icon name="xmark" size={12} /> : o.ck}</span>
             <span className="mi-tx">
               <span className="mi-tt">{o.label}</span>

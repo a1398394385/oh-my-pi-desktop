@@ -173,11 +173,15 @@ svg { vertical-align: middle; }
 
 .menu .mh { font-size: var(--ui-fs-sm); color: var(--faint); padding: 5px 8px 2px; }
 
-.menu .mi .ck { width: 14px; color: var(--green); flex: none; }
+/* Selected-option mark: gray ✓ pinned to the row's right end (order:1 + margin-left:auto outranks
+   the label cell, which is the row's flexible child). One rule for every dropdown, so a new menu
+   gets the same mark as the composer model picker without a local override. */
+.menu .mi .ck { width: 14px; color: var(--menu-check); flex: none; order: 1; margin-left: auto; }
 
-/* Options-mode .sel rows (settings dropdowns): fixed left indicator column + right column
-   split into name (top) and note (bottom); noteless options keep the single-line height via align-items:center */
-.menu .mi .mi-ck { width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--green); }
+/* Options-mode .sel rows (settings dropdowns): name above note, and the same right-pinned gray ✓
+   column as plain .mi rows (order:1 sorts it after the flexible .mi-tx). The disabled ✕ keeps its
+   error color: it warns about the row, it is not a selection mark. */
+.menu .mi .mi-ck { width: 16px; flex: none; order: 1; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; color: var(--menu-check); }
 .menu .mi.disabled .mi-ck { color: var(--err); }
 .menu .mi .mi-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
 .menu .mi .mi-tt { font-size: var(--ui-fs-sm); color: var(--text); }
