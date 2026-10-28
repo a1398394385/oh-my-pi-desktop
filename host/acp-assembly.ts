@@ -4,9 +4,11 @@
 // extension that session-lifecycle wires into the agent session (spec §8/§9).
 import { type } from "@oh-my-pi/omptype";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
-import { base64ImageSize } from "@oh-my-pi/pi-agent-core/image-tokens";
+import { base64ImageSize, type ImageSize } from "@oh-my-pi/pi-agent-core/image-tokens";
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import { BlobStore, resolveImageDataSync } from "@oh-my-pi/pi-coding-agent/session/blob-store";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
+import { getBlobsDir } from "@oh-my-pi/pi-utils";
 import type { AcpParams } from "./acp-plan.ts";
 import type { AcpSummarySink } from "./acp-persist.ts";
 import { AcpRuntimeState } from "./acp-runtime.ts";
@@ -36,12 +38,20 @@ export function createAcpRuntime(opts: {
 	onDegrade?: (reason: string) => void;
 }): AcpRuntimeState {
 	const tokenizer = new Tokenizer(opts.model as never);
+	const blobs = new BlobStore(getBlobsDir());
+	const imageSizes = new Map<string, ImageSize | null>();
 	return new AcpRuntimeState({
 		countTokens: (s) => tokenizer.countTokens(s),
-		// Same image price the base countMessage charges (pixel size under the
-		// reader's catalog rule), so block tokens and the base context counter
-		// disagree only by real content, never by an uncounted image.
-		countImage: (image) => tokenizer.imageTokens(base64ImageSize(image.data), image.detail),
+		// Persistence replaces image bytes with blob refs; measuring the ref itself
+		// would charge the unknown-size maximum instead of the actual pixel cost.
+		countImage: (image) => {
+			let size = imageSizes.get(image.data);
+			if (size === undefined) {
+				size = base64ImageSize(resolveImageDataSync(blobs, image.data));
+				imageSizes.set(image.data, size);
+			}
+			return tokenizer.imageTokens(size, image.detail);
+		},
 		sink: opts.sink,
 		getEntries: opts.getEntries,
 		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.

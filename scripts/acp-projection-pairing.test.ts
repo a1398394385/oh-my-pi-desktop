@@ -6,8 +6,13 @@
 // projected sizes.)
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/acp-projection-pairing.test.ts
 import { describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
+import { BlobStore } from "@oh-my-pi/pi-coding-agent/session/blob-store";
+import { getBlobsDir } from "@oh-my-pi/pi-utils";
+import { createAcpRuntime } from "../host/acp-assembly.ts";
 import { projectContext, splitBlocks, type AcpSourceMessage } from "../host/acp-projection.ts";
 
 const tokenizer = new Tokenizer(null);
@@ -96,5 +101,29 @@ describe("splitBlocks charges every content kind the base counter does", () => {
 		const source = [assistant("a1", [{ type: "thinking", thinking: "", thinkingSignature: "sig-9" }])];
 		const blocks = splitBlocks(source, (t) => t.length);
 		expect(blocks.find((b) => b.id === "a1#t")!.tokens).toBe("sig-9".length);
+	});
+});
+
+describe("createAcpRuntime persisted image pricing", () => {
+	test("resolves a blob reference before estimating its pixel cost", () => {
+		const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+		const blobs = new BlobStore(getBlobsDir());
+		const hash = new Bun.SHA256().update(bytes).digest("hex");
+		const path = join(blobs.dir, hash);
+		const existed = existsSync(path);
+		const stored = blobs.putSync(bytes, { hash });
+		try {
+			const state = createAcpRuntime({
+				model: null,
+				sink: { appendCustomEntry: () => "" },
+				getEntries: () => [],
+			});
+			state.projectView([
+				{ role: "user", content: [{ type: "image", data: stored.ref, mimeType: "image/png" }], timestamp: ts++ } as UserMessage,
+			]);
+			expect(state.lastBlocks.map((b) => b.tokens)).toEqual([tokenizer.imageTokens({ width: 1, height: 1 })]);
+		} finally {
+			if (!existed) rmSync(path, { force: true });
+		}
 	});
 });
