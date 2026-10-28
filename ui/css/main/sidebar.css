@@ -241,6 +241,8 @@ body:has(#sidebar.collapsed) #left-resizer {
   display: none; align-items: center; justify-content: center;
 }
 .task:is(:hover, .ctx-open) .tarchive { display: inline-flex; }
+/* Eject + archive are one action cluster: the row's 8px gap reads as two separate buttons. */
+.task .tarchive + .tarchive { margin-left: -4px; }
 .task:is(:hover, .ctx-open) .tm { display: none; }
 .task .tarchive:hover { color: var(--text); background: var(--panel-3); }
 /* Running session: the host refuses both the archive (it evicts archived sessions from
@@ -395,6 +397,18 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .proj.drag-float .pname { color: var(--text); }
 .proj.shift-anim, .proj-kids.shift-anim { transition: transform var(--dur-base) cubic-bezier(.25, .8, .3, 1); }
+/* Insertion marker for the reorder: the slot the dragged row would land in — a docked blue line with
+   a knob at the panel edge. Positioned inline (viewport frame, see projDropLineY). */
+.proj-drop-line {
+  position: fixed; z-index: 899; pointer-events: none;
+  height: 2px; margin-top: -1px; border-radius: 1px;
+  background: var(--blue);
+}
+.proj-drop-line::before {
+  content: ""; position: absolute; left: -4px; top: -3px;
+  width: 8px; height: 8px; border-radius: 50%; box-sizing: border-box;
+  background: var(--bg); border: 2px solid var(--blue);
+}
 /* text selection is disabled list-wide during drag reorder (JS adds .proj-dragging to #tasklist):
    otherwise sweeping across the expanded group's session rows triggers WebKit selection highlighting; the selection drives scroll-container auto-scrolling,
    stacking with displacements computed from the drag-start layout, showing up as the list jumping during drags */
@@ -508,6 +522,26 @@ body:has(#sidebar.collapsed) #left-resizer {
   gap: 10px;
   box-sizing: border-box;
 }
+/* Startup update badge: replaces the profile name in the footer, so it keeps the
+   same weight/size as that label and uses the accent as the only colour cue. */
+.update-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  text-align: left;
+}
+.update-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.update-pill svg { flex: none; }
+.update-pill:hover { text-decoration: underline; }
 .avatar {
   width: 34px;
   height: 34px;

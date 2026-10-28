@@ -61,6 +61,7 @@
 @import "./css/main/remote.css";
 @import "./css/main/kicked.css";
 @import "./css/settings/common.css";
+@import "./css/settings/update.css";
 @import "./css/settings/shortcuts.css";
 @import "./css/settings/agents.css";
 @import "./css/settings/memory.css";

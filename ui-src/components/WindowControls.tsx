@@ -20,6 +20,7 @@ function win(): TauriWindow {
     toggleMaximize: async () => {},
     close: async () => {},
     isMaximized: async () => false,
+    isFullscreen: async () => false,
     onResized: async () => () => {},
   };
 }

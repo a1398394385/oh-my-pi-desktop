@@ -43,6 +43,12 @@
   border-bottom: 1px solid var(--line-soft);
 }
 
+/* Match the macOS sidebar toggle's 27px center line without shortening the tab header. */
+html[data-platform="macos"] .sp-head .icon-btn {
+  position: relative;
+  top: -4.5px;
+}
+
 /* right-sidebar tab bar: equal-width layout (flex 1 1 0 + min/max widths), horizontal scroll on overflow with the scrollbar hidden. Narrow phones override the flex recipe below (three per row, then scroll) — see remote.css. */
 .rtabs { display: flex; gap: 4px; align-items: center; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 

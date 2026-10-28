@@ -128,6 +128,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const viewMode = useAppStore((s) => s.viewMode);
   const isProjectManageMode = useAppStore((s) => s.isProjectManageMode);
   const hostSettings = useAppStore((s) => s.hostSettings);
+  const updateVersion = useAppStore((s) => s.updateVersion);
   // getAvailableProjects() called directly during render (reads latest state internally); its
   // underlying fields must each be subscribed so changes trigger re-render
   const allProjects = useAppStore((s) => s.allProjects);
@@ -344,6 +345,25 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
     };
     dragRef.current = next;
     setDrag(next);
+  };
+
+  // Y of the insertion line, in the viewport/zoom frame the overlay uses. Derived from the
+  // drag-start geometry instead of measuring: the row shift is an animation, so a DOM read would let
+  // the line crawl behind the rows.
+  const projDropLineY = (d: ProjDragActive): number => {
+    const others = d.base.filter((g) => g.cwd !== d.cwd);
+    const gap = d.base.length > 1 ? Math.max(0, d.base[1].top - d.base[0].top - d.base[0].h) : 0;
+    // The line docks to the target row (above it) or, past the end, to the last row (below it)
+    const j = Math.min(d.idx, others.length - 1);
+    // Row j's settled top — the same yield the rows' ty applies: pushed down by the dragged row's
+    // vacated slot when the target index is at/after it, pulled up when it originally sat after the
+    // dragged row. j indexes the non-dragged rows, k0 the drag geometry (every non-default head), so
+    // "j >= k0" is exactly "originally after the dragged row".
+    const top = others[j].top + (d.idx <= j ? d.selfH : 0) - (j >= d.k0 ? d.selfH : 0);
+    // The yields open one empty slot (the dragged row's own) between the rows; the line hangs on that
+    // gap's top edge, i.e. right under the row the dragged one would follow.
+    const gapTop = d.idx < others.length ? top - d.selfH - gap : top + others[j].h;
+    return gapTop + gap / 2;
   };
 
   const onPointerMoveHead = (e: ReactPointerEvent, cwd: string) => {
@@ -688,9 +708,18 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
       <div className="side-foot">
         <div className="avatar"><img src={appIcon} alt="" /></div>
-        <div className="flex items-center gap-[6px] min-w-0">
-          <span className="text-[15px] font-semibold text-text truncate leading-none" /* style-token-ignore */ id="sideProfileName">{hostSettings?.activeProfile || "default"}</span>
-        </div>
+        {updateVersion ? (
+          // A newer build takes over the profile slot: the footer is the only place the
+          // user sees at launch, and nobody reads the profile name mid-session.
+          <button className="update-pill" onClick={() => openSettings()} title={t("sidebar.updateReadyHint")}>
+            <Icon name="download" size={14} />
+            <span>{t("sidebar.updateReady", { version: updateVersion })}</span>
+          </button>
+        ) : (
+          <div className="flex items-center gap-[6px] min-w-0">
+            <span className="text-[15px] font-semibold text-text truncate leading-none" /* style-token-ignore */ id="sideProfileName">{hostSettings?.activeProfile || "default"}</span>
+          </div>
+        )}
         <span className="flex-1"></span>
         {/* Remote mode (spec §4.2): no settings surface on remote clients — openSettings is a
             no-op there too; plain browser dev without the Tauri shell also lands here */}
@@ -736,6 +765,9 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         </Menu>
       )}
       {projAdd && <ProjAddPop anchorRect={projAdd.rect} onClose={() => setProjAdd(null)} />}
+      {drag && drag.base.length > 1 && (
+        <div className="proj-drop-line" style={{ left: drag.left, top: projDropLineY(drag), width: drag.w || undefined }} />
+      )}
       {drag && (
         <div
           className="proj-drag-overlay"

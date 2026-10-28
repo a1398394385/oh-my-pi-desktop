@@ -6,5 +6,6 @@ export interface TauriWindow {
   toggleMaximize(): Promise<void>;
   close(): Promise<void>;
   isMaximized(): Promise<boolean>;
+  isFullscreen(): Promise<boolean>;
   onResized(handler: () => void): Promise<() => void>;
 }

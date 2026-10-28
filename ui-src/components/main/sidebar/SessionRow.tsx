@@ -360,6 +360,9 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
         </button>
       ) : (
         <>
+          {/* Badge first: hover only fades it (opacity), it keeps its 13px slot — after the
+              archive button it would hold the last action 21px off the row's right edge. */}
+          <AutoBadge s={s} />
           {inHostPool && (
             <button
               className="tarchive"
@@ -381,7 +384,6 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           >
             <Icon name="archive" size={14} />
           </button>
-          <AutoBadge s={s} />
           {s.modified && <span className="tm">{fmtAgo(s.modified)}</span>}
         </>
       )}

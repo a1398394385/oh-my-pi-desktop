@@ -29,6 +29,11 @@ body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
   min-width: 0;
 }
 
+/* Match the macOS sidebar toggle's 27px center line without shortening the header. */
+html[data-platform="macos"] .chat-head .icon-btn {
+  position: relative;
+  top: -2px;
+}
 
 body:has(#sidebar.collapsed) .chat-head {
   padding-left: 78px;
@@ -62,13 +67,12 @@ html[data-platform="windows"] body:has(#sidebar.collapsed) #sidebarToggle {
   left: calc(14px / var(--ui-zoom, 1));
   top: calc(19px / var(--ui-zoom, 1));
 }
-/* macOS: same in-place toggle for the right panel. Expanded, its collapse button is the
-   last .sp-head child: right edge = width − shell-gap − 6px padding, center = gap + 24.
-   The collapsed expand button is pinned to the exact coords the 1px hairline leaves it at. */
+/* macOS: same in-place toggle for the right panel. The fixed button shares the
+   sidebar toggle's 14px top inset and 27px center line. */
 html[data-platform="macos"] body:has(#right.collapsed) #panelToggle {
   position: fixed;
   right: calc(var(--shell-gap) + 6px);
-  top: calc(var(--shell-gap) + 10.5px);
+  top: calc(var(--shell-gap) + 6px);
 }
 
 /* Header title sweep while the agent is running: colorless (a neutral sheen, no hue). Two
@@ -255,8 +259,5 @@ body.resizing-v { user-select: none; cursor: row-resize; }
    Windows puts #panelToggle top-left and its window controls back in flow, so no offset. */
 html[data-platform="macos"] body:has(#right.collapsed) .chat-head .dock-toggle {
   margin-right: calc(32px - var(--shell-gap));
-  /* #panelToggle sits at top: shell-gap + 10.5px while the 43px header centers this 26px
-     button at 8.5px — a 2.5px drop puts both icons on one baseline. */
-  position: relative;
-  top: 2.5px;
+  top: -2px;
 }

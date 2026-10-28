@@ -41,6 +41,7 @@ export interface RemoteConfigState {
 export interface SettingsSlice {
   settingsOpen: boolean; // fullscreen overlay open state
   settingsPage: string; // current settings page id
+  updateVersion: string | null; // newer build found by the startup probe (sidebar badge + settings button)
   hostSettings: SettingsPayload | null;
   settingsSchema: Record<string, SchemaDef> | null; // entry shape matches SETTINGS_SCHEMA
   capabilityKeys: CapabilityKeyEntry[] | null;
@@ -90,12 +91,14 @@ export interface SettingsSlice {
   remoteConfig: RemoteConfigState | null;
   openSettings(pageId?: string): void;
   closeSettings(): void;
+  probeUpdate(): Promise<void>;
   refreshSettingsData(): void;
 }
 
 export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> = (set, get) => ({
   settingsOpen: false,
   settingsPage: "pg-general",
+  updateVersion: null,
   hostSettings: null,
   settingsSchema: null,
   capabilityKeys: null,
@@ -149,6 +152,21 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   },
   closeSettings() {
     set((s) => ({ settingsOpen: false }));
+  },
+  // Startup probe: one silent update_check so the sidebar can advertise a new build
+  // before the user opens settings. Only desktop installs have the updater — the
+  // ?preview=1 sample and remote browser have no shell, so the value stays null.
+  async probeUpdate() {
+    const shell = window.__TAURI__?.core?.invoke;
+    if (!shell) return;
+    try {
+      const found = await shell<{ version: string; available: boolean }>("update_check");
+      if (found.available) set((s) => ({ updateVersion: found.version }));
+    } catch (error) {
+      // Advisory only: a failed startup probe must not interrupt boot. The settings
+      // row still offers a manual check, which owns the user-visible error toast.
+      console.warn("[update] startup check failed", error);
+    }
   },
   // The data-request burst when the settings center opens (moved over from the old
   // refreshSettingsData; send silently drops while not connected, and the connect onopen

@@ -23,6 +23,8 @@ export const sidebarZh = {
   remoteTag: "远程",
   updatedAgo: "更新于 {{time}}",
   settings: "设置",
+  updateReady: "新版本 {{version}}",
+  updateReadyHint: "打开设置，下载并安装",
   remove: "移除",
   gitManage: "Git 管理",
   untitledSession: "未命名会话",

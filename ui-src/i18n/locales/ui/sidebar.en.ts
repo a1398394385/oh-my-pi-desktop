@@ -23,6 +23,8 @@ export const sidebarEn = {
   remoteTag: "Remote",
   updatedAgo: "Updated {{time}}",
   settings: "Settings",
+  updateReady: "Update {{version}}",
+  updateReadyHint: "Open settings to download and install",
   remove: "Remove",
   gitManage: "Git",
   untitledSession: "Untitled session",

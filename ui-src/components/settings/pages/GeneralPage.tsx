@@ -4,7 +4,7 @@
 // bindings per initSettings / applyHostSettings / saveDesktopField in ui/settings/index.js.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, toast } from "../../../store";
+import { useAppStore, send, setBump, toast } from "../../../store";
 import Icon from "../../../Icon";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -130,9 +130,19 @@ interface UpdateProgressShape {
 
 function UpdateRow() {
   const { t } = useTranslation();
+  const updateVersion = useAppStore((s) => s.updateVersion);
   const [phase, setPhase] = useState<UpdatePhase>("idle");
   const [info, setInfo] = useState<UpdateInfoShape | null>(null);
   const [progress, setProgress] = useState<UpdateProgressShape | null>(null);
+  // Installed version, so the idle row shows a real number instead of a dash: the
+  // only other source is update_check, which needs a network round-trip first.
+  const [installed, setInstalled] = useState<string | null>(null);
+
+  useEffect(() => {
+    // No shell to ask on the ?preview=1 sample and remote-browser surfaces; a failed
+    // read only leaves the placeholder, so the rejection is not user-visible.
+    window.__TAURI__?.app?.getVersion().then(setInstalled, () => {});
+  }, []);
 
   // Subscribed for the whole row lifetime: the shell is only ~150 MB and a check
   // that starts a download right after mounting would otherwise miss the first
@@ -160,6 +170,8 @@ function UpdateRow() {
       const found = (await invoke("update_check")) as UpdateInfoShape;
       setInfo(found);
       setPhase(found.available ? "available" : "uptodate");
+      // Same fact as the footer badge, so a manual check keeps both in step.
+      setBump({ updateVersion: found.available ? found.version : null });
       if (!found.available) toast(t("settingsPage.general.updateUpToDate", { version: found.currentVersion }));
     } catch (err) {
       setPhase("idle");
@@ -188,6 +200,7 @@ function UpdateRow() {
   const restart = () => invoke?.("update_relaunch");
 
   const busy = phase === "checking" || phase === "downloading";
+  const current = info?.currentVersion || installed || "—";
 
   return (
     <div className="srow set-row">
@@ -195,10 +208,10 @@ function UpdateRow() {
         <b>{t("settingsPage.general.updateTitle")}</b>
         <span>
           {phase === "uptodate"
-            ? t("settingsPage.general.updateUpToDate", { version: info?.currentVersion ?? "" })
+            ? t("settingsPage.general.updateUpToDate", { version: current })
             : phase === "available"
               ? t("settingsPage.general.updateAvailable", { version: info?.version ?? "" })
-              : t("settingsPage.general.updateDesc", { version: info?.currentVersion ?? "—" })}
+              : t("settingsPage.general.updateDesc", { version: current })}
         </span>
         {info?.available && info.body && <div className="up-notes">{info.body}</div>}
       </div>
@@ -228,12 +241,14 @@ function UpdateRow() {
         {phase === "installed" && (
           <button className="save-btn" onClick={restart}>{t("settingsPage.general.updateRestart")}</button>
         )}
-        <button className="save-btn" disabled={busy} onClick={check}>
+        <button className={`save-btn${updateVersion ? " up-avail" : ""}`} disabled={busy} onClick={check}>
           {phase === "checking"
             ? t("settingsPage.general.updateChecking")
             : phase === "downloading"
               ? t("settingsPage.general.updateDownloading")
-              : t("settingsPage.general.updateCheck")}
+              : updateVersion
+                ? t("settingsPage.general.updateBadge")
+                : t("settingsPage.general.updateCheck")}
         </button>
       </div>
     </div>

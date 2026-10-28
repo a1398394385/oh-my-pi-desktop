@@ -36,3 +36,12 @@
 	overflow-y: auto;
 	overscroll-behavior: contain;
 }
+
+/* The check button doubles as the badge once the startup probe (or a manual
+   check) found a build: same size language as .save-btn, accent-tinted like the
+   other "there is something to do" variants (e.g. .save-btn.rd-test-ok). */
+.save-btn.up-avail,
+.save-btn.up-avail:hover {
+	background: color-mix(in srgb, var(--accent) 16%, transparent);
+	color: var(--accent);
+}

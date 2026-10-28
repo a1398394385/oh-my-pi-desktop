@@ -135,6 +135,10 @@
   --shadow-panel: var(--shadow-sm);
 }
 
+html[data-platform="macos"][data-fullscreen="true"] {
+  --top-toggle-left: calc(14px / var(--ui-zoom, 1));
+}
+
 :root[data-theme="light"] {
   --base:      #dcdce0;
   --card:      #f6f6f8;
