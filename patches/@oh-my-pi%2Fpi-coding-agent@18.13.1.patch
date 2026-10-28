@@ -1,8 +1,8 @@
 diff --git a/dist/types/sdk.d.ts b/dist/types/sdk.d.ts
-index 74f5c4c..a2f034f 100644
+index b7da6ad..9186d07 100644
 --- a/dist/types/sdk.d.ts
 +++ b/dist/types/sdk.d.ts
-@@ -350,6 +350,14 @@ export interface CreateAgentSessionOptions {
+@@ -367,6 +367,14 @@ export interface CreateAgentSessionOptions {
      localProtocolOptions?: LocalProtocolOptions;
      /** Settings instance. Default: Settings.init({ cwd, agentDir }) */
      settings?: Settings;
@@ -18,10 +18,10 @@ index 74f5c4c..a2f034f 100644
       * Legacy alias for `settings`. Older Pi extensions pass SettingsManager.create(...)
       * through this field; accept it so their SDK calls keep the configured settings.
 diff --git a/dist/types/session/agent-session-types.d.ts b/dist/types/session/agent-session-types.d.ts
-index a6adb45..1826b4b 100644
+index 5a0b45f..29983ed 100644
 --- a/dist/types/session/agent-session-types.d.ts
 +++ b/dist/types/session/agent-session-types.d.ts
-@@ -281,6 +281,14 @@ export interface AgentSessionConfig {
+@@ -284,6 +284,14 @@ export interface AgentSessionConfig {
      sideStreamFn?: StreamFn;
      /** Stream wrapper for advisor requests. */
      advisorStreamFn?: StreamFn;
@@ -37,7 +37,7 @@ index a6adb45..1826b4b 100644
      codexResetCoordinator?: CodexAutoRedeemCoordinator;
      /** Provider payload hook used by the active session request path. */
 diff --git a/dist/types/session/session-advisors.d.ts b/dist/types/session/session-advisors.d.ts
-index 3c1a55e..3b1507c 100644
+index 88cc5e4..7627920 100644
 --- a/dist/types/session/session-advisors.d.ts
 +++ b/dist/types/session/session-advisors.d.ts
 @@ -137,6 +137,13 @@ export interface SessionAdvisorsOptions {
@@ -107,10 +107,10 @@ index a6ec37a..4596552 100644
  		const manifest: unknown = await Bun.file(manifestPath).json();
  		if (!isRecord(manifest) || typeof manifest.name !== "string") {
 diff --git a/src/sdk.ts b/src/sdk.ts
-index 68140c1..6709fdd 100644
+index d4103c2..26ba4be 100644
 --- a/src/sdk.ts
 +++ b/src/sdk.ts
-@@ -859,6 +859,14 @@ export interface CreateAgentSessionOptions {
+@@ -878,6 +878,14 @@ export interface CreateAgentSessionOptions {
  
  	/** Settings instance. Default: Settings.init({ cwd, agentDir }) */
  	settings?: Settings;
@@ -125,7 +125,7 @@ index 68140c1..6709fdd 100644
  	/**
  	 * Legacy alias for `settings`. Older Pi extensions pass SettingsManager.create(...)
  	 * through this field; accept it so their SDK calls keep the configured settings.
-@@ -4801,6 +4809,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -4898,6 +4906,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  			onResponse,
  			sideStreamFn: settingsAwareStreamFn,
  			advisorStreamFn: settingsAwareStreamFn,
@@ -134,10 +134,10 @@ index 68140c1..6709fdd 100644
  			rebuildSystemPrompt,
  			getXdevToolEntries: () => (toolSession.xdev ? xdevEntries(toolSession.xdev) : []),
 diff --git a/src/session/agent-session-types.ts b/src/session/agent-session-types.ts
-index 787189f..61794cf 100644
+index 059ff90..880d9f7 100644
 --- a/src/session/agent-session-types.ts
 +++ b/src/session/agent-session-types.ts
-@@ -310,6 +310,14 @@ export interface AgentSessionConfig {
+@@ -313,6 +313,14 @@ export interface AgentSessionConfig {
  	sideStreamFn?: StreamFn;
  	/** Stream wrapper for advisor requests. */
  	advisorStreamFn?: StreamFn;
@@ -153,10 +153,10 @@ index 787189f..61794cf 100644
  	codexResetCoordinator?: CodexAutoRedeemCoordinator;
  	/** Provider payload hook used by the active session request path. */
 diff --git a/src/session/agent-session.ts b/src/session/agent-session.ts
-index 0d2665d..74ec804 100644
+index cd35ccf..f3d51f4 100644
 --- a/src/session/agent-session.ts
 +++ b/src/session/agent-session.ts
-@@ -2433,6 +2433,7 @@ export class AgentSession implements SettingsScope {
+@@ -2522,6 +2522,7 @@ export class AgentSession implements SettingsScope {
  			configWarnings: config.advisorConfigWarnings,
  			streamFn: config.advisorStreamFn,
  			transformProviderContext: config.transformProviderContext,
@@ -165,10 +165,10 @@ index 0d2665d..74ec804 100644
  
  		const maintenanceHost: SessionMaintenanceHost = {
 diff --git a/src/session/session-advisors.ts b/src/session/session-advisors.ts
-index 43d677a..f137f14 100644
+index beffbc5..75fe29e 100644
 --- a/src/session/session-advisors.ts
 +++ b/src/session/session-advisors.ts
-@@ -450,6 +450,19 @@ export interface SessionAdvisorsOptions {
+@@ -455,6 +455,19 @@ export interface SessionAdvisorsOptions {
  	configWarnings?: string[];
  	streamFn?: StreamFn;
  	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
@@ -188,7 +188,7 @@ index 43d677a..f137f14 100644
  }
  
  /** Options accepted when an advisor injects a primary-session message. */
-@@ -548,6 +561,8 @@ export class SessionAdvisors {
+@@ -555,6 +568,8 @@ export class SessionAdvisors {
  	#advisorMemoryPrompt: string | undefined;
  	#advisorStreamFn: StreamFn | undefined;
  	#transformProviderContext: ((context: Context, model: Model) => Context | Promise<Context>) | undefined;
@@ -197,7 +197,7 @@ index 43d677a..f137f14 100644
  	#advisors: ActiveAdvisor[] = [];
  	#advisorConfigs: AdvisorConfig[] | undefined;
  	#advisorConfigWarnings: string[];
-@@ -623,6 +638,7 @@ export class SessionAdvisors {
+@@ -630,6 +645,7 @@ export class SessionAdvisors {
  		this.#advisorConfigWarnings = options.configWarnings ?? [];
  		this.#advisorStreamFn = options.streamFn;
  		this.#transformProviderContext = options.transformProviderContext;
@@ -205,7 +205,7 @@ index 43d677a..f137f14 100644
  		if (this.#advisorEnabled) this.#buildAdvisorRuntime();
  	}
  
-@@ -2320,7 +2336,7 @@ export class SessionAdvisors {
+@@ -2342,7 +2358,7 @@ export class SessionAdvisors {
  
  		const configuredCompaction = cfgCompaction.get(this.#host.settings);
  		const methods = resolveCompactionMethodOrder(configuredCompaction.methodOrder);
