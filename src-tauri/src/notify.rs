@@ -1,5 +1,5 @@
 //! Desktop alerts for background session events (turn finished / waiting for
-//! approval): a system notification plus the platform alert sound.
+//! approval): a system notification, click-to-open-session, and the platform alert sound.
 //!
 //! macOS notifications go through UNUserNotificationCenter instead of
 //! tauri-plugin-notification. The plugin's macOS backend is the legacy
@@ -25,24 +25,22 @@
 use tauri::AppHandle;
 
 /// Frontend call: post a desktop notification.
-/// Args (frontend camelCase auto-mapped): title / body / sessionId.
+/// Args (frontend camelCase auto-mapped): title / body / path.
 #[tauri::command]
 pub async fn send_desktop_notification(
     app: AppHandle,
     title: String,
     body: String,
-    session_id: String,
+    path: Option<String>,
 ) -> Result<(), String> {
-    // sessionId is carried for a future click-to-focus path: the macOS Rust API
-    // has no click callback (the plugin's JS onAction would provide one).
-    let _ = session_id;
     #[cfg(target_os = "macos")]
     {
         let _ = app;
-        mac::send(&title, &body)
+        mac::send(&title, &body, path.as_deref())
     }
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = path;
         use tauri_plugin_notification::NotificationExt;
         app.notification()
             .builder()
@@ -50,6 +48,24 @@ pub async fn send_desktop_notification(
             .body(body)
             .show()
             .map_err(|e| format!("notify-failed: {e}"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn install(app: &AppHandle) {
+    mac::install(app);
+}
+
+/// Marks the event listener as ready and returns a click received before that.
+#[tauri::command]
+pub fn notification_frontend_ready() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        mac::frontend_ready()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
     }
 }
 
@@ -91,16 +107,20 @@ pub async fn request_notification_permission() -> String {
 
 #[cfg(target_os = "macos")]
 mod mac {
-    use std::sync::mpsc;
+    use std::sync::{mpsc, Mutex};
     use std::time::Duration;
 
-    use block2::RcBlock;
-    use objc2::runtime::Bool;
+    use block2::{DynBlock, RcBlock};
+    use objc2::rc::Retained;
+    use objc2::runtime::{Bool, NSObject, NSObjectProtocol, ProtocolObject};
+    use objc2::{define_class, msg_send, AnyThread, DefinedClass};
     use objc2_foundation::{NSBundle, NSError, NSString};
     use objc2_user_notifications::{
-        UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent, UNNotificationRequest,
-        UNNotificationSettings, UNUserNotificationCenter,
+        UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent,
+        UNNotificationRequest, UNNotificationResponse, UNNotificationSettings,
+        UNUserNotificationCenter, UNUserNotificationCenterDelegate,
     };
+    use tauri::{AppHandle, Emitter};
 
     /// Upper bound for the synchronous waits on the notification center's reply
     /// blocks (they land on an internal queue and normally answer in <1 ms).
@@ -108,6 +128,97 @@ mod mac {
     /// The authorization prompt waits for a click — give the user a minute before
     /// falling back to a plain status query.
     const REQUEST_WAIT: Duration = Duration::from_secs(60);
+
+    const SESSION_REQUEST_PREFIX: &str = "omp-session:";
+
+    #[derive(Default)]
+    struct OpenState {
+        frontend_ready: bool,
+        pending_path: Option<String>,
+    }
+
+    static OPEN_STATE: Mutex<OpenState> = Mutex::new(OpenState {
+        frontend_ready: false,
+        pending_path: None,
+    });
+
+    struct NotificationDelegateIvars {
+        app: AppHandle,
+    }
+
+    define_class!(
+        // SAFETY: the delegate has plain Rust ivars and no Drop implementation.
+        #[unsafe(super(NSObject))]
+        #[ivars = NotificationDelegateIvars]
+        struct NotificationDelegate;
+
+        impl NotificationDelegate {
+            #[unsafe(method(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:))]
+            fn did_receive(
+                &self,
+                _center: &UNUserNotificationCenter,
+                response: &UNNotificationResponse,
+                completion_handler: &DynBlock<dyn Fn()>,
+            ) {
+                let app = &self.ivars().app;
+                crate::show_main_window(app);
+                let identifier = response.notification().request().identifier();
+                if let Some(path) = session_path(&identifier.to_string()) {
+                    deliver_open(app, path.to_string());
+                }
+                completion_handler.call(());
+            }
+        }
+
+        unsafe impl NSObjectProtocol for NotificationDelegate {}
+        // The optional callback is registered above as a plain class method.
+        unsafe impl UNUserNotificationCenterDelegate for NotificationDelegate {}
+    );
+
+    impl NotificationDelegate {
+        fn new(app: AppHandle) -> Retained<Self> {
+            let this = Self::alloc().set_ivars(NotificationDelegateIvars { app });
+            unsafe { msg_send![super(this), init] }
+        }
+    }
+
+    pub fn install(app: &AppHandle) {
+        // A bare dev binary has no bundle proxy; querying the center would abort it.
+        if NSBundle::mainBundle().bundleIdentifier().is_none() {
+            return;
+        }
+        let center = UNUserNotificationCenter::currentNotificationCenter();
+        let delegate = NotificationDelegate::new(app.clone());
+        center.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+        // The center's delegate property is weak; this singleton lives for the process.
+        std::mem::forget(delegate);
+    }
+
+    pub fn frontend_ready() -> Option<String> {
+        let mut state = OPEN_STATE.lock().unwrap();
+        state.frontend_ready = true;
+        state.pending_path.take()
+    }
+
+    fn deliver_open(app: &AppHandle, path: String) {
+        let mut state = OPEN_STATE.lock().unwrap();
+        if !state.frontend_ready {
+            // Only the latest pre-listener click is actionable.
+            state.pending_path = Some(path);
+            return;
+        }
+        drop(state);
+        if let Err(error) = app.emit("notification-open", serde_json::json!({ "path": path })) {
+            eprintln!("[notify] open event failed: {error}");
+        }
+    }
+
+    pub(crate) fn session_path(identifier: &str) -> Option<&str> {
+        let (_, path) = identifier
+            .strip_prefix(SESSION_REQUEST_PREFIX)?
+            .split_once(':')?;
+        (!path.is_empty()).then_some(path)
+    }
 
     /// Settings-page row state (see the command docs for the vocabulary).
     pub fn permission_status() -> String {
@@ -155,7 +266,7 @@ mod mac {
         }
     }
 
-    pub fn send(title: &str, body: &str) -> Result<(), String> {
+    pub fn send(title: &str, body: &str, path: Option<&str>) -> Result<(), String> {
         // No bundle id (dev binary): the notification center would abort the process.
         if NSBundle::mainBundle().bundleIdentifier().is_none() {
             return Err("no app bundle: macOS notifications need an installed .app".into());
@@ -169,7 +280,7 @@ mod mac {
         if status != UNAuthorizationStatus::Authorized && status != UNAuthorizationStatus::Provisional {
             return Err("macOS notifications are turned off for this app (System Settings ▸ Notifications)".into());
         }
-        post(&center, title, body)
+        post(&center, title, body, path)
     }
 
     fn status(center: &UNUserNotificationCenter) -> Result<UNAuthorizationStatus, String> {
@@ -193,16 +304,25 @@ mod mac {
         );
     }
 
-    fn post(center: &UNUserNotificationCenter, title: &str, body: &str) -> Result<(), String> {
+    fn post(
+        center: &UNUserNotificationCenter,
+        title: &str,
+        body: &str,
+        path: Option<&str>,
+    ) -> Result<(), String> {
         let content = UNMutableNotificationContent::new();
         content.setTitle(&NSString::from_str(title));
         content.setBody(&NSString::from_str(body));
-        // Unique identifier: reusing one replaces the previous notification instead of posting a new one.
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
-        let id = NSString::from_str(&format!("omp-{stamp}"));
+        // The request id survives cold launch and avoids a separate userInfo dictionary.
+        let id = match path {
+            Some(path) if !path.is_empty() => format!("{SESSION_REQUEST_PREFIX}{stamp}:{path}"),
+            _ => format!("omp-{stamp}"),
+        };
+        let id = NSString::from_str(&id);
         let request = UNNotificationRequest::requestWithIdentifier_content_trigger(&id, &content, None);
         let (tx, rx) = mpsc::channel();
         let handler = RcBlock::new(move |error: *mut NSError| {
@@ -271,8 +391,16 @@ mod tests {
     /// error instead of calling into it.
     #[test]
     fn send_without_bundle_errors_instead_of_aborting() {
-        let err = super::mac::send("title", "body").unwrap_err();
+        let err = super::mac::send("title", "body", None).unwrap_err();
         assert!(err.contains("no app bundle"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn session_request_identifier_round_trips_paths_with_colons() {
+        let path = "/tmp/project:with-colon/session.jsonl";
+        let identifier = format!("omp-session:123:{path}");
+        assert_eq!(super::mac::session_path(&identifier), Some(path));
+        assert_eq!(super::mac::session_path("omp-123"), None);
     }
 
     /// Same guard for the settings-page row: without a bundle the status is

@@ -1,4 +1,4 @@
-// React frontend entry: mounts App + native menu action dispatch + WS
+// React frontend entry: mounts App + native menu/notification dispatch + WS
 // connection (or browser preview mode).
 import { createRoot } from "react-dom/client";
 import App from "./App";
@@ -14,6 +14,7 @@ import { landBrowserTabs, restoreRightSlot } from "./store/right";
 import { IS_MAC } from "./platform";
 import { emitBrowserFrame } from "./store/browserMirror";
 import { syncAudioToPref } from "./components/chat/railAudio";
+import { openSessionByPath } from "./store/session";
 
 // Restore the first-frame render cache (the localStorage mirror of
 // omp-desktop.json's ui section) before React mounts — this is what keeps the
@@ -31,6 +32,18 @@ import { syncAudioToPref } from "./components/chat/railAudio";
 // Platform flag for CSS: the native traffic-light geometry (trafficLightPosition)
 // only exists on macOS, so layout pinned to it must not leak to Windows.
 document.documentElement.dataset.platform = IS_MAC ? "macos" : "windows";
+
+// Traffic lights disappear in native macOS fullscreen; resize covers both transitions.
+const nativeWindow = IS_MAC ? window.__TAURI__?.window?.getCurrentWindow() : undefined;
+if (nativeWindow) {
+  const syncFullscreen = () => {
+    void nativeWindow.isFullscreen().then((fullscreen) => {
+      document.documentElement.dataset.fullscreen = String(fullscreen);
+    });
+  };
+  syncFullscreen();
+  void nativeWindow.onResized(syncFullscreen);
+}
 
 // ⌘, opens/closes the settings hub (ported from the old core.js global
 // keydown; Esc is handled by the Settings container)
@@ -188,6 +201,29 @@ if (new URLSearchParams(location.search).has("preview")) {
   restoreRightSlot(null); // startup: bring back the welcome slot's persisted layout (if any)
   useAppStore.setState({ rightCollapsed: true }); // a launch always starts with the right panel collapsed (tab layout memory survives)
   connect();
+  let pendingNotificationPath: string | null = null;
+  const openNotification = (path: string): void => {
+    if (!useAppStore.getState().connected) {
+      pendingNotificationPath = path;
+      return;
+    }
+    pendingNotificationPath = null;
+    openSessionByPath(path);
+  };
+  useAppStore.subscribe((state, previous) => {
+    if (state.connected && !previous.connected && pendingNotificationPath) openNotification(pendingNotificationPath);
+  });
+  const nativeEvents = window.__TAURI__?.event;
+  const invokeNative = window.__TAURI__?.core?.invoke;
+  if (nativeEvents && invokeNative) {
+    void nativeEvents.listen("notification-open", (event) => openNotification(event.payload.path))
+      .then(() => invokeNative<string | null>("notification_frontend_ready"))
+      .then((path) => { if (path) openNotification(path); })
+      .catch((error: unknown) => console.warn("notification-open listener:", error));
+  }
+  // Silent update probe so a new build shows up in the sidebar footer without
+  // opening settings; it never blocks boot and fails quietly.
+  void useAppStore.getState().probeUpdate();
   // Message-rail music reactivity (Windows only): the persisted pref owns the
   // capture lifecycle. The store was already hydrated from the localStorage
   // mirror before React mounted, so the pref is readable right here.

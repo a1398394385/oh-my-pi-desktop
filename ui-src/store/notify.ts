@@ -46,7 +46,7 @@ export function notifyDesktop(kind: string, s: OpenSession, title: string, body:
     // macOS rejects the request with a reason when the app lacks notification
     // authorization (unsigned build, permission denied): keep it in the console
     // instead of dropping it silently.
-    invoke("send_desktop_notification", { title, body, sessionId: s.sessionId }).catch((err: unknown) =>
+    invoke("send_desktop_notification", { title, body, path }).catch((err: unknown) =>
       console.warn("send_desktop_notification:", err),
     );
   }

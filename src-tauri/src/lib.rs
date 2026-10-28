@@ -473,7 +473,7 @@ fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
 }
 
 /// Bring the main window back from hidden/minimized state and focus it.
-/// Shared by the tray icon, the single-instance relaunch callback, and the
+/// Shared by the tray icon, single-instance relaunch, notification click, and
 /// macOS Dock reopen event.
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
@@ -642,6 +642,8 @@ pub fn run() {
         .manage(cell.clone())
         .manage(child_cell.clone())
         .setup(move |app| {
+            #[cfg(target_os = "macos")]
+            notify::install(app.handle());
             // Window becomes visible here, after the window-state plugin has restored
             // the saved geometry (config visible:false hides the pre-restore flash of
             // the default 1280x820 frame). No manual reset anymore — geometry persists.
@@ -709,6 +711,7 @@ fn invoke_handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + 
         set_traffic_light_y,
         notify::send_desktop_notification,
         notify::play_alert_sound,
+        notify::notification_frontend_ready,
         notify::notification_permission_status,
         notify::request_notification_permission,
         set_menu_language,

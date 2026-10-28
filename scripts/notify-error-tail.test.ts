@@ -7,12 +7,12 @@ import { describe, expect, test } from "bun:test";
 import type { OpenSession, SessionItem } from "../ui-src/types/session";
 import type { SettingsPayload } from "../ui-src/types/frames";
 
-const sent: { title: string; body: string; sessionId: string }[] = [];
+const sent: { title: string; body: string; path?: string }[] = [];
 // ws.ts binds `invoke` from window.__TAURI__ at module scope — install the stub first,
 // then load the store graph (dynamic imports, same reason as smoke-dual-channel-store.ts).
 (globalThis.window as unknown as { __TAURI__: unknown }).__TAURI__ = {
   core: {
-    invoke: async (cmd: string, args: { title: string; body: string; sessionId: string }) => {
+    invoke: async (cmd: string, args: { title: string; body: string; path?: string }) => {
       if (cmd === "send_desktop_notification") sent.push(args);
     },
   },
@@ -60,6 +60,7 @@ describe("desktop alert on a failed run", () => {
     event("retried", "turn_end", { runEnd: true, usage: null });
     expect(sent).toHaveLength(1);
     expect(sent[0].body).toBe("recovered answer");
+    expect(sent[0].path).toBe("/tmp/retried.jsonl");
   });
 
   test("a failure the run ended on alerts with the error text", () => {
