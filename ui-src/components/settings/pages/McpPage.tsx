@@ -52,6 +52,8 @@ interface McpServer {
   env?: Record<string, string>;
   headers?: Record<string, string>;
   source?: McpSource;
+  /** Plugin-package / other-tool source: toggle only, the editor renders read-only */
+  readOnly?: boolean;
 }
 
 // Test result entry (mcpTestResults[name], landed from the mcp_server_tested reply)
@@ -306,7 +308,7 @@ function Toggle({ server }: { server: McpServer }) {
           type: "set_mcp_server_enabled",
           name: server.name,
           enabled: nextEnabled,
-          cwd: server.cwd,
+          scope: server.scope,
           sourcePath: server.source?.path,
         });
       }}
@@ -326,6 +328,8 @@ interface McpEditorProps {
 function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps) {
   const { t } = useTranslation();
   const isNew = !server;
+  // Plugin-package / other-tool source: the row keeps its toggle but this form is view-only
+  const readOnly = Boolean(server?.readOnly);
   const targetScope = server?.scope && server.scope !== "project"
     ? server.scope
     : (defaultScope === "all" ? "profile" : defaultScope);
@@ -436,6 +440,21 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
   };
 
   const onSave = () => {
+    if (readOnly && server) {
+      // Read-only row: only the sharing mode is ours — the host keeps it in
+      // omp-desktop.json (which sessions get the server) and never touches the source file
+      const finalSharing = isProjectScope && sharing === "global" ? "session" : sharing;
+      send({
+        type: "save_mcp_server",
+        name: server.name,
+        config: { sharing: finalSharing },
+        scope: targetScope,
+        sourcePath: server.source?.path,
+      });
+      toast(t("settingsPage.mcp.savedToast", { name: server.name }));
+      onClose();
+      return;
+    }
     if (!name.trim()) {
       toast(t("settingsPage.mcp.nameRequired"));
       return;
@@ -464,9 +483,9 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
   };
 
   const onDelete = async () => {
-    if (!server) return;
+    if (!server || readOnly) return;
     if (await confirmDialog({ title: t("settingsPage.mcp.deleteConfirm", { name: server.name }), confirmText: t("common.delete"), danger: true })) {
-      send({ type: "delete_mcp_server", name: server.name, sourcePath: server.source?.path });
+      send({ type: "delete_mcp_server", name: server.name, scope: server.scope, sourcePath: server.source?.path });
       onClose();
       toast(t("settingsPage.mcp.deletedToast", { name: server.name }));
     }
@@ -514,7 +533,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
   return (
     <>
       <EditWindowHead title={title} sub={sub} onBack={onClose}>
-        {!isNew ? (
+        {!isNew && !readOnly ? (
           <button type="button" className="save-btn danger" onClick={onDelete}>
             {t("common.delete")}
           </button>
@@ -544,6 +563,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
               <Sel
                 className="mcp-form-sel"
                 btnClassName="mcp-form-sel-btn"
+                disabled={readOnly}
                 btnChildren={
                   <>
                     <span className="mcp-form-sel-cur">{transportCurLabel}</span>
@@ -615,6 +635,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                   placeholder={t("settingsPage.mcp.cmdPlaceholder")}
                   spellCheck="false"
                   value={cmd}
+                  disabled={readOnly}
                   onChange={(e) => setCmd(e.target.value)}
                 />
               </FormRow>
@@ -625,6 +646,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                   placeholder="-y @modelcontextprotocol/server-memory"
                   spellCheck="false"
                   value={args}
+                  disabled={readOnly}
                   onChange={(e) => setArgs(e.target.value)}
                 />
               </FormRow>
@@ -637,6 +659,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                 placeholder={t("settingsPage.mcp.urlPlaceholder")}
                 spellCheck="false"
                 value={url}
+                disabled={readOnly}
                 onChange={(e) => setUrl(e.target.value)}
               />
             </FormRow>
@@ -663,6 +686,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                     : '{\n  "Authorization": "Bearer your-token"\n}'
                 }
                 value={transport === "stdio" ? env : headers}
+                disabled={readOnly}
                 onChange={(e) => (transport === "stdio" ? setEnv : setHeaders)(e.target.value)}
               />
             ) : null}

@@ -16,7 +16,7 @@ import {
 } from "./bootstrap.ts";
 import { getMcpSharingConfig } from "./profile.ts";
 import { safeStderr } from "./stderr.ts";
-import { validDesktopProjects, nearestProjectOmpDir } from "./asset-paths.ts";
+import { validDesktopProjects, nearestProjectOmpDir, mcpCandidates } from "./asset-paths.ts";
 
 // MCP health probe cache (avoids re-connecting within 60s). This used to live
 // inside the listAgentAssets function body, which left server-layer
@@ -305,6 +305,8 @@ export interface McpServerAsset {
   error?: string;
   log?: string;
   sharing?: "session" | "project" | "global";
+  /** Config file belongs to a plugin package or another tool: the UI keeps the toggle, never the editor */
+  readOnly: boolean;
 }
 
 // Discover and merge all MCP servers across global, profile and each workspace project, following the omp source mcps capability
@@ -379,6 +381,8 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
           path: filePath,
           level: s._source?.level ?? "user",
         },
+        // Plugin packages and other tools' configs are not ours to rewrite; the UI keeps only the toggle
+        readOnly: !mcpCandidates(H.agentDir).some((p) => path.resolve(p) === path.resolve(filePath)),
         scope: "profile",
         status: enabled ? "unknown" : "disabled",
       });
@@ -426,6 +430,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
               path: userMcpPath,
               level: "user",
             },
+            readOnly: false,
             scope: "profile",
             status: enabled ? "unknown" : "disabled",
           });
@@ -471,6 +476,8 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
             path: filePath,
             level: "project",
           },
+          // Plugin packages and other tools' configs are not ours to rewrite; the UI keeps only the toggle
+          readOnly: !mcpCandidates(primaryOmpDir).some((p) => path.resolve(p) === path.resolve(filePath)),
           scope: projScope,
           projectName: path.basename(cwd),
           status: enabled ? "unknown" : "disabled",
@@ -521,6 +528,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
                 path: projMcpFile,
                 level: "project",
               },
+              readOnly: false,
               scope: projScope,
               projectName: path.basename(cwd),
               status: enabled ? "unknown" : "disabled",

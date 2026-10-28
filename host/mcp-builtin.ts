@@ -64,6 +64,8 @@ export function builtinServerAsset(name: string): McpServerAsset | undefined {
     args: ["mcp", "-s", "user"],
     enabled: false, // never auto-mounted at pool boundaries; see the file header
     source: { provider: "builtin", providerName: "omp-desktop", path: "", level: "user" },
+    // Code-owned definition (never in mcp.json): the MCP page shows it toggle-only
+    readOnly: true,
     scope: "profile",
     status: "disabled",
     sharing: "global",

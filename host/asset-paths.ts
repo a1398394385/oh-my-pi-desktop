@@ -85,6 +85,15 @@ export function mcpCandidates(dir: string): string[] {
   return [path.join(dir, "mcp.json"), path.join(dir, ".mcp.json")];
 }
 
+// mcp.json files this app writes for a UI scope ("profile" | `project:${cwd}`).
+// A row whose source path is none of them belongs to a plugin package or another
+// tool's config: those rows are read-only and never written back.
+export function scopeMcpFiles(scope: unknown): string[] {
+  const s = String(scope ?? "profile");
+  const isProject = s.startsWith("project:");
+  return mcpCandidates(assetOmpDir("mcp", isProject ? "project" : "profile", isProject ? s.slice(8) : undefined));
+}
+
 // Writable hook roots: profile agentDir/hooks + each valid project's nearest .omp/hooks
 // (mirrors the scanHookDir paths in listAgentAssets)
 export function hookDirRoots(): string[] {

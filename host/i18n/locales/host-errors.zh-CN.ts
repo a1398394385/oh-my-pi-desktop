@@ -243,6 +243,7 @@ export const hostErrorsZh = {
   },
   mcp: {
     userCancelled: "用户中止生成",
+    readOnlySource: "该服务器来自插件包或其他工具的配置，不能在这里编辑",
   },
   ssh: {
     missingName: "缺少主机名称",

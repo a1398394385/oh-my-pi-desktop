@@ -30,6 +30,7 @@ import {
   clearCapabilityFsCache,
 } from "./bootstrap.ts";
 import { settingsGet, settingsSet } from "./settings-compat.ts";
+import { scopeMcpFiles } from "./asset-paths.ts";
 
 // Source metadata of WS-shipped entries (a serializable subset of the base SourceMeta)
 export interface ExtSource {
@@ -282,7 +283,7 @@ export async function buildExtensionsPayload(scope: unknown): Promise<Extensions
 // skills.ignoredSkills in sync, matching asset_skill_toggle);
 // MCP entries go through mcp.json passthrough (same path as /mcp disable);
 // shadowed entries are rejected.
-export async function toggleExtensionItem(id: unknown, enabled: unknown, sourcePath?: unknown): Promise<void> {
+export async function toggleExtensionItem(id: unknown, enabled: unknown, sourcePath?: unknown, scope?: unknown): Promise<void> {
   const extId = String(id ?? "");
   const colon = extId.indexOf(":");
   if (colon <= 0) throw new Error(hostI18n.t("errors.extension.invalidId", { id: extId }));
@@ -291,10 +292,16 @@ export async function toggleExtensionItem(id: unknown, enabled: unknown, sourceP
   if (kind === "mcp") {
     const name = extId.slice(colon + 1);
     if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
+    const userPath = path.join(H.agentDir, "mcp.json");
+    const src = typeof sourcePath === "string" && sourcePath ? sourcePath : undefined;
+    const files = scopeMcpFiles(scope);
+    const writable = src !== undefined && files.some((p) => path.resolve(p) === path.resolve(src));
     await setMcpServerEnabled({
-      userPath: path.join(H.agentDir, "mcp.json"),
-      projectPath: typeof sourcePath === "string" && sourcePath ? sourcePath : path.join(H.agentDir, "mcp.json"),
-      sourcePath: typeof sourcePath === "string" && sourcePath ? sourcePath : undefined,
+      userPath,
+      // Read-only sources (plugin packages, other tools' configs) keep their file untouched:
+      // without sourcePath/projectPath the switch lands in the user denylist/allowlist.
+      projectPath: writable ? src : userPath,
+      sourcePath: writable ? src : undefined,
       name,
       enabled: on,
     });

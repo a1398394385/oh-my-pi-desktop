@@ -239,6 +239,7 @@ export const hostErrorsEn = {
   },
   mcp: {
     userCancelled: "Generation cancelled by user",
+    readOnlySource: "This server comes from a plugin package or another tool's config and cannot be edited here",
   },
   ssh: {
     missingName: "Missing host name",

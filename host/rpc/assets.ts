@@ -19,9 +19,9 @@ import {
   mcpHealthCache,
 } from "../mcp-assets.ts";
 import {
-  nearestProjectOmpDir,
   assetOmpDir,
   mcpCandidates,
+  scopeMcpFiles,
   resolveAssetFile,
   validDesktopProjects,
   type AssetKind,
@@ -231,7 +231,7 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
   },
   async toggle_extension_item(ws, msg) {
-    await toggleExtensionItem(msg.id, msg.enabled, msg.sourcePath);
+    await toggleExtensionItem(msg.id, msg.enabled, msg.sourcePath, msg.scope);
     ws.send(JSON.stringify({ type: "extensions", ...(await buildExtensionsPayload(msg.scope)) }));
   },
   async toggle_extension_provider(ws, msg) {
@@ -250,13 +250,16 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     const enabled = Boolean(msg.enabled);
     const userPath = path.join(H.agentDir, "mcp.json");
-    const projectPath = msg.cwd
-      ? (nearestProjectOmpDir(msg.cwd) ? path.join(nearestProjectOmpDir(msg.cwd)!, "mcp.json") : path.join(path.resolve(msg.cwd), ".omp", "mcp.json"))
-      : undefined;
+    const files = scopeMcpFiles(msg.scope);
+    const sourcePath = msg.sourcePath ? String(msg.sourcePath) : undefined;
+    const writable = !sourcePath || files.some((p) => path.resolve(p) === path.resolve(sourcePath));
     await setMcpServerEnabled({
       userPath,
-      projectPath: projectPath ?? userPath,
-      sourcePath: msg.sourcePath ? String(msg.sourcePath) : undefined,
+      // Read-only sources (plugin packages, other tools' configs) must keep their file
+      // untouched: without sourcePath/projectPath the switch lands in the user
+      // denylist/allowlist, the base runtime's supported override.
+      projectPath: writable ? files[0] : userPath,
+      sourcePath: writable ? sourcePath : undefined,
       name,
       enabled,
     });
@@ -321,36 +324,30 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     const cfg = msg.config || {};
     const scope = String(msg.scope ?? "profile");
-    const isProject = scope.startsWith("project:");
+    const files = scopeMcpFiles(scope);
+    const targetPath = files[0];
     const sourcePath = msg.sourcePath ? String(msg.sourcePath) : undefined;
     // Rule 2: the project scope forbids global; force-correct to project
-    if (isProject && cfg.sharing === "global") {
+    if (scope.startsWith("project:") && cfg.sharing === "global") {
       cfg.sharing = "project";
     }
     // Rule 1: the default is strictly the session level
     if (!cfg.sharing) {
       cfg.sharing = "session";
     }
-    const targetDir = (scope === "profile" || scope === "global")
-      ? H.agentDir
-      : isProject
-      ? (nearestProjectOmpDir(scope.slice(8)) ?? path.join(path.resolve(scope.slice(8)), ".omp"))
-      : H.agentDir;
-    await mkdir(targetDir, { recursive: true });
-    const targetPath = path.join(targetDir, "mcp.json");
-
-    const isExternalSource = Boolean(sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath));
-    if (isExternalSource && !msg.forceImport) {
-      // External-source decoupling: record the sharing mode in omp-desktop.json, create no local shadow override, keep external tools read dynamically
-      await setMcpSharingConfig(sourcePath!, name, cfg.sharing);
-    } else {
-      // Native OMP MCP or explicit import: write mcp.json and record the sharing in omp-desktop.json in sync
-      await updateMCPServer(targetPath, name, cfg);
-      await setMcpSharingConfig(targetPath, name, cfg.sharing);
-      if (sourcePath && path.resolve(sourcePath) !== path.resolve(targetPath)) {
-        await deleteMcpSharingConfig(sourcePath, name);
-      }
+    if (sourcePath && !files.some((p) => path.resolve(p) === path.resolve(sourcePath))) {
+      // Read-only row (plugin package, another tool's config): the source file keeps
+      // its definition, but the sharing mode lives in omp-desktop.json (which sessions
+      // get the server), so that one field stays editable.
+      await setMcpSharingConfig(sourcePath, name, cfg.sharing);
+      mcpHealthCache.delete(name);
+      ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
+      return;
     }
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await updateMCPServer(targetPath, name, cfg);
+    // Record the sharing in omp-desktop.json in sync with the config file
+    await setMcpSharingConfig(targetPath, name, cfg.sharing);
 
     mcpHealthCache.delete(name);
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
@@ -358,22 +355,18 @@ export const assetsHandlers: Record<string, RpcHandler> = {
   async delete_mcp_server(ws, msg) {
     const name = String(msg.name ?? "").trim();
     if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
-    const src = msg.sourcePath ? String(msg.sourcePath) : undefined;
-    const userPath = path.join(H.agentDir, "mcp.json");
-    const targetFile = src ?? userPath;
-    if (src) await deleteMcpSharingConfig(src, name);
-    await deleteMcpSharingConfig(userPath, name);
-    if (fs.existsSync(targetFile) && (targetFile.endsWith("mcp.json") || targetFile.endsWith(".mcp.json"))) {
-      await removeMCPServer(targetFile, name);
-    } else {
-      await setMcpServerEnabled({
-        userPath,
-        projectPath: userPath,
-        sourcePath: src,
-        name,
-        enabled: false,
-      });
+    const scope = String(msg.scope ?? "profile");
+    const files = scopeMcpFiles(scope);
+    const targetPath = files[0];
+    const sourcePath = msg.sourcePath ? String(msg.sourcePath) : undefined;
+    // Read-only rows (plugin packages, other tools' configs) are never deleted from
+    if (sourcePath && !files.some((p) => path.resolve(p) === path.resolve(sourcePath))) {
+      throw new Error(hostI18n.t("errors.mcp.readOnlySource"));
     }
+    const file = sourcePath ?? targetPath;
+    await deleteMcpSharingConfig(file, name);
+    if (path.resolve(file) !== path.resolve(targetPath)) await deleteMcpSharingConfig(targetPath, name);
+    await removeMCPServer(file, name);
     mcpHealthCache.delete(name);
     ws.send(JSON.stringify({ type: "agent_assets", assets: await listAgentAssets() }));
   },
