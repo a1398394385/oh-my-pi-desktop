@@ -203,6 +203,10 @@ export class AcpRuntimeState {
 	#expectRelief = false;
 	/** bN short-ref registry + context_status-pair facts, replayed from the journal (spec §3/§6 v10, host/acp-refs.ts). */
 	#refs = new AcpRefBook();
+	/** [compress-hint] injections since the last accepted compress (stats telemetry, reset on success). */
+	#hintCount = 0;
+	/** Tokens of the latest context_status return; the compress it feeds records it (stats telemetry). */
+	#lastStatusTokens: number | null = null;
 
 	constructor(deps: AcpRuntimeDeps) {
 		this.#deps = deps;
@@ -325,6 +329,9 @@ export class AcpRuntimeState {
 	 */
 	projectView(view: readonly AgentMessage[]): AgentMessage[] {
 		if (this.degraded) return [...view];
+		// Every request re-derives the round manifest, so a context_status count left
+		// over from an earlier turn no longer describes what a compression consumes.
+		this.#lastStatusTokens = null;
 		this.#syncRefs();
 		const source = annotateView(view, this.#deps.getEntries());
 		this.lastSource = source;
@@ -362,10 +369,12 @@ export class AcpRuntimeState {
 			const milestone = milestoneFor(rs.activeTokens, this.params);
 			if (milestone > this.#milestoneDelivered) {
 				this.#milestoneDelivered = milestone;
+				this.#hintCount++;
 				out.push(renderMilestoneMessage(rs, milestone, this.params));
 			}
 		} else {
 			this.#milestoneDelivered = 0;
+			this.#hintCount++;
 			out.push(renderEphemeralMessage(rs, this.params, forcedNow));
 		}
 	} else if (rs) {
@@ -578,6 +587,8 @@ export class AcpRuntimeState {
 				text = renderStatusText(rs, this.params);
 			}
 		}
+		// Stats telemetry: the compress this manifest feeds records what the pull cost.
+		this.#lastStatusTokens = this.#deps.countTokens(text);
 		return { ok: true, text };
 	}
 
@@ -630,7 +641,21 @@ export class AcpRuntimeState {
 		);
 		if (r.reject) return r.reject;
 		const plan = r.plan;
+		// Stats telemetry rides the persisted meta. summaryTokens must be counted
+		// before the write (the journal id does not exist yet): nextRef() predicts
+		// the label the block is about to get, so the count matches the render.
+		const meta = plan.payload.meta;
+		meta.summaryTokens = this.#deps.countTokens(
+			renderCompactionBlock(
+				{ id: "", summary: plan.payload.summary, index: plan.payload.index, meta },
+				() => this.#refs.nextRef(),
+			),
+		);
+		if (this.#lastStatusTokens !== null) meta.statusTokens = this.#lastStatusTokens;
+		meta.hints = this.#hintCount;
 		const written = appendAcpSummary(this.#deps.sink, plan.payload);
+		this.#hintCount = 0;
+		this.#lastStatusTokens = null;
 		// The fresh block sits at the journal tail: take its short ref now so the
 		// outcome can name it the way the model will see it (spec §3 v10).
 		const blockLabel = this.#refs.assign(written.id);

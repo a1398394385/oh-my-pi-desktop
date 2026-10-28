@@ -27,6 +27,17 @@ export interface AcpSummaryData extends AcpCompactionBlock {
 		supersedes: string[];
 		tokensBefore: number;
 		tokensAfter: number;
+		/**
+		 * Stats-page telemetry (missing in journals written before it existed;
+		 * the usage dashboard renders those cells as unknown). Recorded here
+		 * rather than recomputed at read time so the values are the runtime's own.
+		 */
+		/** Rendered size of this block as it enters the projection (spec §8 count of renderCompactionBlock). */
+		summaryTokens?: number;
+		/** Tokens the context_status return that fed this compression cost. */
+		statusTokens?: number;
+		/** [compress-hint] ephemeral injections since the previous successful compress or session start. */
+		hints?: number;
 	};
 }
 

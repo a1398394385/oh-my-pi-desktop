@@ -7,6 +7,7 @@ import {
   Cpu,
   FolderGit2,
   Frown,
+  Layers,
   LayoutGrid,
   type LucideIcon,
   PlugZap,
@@ -14,6 +15,7 @@ import {
   SquareChartGantt,
   Wrench,
 } from "lucide-react";
+import { useAppStore } from "../../../store";
 
 export type DashboardSection =
   | "overview"
@@ -26,7 +28,8 @@ export type DashboardSection =
   | "tools"
   | "frustration"
   | "projects"
-  | "gain";
+  | "gain"
+  | "acp";
 
 export interface NavItem {
   id: DashboardSection;
@@ -42,6 +45,9 @@ export interface NavGroup {
 /** Sidebar navigation; labels resolve through i18n at render time. */
 export function useNav(): readonly NavGroup[] {
   const { t } = useTranslation();
+  // The ACP section only exists while custom compaction is on: with it off no
+  // session writes acpSummary entries, so the section would be permanently empty.
+  const acpEnabled = useAppStore((s) => s.hostSettings?.acpEnabled === true);
   return useMemo(
     () => [
       {
@@ -70,7 +76,15 @@ export function useNav(): readonly NavGroup[] {
           { id: "gain", label: t("settingsPage.stats.nav.gain"), icon: Sparkles },
         ],
       },
+      ...(acpEnabled
+        ? [
+            {
+              heading: t("settingsPage.stats.nav.groupAcp"),
+              items: [{ id: "acp" as const, label: t("settingsPage.stats.nav.acp"), icon: Layers }],
+            },
+          ]
+        : []),
     ],
-    [t],
+    [t, acpEnabled],
   );
 }

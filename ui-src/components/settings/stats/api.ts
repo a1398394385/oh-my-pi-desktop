@@ -1,5 +1,6 @@
 import { t } from "../../../i18n";
 import type {
+  AcpCompactionRow,
   CostDashboardStats,
   FolderStats,
   FrustrationDashboardStats,
@@ -192,6 +193,14 @@ export async function getToolDashboardStats(
   signal?: AbortSignal,
 ): Promise<ToolDashboardStats> {
   return fetchJson<ToolDashboardStats>(`/api/stats/tools?range=${encodeURIComponent(range)}`, { signal });
+}
+
+/** Per-compression ACP rows (host-owned endpoint; the base server has no ACP data). */
+export async function getAcpCompactionStats(
+  range: TimeRange = "24h",
+  signal?: AbortSignal,
+): Promise<AcpCompactionRow[]> {
+  return fetchJson<AcpCompactionRow[]>(`/api/stats/acp?range=${encodeURIComponent(range)}`, { signal });
 }
 
 export async function getProviderDashboardStats(

@@ -189,7 +189,7 @@
 - acpSummary 不参与底座消息计数;压缩块 token 数 = 投影层对其渲染文本做 countTokens。
 - 块大小在块 settled(流式结束)且 stale prune 运行后计算并 memo;流式中的块不进候选。
 - unknown encoding 兜底 byte 估算(三档判定同步降级,可接受)。
-- 图片/加密 reasoning 按底座现有估算规则计入所属消息块。
+- 图片/加密 reasoning 按底座现有估算规则计入所属消息块；持久化图片为 `blob:sha256:` 引用时，先经 `BlobStore` 还原字节再读取像素尺寸，并按引用缓存尺寸，禁止把引用字符串当 base64 而按未知尺寸上限计价。
 
 ## 9. 持久化与状态重建
 
@@ -197,6 +197,7 @@
   - `summary: string`、`shortSummary?: string`
   - `index: [{ id, tokens, intent }]`(完整索引;强力压缩块继承全集,不受渲染截断影响)
   - `meta: { createdAt, depth, method: "normal" | "strong", forced?: boolean, keepIds, compressedIds, supersedes: string[], tokensBefore, tokensAfter }`
+  - `meta` 遥测附加字段(用量统计 ACP 分栏,缺失表示旧 journal,UI 显示未知):`summaryTokens?`(本块渲染体 token 数,写入前用 `nextRef()` 预测 bN 计数)、`statusTokens?`(喂给本次压缩的 context_status 返回 token 数)、`hints?`(上次成功压缩/会话开始以来的 `[compress-hint]` 注入次数,宿主内存计数,成功压缩后归零)
 - **重建**(host 启动会话时扫描 entries 按 customType 过滤):
   1. 检测到任何底座 compaction entry → 降级模式(§5.3),ACP 状态不推进;
   2. 否则:压缩区 = 未被任何 acpSummary.meta.supersedes 覆盖的 acpSummary,按序;

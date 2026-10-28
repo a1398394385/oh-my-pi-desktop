@@ -112,6 +112,11 @@ export class AcpRefBook {
 		return label;
 	}
 
+	/** The label the next assign() mints: compress telemetry counts the new block's render before its journal id exists. */
+	nextRef(): string {
+		return `b${this.#next}`;
+	}
+
 	/** The bN label of a known id (undefined for pseudo/unknown ids). */
 	shortRef(id: string): string | undefined {
 		return this.#shortOf.get(id);

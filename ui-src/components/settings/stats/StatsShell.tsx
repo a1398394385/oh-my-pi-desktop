@@ -4,6 +4,7 @@ import { rangeMeta, TIME_RANGES } from "./data/range";
 import { LiveChip } from "./LiveChip";
 import { type DashboardSection, useNav } from "./nav";
 import {
+  AcpRoute,
   CostsRoute,
   ErrorsRoute,
   FrustrationRoute,
@@ -112,6 +113,8 @@ export function StatsShell() {
         return <ProjectsRoute active={active} range={range} />;
       case "gain":
         return <GainRoute active={active} range={range} />;
+      case "acp":
+        return <AcpRoute active={active} range={range} />;
     }
   };
 

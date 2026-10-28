@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { SessionManager } from "./bootstrap.ts";
 import { safeStderr } from "./stderr.ts";
 import { acpSavedBytes, collectAcpGain } from "./acp-gain.ts";
+import { collectAcpCompactionStats } from "./acp-stats.ts";
 
 export function streakFromDays(days: string[]): { current: number; longest: number } {
   const uniq = [...new Set(days)].sort();
@@ -125,6 +126,12 @@ export async function handleStatsHttp(req: Request, srv?: { timeout: (req: Reque
 
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders(req) });
+  }
+
+  // ACP per-compression rows (usage-stats "ACP" section): the host owns this
+  // data — the base server has no notion of ACP — so it never reaches handleApi.
+  if (url.pathname === "/api/stats/acp") {
+    return Response.json(await collectAcpCompactionStats(url.searchParams.get("range")), { headers: corsHeaders(req) });
   }
 
   if (url.pathname === "/api/events") {

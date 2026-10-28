@@ -82,6 +82,25 @@ export interface RequestDetails extends MessageStats {
 
 export type TimeRange = "1h" | "24h" | "7d" | "30d" | "90d" | "all";
 
+/** One ACP compression (host/acp-stats.ts AcpCompactionRow), served by /api/stats/acp. */
+export interface AcpCompactionRow {
+  id: string;
+  createdAt: number;
+  model: string;
+  cwd: string | null;
+  compressedTokens: number;
+  activeTokensAfter: number;
+  /** null on journals written before the runtime recorded the telemetry. */
+  summaryTokens: number | null;
+  statusTokens: number | null;
+  hints: number | null;
+  extraTokens: number;
+  extraCost: number;
+  requestsAfter: number;
+  savedTokens: number;
+  savedCost: number;
+}
+
 export interface OverviewStats {
   overall: AggregatedStats;
   byAgentType: AgentTypeStats[];
