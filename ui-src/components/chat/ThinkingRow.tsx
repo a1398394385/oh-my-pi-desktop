@@ -69,7 +69,7 @@ export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: str
         style={expandable ? { cursor: "pointer" } : undefined}
         onClick={expandable ? toggle : undefined}
       >
-        <span className="th-ic"><Icon name="think" size={13} /></span>
+        <Icon name="think" size={15} className="th-ic" />
         <span className="lbl">{item.text || t("chat.thinkingFallback")}</span>
         {expandable && (
           <span className={"th-more" + (open ? " open" : "")}>
