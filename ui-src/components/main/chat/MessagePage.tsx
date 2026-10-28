@@ -69,6 +69,10 @@ const SWITCH_SETTLE_MS = 1000;
 //    last one; content-growth scrolls (streaming bottom-follow) never arm it, so cards
 //    stay scrollable while output streams. Keep the CSS selector in sync with
 //    INLINE_CARD_SELECTOR below.
+//    Same gesture, card-owned: when the wheel starts on a card's own scroll body (a long
+//    .ro-body, a nested .chg-body …) that card becomes the .wheel-owner — the only card
+//    exempt from the pointer-transparency — so wheels keep reaching it while the pointer
+//    drifts across sibling expansions, and that card alone un-scrolls after the idle gap.
 // 2. Floating popups (popcards .ring-pop / menus, portaled outside the stream): a
 //    document-capture wheel listener redirects their wheels back to the stream while the
 //    scroll gesture is stream-owned. Ownership model: the first wheel after an idle gap
@@ -497,11 +501,36 @@ export default function MessagePage() {
   const gestureOwner = useRef<"stream" | "popup" | "other">("other");
   const lastWheelAt = useRef(0);
   const wheelThroughTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The card that owns the current wheel gesture (an inline expand card scrolling its own
+  // body, e.g. a long .ro-body). It is exempt from .wheel-through's pointer-transparency so
+  // it keeps receiving wheels while every sibling expansion (including the ones nested
+  // inside it) goes pointer-transparent — a pointer drifting across another expanded card
+  // can no longer steal the wheel mid-scroll.
+  const wheelOwnerCard = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    const setOwnerCard = (card: HTMLElement | null) => {
+      if (wheelOwnerCard.current === card) return;
+      wheelOwnerCard.current?.classList.remove("wheel-owner");
+      wheelOwnerCard.current = card;
+      card?.classList.add("wheel-owner");
+    };
     const armWheelThrough = (stream: HTMLElement) => {
       stream.classList.add("wheel-through");
       clearTimeout(wheelThroughTimer.current);
-      wheelThroughTimer.current = setTimeout(() => stream.classList.remove("wheel-through"), GESTURE_IDLE_MS);
+      wheelThroughTimer.current = setTimeout(() => {
+        stream.classList.remove("wheel-through");
+        setOwnerCard(null);
+      }, GESTURE_IDLE_MS);
+    };
+    // Nearest inline card that actually scrolls inside the wheel's ancestor chain: a wheel
+    // over a short nested row still resolves to the tall .ro-body around it.
+    const scrollableCard = (el: HTMLElement | null, root: HTMLElement) => {
+      let n = el;
+      while (n && n !== root) {
+        if (n.matches(INLINE_CARD_SELECTOR) && n.scrollHeight > n.clientHeight + 1) return n;
+        n = n.parentElement;
+      }
+      return null;
     };
     const onWheelCapture = (e: WheelEvent) => {
       if (e.deltaY === 0) return;
@@ -514,20 +543,42 @@ export default function MessagePage() {
       const inStream = stream.contains(target);
       const inPopup = !inStream && !!target.closest(POPUP_SELECTOR);
       const now = Date.now();
+      const continuing = now - lastWheelAt.current <= GESTURE_IDLE_MS;
       // First wheel after the idle gap decides the owner by pointer location
-      if (now - lastWheelAt.current > GESTURE_IDLE_MS) {
+      if (!continuing) {
         gestureOwner.current = inStream ? "stream" : inPopup ? "popup" : "other";
       }
       lastWheelAt.current = now;
-      if (gestureOwner.current === "stream" && inPopup) {
+      const ownerCard = wheelOwnerCard.current;
+      if (continuing && ownerCard) {
+        // The gesture belongs to this card's own scroll body (a long .ro-body, a nested
+        // .chg-body …): wheels that land anywhere else — a sibling expansion, a floating
+        // popup, plain stream text — are redirected to it for the rest of the gesture. A
+        // pointer drifting across another expansion would otherwise swallow the next wheel
+        // and stop the scroll mid-run. Stop for 1s to hand the gesture to whatever is under
+        // the pointer.
+        if (!ownerCard.contains(target)) {
+          e.preventDefault();
+          e.stopPropagation();
+          ownerCard.scrollTop += e.deltaY;
+        }
+        armWheelThrough(stream);
+      } else if (gestureOwner.current === "stream" && inPopup) {
         e.preventDefault();
         e.stopPropagation();
         stream.scrollTop += e.deltaY;
         armWheelThrough(stream);
-      } else if (inStream && !inPopup && !target.closest(SCROLL_OWNER_SELECTOR)) {
-        // A wheel on the plain stream surface (or on non-owning content like tables):
-        // a wheel-driven scroll is in progress
-        armWheelThrough(stream);
+      } else if (inStream && !inPopup) {
+        const card = scrollableCard(target, stream);
+        if (card) {
+          setOwnerCard(card);
+          armWheelThrough(stream);
+        } else if (!target.closest(SCROLL_OWNER_SELECTOR)) {
+          // A wheel on the plain stream surface (or on non-owning content like tables):
+          // a wheel-driven scroll is in progress
+          setOwnerCard(null);
+          armWheelThrough(stream);
+        }
       }
     };
 
@@ -561,6 +612,7 @@ export default function MessagePage() {
       document.removeEventListener("wheel", onWheelCapture, { capture: true });
       document.removeEventListener("scroll", onScrollCapture, { capture: true });
       clearTimeout(wheelThroughTimer.current);
+      setOwnerCard(null);
       for (const t of cardScrollTimers.values()) clearTimeout(t);
       cardScrollTimers.clear();
     };
