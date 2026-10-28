@@ -258,7 +258,20 @@ export function summarizeResult(name: string, args: any, result: any, pendingWri
       patch.diffContent = details.diff.slice(0, 500_000);
     }
     if (details) patch.details = details;
-    return patch; // Multi-file "changes" carry no line counts
+    // Line counts for a multi-file event: per-file diffs are authoritative (the aggregate
+    // details.diff may be absent), and a file without a diff (delete / rename / binary)
+    // contributes nothing. Fall back to the aggregate diff when no file carries one.
+    const perFileDiffs = (details.perFileResults as unknown[])
+      .map((f) => (f && typeof f === "object" && "diff" in f ? f.diff : undefined))
+      .filter((d): d is string => typeof d === "string");
+    if (perFileDiffs.length) {
+      const stats = perFileDiffs.map(diffStats);
+      patch.added = stats.reduce((a, s) => a + s.added, 0);
+      patch.removed = stats.reduce((a, s) => a + s.removed, 0);
+    } else if (typeof details?.diff === "string") {
+      Object.assign(patch, diffStats(details.diff));
+    }
+    return patch;
   }
   if (typeof details?.diff === "string") {
     Object.assign(patch, diffStats(details.diff));
@@ -276,6 +289,9 @@ export function summarizeResult(name: string, args: any, result: any, pendingWri
     if (isDevicePath(args?.path)) {
       const text = resultText(result);
       if (text) patch.output = text;
+      // Device replies carry structured results the UI acts on (e.g. the created
+      // automation behind a turn's jump-to-task button), not just prose.
+      if (details) patch.details = details;
     } else {
       const newText = args.content;
       const targetPath = pendingWrite?.path ?? pathOf(args);

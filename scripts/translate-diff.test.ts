@@ -185,6 +185,9 @@ describe("translate.ts write and edit diff generation", () => {
     if (update?.kind === "tool_update") {
       expect(update.diffContent).toBe(" 1|a\n+2|a2\n 1|b\n-2|b1\n+2|b2");
       expect(Array.isArray((update.details as any)?.perFileResults)).toBe(true);
+      // Line counts come from the per-file diffs (a.ts +1, b.ts +1/−1), not the aggregate
+      expect(update.added).toBe(2);
+      expect(update.removed).toBe(1);
     }
   });
 

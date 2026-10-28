@@ -19,20 +19,26 @@ function filesOf(item: ToolItem): string[] {
   return uniqueFiles(item.files?.length ? item.files : item.args?.files || (item.args?.path ? [item.args.path] : []));
 }
 
-// Expand (the collapse animation is handled by the caller's useLift): set the flag; with no
-// per-call diff yet (tool still running / none arrived), fetch that file's git diff on demand.
-// apply is the write channel that lands item fields: top-level rows and in-group sub-rows
-// each go through their own copy chain
-function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => void) => void) {
+// Fetch one file's git diff when this call carries none (tool still running / no diff arrived).
+// Split from expandDiff because a multi-file event needs one request per file, while the
+// expand flag is written once.
+function requestDiff(item: ToolItem, path: string) {
   const st = useAppStore.getState();
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-  apply((it) => {
-    it.diffExpanded = true;
-  });
   if (path && ownDiffOf(item, path) == null && s?.isGit && st.briefDiffCache.get(path) === undefined && st.briefDiffPending !== path) {
     useAppStore.setState({ briefDiffPending: path }); // silent write (the old code wrote S.xxx directly without notify)
     st.send({ type: "get_file_diff", cwd: s.cwd, path });
   }
+}
+
+// Expand (the collapse animation is handled by the caller's useLift): set the flag, then fetch
+// the diff for this row's file. apply is the write channel that lands item fields: top-level
+// rows and in-group sub-rows each go through their own copy chain
+function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => void) => void) {
+  apply((it) => {
+    it.diffExpanded = true;
+  });
+  requestDiff(item, path);
 }
 
 // Edit row: pencil + "Edit/Write" label + file chip (clickable to open the right-panel diff) + line-count changes + expand arrow
@@ -146,22 +152,53 @@ function ChangeGroup({ subs }: { subs: ToolItem[] }) {
   );
 }
 
-// A multi-file single edit event (apply_patch touching several files at once): label row + file chip list, no expansion
+// A multi-file single edit event (apply_patch touching several files at once): label row +
+// file chip list. Expanding stacks each file's own diff (details.perFileResults) — the event
+// is one tool call, so the per-file diffs hang off the same item rather than separate rows.
 function ChangeSingle({ item }: { item: ToolItem }) {
   const files = filesOf(item);
+  const [closing, close, liftRef] = useLift();
+  const open = !!item.diffExpanded && !closing;
+  const toggle = () => {
+    if (item.diffExpanded) close(() => patchActiveItem(item, (it) => { it.diffExpanded = false; }));
+    else {
+      // One flag write, one request per file: ownDiffOf is keyed by path, so a single call
+      // never covers the rest, but repeating the flag write would patch an already-replaced item
+      patchActiveItem(item, (it) => { it.diffExpanded = true; });
+      for (const f of files) requestDiff(item, f);
+    }
+  };
   return (
-    <div className="act change">
-      <Icon name="pencil" size={15} />
-      <span className="lbl">{files.length ? t("chat.changeFiles", { count: files.length }) : t("chat.changeFilesMultiple")}</span>
-      {files.length > 0 && (
-        <>
-          {" "}<span className="sep">·</span>{" "}
-          <span className="chips-lane">
-            {files.map((f) => <FileChip path={f} key={f} />)}{" "}
-          </span>
-        </>
+    <>
+      <div className="act change" style={{ cursor: "pointer" }} onClick={toggle}>
+        <Icon name="pencil" size={15} />
+        <span className="lbl">{files.length ? t("chat.changeFiles", { count: files.length }) : t("chat.changeFilesMultiple")}</span>
+        {files.length > 0 && (
+          <>
+            {" "}<span className="sep">·</span>{" "}
+            <span className="chips-lane">
+              {files.map((f) => <FileChip path={f} key={f} />)}{" "}
+            </span>
+          </>
+        )}
+        <Counts item={item} />
+        <span className={"ed-arrow" + (open ? " open" : "")}>
+          <Icon name="chevronRight" />
+        </span>
+      </div>
+      {item.diffExpanded && files.length > 0 && (
+        <div ref={liftRef} className="chg-body drop">
+          {files.map((f) => (
+            <div key={f}>
+              <div className="chg-item">
+                <FileChip path={f} nameClass="ed-name" onNameClick={() => openFileDiffInSidebar(f)} />
+              </div>
+              <EditBrief item={item} path={f} />
+            </div>
+          ))}
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
