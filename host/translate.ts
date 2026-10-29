@@ -441,7 +441,10 @@ export function translateSubagentEvent(ev: any): UiEvent | null {
       return null;
     case "tool_execution_start": {
       const args = toolArgsForUi(ev.toolName, ev.args);
-      return { kind: "tool", name: ev.toolName, toolCallId: ev.toolCallId, args, files: collectFiles(ev.toolName, ev.args) };
+      // The base forwards the subagent's event verbatim (task/executor.ts emitSubagentEvent),
+      // so `i` rides on ev.intent exactly like the main path above — not inside args.
+      const intent = typeof ev.intent === "string" && ev.intent.trim() ? ev.intent.trim() : undefined;
+      return { kind: "tool", name: ev.toolName, toolCallId: ev.toolCallId, args, files: collectFiles(ev.toolName, ev.args), intent };
     }
     case "tool_execution_end":
       return {

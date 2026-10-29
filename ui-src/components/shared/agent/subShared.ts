@@ -63,10 +63,12 @@ export function timeSegments(sub: SubagentState, t: SegT, now: number): string[]
   return segs;
 }
 
-// Live progress line: the running tool call with its args, else the model's last stated
-// intent. Shared by the detail's "Current" section and a running roster row's task slot.
+// Live progress line: the running tool's intent, else its raw args, else the model's last
+// stated intent. Shared by the detail's "Current" section and a running roster row's task slot.
+// Intent first: the args dump is a JSON blob that gets cut off in both places.
 export function currentProgress(sub: SubagentState): string {
   const u = sub.usage;
+  if (u?.currentToolIntent) return u.currentToolIntent;
   if (u?.currentTool) return u.currentTool + (u.currentToolArgs ? ` · ${JSON.stringify(u.currentToolArgs)}` : "");
   return u?.lastIntent ?? "";
 }

@@ -68,6 +68,7 @@ export interface SubagentProgressFrame {
   contextTokens?: number;
   contextWindow?: number;
   currentTool?: string;
+  currentToolIntent?: string;
   currentToolArgs?: unknown;
   currentToolStartMs?: number;
   lastIntent?: string;

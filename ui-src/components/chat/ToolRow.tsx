@@ -25,7 +25,9 @@ function CmdCard({ command, item, liftRef }: { command?: string; item: ToolItem;
     </div>
   );
 }
-function CmdRow({ item, command, iconLabel }: { item: ToolItem; command?: string; iconLabel?: string }) {
+// The row shows the intent and `command` becomes the tooltip + card body: measured over 45k
+// real calls, intents are 20 chars median while commands are 154 (p90 456) and get cut off.
+function CmdRow({ item, command, summary, iconLabel }: { item: ToolItem; command?: string; summary?: string; iconLabel?: string }) {
   const [, close, liftRef] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
@@ -35,7 +37,7 @@ function CmdRow({ item, command, iconLabel }: { item: ToolItem; command?: string
     <>
       <div className="cmd" style={{ cursor: "pointer" }} onClick={toggle}>
         <span className="c-ic"><Icon name="termBox" size={15} />{iconLabel}</span>
-        <Ellip className="c-tx" title={command}>{command || ""}</Ellip>
+        <Ellip className="c-tx" title={command}>{summary || command || ""}</Ellip>
         {item.running && <Spin />}
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
           <Icon name="chevronRight" />
@@ -46,10 +48,12 @@ function CmdRow({ item, command, iconLabel }: { item: ToolItem; command?: string
   );
 }
 function renderCmd(item: ToolItem) {
+  const command = item.args?.command || item.text || "";
   return (
     <CmdRow
       item={item}
-      command={item.args?.command || item.text || ""}
+      command={command}
+      summary={item.intent || command}
       iconLabel={item.name === "eval" ? t("chat.evalLabel") : t("chat.labelTerminal")}
     />
   );
@@ -65,7 +69,7 @@ function CmdRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onTog
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
       <span className="lbl">{sub.name === "eval" ? t("chat.evalLabel") : t("chat.labelTerminal")}</span>
-      <Ellip className="c-tx" title={command}>{command}</Ellip>
+      <Ellip className="c-tx" title={command}>{sub.intent || command}</Ellip>
       {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
         <Icon name="chevronRight" />

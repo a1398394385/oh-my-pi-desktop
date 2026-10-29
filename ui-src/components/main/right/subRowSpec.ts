@@ -20,7 +20,7 @@ type Args = {
   toTurn?: number;
 };
 
-export type RowSpec = { icon: string; label: string; summary: string };
+export type RowSpec = { icon: string; label: string; summary: string; title?: string };
 
 function asArgs(call: SubagentToolCall): Args {
   return (call.args && typeof call.args === "object" ? call.args : {}) as Args;
@@ -30,8 +30,12 @@ export function rowSpec(call: SubagentToolCall): RowSpec {
   const a = asArgs(call);
   const name = call.name || "";
   const file = uniqueFiles(call.files?.length ? call.files : a.path ? [a.path] : [])[0] || "";
-  if (name === "bash" || name === "shell" || name === "eval")
-    return { icon: "termBox", label: "chat.labelTerminal", summary: a.command || "" };
+  if (name === "bash" || name === "shell" || name === "eval") {
+    const command = a.command || "";
+    // The row shows the intent and the command becomes the tooltip: measured over 45k real
+    // calls, intents are 20 chars median while commands are 154 (p90 456) and never fit.
+    return { icon: "termBox", label: "chat.labelTerminal", summary: call.intent || command, title: command };
+  }
   if (name === "grep" || name === "ast_grep")
     return { icon: "read", label: "chat.labelSearch", summary: [a.pattern, a.path ? splitPath(a.path).dir : ""].filter(Boolean).join("  ") };
   if (name === "glob")

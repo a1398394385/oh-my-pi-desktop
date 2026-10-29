@@ -279,6 +279,7 @@ export const streamHandlers = {
           contextTokens: msg.contextTokens,
           contextWindow: msg.contextWindow,
           currentTool: msg.currentTool,
+          currentToolIntent: msg.currentToolIntent,
           currentToolArgs: msg.currentToolArgs,
           currentToolStartMs: msg.currentToolStartMs,
           lastIntent: msg.lastIntent,
@@ -323,7 +324,7 @@ export const streamHandlers = {
         const sub = s.subagents.get(msg.subagentId);
         if (!sub) return;
         if (msg.kind === "turn_start") sub.streaming = true;
-        else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, files: msg.files, toolCallId: msg.toolCallId, running: true, at: Date.now() });
+        else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, intent: msg.intent, files: msg.files, toolCallId: msg.toolCallId, running: true, at: Date.now() });
         else if (msg.kind === "tool_update") {
           // Reverse scans (zero allocation): toolCallId match first, name fallback
           let last: (typeof sub.tools)[number] | undefined;

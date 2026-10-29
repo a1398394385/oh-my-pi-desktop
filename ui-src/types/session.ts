@@ -307,6 +307,7 @@ export interface PendingApproval {
 export interface SubagentToolCall {
   name: string;
   args?: unknown;
+  intent?: string; // model-written `i`, forwarded on the subagent event (same as ToolItem.intent)
   files?: string[];
   toolCallId?: string;
   running: boolean;
@@ -329,6 +330,7 @@ export interface SubagentUsage {
   contextTokens?: number;
   contextWindow?: number;
   currentTool?: string;
+  currentToolIntent?: string; // `i` of the running call (base progress.currentToolIntent)
   currentToolArgs?: unknown;
   currentToolStartMs?: number;
   lastIntent?: string;

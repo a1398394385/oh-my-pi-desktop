@@ -173,7 +173,7 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
                 <Icon name={spec.icon} size={15} />
                 <span className="lbl">{label}</span>
                 {spec.summary ? (
-                  <Ellip className="path" title={spec.summary}>
+                  <Ellip className="path" title={spec.title ?? spec.summary}>
                     {spec.summary}
                   </Ellip>
                 ) : null}
