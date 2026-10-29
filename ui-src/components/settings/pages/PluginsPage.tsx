@@ -279,7 +279,7 @@ export default function PluginsPage() {
                             {(p.contents![g.kind] ?? []).map((item) => (
                               <code key={item.name} className="plug-item" title={item.description || undefined}>
                                 {item.name}
-                                {g.kind === "hooks" && item.description ? <em> · {item.description}</em> : null}
+                                {g.kind === "hooks" && item.runtime ? <em> · {t("settingsPage.plugins.hookRuntimeEvent")}</em> : null}
                               </code>
                             ))}
                           </span>

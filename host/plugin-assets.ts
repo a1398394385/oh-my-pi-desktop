@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 import { readdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { getPluginsDir } from "@oh-my-pi/pi-utils";
 import { H } from "./state.ts";
 import {
@@ -21,6 +22,8 @@ import { validDesktopProjects, nearestProjectOmpDir } from "./asset-paths.ts";
 export interface PluginContentItem {
   name: string;
   description?: string;
+  /** Registered by the extension module at load time (stub-pi probe), not declared on disk */
+  runtime?: boolean;
 }
 
 /**
@@ -234,6 +237,56 @@ function markdownDescription(file: string): Promise<string | undefined> {
     .catch(() => undefined);
 }
 
+// Extension events the desktop host actually dispatches. The SDK emits
+// agent_start/agent_end/session_tree inside session/agent-session.ts and
+// before_agent_start from #prepareAgentStart; the host forwards session_start
+// itself (session-entry-core.ts). Everything else a plugin subscribes to is
+// inert here — `input` in particular is emitted only by the TUI/RPC input
+// controllers, which this app never runs.
+export const DESKTOP_EXTENSION_EVENTS: Record<string, true> = {
+  before_agent_start: true,
+  agent_start: true,
+  agent_end: true,
+  session_tree: true,
+  session_start: true,
+};
+
+// What an extension module registers at load time. Neither commands nor event
+// hooks are declared anywhere on disk: the factory calls
+// `pi.registerCommand()` / `pi.on()` while running, so a stub `pi` is the only
+// way to list what a session actually gets. Same trust level as the base
+// loading the plugin (the module body executes, side effects included); a probe
+// failure degrades to the static contents, it never blanks the row.
+async function probeExtensionSurface(
+  extPaths: string[],
+): Promise<{ kind: "command" | "event"; name: string; description?: string }[]> {
+  const out: { kind: "command" | "event"; name: string; description?: string }[] = [];
+  for (const extPath of extPaths) {
+    try {
+      const mod = (await import(pathToFileURL(extPath).href)) as { default?: unknown };
+      if (typeof mod.default !== "function") continue;
+      // No cache-busting query: the module body runs once per process, the
+      // factory re-runs on every probe (it is stateless by contract).
+      const stub = new Proxy(
+        {},
+        {
+          get: (_target, key) => {
+            if (key === "registerCommand")
+              return (name: string, opts?: { description?: string }) =>
+                out.push({ kind: "command", name, description: opts?.description });
+            if (key === "on") return (event: string) => out.push({ kind: "event", name: event });
+            return () => undefined;
+          },
+        },
+      );
+      await (mod.default as (pi: unknown) => unknown)(stub);
+    } catch {
+      // Probe only — the extension-center/plugin toggle still governs the real load.
+    }
+  }
+  return out;
+}
+
 // Attribute what a plugin package contributes (see PluginContents doc comment)
 async function scanPluginContents(pkgPath: string, manifest: PluginManifestLike): Promise<PluginContents> {
   const contents: PluginContents = {
@@ -279,7 +332,8 @@ async function scanPluginContents(pkgPath: string, manifest: PluginManifestLike)
       return [] as { entry: string; resolvedPath: string | null }[];
     }
   };
-  for (const { resolvedPath } of await manifestEntries("extensions")) {
+  const extensionEntries = await manifestEntries("extensions");
+  for (const { resolvedPath } of extensionEntries) {
     if (resolvedPath) push("extensions", { name: path.basename(resolvedPath) }, resolvedPath);
   }
   for (const { resolvedPath } of await manifestEntries("tools")) {
@@ -290,6 +344,17 @@ async function scanPluginContents(pkgPath: string, manifest: PluginManifestLike)
   }
   for (const { resolvedPath } of await manifestEntries("hooks")) {
     if (resolvedPath) push("hooks", { name: stripExt(path.basename(resolvedPath)) }, resolvedPath);
+  }
+
+  // Extension-registered surface (stub-pi probe): the commands and event hooks a
+  // session really gets from this package. Push after the static scan so a
+  // manifest-declared entry keeps its own path/description.
+  const probePaths = extensionEntries.map((e) => e.resolvedPath).filter((p): p is string => !!p);
+  if (probePaths.length > 0) {
+    for (const item of await probeExtensionSurface(probePaths)) {
+      if (item.kind === "command") push("commands", { name: item.name, description: item.description, runtime: true }, `rt:cmd:${item.name}`);
+      else push("hooks", { name: item.name, description: "event", runtime: true }, `rt:event:${item.name}`);
+    }
   }
 
   // skills/: one skill per <name>/SKILL.md dir (omp-plugins provider convention)

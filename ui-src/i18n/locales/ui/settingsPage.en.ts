@@ -1760,6 +1760,7 @@ export const settingsPageEn = {
     noContents: "This plugin declares no static content; if it ships extension modules, what they inject is decided at runtime.",
     partialLiveTag: "Module live · static entries disabled",
     partialLiveTip: "The plugin's extension modules still run in sessions (source switches do not affect them), but its skills/commands static entries were disabled by an extension-center source switch. Re-enable that source in the extension center.",
+    hookRuntimeEvent: "runtime event",
   },
   // ---- Hooks page (HooksPage.tsx) ----
   hooks: {
@@ -1775,6 +1776,10 @@ export const settingsPageEn = {
     // Two-part note with an inline <code>.omp/hooks/</code> between them
     noHooksTitle: "No hook scripts detected",
     noHooksDescEditor: "No hooks in this scope yet — click \"New hook\" to create one.",
+    pluginHooksGroup: "Plugin event subscriptions",
+    pluginHookHint: "Registered at runtime by the plugin's extension module; follows the plugin switch.",
+    pluginHookLive: "The host dispatches this event",
+    pluginHookInert: "The host does not dispatch this event (TUI/RPC only)",
     hookProject: "Project · {{name}}",
     profileLabel: "Profile",
     enableFirstTip: "Enable the master switch first",

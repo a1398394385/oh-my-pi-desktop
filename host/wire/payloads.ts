@@ -658,6 +658,17 @@ export interface HookAssetItem {
 export interface PluginContentItem {
   name: string;
   description?: string;
+  /** Registered by the extension module at load time (stub-pi probe), not declared on disk */
+  runtime?: boolean;
+}
+
+/** One `pi.on(event)` subscription an installed plugin's extension module registers.
+ * Read-only in the hooks page: it follows the plugin switch and cannot be toggled alone. */
+export interface PluginHookItem {
+  plugin: string;
+  event: string;
+  /** The host dispatches this event; false = the subscription is inert in the desktop app */
+  active: boolean;
 }
 
 /** What a plugin package contributes (host/assets.ts scanPluginContents): manifest-declared
@@ -707,6 +718,8 @@ export interface AgentAssetsPayload {
     profileName?: string;
   };
   hooks: HookAssetItem[];
+  /** Extension-module event subscriptions (`pi.on`) of the installed plugins, profile scope only */
+  pluginHooks: PluginHookItem[];
   mcp: McpAssetsPayload;
   plugins: PluginAssetsPayload;
   flags: { enableMCP: boolean; disableExtensionDiscovery: boolean; computerEnabled: boolean };

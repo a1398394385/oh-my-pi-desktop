@@ -19,7 +19,7 @@ import {
   validDesktopProjects,
 } from "./asset-paths.ts";
 import { loadAllMcpScoped } from "./mcp-assets.ts";
-import { loadPluginsScoped, readHooksEnabled, readPluginsEnabled } from "./plugin-assets.ts";
+import { DESKTOP_EXTENSION_EVENTS, loadPluginsScoped, readHooksEnabled, readPluginsEnabled } from "./plugin-assets.ts";
 
 async function listNamedDirs(dir: string): Promise<{ name: string; path: string }[]> {
   try {
@@ -367,13 +367,22 @@ export async function listAgentAssets() {
       })
       .filter((m) => m.project !== undefined);
   } catch {}
+  const plugins = await loadPluginsScoped();
+  // Plugin event subscriptions are profile-scoped: project plugin roots feed sessions
+  // rooted in that project, and the hooks page lists profile assets only.
+  const pluginHooks = plugins.profile.flatMap((p) =>
+    (p.contents?.hooks ?? [])
+      .filter((h) => h.runtime)
+      .map((h) => ({ plugin: p.name, event: h.name, active: DESKTOP_EXTENSION_EVENTS[h.name] === true })),
+  );
   return {
     memories,
     skills,
     agents,
     hooks,
+    pluginHooks,
     mcp,
-    plugins: await loadPluginsScoped(),
+    plugins,
     flags: { enableMCP: false, disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()), computerEnabled: !!settingsGet(H.settings, "computer.enabled") },
   };
 }

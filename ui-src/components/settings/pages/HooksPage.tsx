@@ -249,6 +249,7 @@ export default function HooksPage() {
   const hostSettings = useAppStore((s) => s.hostSettings);
   const agentAssets = useAppStore((s) => s.agentAssets);
   const hooks = agentAssets?.hooks as HookAssetItem[] | undefined;
+  const pluginHooks = agentAssets?.pluginHooks ?? [];
 
   const [spin, setSpin] = useState(false);
   const [scope, setScope] = useState("profile"); // current scope key ("profile" | "project:<cwd>")
@@ -425,6 +426,31 @@ export default function HooksPage() {
           })
         )}
       </div>
+
+      {pluginHooks.length > 0 && (
+        <>
+          <div className="set-group-tt">{t("settingsPage.hooks.pluginHooksGroup")}</div>
+          <div className="set-card" id="pluginHooksList">
+            {pluginHooks.map((h) => (
+              <div className="srow hook-row" key={`${h.plugin}:${h.event}`}>
+                <div className="srow-tx">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <b>{h.event}</b>
+                    <span className="text-faint text-ui-sm">{h.plugin}</span>
+                  </div>
+                  <span>{t("settingsPage.hooks.pluginHookHint")}</span>
+                </div>
+                <div
+                  className={"tg" + (h.active ? " on" : "") + " disabled"}
+                  title={h.active ? t("settingsPage.hooks.pluginHookLive") : t("settingsPage.hooks.pluginHookInert")}
+                >
+                  <i></i>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

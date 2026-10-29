@@ -1730,6 +1730,7 @@ export const settingsPageZh = {
     noContents: "该插件没有静态声明内容；如带扩展模块，其注入内容在运行时决定。",
     partialLiveTag: "模块运行 · 静态条目已禁",
     partialLiveTip: "插件的扩展模块仍在会话中运行（不受来源开关影响），但其技能/命令等静态条目被拓展中心的来源开关禁用。到拓展中心打开对应来源可恢复。",
+    hookRuntimeEvent: "运行时事件",
   },
   // ---- Hooks page (HooksPage.tsx) ----
   hooks: {
@@ -1745,6 +1746,10 @@ export const settingsPageZh = {
     // Two-part note with an inline <code>.omp/hooks/</code> between them
     noHooksTitle: "未检测到钩子脚本",
     noHooksDescEditor: "当前作用域暂无钩子，点击「新建钩子」创建。",
+    pluginHooksGroup: "插件事件订阅",
+    pluginHookHint: "由插件扩展模块运行时注册，随插件启停，不可单独开关。",
+    pluginHookLive: "宿主会派发此事件",
+    pluginHookInert: "宿主不派发此事件（仅 TUI/RPC 派发）",
     hookProject: "项目 · {{name}}",
     profileLabel: "Profile",
     enableFirstTip: "请先开启总开关",
