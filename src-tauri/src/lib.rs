@@ -604,11 +604,13 @@ pub fn run() {
         // workers) — the hidden close-to-background instances used to
         // accumulate unbounded otherwise.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // A toast click on a running instance arrives here as the protocol URI.
+            #[cfg(windows)]
+            notify::open_from_args(app, _argv);
             show_main_window(app);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_notification::init())
         // Auto-update. The updater verifies every downloaded bundle against the minisign
         // pubkey in tauri.conf.json before installing, so this plugin is the only path by
         // which new code enters an installed app. Restarting afterwards uses core Tauri's
@@ -642,8 +644,12 @@ pub fn run() {
         .manage(cell.clone())
         .manage(child_cell.clone())
         .setup(move |app| {
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             notify::install(app.handle());
+            // A toast click that cold-started this process carries the session as argv;
+            // the frontend listener may not exist yet, so notify holds it until it does.
+            #[cfg(windows)]
+            notify::open_from_args(app.handle(), std::env::args());
             // Window becomes visible here, after the window-state plugin has restored
             // the saved geometry (config visible:false hides the pre-restore flash of
             // the default 1280x820 frame). No manual reset anymore — geometry persists.

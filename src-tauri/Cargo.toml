@@ -21,13 +21,14 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
-tauri-plugin-notification = "2"
 tauri-plugin-window-state = "2"
 # Auto-update: check/download/install the release bundle. Restarting afterwards
 # uses core Tauri (AppHandle::restart), so tauri-plugin-process is not needed.
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Toast click URIs (src/notify.rs) carry a session path as one argv argument.
+percent-encoding = "2"
 # FFT for the message-rail music reactive effect (WASAPI loopback on Windows,
 # ScreenCaptureKit on macOS — both feed the shared analyzer in src/audio/).
 rustfft = "6"
@@ -55,7 +56,7 @@ objc2-user-notifications = { version = "0.3", default-features = false, features
 # other platforms keep compiling without pulling the Windows SDK crates in.
 [target.'cfg(windows)'.dependencies]
 wasapi = "0.25"
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Diagnostics_Debug"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_System_Diagnostics_Debug", "Win32_System_Registry", "UI_Notifications", "Data_Xml_Dom"] }
 
 # Test-only: mock runtime drives the real IPC pipeline in the invoke-route test
 # (lib.rs tests). Feature unification applies only to `cargo test` builds.
