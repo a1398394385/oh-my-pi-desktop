@@ -97,6 +97,7 @@
     "vite": "^8.3.0"
   },
   "patchedDependencies": {
+    "@oh-my-pi/omp-stats@18.13.1": "patches/@oh-my-pi%2Fomp-stats@18.13.1.patch",
     "@oh-my-pi/pi-ai@18.13.1": "patches/@oh-my-pi%2Fpi-ai@18.13.1.patch",
     "@oh-my-pi/pi-coding-agent@18.13.1": "patches/@oh-my-pi%2Fpi-coding-agent@18.13.1.patch"
   }

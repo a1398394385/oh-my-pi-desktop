@@ -85,7 +85,10 @@ const ALLOWED_EDGES = new Set([
   "acp-gain.ts→bootstrap.ts", "stats.ts→acp-gain.ts",
   // ACP per-compression rows (usage-stats "ACP" section): acp-stats replays the same
   // journals and needs the SDK's session dir path from bootstrap (getSessionsDir).
-  "acp-stats.ts→bootstrap.ts", "stats.ts→acp-stats.ts",
+  // catalog-cost is the shared leaf that reprices cost-zero requests from the bundled
+  // model catalog (subscription providers record no cost); its only deps are the
+  // catalog package itself.
+  "acp-stats.ts→bootstrap.ts", "stats.ts→acp-stats.ts", "acp-stats.ts→catalog-cost.ts",
   // Extension center (transplanted from /extensions): extensions.ts gets SDK handles via bootstrap and reads H state;
   // main.ts mounts four RPC dispatches (same integration shape as assets.ts)
   "main.ts→extensions.ts", "extensions.ts→bootstrap.ts", "extensions.ts→state.ts",
@@ -276,8 +279,12 @@ const ALLOWED_EDGES = new Set([
   "profile.ts→browser-config.ts", "rpc/settings.ts→browser-config.ts",
   "browser-config.ts→state.ts", "browser-config.ts→bootstrap.ts",
   "frames.ts→browser-config.ts",
-  // Queued message domain: followUp/steering views, park staging plus send-now/requeue/drop
-  "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts",
+  // Queued message domain: followUp/steering views, park staging plus send-now/requeue/drop.
+  // rpc/session reuses visibleQueued for the eviction guard: the busy reason must
+  // count exactly the rows the queue card renders, otherwise hidden queue items
+  // (un-injected next-turn context, advisor cards) refuse eviction with an error
+  // the user cannot act on.
+  "main.ts→queue.ts", "queue.ts→bootstrap.ts", "queue.ts→state.ts", "rpc/session.ts→queue.ts",
   // Experiment switches (acp/sessionContext section) live in omp-desktop.json alongside the profile
   // Frame assembly layer: models/settings frames are shared by multiple rpc domains and main's ready frame
   // (why it is its own layer: settingsFrame combines the models snapshot with profile/assets switches; sinking into either side would create a cycle)

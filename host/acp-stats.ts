@@ -5,14 +5,19 @@
 // else is replayed from the journal's own usage records — the round's extra
 // cost (the context_status and compress_context calls plus the request each one
 // triggers) and the tokens the fold kept out of the requests after it, priced
-// at the compressing model's cache-read rate.
+// at the compressing model's cache-read rate. Requests whose provider recorded
+// no cost (subscription plans) are repriced from the bundled catalog in
+// host/catalog-cost.ts, so those rows still carry an API-equivalent figure.
 //
 // The scan mirrors acp-gain (mtime-cached per journal), with one difference:
 // acp-gain aggregates and can skip lines, this needs the usage stream in
 // journal order, so it parses every message line and derives rows afterwards.
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import type { Usage } from "@oh-my-pi/pi-catalog/types";
 import { getSessionsDir } from "./bootstrap.ts";
+import type { UsagePricer } from "./catalog-cost.ts";
+import { priceUsage } from "./catalog-cost.ts";
 
 const RANGE_MS: Record<string, number> = {
   "1h": 3_600_000,
@@ -41,8 +46,11 @@ export interface AcpCompactionRow {
   statusTokens: number | null;
   /** [compress-hint] injections since the previous compression (or session start); null when not recorded. */
   hints: number | null;
-  /** Tokens of the context_status and compress_context calls plus the request each one triggered. */
-  extraTokens: number;
+  /** Tokens of the context_status and compress_context calls plus the request each one triggered, split by bucket. */
+  extraInput: number;
+  extraOutput: number;
+  extraCacheRead: number;
+  extraCacheWrite: number;
   extraCost: number;
   /** Requests after this compression in the same session (the multiplier behind savedTokens). */
   requestsAfter: number;
@@ -53,13 +61,17 @@ export interface AcpCompactionRow {
 interface UsageSample {
   /** Journal position (monotonic across usage and summary entries). */
   pos: number;
+  provider: string;
   model: string;
+  /** Request timestamp (Unix ms), 0 when the entry recorded none. */
+  timestamp: number;
   totalTokens: number;
-  cost: number;
   input: number;
-  costInput: number;
+  output: number;
   cacheRead: number;
-  costCacheRead: number;
+  cacheWrite: number;
+  /** Recorded cost, repriced from the bundled catalog when the provider reported none. */
+  cost: Usage["cost"];
   tools: Set<string>;
 }
 
@@ -78,7 +90,7 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-function parseUsage(pos: number, message: Record<string, unknown>): UsageSample | null {
+function parseUsage(pos: number, message: Record<string, unknown>, price?: UsagePricer): UsageSample | null {
   if (message.role !== "assistant") return null;
   const usage = asRecord(message.usage);
   if (!usage) return null;
@@ -88,21 +100,44 @@ function parseUsage(pos: number, message: Record<string, unknown>): UsageSample 
     const c = asRecord(block);
     if (c && c.type === "toolCall" && typeof c.name === "string") tools.add(c.name);
   }
+  const provider = typeof message.provider === "string" ? message.provider : "";
+  const model = typeof message.model === "string" ? message.model : "unknown";
+  const timestamp = num(message.timestamp);
+  const tokens = {
+    input: num(usage.input),
+    output: num(usage.output),
+    cacheRead: num(usage.cacheRead),
+    cacheWrite: num(usage.cacheWrite),
+    totalTokens: num(usage.totalTokens),
+  };
+  const recorded: Usage["cost"] = {
+    input: num(cost?.input),
+    output: num(cost?.output),
+    cacheRead: num(cost?.cacheRead),
+    cacheWrite: num(cost?.cacheWrite),
+    total: num(cost?.total),
+  };
+  // A recorded zero is unknown spend for subscription/free-tier providers, not a
+  // free request: the bundled catalog's list rate keeps the row an API-equivalent
+  // estimate. Tokens with no billable catalog row stay at zero.
+  const repriced = recorded.total === 0 && tokens.totalTokens > 0 ? price?.(provider, model, { ...tokens, cost: recorded }, timestamp) : null;
   return {
     pos,
-    model: typeof message.model === "string" ? message.model : "unknown",
-    totalTokens: num(usage.totalTokens),
-    cost: num(cost?.total),
-    input: num(usage.input),
-    costInput: num(cost?.input),
-    cacheRead: num(usage.cacheRead),
-    costCacheRead: num(cost?.cacheRead),
+    provider,
+    model,
+    timestamp,
+    ...tokens,
+    cost: repriced ?? recorded,
     tools,
   };
 }
 
-/** Derive rows for one journal. Pure over the file text, so the journal walk is testable in isolation. */
-export function parseAcpStatsJournal(text: string): AcpCompactionRow[] {
+/**
+ * Derive rows for one journal. Pure over the file text, so the journal walk is
+ * testable in isolation; `price` supplies the catalog list rate used to reprice
+ * requests whose provider reported no cost.
+ */
+export function parseAcpStatsJournal(text: string, price?: UsagePricer): AcpCompactionRow[] {
   const usage: UsageSample[] = [];
   const summaries: Array<{ id: string; pos: number; meta: Record<string, unknown> | null }> = [];
   let cwd: string | null = null;
@@ -122,7 +157,7 @@ export function parseAcpStatsJournal(text: string): AcpCompactionRow[] {
     }
     if (entry.type === "message") {
       const message = asRecord(entry.message);
-      const sample = message ? parseUsage(pos, message) : null;
+      const sample = message ? parseUsage(pos, message, price) : null;
       if (sample) usage.push(sample);
       pos++;
     } else if (entry.type === "custom" && entry.customType === "acpSummary") {
@@ -169,12 +204,14 @@ export function parseAcpStatsJournal(text: string): AcpCompactionRow[] {
     // input rate is the closest same-model figure (never a foreign model's).
     const cacheReadPrice =
       compress && compress.cacheRead > 0
-        ? compress.costCacheRead / compress.cacheRead
+        ? compress.cost.cacheRead / compress.cacheRead
         : compress && compress.input > 0
-          ? compress.costInput / compress.input
+          ? compress.cost.input / compress.input
           : 0;
     const savedTokens = compressedTokens * requestsAfter;
     const telemetry = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const extraTokens = (bucket: "input" | "output" | "cacheRead" | "cacheWrite") =>
+      [...extra].reduce((n, u) => n + u[bucket], 0);
     rows.push({
       id: summary.id,
       createdAt,
@@ -185,8 +222,11 @@ export function parseAcpStatsJournal(text: string): AcpCompactionRow[] {
       summaryTokens: telemetry(meta.summaryTokens),
       statusTokens: telemetry(meta.statusTokens),
       hints: telemetry(meta.hints),
-      extraTokens: [...extra].reduce((n, u) => n + u.totalTokens, 0),
-      extraCost: [...extra].reduce((n, u) => n + u.cost, 0),
+      extraInput: extraTokens("input"),
+      extraOutput: extraTokens("output"),
+      extraCacheRead: extraTokens("cacheRead"),
+      extraCacheWrite: extraTokens("cacheWrite"),
+      extraCost: [...extra].reduce((n, u) => n + u.cost.total, 0),
       requestsAfter,
       savedTokens,
       savedCost: savedTokens * cacheReadPrice,
@@ -195,12 +235,15 @@ export function parseAcpStatsJournal(text: string): AcpCompactionRow[] {
   return rows;
 }
 
-async function scanFile(path: string): Promise<FileScan> {
+async function scanFile(path: string, price?: UsagePricer): Promise<FileScan> {
+  // Journals are append-only, so a matching mtime is a hit; the priced flag keeps
+  // a cached unpriced scan from serving a later priced request for the same file.
+  const key = `${price ? "p" : "r"}:${path}`;
   const mtimeMs = (await stat(path)).mtimeMs;
-  const cached = scanCache.get(path);
+  const cached = scanCache.get(key);
   if (cached && cached.mtimeMs === mtimeMs) return cached;
-  const scan: FileScan = { mtimeMs, rows: parseAcpStatsJournal(await readFile(path, "utf-8")) };
-  scanCache.set(path, scan);
+  const scan: FileScan = { mtimeMs, rows: parseAcpStatsJournal(await readFile(path, "utf-8"), price) };
+  scanCache.set(key, scan);
   return scan;
 }
 
@@ -226,7 +269,7 @@ export async function collectAcpCompactionStats(range?: string | null): Promise<
       const path = join(root, dir, file);
       try {
         if ((await stat(path)).mtimeMs < cutoff) continue; // coarse prefilter; rows re-check createdAt
-        for (const row of (await scanFile(path)).rows) {
+        for (const row of (await scanFile(path, priceUsage)).rows) {
           if (row.createdAt >= cutoff) rows.push(row);
         }
       } catch {

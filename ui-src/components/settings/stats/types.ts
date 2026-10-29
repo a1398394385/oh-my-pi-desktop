@@ -94,7 +94,11 @@ export interface AcpCompactionRow {
   summaryTokens: number | null;
   statusTokens: number | null;
   hints: number | null;
-  extraTokens: number;
+  /** Extra tokens split by bucket: the status/compress calls plus the request each one triggered. */
+  extraInput: number;
+  extraOutput: number;
+  extraCacheRead: number;
+  extraCacheWrite: number;
   extraCost: number;
   requestsAfter: number;
   savedTokens: number;

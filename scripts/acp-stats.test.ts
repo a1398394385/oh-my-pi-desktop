@@ -5,7 +5,9 @@
 // saving multiplier (requests after the fold) at the model's cache-read rate.
 // Run: OMP_PROFILE=omp-desktop-test bun test --pool=forks --poolOptions.forks.singleFork scripts/acp-stats.test.ts
 import { describe, expect, test } from "bun:test";
+import type { Usage } from "@oh-my-pi/pi-catalog/types";
 import { parseAcpStatsJournal } from "../host/acp-stats.ts";
+import { priceUsage, type UsagePricer } from "../host/catalog-cost.ts";
 
 type Line = Record<string, unknown>;
 
@@ -100,7 +102,10 @@ describe("parseAcpStatsJournal", () => {
     expect(row.statusTokens).toBe(300);
     expect(row.hints).toBe(2);
     // status (m1) + next request (m2) + compress (m2, deduped) + next request (m4)
-    expect(row.extraTokens).toBe(1000 + 2000 + 3000);
+    expect(row.extraInput).toBe(300);
+    expect(row.extraOutput).toBe(30);
+    expect(row.extraCacheRead).toBe(1000);
+    expect(row.extraCacheWrite).toBe(0);
     expect(row.extraCost).toBeCloseTo(0.01 + 0.02 + 0.03, 10);
     // One request after the fold; saving priced at the compress call's cache-read rate.
     expect(row.requestsAfter).toBe(1);
@@ -113,7 +118,7 @@ describe("parseAcpStatsJournal", () => {
     const rows = parseAcpStatsJournal(
       journal(both, summary("s-2", { tokensBefore: 50, tokensAfter: 40 }), afterCompress),
     );
-    expect(rows[0].extraTokens).toBe(1000 + 3000);
+    expect(rows[0].extraInput).toBe(200);
     expect(rows[0].extraCost).toBeCloseTo(0.04, 10);
   });
 
@@ -129,5 +134,41 @@ describe("parseAcpStatsJournal", () => {
   test("torn tail lines and non-ACP lines are ignored", () => {
     const text = `${journal(summary("s-4", { tokensBefore: 10, tokensAfter: 4 }))}\n{"type":"message","id":"torn"`;
     expect(parseAcpStatsJournal(text).map((r) => r.id)).toEqual(["s-4"]);
+  });
+
+  test("a zero recorded cost is repriced from the supplied catalog rate", () => {
+    const free = assistant("m1", ["context_status"], { totalTokens: 1000, costTotal: 0 });
+    const atListRate: UsagePricer = (_provider, _model, usage) => ({
+      input: usage.input / 1000,
+      output: usage.output / 1000,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: (usage.input + usage.output) / 1000,
+    });
+    const rows = parseAcpStatsJournal(journal(free, summary("s-5", { tokensBefore: 10, tokensAfter: 4 })), atListRate);
+    // 100 input + 10 output tokens at 1e-3 each.
+    expect(rows[0].extraCost).toBeCloseTo(0.11, 10);
+  });
+});
+
+describe("catalog pricing fallback", () => {
+  const usage = (input: number, output: number, cacheRead: number, cacheWrite: number): Usage => ({
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    totalTokens: input + output + cacheRead + cacheWrite,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  });
+
+  test("a subscription 0 card is priced at the same id's list rate", () => {
+    // zhipu-coding-plan carries an explicit 0 card; the bundled `zai` row prices
+    // the model at list rate, which is what an API-equivalent estimate reports.
+    const cost = priceUsage("zhipu-coding-plan", "glm-5.3", usage(1_000_000, 0, 0, 0), 0);
+    expect(cost?.total ?? 0).toBeGreaterThan(0);
+  });
+
+  test("a model no bundled row prices stays at zero", () => {
+    expect(priceUsage("kimi-code", "k3.1-pro", usage(1000, 100, 0, 0), 0)).toBeNull();
   });
 });

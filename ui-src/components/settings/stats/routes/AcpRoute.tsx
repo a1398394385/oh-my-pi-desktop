@@ -83,13 +83,46 @@ export function AcpRoute({ active, range }: AcpRouteProps) {
         render: (row) => <span className="stats-num">{unknown(row.hints)}</span>,
       },
       {
-        key: "extraTokens",
-        header: t("settingsPage.stats.acp.colExtraTokens"),
+        key: "extraInput",
+        header: t("settingsPage.stats.acp.colExtraInput"),
         align: "right",
-        sort: (row) => row.extraTokens,
+        sort: (row) => row.extraInput,
         render: (row) => (
-          <span className="stats-num" title={formatInteger(row.extraTokens)}>
-            {formatCompact(row.extraTokens)}
+          <span className="stats-num" title={formatInteger(row.extraInput)}>
+            {formatCompact(row.extraInput)}
+          </span>
+        ),
+      },
+      {
+        key: "extraOutput",
+        header: t("settingsPage.stats.acp.colExtraOutput"),
+        align: "right",
+        sort: (row) => row.extraOutput,
+        render: (row) => (
+          <span className="stats-num" title={formatInteger(row.extraOutput)}>
+            {formatCompact(row.extraOutput)}
+          </span>
+        ),
+      },
+      {
+        key: "extraCacheRead",
+        header: t("settingsPage.stats.acp.colExtraCacheRead"),
+        align: "right",
+        sort: (row) => row.extraCacheRead,
+        render: (row) => (
+          <span className="stats-num" title={formatInteger(row.extraCacheRead)}>
+            {formatCompact(row.extraCacheRead)}
+          </span>
+        ),
+      },
+      {
+        key: "extraCacheWrite",
+        header: t("settingsPage.stats.acp.colExtraCacheWrite"),
+        align: "right",
+        sort: (row) => row.extraCacheWrite,
+        render: (row) => (
+          <span className="stats-num" title={formatInteger(row.extraCacheWrite)}>
+            {formatCompact(row.extraCacheWrite)}
           </span>
         ),
       },
