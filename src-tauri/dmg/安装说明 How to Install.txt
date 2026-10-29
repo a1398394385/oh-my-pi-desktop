@@ -1,0 +1,21 @@
+安装 omp desktop
+
+1. 把 omp desktop 拖进「应用程序」（Applications）文件夹。
+2. omp desktop 暂未经过 Apple 公证，第一次打开前，在「终端」里执行：
+
+   xattr -dr com.apple.quarantine "/Applications/omp desktop.app"
+
+   或者在「应用程序」里对 omp desktop 右键 →「打开」→「打开」。
+3. 打开 omp desktop。之后它会自己更新，不用再执行这一步。
+
+How to install omp desktop
+
+1. Drag omp desktop into the Applications folder.
+2. omp desktop is not notarized by Apple yet. Before opening it the first time,
+   run this in Terminal:
+
+   xattr -dr com.apple.quarantine "/Applications/omp desktop.app"
+
+   Or right-click omp desktop in Applications, then Open -> Open.
+3. Open omp desktop. It updates itself from then on, so this step is never
+   needed again.

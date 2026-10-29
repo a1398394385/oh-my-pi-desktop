@@ -120,6 +120,19 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+      # Tauri cannot put extra files into a dmg, and its bundling-time Finder AppleScript leaves
+      # the image without a .DS_Store (no background, no icon positions). Both are fixed here, so
+      # this must stay after the tauri-action step and before `publish` flips the draft.
+      - name: Inject install note into the dmg
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          bun scripts/dmg-notes.ts
+          gh release upload "$RELEASE_TAG" src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg --clobber --repo "$GITHUB_REPOSITORY"
+
   # Two-phase publish: the draft is invisible to releases/latest (and therefore to
   # latest.json and the updater), so installed copies only ever see a release whose
   # every platform asset finished uploading.

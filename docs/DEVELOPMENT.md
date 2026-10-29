@@ -100,9 +100,12 @@ bun x tauri build --config src-tauri/tauri.windows.conf.json
 # macOS
 export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"
 APPLE_SIGNING_IDENTITY="-" bun x tauri build
+bun scripts/dmg-notes.ts    # CI does this automatically; local builds need it to get the install note
 ```
 
 The key generated on macOS also works on Windows (the key itself is platform-independent, empty password); when switching machines, copy `~/.tauri/omp-desktop.key` + `.pub` into `~/.tauri/` on the new machine.
+
+The dmg artwork lives in `src-tauri/dmg/` (`background.png` + `安装说明 How to Install.txt`). Tauri cannot put extra files into a dmg and its own bundling-time Finder AppleScript silently fails on machines without an interactive Finder session (measured: no `.DS_Store` in the image, so neither background nor icon positions applied), so `scripts/dmg-notes.ts` does the whole job after bundling: hdiutil UDRW → copy note and background → Finder AppleScript (window size, icon positions) → UDZO. The release workflow re-uploads the rewritten dmg into the draft release. If no Finder session is available the script warns and ships the dmg without layout instead of failing.
 
 User-facing update entry point: Settings → General → App → "Check for Updates".
 

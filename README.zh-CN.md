@@ -104,7 +104,7 @@ omp desktop 把 omp SDK 作为库内嵌：单个 Bun 宿主进程用会话池持
 
 从 [Releases](https://github.com/a1398394385/oh-my-pi-desktop/releases/latest) 下载安装包。
 
-**macOS（Apple Silicon）**——打开 `.dmg` 把应用拖进「应用程序」。安装包是 ad-hoc 签名，首次打开需要任选其一：
+**macOS（Apple Silicon）**——打开 `.dmg` 把应用拖进「应用程序」，镜像内含「安装说明 How to Install.txt」。安装包是 ad-hoc 签名，首次打开需要任选其一：
 
 - 右键应用 →「打开」→「打开」，或
 - 执行 `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`

@@ -104,7 +104,7 @@ A 28-page settings center with search that jumps to and highlights any key. Real
 
 Download a build from [Releases](https://github.com/a1398394385/oh-my-pi-desktop/releases/latest).
 
-**macOS (Apple Silicon)** — open the `.dmg` and drag the app to Applications. Builds are ad-hoc signed, so the first launch needs one of:
+**macOS (Apple Silicon)** — open the `.dmg` and drag the app to Applications; the image also carries a bilingual install note (`安装说明 How to Install.txt`). Builds are ad-hoc signed, so the first launch needs one of:
 
 - Right-click the app → Open → Open, or
 - `xattr -dr com.apple.quarantine /Applications/omp\ desktop.app`
