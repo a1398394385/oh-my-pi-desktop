@@ -12,7 +12,7 @@ import { t } from "../../i18n";
 // Enter key-swallow window for IME candidate confirmation, mirroring the composer's
 // ComposerPlugin.IME_COMMIT_ENTER_WINDOW_MS (WebKit fires compositionend before the
 // confirming keydown; same quirk the composer guards against): keep the two in sync.
-const IME_COMMIT_ENTER_WINDOW_MS = 500;
+const IME_COMMIT_ENTER_WINDOW_MS = 250;
 
 // Left-side action group of a pending-consumption bubble: queued state (send now / edit /
 // delete) | steer state (edit / requeue to top)

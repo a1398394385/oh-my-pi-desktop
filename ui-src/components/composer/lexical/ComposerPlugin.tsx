@@ -47,7 +47,10 @@ import { saveDraft, getDraftText, recallHistory, resetHistoryCursor } from "./dr
 // 500ms so a slow candidate-panel commit on a loaded main thread is still
 // caught; swallowing is one-shot, so a deliberate Enter right after
 // confirmation still sends)
-const IME_COMMIT_ENTER_WINDOW_MS = 500;
+// TEMP: 500ms caused false swallows of a fast send-Enter right after an IME
+// candidate commit; 250ms pending field measurement of the real gap (see the
+// [ime] diagnostic log in KEY_ENTER_COMMAND).
+const IME_COMMIT_ENTER_WINDOW_MS = 250;
 
 export type ComposerHandle = {
   focus(): void;
@@ -168,6 +171,17 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
             if (typeaheadOpenRef.current) return false;
             if (!ev || ev.shiftKey) return false;
             const imeCommitAt = imeCommitAtRef.current;
+            // TEMP diag: calibrate the compositionend→Enter gap. dt = none when no
+            // compositionend is on record; keyCode 229 marks a WebKit candidate commit.
+            // Also POSTs to the host's loopback /debug-log (release builds have no
+            // DevTools): the line lands in <agentDir>/ime-enter.log. Best-effort.
+            {
+              const line = `dt=${imeCommitAt ? Math.round(ev.timeStamp - imeCommitAt) : "none"} key=${ev.key} keyCode=${ev.keyCode} composing=${ev.isComposing} at=${new Date().toISOString()}`;
+              console.log(`[ime] ${line}`);
+              const wsUrl = useAppStore.getState().ws?.url;
+              // WebSocket.url is normalized with a trailing slash → build through URL
+              if (wsUrl) void fetch(new URL("/debug-log", wsUrl.replace(/^ws/, "http")), { method: "POST", body: line }).catch(() => {});
+            }
             if (imeCommitAt !== 0 && Math.abs(ev.timeStamp - imeCommitAt) < IME_COMMIT_ENTER_WINDOW_MS) {
               imeCommitAtRef.current = 0;
               ev.preventDefault();
