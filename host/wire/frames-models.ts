@@ -424,3 +424,26 @@ export interface BrowserMirrorFrame {
   h?: number; // height, same unit
   s?: number; // page scale factor; CSS px = device px / s
 }
+
+/** Element under the picker pointer (host/browser-mirror.ts DOM/CSS domains; page CSS px) */
+export interface BrowserPickedElement {
+  tag: string;
+  id: string;
+  classes: string[];
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+  background: string;
+  fontFamily: string;
+  fontSize: string;
+  html: string; // outerHTML, capped by the host
+}
+
+/** Element-picker probe reply (host/browser-mirror.ts browserMirrorPick; unstamped, probe-rate) */
+export interface BrowserPickFrame {
+  type: "browser_pick";
+  name: string;
+  element: BrowserPickedElement | null; // null: nothing resolvable under the pointer
+}

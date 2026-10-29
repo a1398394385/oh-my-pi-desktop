@@ -84,6 +84,8 @@ export const rightEn = {
   agentNoMirror: "This tab does not support a live view",
   agentInteract: "Click the view to focus, then interact: click / scroll / type",
   agentNoTab: "(no tab selected)",
+  pickElement: "Pick a page element into the composer",
+  pickHint: "Hover to inspect size and styles, click to insert it, Esc to cancel",
   messageCount_one: "{{count}} item",
   messageCount_other: "{{count}} items",
   backToTree: "‹ File Tree",

@@ -34,6 +34,13 @@ globalThis.matchMedia = (q: string) => ({
 });
 globalThis.location = window.location;
 globalThis.URLSearchParams = window.URLSearchParams;
+// happy-dom checks `event instanceof Event` against its own realm: keep the
+// global constructors pointing at happy-dom's so DOM events created by React /
+// app code are not rejected ("parameter 1 is not of type 'Event'").
+globalThis.Event = window.Event;
+globalThis.CustomEvent = window.CustomEvent;
+globalThis.MouseEvent = window.MouseEvent;
+globalThis.KeyboardEvent = window.KeyboardEvent;
 globalThis.getComputedStyle = window.getComputedStyle.bind(window);
 document.body.innerHTML = '<div id="root"></div>';
 
@@ -72,6 +79,7 @@ interface DbgHook {
 	};
 	landBrowserTabs(tabs: unknown[], active: boolean): Promise<void>;
 	emitBrowserFrame(frame: { name: string; data: string; ts: number; w?: number; h?: number; s?: number }): Promise<void>;
+	emitBrowserPick(frame: { name: string; element: unknown }): Promise<void>;
 }
 const dbg = (window as unknown as { __dbg?: DbgHook }).__dbg;
 if (!dbg) throw new Error("__dbg hook missing (preview mode?)");
@@ -146,6 +154,58 @@ const enterFrame = inputFrames.find((m) => m.op === "key" && m.key === "enter");
 ok("input: mouse press posted with mapped page coords", mouseDown !== undefined && mouseDown.x === 600 && mouseDown.y === 400, JSON.stringify(mouseDown));
 ok("input: printable key posted as text op", textFrame !== undefined && textFrame.text === "a", JSON.stringify(textFrame));
 ok("input: Enter posted as key down/up pair", inputFrames.filter((m) => m.op === "key" && m.key === "enter").length >= 2, JSON.stringify(enterFrame));
+
+// ---- Element picker: toolbar toggle -> hover probe -> click writes the block
+// into the composer and drops the page-side highlight ----
+const pickBtn = [...document.querySelectorAll(".bpane-bar .icon-btn")].find((b) =>
+  (b.getAttribute("title") ?? "").includes("选择网页元素"),
+) as HTMLButtonElement | undefined;
+ok("picker: toolbar toggle renders enabled", !!pickBtn && !pickBtn.disabled);
+pickBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+await sleep(60);
+ok("picker: view enters picking state", ($(".bpane-liveview")?.className ?? "").includes("picking"));
+
+captured.length = 0;
+view?.dispatchEvent(new window.MouseEvent("mousemove", { bubbles: true, clientX: 300, clientY: 200 }));
+await sleep(80);
+const probe = captured.find((m) => m.type === "browser_pick" && m.op === "probe");
+ok("picker: hover posts a probe with mapped page coords", probe !== undefined && probe.x === 600 && probe.y === 400 && probe.name === "main", JSON.stringify(probe));
+
+// Host probe reply (real CDP pick is covered by smoke:browsermirror).
+await dbg.emitBrowserPick({
+  name: "main",
+  element: {
+    tag: "div",
+    id: "",
+    classes: ["picked"],
+    x: 100,
+    y: 120,
+    w: 365,
+    h: 23,
+    color: "rgb(200, 209, 214)",
+    background: "rgb(51, 51, 51)",
+    fontFamily: "monospace",
+    fontSize: "15px",
+    html: '<div class="picked">hello world</div>',
+  },
+});
+await sleep(60);
+
+const composerWrites: string[] = [];
+dbg.useAppStore.setState({ setComposerValue: (text: string) => composerWrites.push(text) });
+captured.length = 0;
+view?.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true, clientX: 300, clientY: 200, button: 0, detail: 1 }));
+await sleep(80);
+ok(
+  "picker: click inserts the element block into the composer",
+  composerWrites.length === 1 &&
+    composerWrites[0].includes("[element] div.picked 365×23") &&
+    composerWrites[0].includes('<div class="picked">hello world</div>') &&
+    composerWrites[0].includes("url: https://example.com/live"),
+  JSON.stringify(composerWrites[0] ?? null),
+);
+ok("picker: picker closes after the commit", !($(".bpane-liveview")?.className ?? "").includes("picking"));
+ok("picker: commit drops the page-side highlight", captured.some((m) => m.type === "browser_pick" && m.op === "end"));
 
 // ---- Manual browse stays reachable as its own tab (the mode pills are gone) ----
 st = dbg.useAppStore.getState() as { rightTabs: string[] };

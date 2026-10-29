@@ -38,6 +38,20 @@ interface SentFrame {
   w?: number;
   h?: number;
   s?: number;
+  element?: {
+    tag: string;
+    id: string;
+    classes: string[];
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color: string;
+    background: string;
+    fontFamily: string;
+    fontSize: string;
+    html: string;
+  } | null;
 }
 const sent: SentFrame[] = [];
 const fakeWs = {
@@ -158,6 +172,43 @@ try {
   const resized = await waitForFrame((f) => f.type === "browser_frame" && typeof f.data === "string" && f.data.length > 100, 8000);
   check("re-subscribe wider keeps frames flowing", !!resized, resized ? `jpeg ${resized.data?.length}B` : "no frame");
 
+
+  // 4d. Element picker: the probe resolves the node under the page coordinates
+  // (DOM/CSS domains) and the Overlay highlight it paints must land in the
+  // mirrored still — the UI draws no highlight of its own.
+  if (page0 && live0) {
+    await page0
+      .setContent(
+        '<!doctype html><meta charset=utf-8><style>body{margin:0;background:#1e1e1e}</style>' +
+          '<div class="picked" style="position:absolute;left:100px;top:120px;width:365px;height:23px;color:#C8D1D6;background:#333333;font:15px monospace">hello world</div>',
+      )
+      .catch(() => undefined);
+    await sleep(900);
+    const baseline = [...sent].reverse().find((f) => f.type === "browser_frame")?.data?.length ?? 0;
+    mirror.browserMirrorPick("main", "probe", 200, 130);
+    const pick = await waitForFrame((f) => f.type === "browser_pick", 6000);
+    check("picker probe replies with an element", !!pick?.element, JSON.stringify(pick?.element ?? null));
+    check(
+      "picked element carries tag/class/box/styles",
+      pick?.element?.tag === "div" &&
+        pick.element.classes.includes("picked") &&
+        pick.element.w === 365 &&
+        pick.element.h === 23 &&
+        pick.element.color === "rgb(200, 209, 214)" &&
+        pick.element.fontSize === "15px" &&
+        pick.element.html.includes("hello world"),
+      JSON.stringify(pick?.element ?? null),
+    );
+    await sleep(500);
+    const highlighted = [...sent].reverse().find((f) => f.type === "browser_frame")?.data?.length ?? 0;
+    check("picker highlight lands in the mirrored still", highlighted > baseline * 1.3, `${baseline}B -> ${highlighted}B`);
+    mirror.browserMirrorPick("main", "end", 0, 0);
+    await sleep(600);
+    const reverted = [...sent].reverse().find((f) => f.type === "browser_frame")?.data?.length ?? 0;
+    check("picker end drops the highlight from the still", reverted < highlighted * 0.9, `${highlighted}B -> ${reverted}B`);
+  } else {
+    check("picker probe replies with an element", false, "page or browser handle missing");
+  }
 
   // 5. Unsubscribe must stop the stream (no further stills after a grace period).
   const countAtUnsub = sent.filter((f) => f.type === "browser_frame").length;

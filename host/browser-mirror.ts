@@ -243,6 +243,123 @@ function dispatchInput(input: MirrorInput, cdp: CDPSession): void {
 	}
 }
 
+// ---------- Element picker (UI -> CDP DOM/CSS/Overlay domains) ----------
+// DevTools' own inspect flow, riding the mirror's CDP session: DOM.getNodeForLocation
+// resolves the node under the pointer, Overlay.highlightNode paints the inspector's
+// highlight + info card, and both land in the screencast stills the UI already shows
+// (measured: highlight frames 5.4KB -> 22.3KB jpeg, hideHighlight reverts), so the
+// picker needs no UI-side rendering at all.
+// DOM.getDocument must run first: without it getNodeForLocation omits nodeId and
+// pushNodesByBackendIdsToFrontend rejects with "Document needs to be requested".
+export interface PickedElement {
+	tag: string;
+	id: string;
+	classes: string[];
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+	color: string;
+	background: string;
+	fontFamily: string;
+	fontSize: string;
+	html: string;
+}
+
+const pickReady = new WeakSet<CDPSession>();
+// One-off stderr line per failure episode: probe runs on every pointer move, so an
+// unlatched log would flood while the target is navigating.
+let pickFailed = false;
+
+export function browserMirrorPick(name: string, op: "probe" | "end", x: number, y: number): void {
+	const current = attachment;
+	if (!current || current.name !== name || !subscribed) return;
+	if (op === "end") {
+		void current.cdp.send("Overlay.hideHighlight").catch(() => undefined);
+		return;
+	}
+	void probeElement(current.cdp, x, y)
+		.then((element) => {
+			pickFailed = false;
+			sendPick(current.name, element);
+		})
+		.catch((err) => {
+			if (!pickFailed) {
+				pickFailed = true;
+				safeStderr(`[browser-pick] probe failed (target navigating or gone): ${err}\n`);
+			}
+			sendPick(current.name, null);
+		});
+}
+
+function sendPick(name: string, element: PickedElement | null): void {
+	if (!uiWs) return;
+	try {
+		uiWs.send(JSON.stringify({ type: "browser_pick", name, element }));
+	} catch {
+		// dead connection: main.ts close() clears uiWs
+	}
+}
+
+async function probeElement(cdp: CDPSession, x: number, y: number): Promise<PickedElement | null> {
+	if (!pickReady.has(cdp)) {
+		await cdp.send("DOM.enable");
+		await cdp.send("CSS.enable");
+		await cdp.send("Overlay.enable");
+		await cdp.send("DOM.getDocument", { depth: 1 });
+		pickReady.add(cdp);
+	}
+	const loc = await cdp.send("DOM.getNodeForLocation", { x, y, includeUserAgentShadowDOM: false });
+	if (!loc.backendNodeId) return null;
+	const { node } = await cdp.send("DOM.describeNode", { backendNodeId: loc.backendNodeId });
+	const { model } = await cdp.send("DOM.getBoxModel", { backendNodeId: loc.backendNodeId });
+	// Computed styles are keyed by frontend nodeId (backend ids are rejected);
+	// getNodeForLocation only carries one after DOM.getDocument, so treat its
+	// absence as "no style block" rather than failing the pick.
+	const computed = loc.nodeId
+		? (await cdp.send("CSS.getComputedStyleForNode", { nodeId: loc.nodeId })).computedStyle
+		: [];
+	const style = (prop: string): string => computed.find((s) => s.name === prop)?.value ?? "";
+	const { outerHTML } = await cdp.send("DOM.getOuterHTML", { backendNodeId: loc.backendNodeId });
+	// showStyles alone fills the card's Color/Font/Background rows (verified against
+	// the DevTools UI); fontFamily/fontSize are not protocol fields and are ignored.
+	await cdp.send("Overlay.highlightNode", {
+		backendNodeId: loc.backendNodeId,
+		highlightConfig: {
+			showInfo: true,
+			showStyles: true,
+			contentColor: { r: 111, g: 168, b: 220, a: 0.66 },
+			colorFormat: "hex",
+		},
+	});
+	const attrs = node.attributes ?? [];
+	const attr = (name: string): string => {
+		const i = attrs.indexOf(name);
+		return i >= 0 ? (attrs[i + 1] ?? "") : "";
+	};
+	// border quad: 8 numbers, clockwise from top-left; the box is its bounds.
+	const quad = model.border;
+	const xs = [quad[0], quad[2], quad[4], quad[6]];
+	const ys = [quad[1], quad[3], quad[5], quad[7]];
+	const left = Math.min(...xs);
+	const top = Math.min(...ys);
+	return {
+		tag: node.nodeName.toLowerCase(),
+		id: attr("id"),
+		classes: attr("class").split(/\s+/).filter(Boolean),
+		x: Math.round(left),
+		y: Math.round(top),
+		w: Math.round(Math.max(...xs) - left),
+		h: Math.round(Math.max(...ys) - top),
+		color: style("color"),
+		background: style("background-color"),
+		fontFamily: style("font-family"),
+		fontSize: style("font-size"),
+		// Cap: a picked <body>/<svg> can carry megabytes of markup into the composer.
+		html: outerHTML.slice(0, 2000),
+	};
+}
+
 // ---------- Poll: registry snapshot + diff + attach reconciliation ----------
 async function poll(): Promise<void> {
 	try {

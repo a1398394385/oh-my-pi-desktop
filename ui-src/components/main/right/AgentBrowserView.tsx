@@ -15,9 +15,24 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { useTranslation } from "react-i18next";
 import Icon from "../../../Icon";
 import { useAppStore, type TimerHandle, effZoom } from "../../../store";
-import { onBrowserFrame } from "../../../store/browserMirror";
-import type { BrowserTabInfo } from "../../../types/frames";
+import { onBrowserFrame, onBrowserPick } from "../../../store/browserMirror";
+import type { BrowserPickedElement, BrowserTabInfo } from "../../../types/frames";
+import { getDraftText } from "../../composer/lexical/draft";
 import { BrowserModePills, displayBrowserUrl, openExternal, SPECIAL_KEY_NAMES } from "./BrowserPage";
+
+// Picked element as composer text: a data-only header (selector, box, colors,
+// font, page URL) the Agent can map back to the page, plus the markup that
+// produced it. Deliberately prose-free — it needs no translation and stays
+// editable after insertion.
+function pickedText(el: BrowserPickedElement, url: string): string {
+  const selector = el.tag + (el.id ? `#${el.id}` : "") + el.classes.map((c) => `.${c}`).join("");
+  const lines = [`[element] ${selector} ${el.w}×${el.h}`];
+  if (el.color) lines.push(`color: ${el.color}`);
+  if (el.background) lines.push(`background: ${el.background}`);
+  if (el.fontSize) lines.push(`font: ${el.fontSize} ${el.fontFamily}`);
+  if (url) lines.push(`url: ${url}`);
+  return `${lines.join("\n")}\n\`\`\`html\n${el.html}\n\`\`\``;
+}
 
 export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; others: number }) {
   const { t } = useTranslation();
@@ -26,6 +41,10 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
   const setBrowserMode = useAppStore((s) => s.setBrowserMode);
 
   const [frame, setFrame] = useState<{ data: string; ts: number; w?: number; h?: number; s?: number } | null>(null);
+  // Element picker: `picking` gates pointer capture (the mirror stops forwarding
+  // input to the page), `picked` is the element under the pointer as last probed.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<BrowserPickedElement | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const knownNames = useRef<Set<string> | null>(null);
@@ -122,13 +141,59 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
     return { x: fx * (frame.w / scale), y: fy * (frame.h / scale) };
   };
 
+  // ---- Element picker: the host probes the node under the pointer and paints
+  // the highlight into the screencast stills, so the UI only forwards coordinates
+  // and keeps the last probe result for the commit write ----
+  useEffect(() => {
+    const off = onBrowserPick((f) => {
+      if (f.name !== useAppStore.getState().browserViewTab) return;
+      setPicked(f.element);
+    });
+    return () => {
+      off();
+    };
+  }, []);
+
+  const stopPicking = (): void => {
+    setPicking(false);
+    setPicked(null);
+    if (viewTab) useAppStore.getState().send({ type: "browser_pick", name: viewTab, op: "end" });
+  };
+
+  // Tab switch/unmount drops the page-side highlight too (the close signal is
+  // keyed by tab name, so it has to go out before viewTab moves on).
+  useEffect(() => {
+    if (!picking || !viewTab) return;
+    const name = viewTab;
+    return () => useAppStore.getState().send({ type: "browser_pick", name, op: "end" });
+  }, [picking, viewTab]);
+
+  const commitPick = (): void => {
+    // No resolved element (nothing under the pointer / box model unavailable):
+    // leave the picker instead of swallowing the click.
+    if (!picked) {
+      stopPicking();
+      return;
+    }
+    const draftKey = useAppStore.getState().activePath || "welcome";
+    const prev = getDraftText(draftKey).trimEnd();
+    const block = pickedText(picked, current?.url ?? "");
+    useAppStore.getState().setComposerValue(prev ? `${prev}\n\n${block}` : block, []);
+    stopPicking();
+  };
+
   const onMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.currentTarget.focus();
+    if (picking) {
+      commitPick();
+      return;
+    }
     const p = toPage(e.clientX, e.clientY);
     if (p) sendInput({ op: "mouse", action: "down", x: Math.round(p.x), y: Math.round(p.y), button: buttonName(e.button), count: e.detail });
   };
   const onMouseUp = (e: ReactMouseEvent) => {
+    if (picking) return;
     const p = toPage(e.clientX, e.clientY);
     if (p) sendInput({ op: "mouse", action: "up", x: Math.round(p.x), y: Math.round(p.y), button: buttonName(e.button), count: e.detail });
   };
@@ -137,7 +202,12 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
     if (now - lastMoveAt.current < 60) return;
     lastMoveAt.current = now;
     const p = toPage(e.clientX, e.clientY);
-    if (p) sendInput({ op: "mouse", action: "move", x: Math.round(p.x), y: Math.round(p.y) });
+    if (!p) return;
+    if (picking) {
+      if (viewTab) useAppStore.getState().send({ type: "browser_pick", name: viewTab, op: "probe", x: Math.round(p.x), y: Math.round(p.y) });
+      return;
+    }
+    sendInput({ op: "mouse", action: "move", x: Math.round(p.x), y: Math.round(p.y) });
   };
 
   // Wheel must be non-passive to preventDefault (React's onWheel is passive
@@ -147,15 +217,21 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
     if (!view || !frame) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      if (picking) return; // picking owns the pointer: no page scroll under it
       const p = toPage(e.clientX, e.clientY);
       if (p) sendInput({ op: "wheel", x: Math.round(p.x), y: Math.round(p.y), deltaX: Math.round(e.deltaX), deltaY: Math.round(e.deltaY) });
     };
     view.addEventListener("wheel", onWheel, { passive: false });
     return () => view.removeEventListener("wheel", onWheel);
-  }, [frame, viewTab]);
+  }, [frame, viewTab, picking]);
 
   const onKeyDown = (e: ReactKeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return; // app shortcuts pass through
+    if (picking) {
+      e.preventDefault();
+      if (e.key === "Escape") stopPicking();
+      return;
+    }
     if (e.key.length === 1) {
       e.preventDefault();
       sendInput({ op: "text", text: e.key });
@@ -215,6 +291,14 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
         </div>
         <div className="bpane-spacer" />
         <button
+          className={"icon-btn" + (picking ? " on" : "")}
+          title={picking ? t("right.pickHint") : t("right.pickElement")}
+          disabled={!frame}
+          onClick={() => (picking ? stopPicking() : setPicking(true))}
+        >
+          <Icon name="pick" size={14} />
+        </button>
+        <button
           className="icon-btn"
           title={t("right.openExternal")}
           disabled={!current}
@@ -230,10 +314,10 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
       {/* Viewport: live screencast still (interactive: click/scroll/type are
           forwarded into the page) / connecting / not-mirrorable states */}
       <div
-        className={"bpane-view bpane-liveview" + (frame ? " interactive" : "")}
+        className={"bpane-view bpane-liveview" + (frame ? " interactive" : "") + (picking ? " picking" : "")}
         ref={boxRef}
         tabIndex={frame ? 0 : -1}
-        title={frame ? t("right.agentInteract") : undefined}
+        title={frame ? (picking ? t("right.pickHint") : t("right.agentInteract")) : undefined}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
         onMouseMove={onMouseMove}

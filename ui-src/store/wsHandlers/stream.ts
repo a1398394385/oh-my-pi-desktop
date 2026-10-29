@@ -16,7 +16,7 @@ import { notifyDesktop } from "../notify";
 import type { SessionItem } from "../../types/session";
 import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
-import { emitBrowserFrame } from "../browserMirror";
+import { emitBrowserFrame, emitBrowserPick } from "../browserMirror";
 import { feedTtsDelta, flushTts, playTtsClip, speakNow, stopTts } from "../../lib/speechOut";
 import type { HandlerSlice } from "./types";
 
@@ -510,6 +510,9 @@ export const streamHandlers = {
   },
   browser_frame(msg) {
     emitBrowserFrame(msg);
+  },
+  browser_pick(msg) {
+    emitBrowserPick(msg);
   },
   error(msg) {
     useAppStore.setState((s) => ({

@@ -84,6 +84,8 @@ export const rightZh = {
   agentNoMirror: "该标签页不支持实时画面",
   agentInteract: "点击画面聚焦后可直接操作：点击 / 滚动 / 键盘输入",
   agentNoTab: "（未选择标签页）",
+  pickElement: "选择网页元素加入输入框",
+  pickHint: "指向元素查看看尺寸与样式，点击插入输入框，Esc 取消",
   messageCount: "{{count}} 条",
   backToTree: "‹ 文件树",
   searchFiles: "搜索文件",

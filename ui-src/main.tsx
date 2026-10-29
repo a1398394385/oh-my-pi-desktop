@@ -12,7 +12,7 @@ import { warmupHighlighter } from "./lib/highlighter";
 import { resolveTheme } from "./theme-registry";
 import { landBrowserTabs, restoreRightSlot } from "./store/right";
 import { IS_MAC } from "./platform";
-import { emitBrowserFrame } from "./store/browserMirror";
+import { emitBrowserFrame, emitBrowserPick } from "./store/browserMirror";
 import { syncAudioToPref } from "./components/chat/railAudio";
 import { openSessionByPath } from "./store/session";
 
@@ -190,6 +190,8 @@ if (new URLSearchParams(location.search).has("preview")) {
       landBrowserTabs(tabs as Parameters<typeof landBrowserTabs>[0]),
     emitBrowserFrame: (frame: { name: string; data: string; ts: number }) =>
       emitBrowserFrame({ type: "browser_frame", ...frame }),
+    emitBrowserPick: (frame: { name: string; element: unknown }) =>
+      emitBrowserPick({ type: "browser_pick", ...frame } as Parameters<typeof emitBrowserPick>[0]),
     // Session switching is a module-level function (not a store action), so smokes can
     // only drive the per-session slots — and thus the per-session hub state — through
     // this re-export; a dynamic import would hand back a second module instance.

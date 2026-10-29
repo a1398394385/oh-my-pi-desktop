@@ -8,6 +8,7 @@
 // the activation edge for the UI's auto-open signal).
 import {
 	browserMirrorInput,
+	browserMirrorPick,
 	browserMirrorSelect,
 	browserMirrorSubscribe,
 	browserMirrorUnsubscribe,
@@ -24,6 +25,14 @@ export const browserHandlers: Record<string, RpcHandler> = {
   },
   browser_mirror_select(_ws, msg) {
     browserMirrorSelect(String(msg.name ?? ""));
+  },
+  browser_pick(_ws, msg) {
+    browserMirrorPick(
+      String(msg.name ?? ""),
+      msg.op === "end" ? "end" : "probe",
+      Number(msg.x),
+      Number(msg.y),
+    );
   },
   browser_input(_ws, msg) {
     browserMirrorInput({

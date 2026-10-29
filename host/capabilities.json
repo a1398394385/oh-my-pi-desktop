@@ -571,6 +571,12 @@
       "note": "切换镜像的浏览器标签页（按 tab name）"
     },
     {
+      "id": "browser_pick",
+      "kind": "session",
+      "risk": "read",
+      "note": "右栏实时画面元素拾取：按页面坐标取指针下元素（DOM/CSS 域），并用 Overlay 高亮把它画进镜像帧；op=end 收起高亮，回发 browser_pick 帧"
+    },
+    {
       "id": "browser_input",
       "kind": "session",
       "risk": "write",

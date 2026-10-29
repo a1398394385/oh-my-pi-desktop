@@ -29,7 +29,7 @@ import type {
 } from "./frames-session";
 import type {
   AgentAssetsFrame, AllProvidersFrame, AssetFileDeletedFrame, AssetFileFrame, AssetFileSavedFrame, BrowserMirrorFrame,
-  BrowserTabInfo, BrowserTabsFrame, CapabilitiesFrame, CapabilitiesMcpFrame, CapabilitiesSnapshot, CycleModelFrame,
+  BrowserPickFrame, BrowserTabInfo, BrowserTabsFrame, CapabilitiesFrame, CapabilitiesMcpFrame, CapabilitiesSnapshot, CycleModelFrame,
   EditorInfo, EditorsFrame, ExtSource, ExtensionDetail, ExtensionItem, ExtensionStatusFrame,
   ExtensionsFrame, LoginDoneFrame, LoginProgressFrame, LoginPromptFrame, ManualProbeCatalogMatch, ManualProbeModel,
   McpServerTestedFrame, MemoryFileFrame, ModelRolesFrame, ModelsCatalogFrame, ModelsConfigPathFrame, ModelsFrame,
@@ -154,6 +154,7 @@ export type HostFrame =
   | TerminalCreatedFrame
   | BrowserTabsFrame
   | BrowserMirrorFrame
+  | BrowserPickFrame
   | ContextFrame
   | SessionStatsFrame
   | EventFrame
