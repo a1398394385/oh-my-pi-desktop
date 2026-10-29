@@ -85,11 +85,15 @@ function makeStubEntry(
     unsubscribe: () => {
       counters.unsubscribe++;
     },
+    // sessionBusy counts the queue card view (visibleQueued): empty unless a
+    // test parks rows explicitly
+    parkedFollowUp: [],
+    consumedPending: new Set<string>(),
     session: {
       dispose: disposeImpl ?? (async () => {
         counters.dispose++;
       }),
-      queuedMessageCount: 0,
+      agent: { peekFollowUpQueue: () => [], peekSteeringQueue: () => [] },
       ...(busy ? { isStreaming: true } : {}),
     },
   } as any;

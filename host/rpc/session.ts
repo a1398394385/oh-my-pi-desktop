@@ -27,6 +27,7 @@ import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
 import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../session-titles.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
+import { visibleQueued } from "../queue.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
@@ -235,12 +236,14 @@ function bgJobsSession(entry: PoolEntry, subagentId: unknown): PoolEntry["sessio
     the SDK defers agent_end while a prompt is in flight and flushes it re-tagged
     isTerminal:false whenever a queued continuation *might* resume — when none does (queue
     drained, auto-resume suppressed), no later event ever closes the window. The SDK's own
-    isStreaming is authoritative: reconcile on read and settle the drifted window. */
-function sessionBusy(entry: {
-  activeStartedAt: number | null;
-  activeMs: number;
-  session: { isStreaming: boolean; queuedMessageCount?: number; getAsyncJobSnapshot?: () => any };
-}): string[] {
+    isStreaming is authoritative: reconcile on read and settle the drifted window.
+
+    Queued work counts only what the queue card shows (visibleQueued): the SDK's
+    queuedMessageCount also counts un-injected next-turn context and advisor cards,
+    which no UI surface exposes — that blocked eviction with "1 queued message"
+    while the card was empty and the user had nothing to clear. Those hidden items
+    are dropped with the session, same as exiting the CLI. */
+function sessionBusy(entry: PoolEntry): string[] {
   const reasons: string[] = [];
   if (entry.activeStartedAt !== null) {
     if (entry.session.isStreaming) {
@@ -250,7 +253,8 @@ function sessionBusy(entry: {
       entry.activeStartedAt = null;
     }
   }
-  const queued = entry.session.queuedMessageCount ?? 0;
+  const visible = visibleQueued(entry);
+  const queued = visible.followUp.length + visible.steering.length;
   if (queued > 0) reasons.push(hostI18n.t("errors.session.busyQueued", { count: queued }));
   const jobs = entry.session.getAsyncJobSnapshot?.();
   const running = Array.isArray(jobs?.running) ? jobs.running.length : 0;

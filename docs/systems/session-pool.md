@@ -21,6 +21,8 @@
 | 空闲 LRU sweep | `host/rpc/session.ts` 模块加载即启动的 60s 定时器 | 无 UI 观察者 + 30min 无活动 + 空闲 |
 | `delete_session` / `reload_session` | 删除 / 重新加载 | 会话空闲 |
 
+「空闲」= `sessionBusy()` 为空：回合在跑 / 队列卡有行 / 后台任务在跑。**排队只算队列卡渲染的行**（`visibleQueued`，与 `queued` 帧同源）——SDK 的 `queuedMessageCount` 还包含永不进卡片的隐藏项（未注入的下一轮上下文、advisor 卡），拿它做门禁会出现「报 1 条排队、卡片却空」，出池时这些隐藏项随会话丢弃（同 CLI 退出）。
+
 出池序列统一走 `evictPoolEntry(key, e)`：`releaseMcpForSession` → `unsubscribe` → `sessions.delete` → `session.dispose()`（SDK 幂等，追加一条 `session_exit` 行），随后按 `[e.path, ...e.previousPaths]` 广播 `session_unloaded`，让**两个通道**（本机 + 远程）各自的 `openSessions` 槽位落地清除；磁盘文件不动，点击会话重新 `load_session` 即重新入池。
 
 ## 4. 归档即退役

@@ -15,7 +15,12 @@ import {
 import { sessions, stampEvent, type PoolEntry } from "./state.ts";
 import { hostI18n } from "./i18n/host.ts";
 
-function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+/** The rows the queue card actually renders — the single authority for both the
+    queued frame and sessionBusy()'s "still has queued work" reason. The SDK's
+    queuedMessageCount also counts items the card never shows (un-injected
+    next-turn context, advisor cards), which refused pool eviction with an error
+    the user had nothing to act on. */
+export function visibleQueued(entry: PoolEntry) {
   const agent = entry.session.agent;
   // Consumed-pending suppression (see PoolEntry.consumedPending): the base's
   // preparation claim keeps a dequeued message visible in the peek views, and
@@ -27,9 +32,14 @@ function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entr
       .filter((m) => isUserQueuedMessage(m))
       .map((m) => toRestoredQueuedMessage(m))
       .filter((m) => !entry.consumedPending.has(m.text));
-  const followUp = [...view(agent.peekFollowUpQueue()), ...view(entry.parkedFollowUp)];
-  const steering = view(agent.peekSteeringQueue());
-  ws.send(JSON.stringify(stampEvent({ type: "queued", sessionId, followUp, steering })));
+  return {
+    followUp: [...view(agent.peekFollowUpQueue()), ...view(entry.parkedFollowUp)],
+    steering: view(agent.peekSteeringQueue()),
+  };
+}
+
+function sendQueued(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry) {
+  ws.send(JSON.stringify(stampEvent({ type: "queued", sessionId, ...visibleQueued(entry) })));
 }
 
 // Trim the base followUp queue to at most 1 user message: from the 2nd on

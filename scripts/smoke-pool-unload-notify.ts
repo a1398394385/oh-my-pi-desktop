@@ -54,7 +54,7 @@ const unloadedPaths = (frames: Frame[]) => frames.filter((f) => f.type === "sess
 
 /** PoolEntry stand-in: only the fields the release paths touch; the full entry
  *  needs a live AgentSession, which these paths must not depend on. */
-function stubEntry(path: string, previousPaths: string[] = []) {
+function stubEntry(path: string, previousPaths: string[] = [], queue: { followUp?: unknown[]; steering?: unknown[] } = {}) {
   return {
     path,
     previousPaths,
@@ -63,7 +63,16 @@ function stubEntry(path: string, previousPaths: string[] = []) {
     mcpMountInFlight: undefined,
     mcpReleases: [],
     unsubscribe() {},
-    session: { dispose: async () => {}, queuedMessageCount: 0 },
+    // sessionBusy counts the queue card view (visibleQueued), never the SDK's raw
+    // queuedMessageCount: hidden next-turn items and advisor cards that no UI
+    // surface exposes must not block eviction
+    parkedFollowUp: [],
+    consumedPending: new Set<string>(),
+    session: {
+      dispose: async () => {},
+      queuedMessageCount: 1,
+      agent: { peekFollowUpQueue: () => queue.followUp ?? [], peekSteeringQueue: () => queue.steering ?? [] },
+    },
   } as unknown as Parameters<typeof sessions.set>[1]; // reason: subset stub above; the release paths only read path/previousPaths/unsubscribe/session.dispose
 }
 
@@ -120,6 +129,37 @@ try {
     assert.deepEqual(unloadedPaths(local), [join(scratch, "d-2-old.jsonl"), p1, p2].sort(), "D: every entry's paths reach local");
     assert.deepEqual(unloadedPaths(remote), unloadedPaths(local), "D: remote gets the same set");
     console.log("D ok: profile switch invalidates every slot before clearing");
+  }
+
+  // ---- E: hidden queue items — advisor cards and un-injected next-turn context —
+  // are counted by the SDK's queuedMessageCount but never appear in the queue card;
+  // they must not block eviction (the bug: "1 queued message" over an empty card).
+  {
+    const { local } = channels();
+    const file = join(scratch, "e-hidden.jsonl");
+    sessions.set(
+      "smoke-notify-hidden",
+      stubEntry(file, [], { followUp: [{ role: "custom", customType: "advisor", display: true, content: "note" }] }),
+    );
+    await sessionHandlers.session_unload({ send: () => {} }, { path: file });
+    assert.equal(sessions.has("smoke-notify-hidden"), false, "E: hidden queue items must not block eviction");
+    assert.deepEqual(unloadedPaths(local), [file], "E: the slot is dropped");
+    console.log("E ok: hidden queue items do not block eviction");
+  }
+
+  // ---- F: a user row the card renders still blocks eviction.
+  {
+    const file = join(scratch, "f-visible.jsonl");
+    sessions.set("smoke-notify-visible", stubEntry(file, [], { followUp: [{ role: "user", content: "hi" }] }));
+    await assert.rejects(
+      async () => {
+        await sessionHandlers.session_unload({ send: () => {} }, { path: file });
+      },
+      /尚未空闲|not idle/,
+      "F: a visible queued prompt must still refuse eviction",
+    );
+    assert.equal(sessions.has("smoke-notify-visible"), true, "F: entry stays pooled");
+    console.log("F ok: visible queued prompt still blocks eviction");
   }
 
   console.log("smoke-pool-unload-notify: all cases passed");
