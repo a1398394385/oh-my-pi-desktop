@@ -216,6 +216,19 @@ function isTurnTailAssistant(items: ChatItem[], i: number, pfx: string): boolean
   return true;
 }
 
+// The acts row copies the whole turn output: one reply can arrive as several assistant
+// items (text, tool calls, then a closing line) that render as one merged block, while the
+// tail item's text holds only the last segment. Steer bubbles do not break the turn.
+function turnReplyText(items: ChatItem[], i: number): string {
+  const parts: string[] = [];
+  for (let j = i; j >= 0; j--) {
+    const it = items[j];
+    if (it.role === "user" && it.pending !== "steer") break;
+    if (it.role === "assistant" && !isJunkPlaceholder(it.text)) parts.unshift(it.text);
+  }
+  return parts.join("\n\n");
+}
+
 // Advisor batch → nodes. A visible process keeps its blocking notes where they fired
 // (the batch's position in the stream IS the injection point); everything else joins the
 // turn-tail card. With the process collapsed nothing inline survives, so the caller hands
@@ -359,7 +372,9 @@ export function renderItems(
       const node = appendItem(item, key, railEntries);
       if (node) out.push(node);
       if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
-        out.push(<TurnActs item={item} entryId={item.entryId} endMs={item.endMs} key={key + "-acts"} />);
+        out.push(
+          <TurnActs item={item} reply={turnReplyText(items, i)} entryId={item.entryId} endMs={item.endMs} key={key + "-acts"} />,
+        );
       }
     }
     for (const st of pendingSteers) {
@@ -537,6 +552,7 @@ export function renderItems(
       const actsNode = (
         <TurnActs
           item={item}
+          reply={turnReplyText(items, i)}
           entryId={item.entryId}
           endMs={item.endMs}
           automation={currentTurn?.createdAutomation}

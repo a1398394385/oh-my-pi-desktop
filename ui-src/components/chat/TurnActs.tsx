@@ -26,9 +26,13 @@ function fmtClock(ms: number) {
 // entryId/endMs are captured mutation snapshots (T2): turn_end backfills them in place
 export default memo(function TurnActs({
   item,
+  reply,
   automation,
 }: {
   item: AssistantItem;
+  /** Full merged turn output: one reply can arrive as several assistant items (text, tool
+   *  calls, then a closing line) that render as one block, and item.text only holds the tail. */
+  reply: string;
   entryId?: string;
   endMs?: number;
   /** Set when this turn created an automation (the create tool result's details): the
@@ -51,7 +55,7 @@ export default memo(function TurnActs({
           title={t("chat.copyReply")}
           onClick={(e) => {
             e.stopPropagation();
-            copyText(item.text || "").then(
+            copyText(reply).then(
               () => useAppStore.getState().toast(t("chat.replyCopied")),
               () => useAppStore.getState().toast(t("chat.copyFailed")),
             );
