@@ -187,8 +187,15 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
         {model ? <span className="hub-model">{model}</span> : null}
       </span>
       {/* Running rows show the live progress line ("Current" in the detail) instead of the
-          static assignment; it falls back to the assignment until the first tool/intent lands */}
-      <span className="hub-task text-faint">{sub.streaming ? currentProgress(sub) || rowTask : rowTask}</span>
+          static assignment; it falls back to the assignment until the first tool/intent lands.
+          The completion probe's self-estimate leads the line while the child runs (the probe
+          stops at terminal status, and a yield pins it to 99). */}
+      <span className="hub-task text-faint">
+        {sub.streaming && sub.usage?.completionPercent !== undefined ? (
+          <span className="hub-pct">{sub.usage.completionPercent}%</span>
+        ) : null}
+        {sub.streaming ? currentProgress(sub) || rowTask : rowTask}
+      </span>
       {/* Metrics (left) and timing info (right) share one line */}
       <span className="hub-meta text-faint">
         <span className="hub-meta-usage">{segs.join(" · ")}</span>

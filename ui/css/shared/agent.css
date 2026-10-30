@@ -37,6 +37,10 @@
 
 .hub-row-head:has(.hub-row-acts) .hub-model { margin-left: 0; }
 
+/* Completion-probe estimate leading the running row's progress line (base
+   task.completionProbe); 4px gap instead of a separator so the line stays one sentence */
+.hub-pct { margin-right: 4px; font-weight: 700; color: var(--accent); }
+
 .hub-task {
   font-size: var(--ui-fs-sm);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

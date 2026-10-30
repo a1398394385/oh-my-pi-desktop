@@ -158,6 +158,16 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
         </>
       ) : null}
 
+      {/* Failure reason — terminal runs only. A failed child run's transcript keeps the
+          provider error; without this block the roster showed "failed" with no cause. */}
+      {st !== "running" && sub.error ? (
+        <>
+          <div className="hub-sec">{t("right.hubError")}</div>
+          <div className="hub-sec-body">
+            <div className="act err">{`✗ ${sub.error}`}</div>
+          </div>
+        </>
+      ) : null}
       <div className="hub-sec">{t("right.hubRecent")}</div>
       <div className="hub-activity">
         {activity.length === 0 ? (

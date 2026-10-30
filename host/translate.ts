@@ -453,6 +453,14 @@ export function translateSubagentEvent(ev: any): UiEvent | null {
         toolCallId: ev.toolCallId,
         ...summarizeResult(ev.toolName, ev.args, ev.result),
       };
+    case "message_end": {
+      // A child run that failed on the provider ends with an assistant message whose
+      // only failure payload is `errorMessage` (same shape the main path translates,
+      // BUG-034). Without this branch the roster showed `failed` with no reason at all:
+      // the child transcript had it, the live stream did not.
+      const text = errorTextOf(ev.message);
+      return text ? { kind: "error", text } : null;
+    }
     case "agent_end":
       if (ev.isTerminal === false) return null;
       return { kind: "turn_end" };

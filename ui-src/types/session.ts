@@ -329,6 +329,7 @@ export interface SubagentUsage {
   tokens?: Record<string, number>; // host normalizes the base's plain cumulative number to { total }
   contextTokens?: number;
   contextWindow?: number;
+  completionPercent?: number; // base progress.completionPercent: live self-estimate of completion (0–100)
   currentTool?: string;
   currentToolIntent?: string; // `i` of the running call (base progress.currentToolIntent)
   currentToolArgs?: unknown;
@@ -355,6 +356,7 @@ export interface SubagentState {
   tools: SubagentToolCall[];
   streaming: boolean;
   result?: string; // submitted report, landed from terminal lifecycle frames (Result section; undefined while running)
+  error?: string; // failure reason of the terminal run (provider/request error text); cleared by a wake re-run
   usage?: SubagentUsage;
 }
 

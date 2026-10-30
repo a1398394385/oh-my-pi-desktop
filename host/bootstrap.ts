@@ -18,7 +18,7 @@
 // module itself runs setProfile first and then awaits its imports, so its
 // importers (which trigger this module's execution via static import)
 // naturally get the correct order.
-import { setProfile } from "@oh-my-pi/pi-utils";
+import { setInteractiveHost, setProfile } from "@oh-my-pi/pi-utils";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -68,6 +68,13 @@ if (fromSourceTree && savedProfile === "default") {
 }
 // setProfile must precede all dynamic imports below
 setProfile(savedProfile === "default" ? undefined : savedProfile);
+
+// The desktop host is an interactive host: it renders the Agent Hub, where the
+// operator can focus a live subagent. The base gates two subagent behaviors on
+// that flag — the completion probe (task.completionProbe, the `NN%` estimate the
+// roster shows) and the replan title refresh. Side effect: the session db
+// busy_timeout becomes 5s instead of 1s (pi-utils getDbBusyTimeoutMs).
+setInteractiveHost(true);
 
 const { ensureThemeSync } = await import("@oh-my-pi/pi-tui/theme");
 ensureThemeSync();

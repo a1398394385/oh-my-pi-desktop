@@ -256,8 +256,9 @@ export const streamHandlers = {
         tools: prev?.tools ?? [],
         streaming: msg.status === "started",
         // Terminal statuses carry the submitted report; a wake re-run (started over
-        // the same id) invalidates the previous run's result
+        // the same id) invalidates the previous run's result and failure reason
         result: msg.status === "started" ? undefined : (msg.result ?? prev?.result),
+        error: msg.status === "started" ? undefined : (msg.error ?? prev?.error),
       });
     });
     // Terminal/started status also drives the subagent transcript view's spinner + elapsed row
@@ -278,6 +279,7 @@ export const streamHandlers = {
           tokens: msg.tokens,
           contextTokens: msg.contextTokens,
           contextWindow: msg.contextWindow,
+          completionPercent: msg.completionPercent,
           currentTool: msg.currentTool,
           currentToolIntent: msg.currentToolIntent,
           currentToolArgs: msg.currentToolArgs,
@@ -324,6 +326,9 @@ export const streamHandlers = {
         const sub = s.subagents.get(msg.subagentId);
         if (!sub) return;
         if (msg.kind === "turn_start") sub.streaming = true;
+        // A failed child run's only failure payload (provider error text): the roster shows
+        // "failed" and the detail renders this under the status. Same row the main chat draws.
+        else if (msg.kind === "error") sub.error = msg.text;
         else if (msg.kind === "tool") sub.tools.push({ name: msg.name, args: msg.args, intent: msg.intent, files: msg.files, toolCallId: msg.toolCallId, running: true, at: Date.now() });
         else if (msg.kind === "tool_update") {
           // Reverse scans (zero allocation): toolCallId match first, name fallback

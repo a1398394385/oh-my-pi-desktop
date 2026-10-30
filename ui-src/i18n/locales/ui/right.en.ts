@@ -134,6 +134,7 @@ export const rightEn = {
   hubLineage: "Lineage",
   hubChanges: "Changes",
   hubResult: "Result",
+  hubError: "Failure",
   hubRecent: "Recent activity",
   hubNoActivity: "No response or tool activity yet",
   hubSpawnedBy: "Spawned by {{parent}}",

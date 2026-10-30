@@ -47,6 +47,7 @@ export interface SubagentLifecycleFrame {
   advisor?: boolean; // advisor transcript (__advisor stem), host-derived like the TUI registry kind
   detached: boolean;
   result?: string; // terminal statuses only: submitted report (last assistant text, host-read from the child transcript)
+  error?: string; // terminal statuses only: the provider/request failure that ended the child run (its stopReason "error" message)
   hi?: string; // stamped frame
   seq?: number;
 }
@@ -67,6 +68,8 @@ export interface SubagentProgressFrame {
   tokens?: Record<string, number>;
   contextTokens?: number;
   contextWindow?: number;
+  /** Base progress.completionPercent: the subagent's self-estimated completion (0–100) */
+  completionPercent?: number;
   currentTool?: string;
   currentToolIntent?: string;
   currentToolArgs?: unknown;

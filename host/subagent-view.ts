@@ -66,6 +66,9 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
       if (subRegistered.has(p.id)) archiveFinishedRun(p.id);
       else subRegistered.set(p.id, Date.now());
     }
+    // Terminal statuses carry the submitted report + the failure reason, read from the
+    // settled child transcript (the lifecycle frame fires after the executor finalized it)
+    const outcome = p.status !== "started" && p.sessionFile ? readSubagentOutcome(p.sessionFile) : undefined;
     ws.send(
       JSON.stringify(
         stampEvent({
@@ -82,9 +85,8 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
           // roster rows without a sessionFile until a host reload replayed history)
           sessionFile: p.sessionFile,
           detached: p.detached ?? false,
-          // Terminal statuses carry the submitted report, read from the settled child
-          // transcript (the lifecycle frame fires after the executor finalized it)
-          result: p.status !== "started" && p.sessionFile ? readSubagentResult(p.sessionFile) : undefined,
+          result: outcome?.result,
+          error: outcome?.error,
         }),
       ),
     );
@@ -153,6 +155,9 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
       tokens: totals ? mergeTokens(totals.tokens, tokens) : tokens,
       contextTokens: pr.contextTokens,
       contextWindow: pr.contextWindow,
+      // Base task.completionProbe estimate (0–100, only at depth 0 in an
+      // interactive host); absent until the first probe lands and after a yield
+      completionPercent: pr.completionPercent,
       currentTool: pr.currentTool,
       currentToolIntent: pr.currentToolIntent,
       currentToolArgs: pr.currentToolArgs,
@@ -200,19 +205,22 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
 // hist- prefix: they can never collide with a live SDK subagentId.
 const HIST_SUBAGENT_RECENT_MS = 60_000; // a file still being written belongs to a live subagent — skip, its frames arrive live
 
-// Agent Hub "Result" section: the subagent's submitted report — the last
-// assistant message carrying text (the same source the executor's salvage and
-// lastReportTurnText draw from). Capped so the frame stays small; the UI
-// section scrolls. Purely tool-call assistant messages keep the earlier text.
+// Agent Hub "Result"/failure sections: the submitted report (last assistant message
+// carrying text — the same source the executor's salvage and lastReportTurnText draw
+// from) plus the reason a failed child run died (a stopReason "error" assistant message
+// keeps it only in `errorMessage`). One pass, one read: both sections come off the same
+// terminal transcript. Capped so the frame stays small; the UI sections scroll.
 const SUBAGENT_RESULT_MAX_CHARS = 16000;
-function readSubagentResult(file: string): string | undefined {
+const capSubagentText = (s: string): string => (s.length > SUBAGENT_RESULT_MAX_CHARS ? s.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : s);
+function readSubagentOutcome(file: string): { result?: string; error?: string } {
   let text: string;
   try {
     text = fs.readFileSync(file, "utf8");
   } catch {
-    return undefined;
+    return {};
   }
   let result: string | undefined;
+  let error: string | undefined;
   for (const line of text.split("\n")) {
     if (!line.includes('"assistant"')) continue;
     let e: HistEntry;
@@ -222,12 +230,14 @@ function readSubagentResult(file: string): string | undefined {
       continue;
     }
     if (e.type !== "message" || e.message?.role !== "assistant") continue;
+    if (e.message.stopReason === "error" && typeof e.message.errorMessage === "string" && e.message.errorMessage.trim()) {
+      error = e.message.errorMessage.trim();
+    }
     const c = e.message.content;
     const t = (typeof c === "string" ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").filter(Boolean).join("\n") : "").trim();
     if (t) result = t;
   }
-  if (!result) return undefined;
-  return result.length > SUBAGENT_RESULT_MAX_CHARS ? result.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : result;
+  return { result: result ? capSubagentText(result) : undefined, error: error ? capSubagentText(error) : undefined };
 }
 
 interface HistAggregation {
@@ -236,6 +246,7 @@ interface HistAggregation {
   readOnly?: boolean;
   status: string;
   result?: string;
+  error?: string;
   progress: Record<string, unknown>;
   toolEvents: Record<string, unknown>[];
 }
@@ -283,6 +294,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
   let lastContextTokens = 0; // final assistant turn's totalTokens — terminal context size (same semantics as the executor's progress.contextTokens)
   let model: string | null = null;
   let result: string | undefined;
+  let error: string | undefined;
   let task: string | undefined;
   let readOnly: boolean | undefined;
   let registeredAt = 0;
@@ -316,8 +328,11 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
         if (e.message.stopReason === "aborted" || e.message.errorMessage === "Request was aborted") {
           aborted = true;
         }
+        if (e.message.stopReason === "error" && typeof e.message.errorMessage === "string" && e.message.errorMessage.trim()) {
+          error = e.message.errorMessage.trim();
+        }
         // Submitted report for the hub detail's Result section (same rule as
-        // readSubagentResult: the last assistant message that carries text)
+        // readSubagentOutcome: the last assistant message that carries text)
         const c = e.message.content;
         const t = (typeof c === "string" ? c : Array.isArray(c) ? c.filter((p) => p?.type === "text").map((p) => p.text ?? "").filter(Boolean).join("\n") : "").trim();
         if (t) result = t;
@@ -368,6 +383,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
     readOnly,
     status,
     result: result && result.length > SUBAGENT_RESULT_MAX_CHARS ? result.slice(0, SUBAGENT_RESULT_MAX_CHARS) + "\n…" : result,
+    error: error ? capSubagentText(error) : undefined,
     progress: {
       status,
       task,
@@ -433,6 +449,7 @@ export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: s
         sessionFile: file,
         readOnly: agg.readOnly,
         result: agg.result,
+        error: agg.error,
         advisor: path.basename(file).startsWith("__advisor"),
       }),
     );

@@ -133,6 +133,7 @@ export const rightZh = {
   hubLineage: "谱系",
   hubChanges: "变更",
   hubResult: "结果",
+  hubError: "失败原因",
   hubRecent: "最近活动",
   hubNoActivity: "尚无响应或工具活动",
   hubSpawnedBy: "Spawned by {{parent}}",
