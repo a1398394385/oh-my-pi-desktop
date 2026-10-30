@@ -104,7 +104,10 @@
 
 /* nav column: the left divider is the boundary against the content pane (the splitter beside
    it stays invisible until dragged/hovered) */
-.fp-nav { flex: none; min-width: 0; overflow-y: auto; border-left: 1px solid var(--line); }
+/* max-width: the drag width is stored in px (default 260) and the panel defaults to 320, so an
+   unclamped nav left the content pane at ~40px — images collapsed to thumbnail size and text
+   rows were unreadable. Cap the nav at a share of the pane so the body always keeps room */
+.fp-nav { flex: none; min-width: 0; max-width: 55%; overflow-y: auto; border-left: 1px solid var(--line); }
 
 /* empty state (no file open): centered hint, ZCode wording. No padding: the hint is hidden by a
    width comparison against clientWidth, so the box must be the exact content width */

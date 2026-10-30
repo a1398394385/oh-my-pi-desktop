@@ -97,6 +97,14 @@ export default function FilePage() {
   const pathRef = useRef<HTMLSpanElement>(null);
   const mirrorRef = useRef<HTMLSpanElement>(null);
   const [foldPath, setFoldPath] = useState(false);
+  // Image view hides the nav so the preview gets the whole pane; the title-bar toggle then
+  // peeks the tree back over the image instead of touching the persisted collapse pref
+  const [navPeek, setNavPeek] = useState(false);
+  const imageView = !!fileView?.image;
+  const navOpen = imageView ? navPeek : !navCollapsed;
+  // A peek exists to reach the tree; picking the next file ends it, so every newly opened
+  // file starts on its default layout (images full-bleed again)
+  useEffect(() => { setNavPeek(false); }, [fileView?.path]);
   const pathSegments = fileView ? titleSegments(fileView.path, cwd) : [t("right.tabFile")];
   // Splitter drag tracks the pointer on window (fast drags never lose the gesture);
   // width = shell right edge minus pointer x, clamped
@@ -145,21 +153,21 @@ export default function FilePage() {
         <button
           type="button"
           className="icon-btn"
-          title={navCollapsed ? t("right.expandFileNav") : t("right.collapseFileNav")}
-          onClick={() => setNavCollapsed((v) => !v)}
+          title={navOpen ? t("right.collapseFileNav") : t("right.expandFileNav")}
+          onClick={() => (imageView ? setNavPeek((v) => !v) : setNavCollapsed((v) => !v))}
         >
-          <Icon name={navCollapsed ? "collapseLeft" : "collapseRight"} size={15} />
+          <Icon name={navOpen ? "collapseRight" : "collapseLeft"} size={15} />
         </button>
       </div>
       <div className="fp-panes">
         <div className="fp-main">{fileView ? <FvDetail /> : <FvEmpty />}</div>
-        {!navCollapsed && (
+        {navOpen && (
           <>
             <div
               className="fp-split"
               onPointerDown={(e) => { e.preventDefault(); dragRef.current = true; }}
             />
-            <div className="fp-nav" style={{ width: navW, flexShrink: 1, minWidth: 160 }}>
+            <div className="fp-nav" style={{ width: navW, flexShrink: 1 }}>
               <FileNav />
             </div>
           </>
@@ -483,8 +491,11 @@ function FileNav() {
 function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
   const { t } = useTranslation();
   const rightState = useAppStore((s) => s.rightState);
+  const entries = rightState.fileTreeDirs.get(dirPath);
   // The list_dir request formerly in the render body moved into an effect; dedup and cache-hit
-  // reads use getState (state may have advanced between render and effect)
+  // reads use getState (state may have advanced between render and effect). `entries` is a
+  // dependency because refreshTree clears the cache without remounting this level — keyed on
+  // dirPath alone the level would sit on "loading" forever after a refresh.
   useEffect(() => {
     const rs = useAppStore.getState().rightState;
     if (rs.fileTreeDirs.get(dirPath) !== undefined) return;
@@ -493,8 +504,7 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
       rightState: { ...st.rightState, fileTreePending: new Set([...st.rightState.fileTreePending, dirPath]) },
     }));
     send({ type: "list_dir", path: dirPath });
-  }, [dirPath]);
-  const entries = rightState.fileTreeDirs.get(dirPath);
+  }, [dirPath, entries]);
   if (entries === undefined) {
     return <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>;
   }
