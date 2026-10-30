@@ -111,6 +111,11 @@
 | BUG-117 | macOS 顶部右侧图标比左侧低——三组头部各自对齐且终端按钮额外下移 | 2026-10-27 |
 | BUG-118 | 编译版 webview 保留浏览器行为——拖入图片整页导航成图片、右键出 Reload/检查 | 2026-10-27 |
 | BUG-119 | ACP 把持久化图片引用按未知尺寸上限计价——8 张图虚增 96K，明细合计反超总量 | 2026-10-28 |
+| BUG-120 | 后台任务期间发的消息气泡被折进折叠组永不显示——agent_end isTerminal:false 让 turnItemStart 滞留，host-idle 回声落地的气泡被下一次 sealRunItems 整段卷走（BUG-104 气泡侧残留） | 2026-10-30 |
+| BUG-121 | 后台任务窗口内界面长期「工作中」——streaming 只认 turn_end，bg job 的 isTerminal:false 让该帧永不发出，BUG-110 只补了 abort 一条路径 | 2026-10-30 |
+| BUG-122 | 子代理失败只显示 failed 没有原因——translateSubagentEvent 缺 message_end 分支（BUG-034 已知遗留转正） | 2026-10-30 |
+| BUG-123 | 文件 tab 看不了图片——默认 320px 面板减去 260px 导航后正文只剩 39px，图片压成缩略图；刷新文件树后永久 Loading | 2026-10-30 |
+| BUG-124 | 会话复制按钮只复制最后一段——一轮回复被拆成多个 assistant 条目，item.text 只是尾段 | 2026-10-30 |
 ---
 
 ## 详情
@@ -535,7 +540,7 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 
 **教训**：错误不是「一条消息」，而是消息上的一个字段——任何「只翻译文本增量」的窄事件层都会把它静默吞掉，而且现象是「什么都没发生」，没有任何报错可追。判断链路是否完整的办法不是读代码，而是拿一次**真实失败**的落盘条目喂进翻译层看输出（0 条 → 2 条即红绿判据）。另外错误行必须与过程组平级：把失败原因收进可折叠的 loop 组，等于把「为什么停了」藏起来，与「没显示」等价。
 
-**已知遗留**：子代理流（`translateSubagentEvent`）同样没有 `message_end` 分支，子代理内部的失败仍不会产生错误行（`task:subagent:lifecycle` 只给 failed 状态、不带原因），未在本次处理。
+**已知遗留（已于 2026-10-30 转正，见 BUG-122）**：子代理流（`translateSubagentEvent`）同样没有 `message_end` 分支，子代理内部的失败仍不会产生错误行（`task:subagent:lifecycle` 只给 failed 状态、不带原因）。
 
 ### BUG-035: 统计行整轮不刷新、压缩后 token 倒退——口径取成「活动窗口筛选」且只在 turn 收尾推送
 
@@ -1707,6 +1712,8 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **验证**：`bun run ui:build` 后在 happy-dom 里加载 `ui/dist/assets/app.js` 派发事件，`contextmenu(body)` / `dragover(Files)` / `drop(Files)` 三处 `defaultPrevented=true`，`contextmenu(textarea)` 为 `false`；`bun run check` 全绿。真实 WKWebView 的拖放落点与原生菜单需重新打包后手测。
 
+**追加验证（2026-10-30，真实 WebKit）**：`scripts/smoke-webview-defaults.ts`（`bun run smoke:webview-defaults`）用 `Bun.serve` 伺服 `ui/dist` 并以 `?preview=1` 加载，再用 Playwright 的 **webkit** 引擎派发真实事件，7 项断言全绿：dragover(Files) / drop(Files) / contextmenu(body) 被取消；contextmenu(textarea) / contextmenu(contenteditable) 保留原生；dragover(text/plain) 不取消（页内拖放仍可用）；运行引擎自检为 WebKit。红绿判据：临时删掉 `shell.ts` 的 dragover/drop 守卫并重新 `ui:build`，`dragover(Files)` 与 `drop(Files)` 两项转红，恢复后全绿——说明冒烟确实落在守卫代码上而非空跑。仍缺的一层：wry 外壳是否把拖放交给 webview（`dragDropEnabled: false` 的实际效果）以及系统原生菜单只能打包后手测，冒烟只证明页面层守卫在真实 WebKit 引擎下生效。
+
 **教训**：`dragDropEnabled: false` 不是「关掉拖放」，而是「把拖放还给 webview」——关掉它必须同时接管页面侧的默认导航；release 构建里 devtools 编译掉了也不等于右键没有入口，WebKit 的默认菜单来自系统层。
 
 ### BUG-119: ACP 把持久化图片引用按未知尺寸上限计价——8 张图虚增 96K，明细合计反超总量
@@ -1722,3 +1729,73 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：`scripts/acp-projection-pairing.test.ts` 新增真实 `createAcpRuntime` + 真实 blob 引用回归：1×1 PNG 在修复前计 12000、修复后计 2，与 `Tokenizer.imageTokens({width:1,height:1})` 一致；同文件 7 项测试全绿。原会话 8 个真实图片引用复验从合计 96000 降为 4265，逐张结果与真实尺寸计数一致；`bun run host:build`、`bun run check` 全绿。
 
 **教训**：持久层引用进入任何本地计数/渲染路径前，都必须先走底座解析入口；引用字符串能穿过类型系统，不代表它能替代原始字节。上下文卡混用 provider 锚定总量与本地估算分区时，分区估价异常会直接表现为百分比和合计失真。
+
+### BUG-120: 后台任务期间发的消息气泡被折进折叠组永不显示——turnItemStart 滞留让下一次 seal 整段卷走气泡（BUG-104 气泡侧残留）
+
+**日期**：2026-10-30
+
+**现象**：会话 `01a18749-8de0-720b-93f7-c287f51b2655` 里 agent 派了后台 subagent，模型输出已经说完（15:25:13）而页面一直显示「工作中」；15:28:10 用户普通回车发「1: B; 2. 接受; 3. 没看懂」，agent 正常接住并回答（JSONL 有 `user` 条目与两条 assistant 答复），但发送端页面里这条用户气泡始终不出现——它本该出现的位置只剩一条细横线（被折叠的过程组），逐出内存池重新进入后气泡可见。
+
+**根因**：BUG-104 的同根因第二半，滞留位从 `streaming` 扩到了折叠起点。①底座对「async delivery 将恢复会话」的 run 发 `agent_end isTerminal:false`，`host/translate.ts` 对它返回 null，`turn_end(runEnd)` 永不发出 → UI 的 `s.streaming` **和 `s.turnItemStart` 在整个后台任务期双双滞留**（只有 runEnd 清 `streaming`、置 `turnItemStart = null`）；②普通回车走 `composer/send.ts` 的 streaming 分支，只 `s.queued.push`（**无气泡**），host 侧此时已 idle → `degenerateIdle` 回声把气泡落到 `items` 末尾（BUG-080/104 的修复按预期生效）；③但 `startLocalRun` 只 push，不理会仍然指向上一段 run 起点的 `turnItemStart`，于是 15:28:55 那次 `turn_end(runEnd)` 的 `sealRunItems` 从那个滞留点整段 `splice`，把刚落地的气泡连同遗留过程一起塞进 `collapsed: true` 的 loop 组；`turnFinal` 提升只提出 assistant 文本，气泡留在组内 → 屏幕上只剩组长那条细横线。
+
+**修复**（`ui-src/store/session.ts` `startLocalRun`）：落气泡前若 `turnItemStart != null`，先 `sealRunItems(s, null)` 把未闭合的遗留段封掉，push 之后再把新 run 起点设到气泡之后（`s.items.length`）。正常路径（上一轮已收到 runEnd，`turnItemStart == null`）完全不变；顺手让定时任务/自动化 `user_message` 回声的落点与 reload 路径一致（`translate-history` 遇到真实用户条目也是先 `finalizeRun`）。
+
+**验证**：`scripts/steer-tail-replay.test.ts` 新增用例「queued bubble that lands mid-stale-run survives the next runEnd seal」，按真实帧序（排队 → 回声 → turn_start → delta → turn_end runEnd）复现，修复前红（气泡不在顶层、在 loop 组内），修复后单文件 6 项全绿；同域 store 测试 `abort-settle` / `midrun-attach-fold` / `run-seal-error` / `turn-final-lift` / `notify-error-tail` / `advisor-row` 逐个单 fork 全绿；`bun run ui:typecheck`、`bun run host:build`、`bun run check` 全绿（会话生命周期域 2191/2200）。未跑真机 Tauri 冒烟（需等一次真实 bg job 后台化的长跑窗口），本条的帧序视图由 store 级用例覆盖。
+
+**教训**：①`streaming` 滞留 ⟺ `turnItemStart` 滞留——两者都只由 `turn_end(runEnd)` 成对清理，任何「UI 的 streaming 卡住」的缺陷都会连带把折叠起点也钉死，所以修 streaming 的滞留位时必须同时问「还有哪些跨 run 的游标是同一个事件清的」；②凡是「向 `items` 末尾追加新一段内容」的入口（用户气泡、自动化回声、消费落地），在 push 之前都要处理未闭合的 run 段，否则下一次 seal 会把新内容当旧过程折进去；问题的表象是「内容被折叠」，本质是「折叠范围用了最后一次已知的 turn_start 而不是已交付边界」。
+
+### BUG-121: 后台任务窗口内界面长期「工作中」——streaming 只认 turn_end，bg job 的 isTerminal:false 让该帧永不发出，BUG-110 只补了 abort 一条路径
+
+**日期**：2026-10-30
+
+**现象**：会话 `01a18749-8de0-720b-93f7-c287f51b2655` 里模型输出早已说完（15:25:13 落盘），页面却一直显示「工作中」并在计时，直到 3 分钟后用户发消息才打破（右侧 agent roster 显示后台 subagent 仍在跑）。同一会话的 BUG-120 就是这个滞留窗口里踩出来的。
+
+**根因**：`turn_end(runEnd)` 是 UI `s.streaming` 唯一的权威清理点（`ui-src/store/session.ts` turn_end 分支）。底座对「async delivery 将恢复会话」的 run 发 `agent_end isTerminal:false`，`host/translate.ts` 对该帧返回 null → 清理帧永不发出。BUG-110 修的是「点停止后卡死」，它给 `abort_session` 回执加了 2s 兜底（`settleAbortedRunLater`），**只覆盖 abort 一条路径**；bg job 窗口既没有回执也没有终态帧，于是 spinner、停止按钮、侧栏转圈、`SessionStatsBar` 本地外推计时全部按 streaming=true 走。BUG-104/120 教训里写的「一切以 streaming 为分支依据的乐观状态都要有落地/回撤路径」当时只处理了发送分支与折叠起点，滞留位本身没人负责。
+
+**修复**（`ui-src/store/session.ts`）：把「收尾视图」抽成 `settleRunView`（draft 落成 assistant 行、清 workingText/pendingApprovals、停 running 工具行、保留 `turnItemStart` 让迟到 turn_end 仍能正常 seal），与 abort 兜底共用；新增 host 权威收敛——`landPoolSessions`（`pool_sessions` 帧落地）发现某槽 `streaming=true` 而宿主明确报 `busy=false` 时，排一个 1.5s 定时器（`IDLE_SETTLE_GRACE_MS`），到期时若该 path 仍不在 `busyPaths` 才收敛。滞回两层：①`applyEvent` 任何一帧都会 `cancelIdleSettle`（真在跑的会话持续有帧，静默者才会被收敛）；②到期再读一次 `busyPaths`，async delivery 恢复（busy=true 快照）会直接取消收敛。`busy` 取自宿主 `entry.session.isStreaming`（`handleRunLifecycleEvent` 在 agent_end 时重算并推送），是「没有活着的 agent 循环」的诚实信号，与 UI 的滞后视图不同源。
+
+**验证**：新增 `scripts/pool-idle-settle.test.ts`（假定时器 4 例：滞留槽被收敛且 draft 不丢、live 帧取消收敛、busy 恢复不收敛、本来就 idle 的槽不产生幽灵行）。红绿判据：把 `landPoolSessions` 里的 `scheduleIdleSettle` 调用临时短路，第 1 例转红（streaming 仍 true），恢复后 4/4 绿。同域 store 测试（steer-tail-replay / subagent-error-row / abort-settle / midrun-attach-fold / run-seal-error / turn-final-lift / notify-error-tail / advisor-row / task-spawn-details / command-flash / right-welcome-slot / agent-process-style）逐个单 fork 全绿；`ui:typecheck`、`host:build`、`bun run check` 全绿。未跑真机 Tauri 冒烟（需一次真实 bg job 后台化的长跑窗口）。
+
+**教训**：给终态帧补兜底时，兜底必须挂在**每个能让该帧缺席的原因**上，而不是挂在那次事故的入口（BUG-110 = abort 回执，本次 = bg job 无终态帧，将来还可能是丢帧/断线）。更稳的判据选择顺序：宿主已有的权威状态（`pool_sessions.busy`）> 请求回执 + 定时器 > 客户端猜。用权威状态时必须同时设计「它迟到/误报」的防护（本例：滞回 1.5s + 活跃帧取消 + 到期复读），否则会把真流式的 spinner 误清。
+
+### BUG-122: 子代理失败只显示 failed 没有原因——`translateSubagentEvent` 缺 message_end 分支（BUG-034 已知遗留转正）
+
+**日期**：2026-10-30
+
+**现象**：Agent Hub / 右侧子代理详情里，失败的子代理只有 `✗ failed` 状态与耗时用量，看不到为什么失败；子代理自己的 transcript 文件里明明有 `stopReason:"error"` + `errorMessage`。冷加载（从磁盘回放）同样只有 failed，没有原因。
+
+**根因**：BUG-034 把主聊天链路补齐后，自己把「子代理流同样没有 `message_end` 分支」记成已知遗留、未处理。`host/translate.ts` 的 `translateSubagentEvent` 只映射 `agent_start / message_update / tool_execution_start / tool_execution_end / agent_end`——失败消息的唯一载荷是 assistant 消息上的 `errorMessage` 字段，窄事件层把它整条丢掉；前端 `subagent_event` 也没有 error 通道，`SubagentState` 更没有承载失败原因的字段。回放侧（`aggregateSubagentHistory`）虽然已经能从 `stopReason === "error"` 推出 `status: failed`，却没有把 `errorMessage` 带出来。
+
+**修复**：①`host/translate.ts` 子代理翻译补 `message_end` 分支，`errorTextOf(ev.message)` 命中才产 `{ kind: "error", text }`（无载荷不编造空行）；②`host/subagent-view.ts` 把 `readSubagentResult` 改成 `readSubagentOutcome`（一次读盘同时拿到最终报告与失败原因，共用 16K 截断），live lifecycle 帧带 `error`；`aggregateSubagentHistory` 同步收集最后一个 assistant 消息的 `errorMessage`，冷加载回放的 lifecycle 帧也带 `error`；③wire `SubagentLifecycleFrame` 加 `error?`，前端 `SubagentState` 加 `error?`（wake 重跑同一 id 时清空，与 `result` 同规则）；`subagent_event` 落地 `kind === "error"` → `sub.error`；④`HubDetail` 在 Result 下方新增「失败原因」区块，复用聊天区既有错误行样式 `.act err`（`✗ …`），文案 key `right.hubError`（zh/en 成对）。
+
+**验证**：新增 `scripts/subagent-error-row.test.ts` 4 例：translate 的失败消息产 error 行 / 健康与无载荷消息不产行；真实临时 child jsonl（`parentSession` 回链 + mtime 回拨越过 live 窗口）过 `replaySubagentHistory`，断言 lifecycle 帧 `status=failed` 且 `error="rate limited (429)"`、`result` 未定义；frameHandlers 驱动的 store 落地（error 帧写入、终态 lifecycle 覆盖、started 重跑清空）。红绿判据：把回放帧的 `error: agg.error` 改为 `undefined` → 第 3 例转红；把前端 error 落地两行删掉 → 第 4 例转红；恢复后 4/4 绿。`ui:typecheck`、`host:build`、`bun run check` 全绿。
+
+**教训**：「已知遗留」如果不带一条**会红的用例**，它在缺陷账本里就只是一句话——BUG-034 的遗留活了 20 天才被问到。另一个通用点：失败原因这类「只在某个字段里」的载荷，主链路与旁路（子代理、回放、冷加载）必须共用同一个提取函数（本例 `errorTextOf` / `readSubagentOutcome`），否则每加一条旁路就漏一次。
+
+### BUG-123: 文件 tab 看不了图片——正文被导航挤到 39px，刷新后永久 Loading
+
+**日期**：2026-10-30
+
+**现象**：右侧栏停在默认宽度时，文件 tab 点开一张 PNG 只显示 39×39 的缩略图，用户读作「文件 tab 看不了图片」；同宽度下文本文件也只剩行号和半行代码。另外点「刷新文件树」后列表永远停在 `Loading…`。
+
+**根因**：①`.fp-nav` 的宽度是写死的像素（拖拽值默认 260，面板默认 `--right-w: 320`），且 inner `minWidth: 160` 兜底，`.fp-main` 是 `flex: 1 1 0%`，于是正文被压到 39px；图片 `max-w-full` 的相对宽随父容器塌缩，看起来就是「图片很小/打不开」。②`refreshTree` 只清 `fileTreeDirs` / `fileTreePending`，不重新挂载树层；`FileTreeLevel` 的 effect 依赖只有 `dirPath`，缓存清了却不再发 `list_dir`，于是每层都卡在 loading。
+
+**修复**：①图片视图不再渲染导航，预览铺满面板；标题栏的导航按钮在图片视图改为「临时展开」（peek），选下一个文件后自动复位，不写持久化的收起偏好。②`.fp-nav` 加 `max-width: 55%`，窄面板下导航不再压死正文（同时删掉与拖拽 clamp 重复的 inline `minWidth`）。③`FileTreeLevel` 的 effect 依赖加上 `entries`，缓存被清后自动重发。
+
+**验证**：`dev:browser` + 真实 host + 无头 Chromium 实测：默认 320px 面板点 PNG → 导航收起、图片 304px 宽；点「展开文件导航」再点 SVG → 303.97px（原图 800），导航自动收起；刷新文件树 → 3 项立即重载；640px 面板下导航 260 / 正文 359。`bun run check` 全绿。未测真机 Tauri webview（同一套 DOM/CSS，风险低）。
+
+**教训**：像素宽度 + `flex: 1 1 0%` 的组合会在窄容器里把内容压成「存在但不可用」，而图片的 `max-width: 100%` 会把这种塌缩放大成「功能坏了」的观感——布局类缺陷要先量实际矩形再定性。清缓存类刷新必须与「读取方会在什么条件下重发」成对设计，否则缓存清空等于把该子树钉死。
+
+### BUG-124: 会话复制按钮只复制最后一段回复
+
+**日期**：2026-10-30
+
+**现象**：一轮里既有正文又有工具调用、最后还有一句收尾时，点助手气泡的复制按钮只得到收尾那句，前面的正文全部丢失。
+
+**根因**：一轮回复会落成多个 assistant 条目（文本段、工具调用段、收尾段），渲染时合并为一个块；`TurnActs` 的复制用的是 `item.text`，而它只承载尾段。
+
+**修复**：`items.tsx` 新增 `turnReplyText`，从落点往回收集所有 assistant 条目（跳过 junk 占位，steer 气泡不打断本轮），以空行连接后传给 `TurnActs` 复制；两处渲染点（常规尾部与 automation 尾部）都改用它。
+
+**验证**：`ui:typecheck`、`bun run check` 全绿；复制路径为纯文本拼接，未单独写测试（无分支逻辑，输入取自既有 items 数组）。
+
+**教训**：「渲染合并」与「数据分裂」并存时，任何取 `item.text` 的读者都要先问一句这是不是整轮文本——复制、导出、引用这类功能最容易踩，因为它们在视觉上看不出差别。
