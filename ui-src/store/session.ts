@@ -147,7 +147,9 @@ export function findBySessionId(id: string): OpenSession | undefined {
 }
 
 /** Full-replace landing for pool_sessions frames: swaps the pool array and rebuilds the
- *  busy-path set in one write (both containers always agree; see SessionSlice.busyPaths). */
+ *  busy-path set in one write (both containers always agree; see SessionSlice.busyPaths).
+ *  Also arms the host-authoritative idle settle below for every open slot the host reports
+ *  as idle while the slot still thinks it is streaming. */
 export function landPoolSessions(sessions: PoolSessionInfo[] | undefined): void {
   const list = sessions ?? [];
   const busyPaths = new Set<string>();
@@ -157,6 +159,9 @@ export function landPoolSessions(sessions: PoolSessionInfo[] | undefined): void 
     if (p.busy === true) busyPaths.add(p.path);
   }
   useAppStore.setState({ poolSessions: list, busyPaths, poolPaths });
+  for (const [path, s] of useAppStore.getState().openSessions) {
+    if (s.streaming && poolPaths.has(path) && !busyPaths.has(path)) scheduleIdleSettle(path);
+  }
 }
 
 // ---------- Render memory gate: LRU eviction for openSessions ----------
@@ -290,21 +295,64 @@ function clearRunningTools(s: OpenSession): void {
 // busyPaths is deliberately NOT cleared here — the sidebar spinner comes from the host's
 // own busy flag, and that is the honest signal that the run has not actually ended yet.
 const ABORT_SETTLE_GRACE_MS = 2000;
+/** Collapse what the user can see back to idle without losing produced text: the draft lands as a
+ *  plain assistant row and every per-run indicator stops. turnItemStart stays untouched so a late
+ *  turn_end still seals the run on its normal path (BUG-110's rule: keep what is recoverable). */
+function settleRunView(x: OpenSession): void {
+  if (x.assistantDraft && !isJunkPlaceholder(x.assistantDraft)) {
+    x.items.push({ role: "assistant", text: x.assistantDraft });
+    x.assistantDraft = "";
+  }
+  x.streaming = false;
+  x.workingText = null;
+  x.pendingApprovals = [];
+  clearRunningTools(x);
+}
+
 export function settleAbortedRunLater(sessionId: string): void {
   setTimeout(() => {
     const s = findBySessionId(sessionId);
     if (!s?.streaming) return; // a real turn_end already settled it
-    updateSession(sessionId, (x) => {
-      if (x.assistantDraft && !isJunkPlaceholder(x.assistantDraft)) {
-        x.items.push({ role: "assistant", text: x.assistantDraft });
-        x.assistantDraft = "";
-      }
-      x.streaming = false;
-      x.workingText = null;
-      x.pendingApprovals = [];
-      clearRunningTools(x);
-    });
+    updateSession(sessionId, settleRunView);
   }, ABORT_SETTLE_GRACE_MS);
+}
+
+// Host-authoritative idle settle. The pool snapshot's busy flag is the base's isStreaming, which
+// the host reads right after the run unwound — so busy=false means no agent loop can still emit
+// into that session, while the UI's own streaming flag is cleared only by turn_end(runEnd). A run
+// that ends with isTerminal:false (a bg job awaiting async delivery) never sends that frame, so
+// the working row, the stop button and the sidebar spinner stayed wedged for the whole background
+// window (BUG-120's precondition; BUG-110 covered only the abort path). Grace + cancel-on-activity:
+// a prompt sent a moment ago can reach the host after this snapshot was computed, and a genuinely
+// live run keeps streaming events, which cancel the timer — so only a silent, host-declared-idle
+// session settles.
+const IDLE_SETTLE_GRACE_MS = 1500;
+const idleSettleTimers = new Map<string, TimerHandle>();
+
+function scheduleIdleSettle(path: string): void {
+  if (idleSettleTimers.has(path)) return; // already armed; the re-check at fire time reads fresh state
+  idleSettleTimers.set(
+    path,
+    setTimeout(() => {
+      idleSettleTimers.delete(path);
+      const st = useAppStore.getState();
+      if (st.busyPaths.has(path)) return; // the run really is live (or resumed)
+      const s = st.openSessions.get(path);
+      if (!s?.streaming) return;
+      updateSession(s.sessionId, settleRunView);
+    }, IDLE_SETTLE_GRACE_MS),
+  );
+}
+
+/** Any frame for this session is proof the run is alive: cancel a pending idle settle. */
+function cancelIdleSettle(sessionId: string): void {
+  if (idleSettleTimers.size === 0) return;
+  const path = pathOfSessionId(sessionId, useAppStore.getState().openSessions);
+  const timer = path === undefined ? undefined : idleSettleTimers.get(path);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    idleSettleTimers.delete(path!);
+  }
 }
 
 // ---------- Run sealing / queued messages (moved over from core.js; render calls now bump) ----------
@@ -407,9 +455,17 @@ export function startLocalRun(
   automation?: UserItem["automation"],
 ): void {
   updateSession(sessionId, (s) => {
+    // A live turnItemStart here means the previous run left its fold open — its runEnd never
+    // reached this UI (stale streaming: bg job / dropped turn_end). Seal that abandoned segment
+    // before landing the bubble, otherwise the next seal sweeps it into the collapsed process
+    // group and the user's message is invisible until a reload (session 01a18749).
+    const openRun = s.turnItemStart != null;
+    if (openRun) sealRunItems(s, null);
     s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}), ...(automation ? { automation } : {}) });
     s.streaming = true;
     s.turnStartAt = Date.now();
+    // This bubble opens the new run: the process after it belongs to the next fold
+    if (openRun) s.turnItemStart = s.items.length;
   });
 }
 
@@ -474,6 +530,8 @@ function findToolRow(s: OpenSession, toolCallId?: string, name?: string): ToolIt
 }
 
 export function applyEvent(msg: EventFrame): void {
+  // Any live frame proves this session's run is still emitting: it must not be settled as idle
+  cancelIdleSettle(msg.sessionId);
   const st = useAppStore.getState();
   if (msg.kind === "turn_start") {
     updateSession(

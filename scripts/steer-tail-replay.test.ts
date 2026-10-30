@@ -101,6 +101,29 @@ describe("steer at the run tail", () => {
     expect(s.streaming).toBe(true);
   });
 
+  test("queued bubble that lands mid-stale-run survives the next runEnd seal", () => {
+    // Real shape (session 01a18749): a bg job held the run open, the UI's streaming and
+    // turnItemStart both went stale, the user's plain Enter only queued a row, and the
+    // host echoed the bubble. The echo landed INSIDE the abandoned run's fold range, so
+    // the next seal swept it into the collapsed group — the bubble never showed.
+    const s0 = seedSession(true);
+    s0.items = [{ role: "user", text: "写一篇关于灯塔的短文" }, { role: "assistant", text: "灯塔……" }];
+    s0.turnItemStart = 1; // stale: the previous run's runEnd never arrived
+    const st = useAppStore.getState();
+    const prevSend = st.send;
+    st.send = () => {};
+    sendComposerPrompt({ raw: "1: B; 2. 接受; 3. 没看懂", files: [] }); // plain Enter: queued branch
+    st.send = prevSend;
+    event("user_message", { text: "1: B; 2. 接受; 3. 没看懂" }); // the host's degenerate-idle echo
+    event("turn_start");
+    event("text_delta", { text: "先把 3 讲清楚，再往下推一层。" });
+    event("turn_end", { runEnd: true, usage: null });
+    const s = items().get(PATH)!;
+    expect(s.items.some((i) => i.role === "user" && i.text.includes("1: B;"))).toBe(true); // top level
+    const buried = s.items.some((i) => i.role === "loop" && (i.items ?? []).some((k) => k.role === "user" && k.text.includes("1: B;")));
+    expect(buried).toBe(false); // never folded into the collapsed process group
+  });
+
   test("user_message echo does not double the optimistic bubble (normal idle path)", () => {
     seedSession(false); // streaming=false: dispatchPrompt draws the optimistic bubble
     const st = useAppStore.getState();
