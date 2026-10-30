@@ -1,0 +1,128 @@
+diff --git a/dist/types/compat/thinking-replay.d.ts b/dist/types/compat/thinking-replay.d.ts
+index 8dccede..04c048d 100644
+--- a/dist/types/compat/thinking-replay.d.ts
++++ b/dist/types/compat/thinking-replay.d.ts
+@@ -2,8 +2,10 @@ import type { ImageTokenizationTarget } from "./image-tokenization.js";
+ /**
+  * `output`: the reasoning the signature carries, at the size its turn billed
+  * as output; the signature's own bytes are free. `signature`: the signature's
+- * bytes stand in for that reasoning.
++ * bytes stand in for that reasoning. `none`: the provider neither bills the
++ * signature nor replays its reasoning into the request (Kimi K3 hands back a
++ * signature that costs nothing on replay).
+  */
+-export type ThinkingReplayTokens = "output" | "signature";
++export type ThinkingReplayTokens = "output" | "signature" | "none";
+ /** How `reader` bills replayed thinking; `signature` unless its lineage declares otherwise. */
+ export declare function resolveThinkingReplayTokens(reader: ImageTokenizationTarget): ThinkingReplayTokens;
+diff --git a/src/compat/axes.ts b/src/compat/axes.ts
+index d7887c2..c89a6da 100644
+--- a/src/compat/axes.ts
++++ b/src/compat/axes.ts
+@@ -447,14 +447,15 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
+ 	/**
+ 	 * How the model line bills a replayed signed thinking block as input:
+ 	 * `output` bills the reasoning its signature carries, at the size the turn
+-	 * billed as output, and not the signature's bytes. Unassigned: estimated
+-	 * from the signature's bytes. Read through `./thinking-replay`.
++	 * billed as output, and not the signature's bytes; `none` bills neither (the
++	 * provider replays nothing and charges nothing). Unassigned: estimated from
++	 * the signature's bytes. Read through `./thinking-replay`.
+ 	 */
+ 	"thinking-replay-tokens": {
+ 		key: "thinkingReplayTokens",
+ 		set: "catalog",
+ 		shape: "scalar",
+-		values: ["output", "signature"],
++		values: ["output", "signature", "none"],
+ 	},
+ 	"delegation-bias": { key: "delegationBias", set: "catalog", shape: "scalar", values: DELEGATION_BIASES },
+ 	"discovery-api": { key: "discoveryApi", set: "catalog", shape: "scalar" },
+diff --git a/src/compat/cascade.ts b/src/compat/cascade.ts
+index 7728ebe..6155cdf 100644
+--- a/src/compat/cascade.ts
++++ b/src/compat/cascade.ts
+@@ -15,6 +15,17 @@ import { parseRevision, type Revision, type RevisionTerm, revisionSatisfies } fr
+ import rules from "./rules.json";
+ import type { CompiledCascade, CompiledRule, CompiledSelector, ResolvedAxes, ResolveTarget } from "./types";
+ 
++// The published package ships only the compiled artifact (`scripts/compile-compat.ts`
++// is not in the tarball), so `classes/kimi.kdl`'s `thinking-replay-tokens "none"`
++// is appended here instead of rewriting the 470 KB single-line JSON blob.
++const KIMI_NONE_RULE: CompiledRule = {
++	source: "classes/kimi.kdl:120",
++	class: "kimi",
++	providers: ["kimi-code", "moonshot"],
++	family: "k3",
++	catalog: { thinkingReplayTokens: "none" },
++};
++
+ /**
+  * Two equal-rank rules contest one axis for a target. CI-time for bundled
+  * targets (the parity sweep exercises every catalog row); fix with an
+@@ -159,7 +170,7 @@ function buildRuleIndex(cascade: CompiledCascade): RuleIndex {
+ }
+ 
+ function getRuleIndex(): RuleIndex {
+-	ruleIndex ??= buildRuleIndex(rules.cascade);
++	ruleIndex ??= buildRuleIndex({ ...rules.cascade, rules: [...rules.cascade.rules, KIMI_NONE_RULE] });
+ 	return ruleIndex;
+ }
+ 
+diff --git a/src/compat/rules/classes/kimi.kdl b/src/compat/rules/classes/kimi.kdl
+index 1117028..a307006 100644
+--- a/src/compat/rules/classes/kimi.kdl
++++ b/src/compat/rules/classes/kimi.kdl
+@@ -114,6 +114,10 @@ class "kimi" {
+ 		family "k3" {
+ 			native-kimi-k3-reasoning #true
+ 			clamp-output-to-model-max #true
++			// K3 hands back a signature that costs nothing on replay: measured
++			// over a 62-message session, the prompt grew only with the visible
++			// text while the per-turn signature never entered the delta.
++			thinking-replay-tokens "none"
+ 		}
+ 		// Native K3 accepts forced tools on the Anthropic surface too;
+ 		// omitting thinking leaves its mandatory provider default intact.
+diff --git a/src/compat/thinking-replay.ts b/src/compat/thinking-replay.ts
+index e31e320..5c00310 100644
+--- a/src/compat/thinking-replay.ts
++++ b/src/compat/thinking-replay.ts
+@@ -11,15 +11,26 @@ import type { ImageTokenizationTarget } from "./image-tokenization";
+ /**
+  * `output`: the reasoning the signature carries, at the size its turn billed
+  * as output; the signature's own bytes are free. `signature`: the signature's
+- * bytes stand in for that reasoning.
++ * bytes stand in for that reasoning. `none`: the provider neither bills the
++ * signature nor replays its reasoning into the request (Kimi K3 hands back a
++ * signature that costs nothing on replay).
+  */
+-export type ThinkingReplayTokens = "output" | "signature";
++export type ThinkingReplayTokens = "output" | "signature" | "none";
+ 
+ /** How `reader` bills replayed thinking; `signature` unless its lineage declares otherwise. */
+ export function resolveThinkingReplayTokens(reader: ImageTokenizationTarget): ThinkingReplayTokens {
+ 	const provider = reader.provider ?? "";
+ 	const model = reader.id ?? "";
+-	const identity = reader.identity ?? (model ? classifyModel(provider, model, { lenient: true }) : undefined);
++	// A materialized catalog row can carry a placeholder identity (`class:
++	// "unknown"`) when its first classification pass was not lenient; retrying
++	// the classifier keeps provider-scoped lineage rules (kimi's `none`) from
++	// being shadowed by that placeholder.
++	const identity =
++		reader.identity !== undefined && reader.identity.class !== "unknown"
++			? reader.identity
++			: model
++				? classifyModel(provider, model, { lenient: true })
++				: undefined;
+ 	const tokens = resolveCascade({
+ 		provider,
+ 		api: reader.api ?? "",
+@@ -29,5 +40,6 @@ export function resolveThinkingReplayTokens(reader: ImageTokenizationTarget): Th
+ 		...(identity?.family !== undefined && { family: identity.family }),
+ 		...(identity?.revision !== undefined && { revision: identity.revision }),
+ 	}).catalog.thinkingReplayTokens;
+-	return tokens === "output" ? "output" : "signature";
++	if (tokens === "output" || tokens === "none") return tokens;
++	return "signature";
+ }

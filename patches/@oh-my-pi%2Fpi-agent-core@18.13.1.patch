@@ -1,0 +1,21 @@
+diff --git a/src/tokenizer.ts b/src/tokenizer.ts
+index 25cd497..f02d4a7 100644
+--- a/src/tokenizer.ts
++++ b/src/tokenizer.ts
+@@ -493,11 +493,14 @@ export class Tokenizer {
+ 				// The visible text undercounts a native replay: the provider rebuilds
+ 				// the full reasoning from its signature, billed at the turn's output
+ 				// size less the visible text shake has since elided from it. The
+-				// floor keeps the visible count.
++				// floor keeps the visible count. Only the `output` tier bills this
++				// way: `none` providers replay nothing (`signaturesPriced` alone would
++				// let `none` fall through here and swap the visible text for a size
++				// the provider never charges).
+ 				if (
+ 					signedReasoning &&
+ 					!excludeEncryptedReasoning &&
+-					!signaturesPriced &&
++					this.thinkingReplayTokens === "output" &&
+ 					this.#replaysReasoningNatively(message)
+ 				) {
+ 					const visible = fragments.length === 0 ? extra : extra + this.countTokens(fragments);
