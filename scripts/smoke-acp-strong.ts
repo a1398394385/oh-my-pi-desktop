@@ -165,7 +165,7 @@ function addBlocks(fx: Fixture, count: number, blockTokens = 400): void {
 }
 
 const NO_TAIL: Partial<AcpParams> = { tailTurns: 0, tailTokens: 0 };
-const PARAMS = { l1: 1_000, l2: 2_000, l3: 3_000, target: 1_000_000, ...NO_TAIL } as const;
+const PARAMS = { l1: 1_000, l2: 2_000, l3: 3_000, minCompress: 0, target: 1_000_000, ...NO_TAIL } as const;
 
 /** The ephemeral text of the latest projection (asserts its user-role tail position). */
 function ephemeralText(fx: Fixture): string {
@@ -433,7 +433,7 @@ const cwdG = mkdtempSync(join(tmpdir(), "acp-t6-disk-"));
 		getEntries: () => sessionManager.getEntries(),
 		contextWindow: window,
 		// l3 4000 sits above the round-1 active total (6 x ~506) so rounds 1-2 stay normal.
-		params: { l1: 800, l2: 1_600, l3: 4_000, target: 1_000_000, tailTurns: 0, tailTokens: 0 },
+		params: { l1: 800, l2: 1_600, l3: 4_000, minCompress: 0, target: 1_000_000, tailTurns: 0, tailTokens: 0 },
 	});
 
 	// Six 500-token user turns journaled through the real channel.
@@ -558,7 +558,7 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 		sink: sessionManager,
 		getEntries: () => sessionManager.getEntries(),
 		contextWindow: mock.contextWindow,
-		params: { l1: 2_000, l2: 4_000, l3: 6_000, target: 1_000_000, tailTurns: 0, tailTokens: 0 } as Partial<AcpParams>,
+		params: { l1: 2_000, l2: 4_000, l3: 6_000, minCompress: 0, target: 1_000_000, tailTurns: 0, tailTokens: 0 } as Partial<AcpParams>,
 	});
 	const authStorage = await AuthStorage.create(join(cwdH, "auth.db"));
 	authStorage.keys.setRuntime("mock", "mock-key");

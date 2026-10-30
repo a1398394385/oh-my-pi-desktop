@@ -508,6 +508,8 @@ export const settingsPageZh = {
     tierModePercent: "百分比",
     tierTitle: "L{{tier}} 档位阈值",
     tierDesc: "活跃内容超过这条线就进入该档位。绝对值填 K token，百分比填模型窗口占比。",
+    minCompressTitle: "最小压缩量",
+    minCompressDesc: "活跃区低于该值时，状态与压缩工具直接失败。",
     tailUserMessagesTitle: "尾部保护区(用户消息)",
     tailUserMessagesDesc: "最近的 N 条用户消息一定保留，可能超出上面的 turn/token 上限。",
     tailTurnsTitle: "尾部保护区(turn)",

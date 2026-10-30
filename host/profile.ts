@@ -414,6 +414,7 @@ export function readAcpConfig(): {
   l1?: number;
   l2?: number;
   l3?: number;
+  minCompress?: number;
   tailTurns?: number;
   tailTokens?: number;
   tailUserMessages?: number;
@@ -426,6 +427,7 @@ export function readAcpConfig(): {
     l1: num(acp.l1),
     l2: num(acp.l2),
     l3: num(acp.l3),
+    minCompress: num(acp.minCompress),
     tailTurns: num(acp.tailTurns),
     tailTokens: num(acp.tailTokens),
     tailUserMessages: num(acp.tailUserMessages),

@@ -102,6 +102,27 @@ describe("splitBlocks charges every content kind the base counter does", () => {
 		const blocks = splitBlocks(source, (t) => t.length);
 		expect(blocks.find((b) => b.id === "a1#t")!.tokens).toBe("sig-9".length);
 	});
+
+	// The catalog's thinking-replay axis decides the signature price: kimi bills
+	// nothing (`none`), Claude bills the turn's reasoning (`output`), and the host
+	// reads both off the base counter instead of keeping a provider table.
+	test("a provider that bills no signature prices the block at its thinking text", () => {
+		const source = [assistant("a1", [{ type: "thinking", thinking: "x".repeat(20), thinkingSignature: "sig-9" }])];
+		const blocks = splitBlocks(source, (t) => t.length, undefined, undefined, () => 0);
+		expect(blocks.find((b) => b.id === "a1#t")!.tokens).toBe(20);
+	});
+
+	test("a provider whose replay bills more than its bytes adds that increment", () => {
+		const source = [assistant("a1", [{ type: "thinking", thinking: "x".repeat(20), thinkingSignature: "sig-9" }])];
+		const blocks = splitBlocks(source, (t) => t.length, undefined, undefined, () => 42);
+		expect(blocks.find((b) => b.id === "a1#t")!.tokens).toBe(62);
+	});
+
+	test("a negative increment never shrinks the block below its visible text", () => {
+		const source = [assistant("a1", [{ type: "thinking", thinking: "x".repeat(20), thinkingSignature: "sig-9" }])];
+		const blocks = splitBlocks(source, (t) => t.length, undefined, undefined, () => -5);
+		expect(blocks.find((b) => b.id === "a1#t")!.tokens).toBe(20);
+	});
 });
 
 describe("createAcpRuntime persisted image pricing", () => {

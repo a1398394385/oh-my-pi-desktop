@@ -49,6 +49,8 @@ export interface AcpConfig {
   l1?: number;
   l2?: number;
   l3?: number;
+  /** Active-zone floor for context tools and minimum folded size for a successful compression */
+  minCompress?: number;
   /** Protected tail: recent turns/tokens never compressed (host defaults 2 / 20000) */
   tailTurns?: number;
   tailTokens?: number;

@@ -19,7 +19,8 @@
 // placeholder results), so failing loudly here would only disable compression
 // for a condition the wire tolerates. A gap is still logged once per request
 // so a manifest-validation hole remains observable.
-import type { AgentMessage, AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
+import type { AgentMessage, Tokenizer } from "@oh-my-pi/pi-agent-core";
+import type { AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-ai";
 import { base64ImageSize, estimateImageTokens, type ImageDetail } from "@oh-my-pi/pi-agent-core/image-tokens";
 import { messageFingerprint } from "./acp-fingerprint.ts";
 
@@ -28,6 +29,26 @@ export type CountTokens = (text: string) => number;
 
 /** Image charge of one content block; the host binds it to the session model's Tokenizer (spec §8). */
 export type CountImage = (image: { data: string; detail?: ImageDetail }) => number;
+
+/**
+ * Encrypted-reasoning charge of one assistant message: 0 when the provider bills
+ * no signature at all (catalog `thinking-replay-tokens: none`), the turn's output
+ * delta when it replays natively (`output`), the signature's bytes otherwise.
+ */
+export type CountSignatureTokens = (message: AssistantMessage) => number;
+
+/** Whole-list count from the base counter; the drift calibration's local basis (spec §5.2). */
+export type CountMessages = (messages: readonly AgentMessage[]) => number;
+
+/**
+ * Signature share of one assistant message, read off the base counter's own
+ * encrypted-reasoning increment so the block price follows the catalog's
+ * thinking-replay axis instead of a host-side provider table.
+ */
+export const signatureTokensOf =
+	(tokenizer: Tokenizer): CountSignatureTokens =>
+	(m) =>
+		tokenizer.countMessage(m) - tokenizer.countMessage(m, { excludeEncryptedReasoning: true });
 
 /** Fallback for pure-function callers: the wire rule the base tokenizer uses without a catalog image rule. */
 const defaultCountImage: CountImage = (image) => estimateImageTokens(base64ImageSize(image.data), image.detail);
@@ -136,12 +157,19 @@ function splitContent(
  * `countImage` prices `image` blocks, which carry no text: the host binds it to
  * the session Tokenizer so a block reads exactly as large as the base counter
  * charges it. Callers that only need ids pass a zero counter.
+ *
+ * `countSignatureTokens` prices the encrypted-reasoning payload of a thinking
+ * block. Omitted, the signature's own bytes are charged — right for a provider
+ * that bills them, wrong for one that bills nothing (kimi) or replays the
+ * reasoning at output size (Claude). The host binds it to the base counter's
+ * own increment so the block never disagrees with the provider's bill.
  */
 export function splitBlocks(
 	source: readonly AcpSourceMessage[],
 	countTokens: CountTokens,
 	memo?: Map<string, number>,
 	countImage: CountImage = defaultCountImage,
+	countSignatureTokens?: CountSignatureTokens,
 ): AcpBlockInfo[] {
 	const blocks: AcpBlockInfo[] = [];
 	// tool_use bodies ride with their result block (spec §3), so their cost is
@@ -187,9 +215,10 @@ export function splitBlocks(
 			});
 		} else if (message.role === "assistant") {
 			let thinking = "";
-			// Providers bill the opaque signature riding along a thinking block, and the
-			// base countMessage charges it — an uncounted signature leaves the block under
-			// its wire size by that payload.
+			// Providers bill the opaque signature riding along a thinking block by the
+			// catalog's thinking-replay axis: `signature` charges its bytes, `output`
+			// the turn's reasoning, `none` nothing (kimi). `countSignatureTokens`
+			// carries that decision; a caller without one keeps the byte charge.
 			let signature = "";
 			let text = "";
 			// tool_use bodies ride with their result block, never split into their own.
@@ -202,14 +231,20 @@ export function splitBlocks(
 				else if (c.type === "toolCall")
 					callTokens.set(c.id, count(`${c.name} ${JSON.stringify(c.arguments)}`, "c"));
 			}
-			if (thinking || signature)
+			if (thinking || signature) {
+				// A negative increment would shrink the block below its visible text;
+				// the provider never bills less than the text it received.
+				const signatureTokens = countSignatureTokens
+					? Math.max(0, countSignatureTokens(message))
+					: count(signature, "s");
 				blocks.push({
 					id: `${id}#t`,
 					kind: "thinking",
 					sourceId: id,
-					tokens: count(thinking, "t") + (signature ? count(signature, "s") : 0),
+					tokens: count(thinking, "t") + (signature ? signatureTokens : 0),
 					intent: truncIntent(thinking),
 				});
+			}
 			if (text)
 				blocks.push({ id: `${id}#x`, kind: "text", sourceId: id, tokens: count(text, "x"), intent: truncIntent(text) });
 		}

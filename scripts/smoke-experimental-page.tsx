@@ -49,7 +49,7 @@ const { createRoot } = await import("react-dom/client");
 
 const baseSettings = {
   acpEnabled: false,
-  acpConfig: { tierMode: "absolute", l1: 150000, l2: 250000, l3: 350000, tailTurns: 2, tailTokens: 20000, tailUserMessages: 4 },
+  acpConfig: { tierMode: "absolute", l1: 150000, l2: 250000, l3: 350000, minCompress: 20000, tailTurns: 2, tailTokens: 20000, tailUserMessages: 4 },
   sessionContextEnabled: false,
   keepaliveEnabled: false,
   keepaliveConfig: {
@@ -88,6 +88,9 @@ try {
   assert.equal(blocks().length, 1, "ACP detail block appears");
   assert(text().includes("L1 档位阈值") && text().includes("尾部保护区(turn)"), "ACP detail rows visible");
   assert(text().includes("尾部保护区(用户消息)"), "user-message tail row visible");
+  const minRow = [...host.querySelectorAll(".srow")].find((row) => row.textContent?.includes("最小压缩量"));
+  assert(minRow, "minCompress row visible");
+  assert.equal(minRow.querySelector("input")?.value, "20", "minCompress displayed in K tokens");
   assert(!text().includes("探测节奏"), "keepalive rows stay hidden");
 
   // 3. Keepalive on as well: two independent blocks

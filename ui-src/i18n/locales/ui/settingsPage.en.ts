@@ -517,6 +517,8 @@ export const settingsPageEn = {
     tierModePercent: "Percent",
     tierTitle: "L{{tier}} threshold",
     tierDesc: "The active zone enters this tier once it exceeds the line. Absolute mode edits K tokens, percent mode a share of the model context window.",
+    minCompressTitle: "Minimum compression",
+    minCompressDesc: "Below this active-zone size, status and compression tools fail immediately.",
     tailUserMessagesTitle: "Protected tail (user messages)",
     tailUserMessagesDesc: "The most recent user messages always stay uncompressed, even past the turn/token limits above.",
     tailTurnsTitle: "Protected tail (turns)",

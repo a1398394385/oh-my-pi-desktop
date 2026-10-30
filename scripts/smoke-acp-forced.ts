@@ -198,12 +198,13 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 }
 
 {
-	// Below-minCompress and pure-reset successes execute but do NOT count
-	// (spec §5.2 success = folded set >= minCompress; pure reset folds 0).
-	const small = makeForcedFixture({ ...FIXTURE_PARAMS, minCompress: 2_000 }, 10); // foldable total < minCompress
+	// Below-minCompress folded sets still execute when the active zone itself
+	// is above the floor; pure-reset successes likewise do NOT count.
+	const small = makeForcedFixture({ ...FIXTURE_PARAMS, minCompress: 2_000 }, 30, 100_000);
 	small.state.projectView(small.view);
-	const out = accepted(await small.state.compress({ keep: [], summary: tokenText(10) }));
-	assert.equal(out.countedAsSuccess, false, "folded ~1000 < minCompress 2000");
+	const keep = Array.from({ length: 11 }, (_, i) => small.state.shortRef(`e${i}`)!);
+	const out = accepted(await small.state.compress({ keep, summary: tokenText(10) }));
+	assert.equal(out.countedAsSuccess, false, "folded ~1900 < minCompress 2000");
 	small.state.onTurnEnd();
 	assert.equal(small.forceCalls.length, 1, "below-min success still counts as no successful compression");
 	console.log("ok: A3 below-minCompress success does not free the ultimatum");

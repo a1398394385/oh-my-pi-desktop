@@ -45,6 +45,7 @@ export interface CompressRejection {
 	ok: false;
 	code:
 		| "degraded"
+		| "below-min-compress"
 		| "no-manifest"
 		| "manifest-consumed"
 		| "hallucinated-keep"
@@ -76,6 +77,11 @@ export interface CompressSnapshot {
 	zoneLimitTokens: number;
 	/** Armed level-3 force: the next compress executes forced-strong (§5.2). */
 	forcedExecution: boolean;
+	/**
+	 * Learned provider offset over the active zone (§5.2 drift); the gate below
+	 * must read the same total `status()` reports.
+	 */
+	drift: number;
 	params: AcpParams;
 	countTokens: (text: string) => number;
 	/** bN short-ref decode (spec §3 v10); unknown refs pass through for §6.2 to judge. */
@@ -120,6 +126,16 @@ export function planCompression(
 				ok: false,
 				code: "degraded",
 				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
+			},
+		};
+	}
+	const activeTokens = snapshot.active.reduce((n, b) => n + b.tokens, 0) + snapshot.drift;
+	if (activeTokens < p.minCompress) {
+		return {
+			reject: {
+				ok: false,
+				code: "below-min-compress",
+				error: `Active zone is ${activeTokens} tokens, below minCompress ${p.minCompress}; compress_context is unavailable until more context accumulates.`,
 			},
 		};
 	}
@@ -198,7 +214,7 @@ export function planCompression(
 	// semantics with meta.forced=true).
 	const compressedIds = snapshot.manifest.ids.filter((id) => byId.has(id) && !keepSet.has(id));
 	const compressedTokens = compressedIds.reduce((n, id) => n + (byId.get(id)?.tokens ?? 0), 0);
-	const activeTokensBefore = active.reduce((n, b) => n + b.tokens, 0);
+	const activeTokensBefore = activeTokens;
 	const zoneTokens = snapshot.zoneTokens;
 	const forced = snapshot.forcedExecution;
 	const method: "normal" | "strong" = forced
@@ -271,10 +287,9 @@ export function planCompression(
 			tokensAfter: activeTokensAfter,
 		} as AcpSummaryData["meta"],
 	};
-	// minCompress never gates validation (spec §5.2): below it the call
-	// still succeeds — L2 adds a warning; L3 does not count it as a
-	// successful compression for the §5.2/§5.3 failure exits. A pure reset
-	// (folded tokens 0) likewise never counts (§5.2 compressed-set reading).
+	// The active-zone floor gates entry above; once admitted, minCompress only
+	// judges the folded set — L2 adds a warning, while L3 and forced turns do
+	// not count an undersized fold as success. A pure reset folds 0 and never counts.
 	const tierBefore = computeTier(activeTokensBefore, p);
 	const countedAsSuccess = compressedTokens >= p.minCompress;
 	const warning =

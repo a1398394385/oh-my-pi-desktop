@@ -1,5 +1,5 @@
 // Settings page: experimental features (pg-experimental).
-// Section 1: ACP context compaction (master switch + tier-mode switch + L1/L2/L3 threshold inputs)
+// Section 1: ACP context compaction (master switch + tier-mode switch + threshold inputs)
 // Section 2: project-shared terminal tabs (experimental pref)
 // Section 3: sessions & retrieval (past-session retrieval read_session_context)
 // Section 4: cache warming (desktop port of pi-kimi-keepalive, master switch + configurable
@@ -148,6 +148,11 @@ export default function ExperimentalPage() {
     if (!raw || !Number.isFinite(n) || n < 0) return;
     updateAcp({ [key]: tierMode === "percent" ? n : Math.round(n * 1000) });
   };
+  const commitMinCompress = (raw: string) => {
+    const n = Number(raw);
+    if (!raw || !Number.isFinite(n) || n < 0) return;
+    updateAcp({ minCompress: Math.round(n * 1000) });
+  };
   // Protected-tail rows: tailUserMessages/tailTurns edit whole counts; tailTokens edits K tokens (×1000 on write).
   const commitTail = (key: "tailUserMessages" | "tailTurns" | "tailTokens", raw: string) => {
     const n = Number(raw);
@@ -234,6 +239,19 @@ export default function ExperimentalPage() {
                 </div>
               );
             })}
+            <div className="srow">
+              <div className="srow-tx">
+                <b>{t("settingsPage.exp.minCompressTitle")}</b>
+                <span>{t("settingsPage.exp.minCompressDesc")}</span>
+              </div>
+              <KaInput
+                value={acpConfig?.minCompress === undefined ? "" : String(Math.round((acpConfig.minCompress / 1000) * 10) / 10)}
+                placeholder="20"
+                suffix="K"
+                decimalLimit={1}
+                onSubmit={commitMinCompress}
+              />
+            </div>
             {/* 6..8. Protected tail: user-message floor + recent turns / tokens exempt from compression */}
             {(
               [

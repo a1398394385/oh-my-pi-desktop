@@ -118,12 +118,36 @@ function assertPristine(fx: Fixture, writesBefore: number) {
 
 // Tuned params: l-tiers small so fixtures land in the wanted tiers; the §11
 // values themselves are the ACP_DEFAULT_PARAMS defaults covered by tier math.
-const PARAMS_A: Partial<AcpParams> = { l1: 1_000, l2: 2_000, l3: 3_000, target: 10_000, tailTurns: 1, tailTokens: 0 };
+const PARAMS_A: Partial<AcpParams> = { l1: 1_000, l2: 2_000, l3: 3_000, minCompress: 0, target: 10_000, tailTurns: 1, tailTokens: 0 };
 const SUMMARY = "Condensed record of the retired blocks: parser bug traced, values pinned.";
 // v10: the compress entry speaks bN short refs (spec §3); test-supplied
 // manifests still pin entry ids, so keeps resolve them through the registry.
 const R = (st: { shortRef(id: string): string | undefined }, id: string): string => st.shortRef(id)!;
 const activeTokens = (fx: Fixture) => fx.state.activeBlocks().reduce((n, b) => n + b.tokens, 0);
+
+// --- A0: active-zone floor — both tools fail fast below minCompress --------------------
+
+{
+	const gate = makeFixture({ ...PARAMS_A, minCompress: 100_000 }, 2, 1);
+	const before = gate.state.manifest;
+	const status = gate.state.status();
+	assert.equal(status.ok, false);
+	assert.match(status.ok ? "" : status.error, /below minCompress 100000/);
+	assert.equal(gate.state.manifest, before, "a rejected status call must not replace the current manifest");
+	gate.state.setManifest(gate.ids);
+	const r = rejected(await gate.state.compress({ keep: [], summary: SUMMARY }));
+	assert.equal(r.code, "below-min-compress");
+	assertPristine(gate, 0);
+	console.log("ok: A0 below minCompress — status/compress reject with zero side effects");
+}
+{
+	const probe = makeFixture(PARAMS_A, 2, 1);
+	const equality = makeFixture({ ...PARAMS_A, minCompress: activeTokens(probe) }, 2, 1);
+	const status = equality.state.status();
+	assert.equal(status.ok, true, "active zone exactly at minCompress remains available");
+	accepted(await equality.state.compress({ keep: [], summary: "x" }));
+	console.log("ok: A0 equality — active zone == minCompress can query and compress");
+}
 
 // --- A: §6 validation sequence -----------------------------------------------------
 
@@ -206,7 +230,7 @@ fx.state.setManifest(fx.ids.slice(0, 7)); // e7 = protected tail (tailTurns 1)
 	assert.equal(out.kept.blocks, 1);
 	assert.equal(out.activeTokensAfter, activeBefore - compressedTokens, "active zone shrank by exactly the folded tokens");
 	assert.equal(out.tier, computeTier(out.activeTokensAfter, fx.state.params));
-	assert.equal(out.countedAsSuccess, false, "under minCompress 20K");
+	assert.equal(out.countedAsSuccess, true, "test fixture disables the folded-set minimum");
 	assert.equal(out.warning, undefined, "no L2 warning outside L2 tier");
 	assert.equal(fx.state.manifest?.consumed, true, "success consumes the manifest");
 	assert.equal(fx.writes.length, 1);
@@ -263,22 +287,24 @@ fxB.state.setManifest(fxB.ids.slice(0, 7));
 // --- C: acceptance 16 — minCompress tiers (validation outcome unaffected) -------------
 
 {
-	const l2fx = makeFixture({ l1: 200, l2: 400, l3: 1_000, target: 10_000, tailTurns: 1, tailTokens: 0 }, 8, 8);
+	const l2fx = makeFixture({ l1: 200, l2: 400, l3: 1_000, minCompress: 200, target: 10_000, tailTurns: 1, tailTokens: 0 }, 8, 8);
 	l2fx.state.setManifest(l2fx.ids.slice(0, 7));
 	assert.equal(computeTier(activeTokens(l2fx), l2fx.state.params), "L2", "fixture sized into the L2 tier");
-	const out = accepted(await l2fx.state.compress({ keep: [R(l2fx.state, l2fx.ids[0])], summary: SUMMARY }));
+	const keep = l2fx.ids.slice(0, 6).map((id) => R(l2fx.state, id));
+	const out = accepted(await l2fx.state.compress({ keep, summary: SUMMARY }));
 	assert.equal(out.countedAsSuccess, false);
 	assert.match(out.warning!, /under minCompress/, "L2 tier passes with a warning");
-	console.log("ok: C L2 tier — under minCompress allowed with warning");
+	console.log("ok: C L2 tier — folded set under minCompress allowed with warning");
 }
 {
-	const l3fx = makeFixture({ l1: 200, l2: 400, l3: 600, target: 10_000, tailTurns: 1, tailTokens: 0 }, 8, 12);
+	const l3fx = makeFixture({ l1: 200, l2: 400, l3: 600, minCompress: 200, target: 10_000, tailTurns: 1, tailTokens: 0 }, 8, 12);
 	l3fx.state.setManifest(l3fx.ids.slice(0, 7));
 	assert.equal(computeTier(activeTokens(l3fx), l3fx.state.params), "L3", "fixture sized into the L3 tier");
-	const out = accepted(await l3fx.state.compress({ keep: [R(l3fx.state, l3fx.ids[0])], summary: SUMMARY }));
+	const keep = l3fx.ids.slice(0, 6).map((id) => R(l3fx.state, id));
+	const out = accepted(await l3fx.state.compress({ keep, summary: SUMMARY }));
 	assert.equal(out.countedAsSuccess, false, "L3 tier does not count as a successful compression");
 	assert.equal(out.warning, undefined, "the L2-only warning stays silent at L3");
-	console.log("ok: C L3 tier — allowed but not counted as success");
+	console.log("ok: C L3 tier — folded set under minCompress allowed but not counted as success");
 }
 
 // --- D: acceptance 9 (projection half) — byte-stable zone prefix ------------------------
@@ -365,7 +391,7 @@ const sessionManager = SessionManager.create(cwdE2E);
 // settings object — the §5.3 degrade path writes compaction.enabled back on it.
 const settings = Settings.isolated({ "compaction.enabled": false });
 assert.equal(cfgCompactionEnabled.get(settings), false, "base compaction pinned off for the ACP session");
-const e2eParams: Partial<AcpParams> = { l1: 50, l2: 120, l3: 200, target: 10_000, tailTurns: 0, tailTokens: 0 };
+const e2eParams: Partial<AcpParams> = { l1: 50, l2: 120, l3: 200, minCompress: 0, target: 10_000, tailTurns: 0, tailTokens: 0 };
 const state = createAcpRuntime({
 	model: mock,
 	sink: sessionManager,

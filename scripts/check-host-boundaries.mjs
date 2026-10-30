@@ -46,6 +46,11 @@ const ALLOWED_EDGES = new Set([
   "acp-compress.ts→acp-plan.ts", "acp-compress.ts→acp-projection.ts",
   "acp-compress.ts→acp-persist.ts", "acp-assembly.ts→acp-plan.ts",
   "acp-assembly.ts→acp-persist.ts", "acp-assembly.ts→stderr.ts",
+  // The assembly binds the block-price helpers (`signatureTokensOf`) and the
+  // whole-list counter from the projection leaf: the catalog's thinking-replay
+  // decision lives in the base Tokenizer, so both the factory and the runtime's
+  // model rebind need the same derivation, not a second provider table.
+  "acp-assembly.ts→acp-projection.ts",
   // ACP v10 (pull mode + short refs): the bN registry + view alignment live in
   // acp-refs (journal-replayed, pure over projection/persist shapes); the
   // context_status tool surface + the status/ephemeral renders live in

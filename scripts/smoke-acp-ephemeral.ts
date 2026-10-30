@@ -113,7 +113,7 @@ function makeFixture(params: Partial<AcpParams>, sizes: number[]): Fixture {
 		entries.push({ type: "message", id: `e${i}`, message });
 		view.push(message);
 	});
-	const state = new AcpRuntimeState({ countTokens, sink, getEntries: () => entries as never as SessionEntry[], params });
+	const state = new AcpRuntimeState({ countTokens, sink, getEntries: () => entries as never as SessionEntry[], params: { minCompress: 0, ...params } });
 	return { state, writes, entries, view };
 }
 
@@ -467,7 +467,7 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	const settings = Settings.isolated({ "compaction.enabled": false });
 	// Tiers tuned so: reminder-only first call and the single big turn stay
 	// under L1; two big turns cross it; folding turn one drops back below.
-	const e2eParams: Partial<AcpParams> = { l1: 3_000, l2: 6_000, l3: 9_000, target: 100_000, tailTurns: 2, tailTokens: 0 };
+	const e2eParams: Partial<AcpParams> = { l1: 3_000, l2: 6_000, l3: 9_000, minCompress: 0, target: 100_000, tailTurns: 2, tailTokens: 0 };
 	const state = new AcpRuntimeState({
 		countTokens,
 		sink: sessionManager,

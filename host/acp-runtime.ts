@@ -54,10 +54,13 @@ import {
 	assertToolPairing,
 	projectContext,
 	renderCompactionBlock,
+	signatureTokensOf,
 	splitBlocks,
 	type AcpBlockInfo,
 	type AcpSourceMessage,
 	type CountImage,
+	type CountMessages,
+	type CountSignatureTokens,
 } from "./acp-projection.ts";
 import { appendAcpSummary, type AcpSummarySink } from "./acp-persist.ts";
 import { ACP_VIEW_PSEUDO_PREFIX, AcpRefBook, annotateView } from "./acp-refs.ts";
@@ -95,6 +98,10 @@ export interface AcpRuntimeDeps {
 	countTokens: (text: string) => number;
 	/** Image charge bound to the same Tokenizer (spec §8): block tokens must price images like the base counter. */
 	countImage?: CountImage;
+	/** Encrypted-reasoning charge per assistant message (catalog thinking-replay axis); omitted = signature bytes. */
+	countSignatureTokens?: CountSignatureTokens;
+	/** Whole-list count over the final projected messages: the drift calibration's local basis (§5.2). */
+	countMessages?: CountMessages;
 	/** Journal write channel for compaction blocks (SessionManager, spec §9). */
 	sink: AcpSummarySink;
 	/** Journal read for entry-id alignment (SessionManager.getEntries). */
@@ -207,6 +214,15 @@ export class AcpRuntimeState {
 	#hintCount = 0;
 	/** Tokens of the latest context_status return; the compress it feeds records it (stats telemetry). */
 	#lastStatusTokens: number | null = null;
+	/**
+	 * Learned offset between the provider's billed message tokens and the local
+	 * count of the same request (§5.2 drift): message framing the local counter
+	 * omits, plus a system-prompt estimate that runs low. Fixed offset, not a
+	 * ratio — both measured providers showed a constant per-message gap.
+	 */
+	#drift = 0;
+	/** Previous request's basis awaiting the provider's report: entry count at projection + local message tokens. */
+	#pendingDrift: { entries: number; localTokens: number } | null = null;
 
 	constructor(deps: AcpRuntimeDeps) {
 		this.#deps = deps;
@@ -335,7 +351,13 @@ export class AcpRuntimeState {
 		this.#syncRefs();
 		const source = annotateView(view, this.#deps.getEntries());
 		this.lastSource = source;
-		this.lastBlocks = splitBlocks(source, this.#deps.countTokens, this.#tokenMemo, this.#deps.countImage);
+		this.lastBlocks = splitBlocks(
+			source,
+			this.#deps.countTokens,
+			this.#tokenMemo,
+			this.#deps.countImage,
+			this.#deps.countSignatureTokens,
+		);
 		// Retired context_status pairs leave the projection pair-wise: dropping the
 		// result block id from `kept` removes both the toolResult message and
 		// its tool_use body (the pair filter keys on the result id, spec §6 v10).
@@ -381,7 +403,40 @@ export class AcpRuntimeState {
 		this.#milestoneDelivered = 0;
 	}
 		this.lastProjected = out;
+		// Calibrate against the PREVIOUS request's report first: the provider's
+		// contextSnapshot for this request does not exist yet.
+		this.#calibrateDrift();
+		const localTokens = this.#deps.countMessages?.(out);
+		if (localTokens !== undefined) this.#pendingDrift = { entries: this.#deps.getEntries().length, localTokens };
 		return out;
+	}
+
+	/**
+	 * Learn the provider's local-vs-reported gap from the last request's
+	 * contextSnapshot. `promptTokens` covers system + tools + messages and
+	 * `nonMessageTokens` is the base's own system/tools estimate, so the
+	 * remainder is what the provider actually billed for messages — the part a
+	 * local block sum has to match. Clamped so one anomalous usage report
+	 * cannot swing tier judgment.
+	 */
+	#calibrateDrift(): void {
+		const pending = this.#pendingDrift;
+		if (!pending) return;
+		const entries = this.#deps.getEntries();
+		let snapshot: { promptTokens: number; nonMessageTokens: number } | undefined;
+		for (let i = entries.length - 1; i >= pending.entries; i--) {
+			const entry = entries[i];
+			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+			const s = entry.message.contextSnapshot;
+			if (s) {
+				snapshot = s;
+				break;
+			}
+		}
+		if (!snapshot) return;
+		const d = snapshot.promptTokens - snapshot.nonMessageTokens - pending.localTokens;
+		this.#drift = Math.max(-0.3 * pending.localTokens, Math.min(0.6 * pending.localTokens, d));
+		this.#pendingDrift = null;
 	}
 
 	/**
@@ -523,7 +578,7 @@ export class AcpRuntimeState {
 		const manifestIds = candidates.slice(0, keptCount).map((b) => b.id);
 		if (adopt) this.manifest = { ids: manifestIds, consumed: false };
 		const zoneTokens = this.#zoneTokens();
-		const activeTokens = active.reduce((n, b) => n + b.tokens, 0);
+		const activeTokens = active.reduce((n, b) => n + b.tokens, 0) + this.#drift;
 		const plan = computeRoundPlan(activeTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
 		const rs: AcpRoundStatus = {
 			tier: plan.tier,
@@ -576,6 +631,13 @@ export class AcpRuntimeState {
 				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
 			};
 		}
+		const activeTokens = this.activeBlocks().reduce((n, b) => n + b.tokens, 0) + this.#drift;
+		if (activeTokens < this.params.minCompress) {
+			return {
+				ok: false,
+				error: `Active zone is ${activeTokens} tokens, below minCompress ${this.params.minCompress}; context_status is unavailable until more context accumulates.`,
+			};
+		}
 		const adopt = !this.#manifestOverride;
 		let rs = this.#refreshRoundStatus(adopt);
 		let text = renderStatusText(rs, this.params);
@@ -600,6 +662,11 @@ export class AcpRuntimeState {
 	rebindModel(model: unknown): void {
 		const tokenizer = new Tokenizer(model as never);
 		this.#deps.countTokens = (s) => tokenizer.countTokens(s);
+		this.#deps.countSignatureTokens = signatureTokensOf(tokenizer);
+		this.#deps.countMessages = (msgs) => tokenizer.countMessages(msgs);
+		// The learned gap belongs to the previous provider's billing.
+		this.#drift = 0;
+		this.#pendingDrift = null;
 		this.#tokenMemo.clear();
 		this.#zoneRenderTokens.clear();
 		this.#recomputeWindowLines((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0);
@@ -632,6 +699,7 @@ export class AcpRuntimeState {
 				zoneTokens: zoneTokensBefore,
 				zoneLimitTokens: this.#zoneLimitTokens,
 				forcedExecution: this.#forcedExecution,
+				drift: this.#drift,
 				params: this.params,
 				countTokens: this.#deps.countTokens,
 				resolve: (ref) => this.#refs.resolve(ref),

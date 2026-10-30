@@ -10,6 +10,7 @@ import { BlobStore, resolveImageDataSync } from "@oh-my-pi/pi-coding-agent/sessi
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import { getBlobsDir } from "@oh-my-pi/pi-utils";
 import type { AcpParams } from "./acp-plan.ts";
+import { signatureTokensOf } from "./acp-projection.ts";
 import type { AcpSummarySink } from "./acp-persist.ts";
 import { AcpRuntimeState } from "./acp-runtime.ts";
 import { safeStderr } from "./stderr.ts";
@@ -42,6 +43,12 @@ export function createAcpRuntime(opts: {
 	const imageSizes = new Map<string, ImageSize | null>();
 	return new AcpRuntimeState({
 		countTokens: (s) => tokenizer.countTokens(s),
+		// Block prices follow the catalog's thinking-replay axis (step: kimi `none`
+		// bills no signature); the base counter owns that decision, so the block
+		// takes its increment instead of a host-side provider table.
+		countSignatureTokens: signatureTokensOf(tokenizer),
+		// Drift calibration basis: the same counter over the whole projected list.
+		countMessages: (msgs) => tokenizer.countMessages(msgs),
 		// Persistence replaces image bytes with blob refs; measuring the ref itself
 		// would charge the unknown-size maximum instead of the actual pixel cost.
 		countImage: (image) => {
