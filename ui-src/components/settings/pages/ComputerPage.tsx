@@ -63,7 +63,6 @@ export default function ComputerPage() {
     const next = !on;
     setOn(next);
     send({ type: "set_setting", key: "computer.enabled", value: next });
-    toast(t("settingsPage.computer.writtenToast"));
   };
   // Desktop-owned "default on" switch: fresh sessions start opted in. Nothing
   // live changes — the host reads it at spawn only.

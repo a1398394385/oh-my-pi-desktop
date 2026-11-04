@@ -365,7 +365,6 @@ export default function GeneralPage() {
   const switchProfile = (name: string) => {
     const target = String(name || "").trim();
     if (!target) return;
-    toast(t("settingsPage.general.switchingProfile", { name: target }));
     send({ type: "switch_profile", profile: target });
     // Re-send the locale after a profile switch: the host re-reads the new
     // profile's config on switch, so push the frontend's language preference
@@ -391,7 +390,6 @@ export default function GeneralPage() {
       uiPrefs: { ...st.uiPrefs, terminalInheritProfile: next },
     }));
     saveUiPrefs();
-    toast(next ? t("settingsPage.general.terminalInheritOn") : t("settingsPage.general.terminalInheritOff"));
   };
   const saveTerminalFont = () => {
     const f = terminalFont.trim();
@@ -399,7 +397,6 @@ export default function GeneralPage() {
       uiPrefs: { ...st.uiPrefs, terminalFont: f },
     }));
     saveUiPrefs();
-    toast(f ? t("settingsPage.general.terminalFontSaved", { font: f }) : t("settingsPage.general.terminalFontReset"));
   };
   // Font picker select: same persistence as the free-text save, minus the trim
   // (the picker hands over exact family names).
@@ -409,7 +406,6 @@ export default function GeneralPage() {
       uiPrefs: { ...st.uiPrefs, terminalFont: f },
     }));
     saveUiPrefs();
-    toast(f ? t("settingsPage.general.terminalFontSaved", { font: f }) : t("settingsPage.general.terminalFontReset"));
   };
   const pickTerminalFontSize = (v: string) => {
     const n = Number(v);
@@ -419,7 +415,6 @@ export default function GeneralPage() {
       uiPrefs: { ...st.uiPrefs, terminalFontSize: n },
     }));
     saveUiPrefs();
-    toast(t("settingsPage.general.terminalFontSizeSaved", { size: n }));
   };
   // Language switch: persist to uiPrefs, switch i18next, notify the host.
   // <App key={lang}> in main.tsx re-mounts the tree, so the new locale applies
@@ -445,7 +440,6 @@ export default function GeneralPage() {
     const raw = parseFloat(askTimeout);
     const secs = Number.isFinite(raw) && raw >= 0 ? raw : 0;
     send({ type: "set_setting", key: "ask.timeout", value: secs });
-    toast(t("settingsPage.general.askTimeoutSaved", { secs, suffix: secs === 0 ? t("settingsPage.general.neverTimeout") : "" }));
   };
 
   // ---------- Profile dropdown data (data contract: hostSettings.availableProfiles: string[]) ----------

@@ -451,7 +451,6 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
         scope: targetScope,
         sourcePath: server.source?.path,
       });
-      toast(t("settingsPage.mcp.savedToast", { name: server.name }));
       onClose();
       return;
     }
@@ -479,7 +478,6 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
       sourcePath: server?.source?.path,
     });
     onClose();
-    toast(t("settingsPage.mcp.savedToast", { name: name.trim() }));
   };
 
   const onDelete = async () => {
@@ -487,7 +485,6 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
     if (await confirmDialog({ title: t("settingsPage.mcp.deleteConfirm", { name: server.name }), confirmText: t("common.delete"), danger: true })) {
       send({ type: "delete_mcp_server", name: server.name, scope: server.scope, sourcePath: server.source?.path });
       onClose();
-      toast(t("settingsPage.mcp.deletedToast", { name: server.name }));
     }
   };
 
@@ -784,7 +781,6 @@ export default function McpPage() {
         toast(t("settingsPage.mcp.retestNone"));
         return;
       }
-      toast(t("settingsPage.mcp.retestStart", { count: curServers.length }));
       for (const s of curServers) {
         send({ type: "test_mcp_server", name: s.name, server: s });
       }

@@ -4,7 +4,7 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, send, toast, activeOpen, refreshGitDiff, pathBase } from "../../../store";
+import { useAppStore, setBump, send, activeOpen, refreshGitDiff, pathBase } from "../../../store";
 import type { TimerHandle } from "../../../store";
 import Icon from "../../../Icon";
 import ConfirmDialog from "../../shared/ConfirmDialog";
@@ -383,7 +383,6 @@ function GdFileDetail() {
               if (!sessionId) return;
               send({ type: "prompt", sessionId, text: commentsMarkdown(comments) });
               setComments(bucket, NO_COMMENTS);
-              toast(t("gitPage.commentsSent"));
             }}
           >
             {t("gitPage.sendToAgent", { n: comments.length })}

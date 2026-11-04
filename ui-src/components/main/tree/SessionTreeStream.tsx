@@ -547,7 +547,6 @@ function ForkSwitcher({
                 className={`fork-pill ${isActive ? "active" : ""}`}
                 onClick={() => {
                   onSelectBranch(item.parentId, opt.id);
-                  toast(t("chat.switchedToBranch", { index: i + 1 }));
                 }}
                 title={tooltipText(summaryText)}
               >

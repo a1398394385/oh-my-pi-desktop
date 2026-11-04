@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../../ui/dialog";
-import { useAppStore, toast, showWelcomeScreen, setWelcomeProject, activeOpen } from "../../../store";
+import { useAppStore, showWelcomeScreen, setWelcomeProject, activeOpen } from "../../../store";
 import { worktreeCreate } from "../../../store/worktree";
 
 // Renderer-side mirror of the host's slugify (host/rpc/worktree.ts) — preview only,
@@ -70,7 +70,6 @@ export default function WorktreeCreateDialog({ onClose }: { onClose: () => void 
       // next composer send runs create_session with this cwd.
       showWelcomeScreen();
       setWelcomeProject(reply.path);
-      toast(t("worktree.create.openedToast"));
       onClose();
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));

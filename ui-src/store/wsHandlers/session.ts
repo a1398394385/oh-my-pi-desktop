@@ -33,7 +33,6 @@ function applyForkReceipt(msg: { ok: boolean; error?: string; newPath?: string; 
     useAppStore.getState().toast(msg.error ?? t("notify.forkFailed"));
     return;
   }
-  useAppStore.getState().toast(t("notify.forked"));
   if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, undefined, { guard: true });
   useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // reuse the on-disk session loading path
   useAppStore.getState().send({ type: "list_sessions" });
@@ -395,7 +394,6 @@ export const sessionHandlers = {
   },
   session_renamed(msg) {
     if (msg.ok) {
-      useAppStore.getState().toast(t("notify.renamed"));
       useAppStore.getState().send({ type: "list_sessions" }); // the host is the sole source of truth for list data; refetching is the safest
     } else {
       // The frame shape has no error field (ok is always true; the failure path is a defensive fallback only); the assertion just supplies the type, runtime reads unchanged
@@ -405,7 +403,6 @@ export const sessionHandlers = {
   },
   session_archived(msg) {
     if (msg.ok) {
-      useAppStore.getState().toast(t(msg.archived ? "notify.archived" : "notify.unarchived"));
       useAppStore.getState().send({ type: "list_sessions" });
     } else {
       const archivedErr = msg as { error?: string }; // same as above: defensive fallback only
@@ -413,11 +410,10 @@ export const sessionHandlers = {
     }
   },
   session_aborted(msg) {
-    useAppStore.getState().toast(t("notify.generationStopped"));
     settleAbortedRunLater(msg.sessionId);
   },
   session_compacted(msg) {
-    useAppStore.getState().toast(msg.ok ? t("notify.contextCompacted") : (msg.error ?? t("notify.compactFailed")));
+    if (!msg.ok) useAppStore.getState().toast(msg.error ?? t("notify.compactFailed"));
   },
   session_branched(msg) {
     // branch_session receipt, same switch flow as session_forked
@@ -451,7 +447,6 @@ export const sessionHandlers = {
       useAppStore.getState().toast(msg.error ?? t("notify.navigateFailed"));
       return;
     }
-    useAppStore.getState().toast(t("notify.navigated"));
     useAppStore.setState({ mainViewMode: "chat" });
     if (msg.editorText) useAppStore.getState().setComposerValue(msg.editorText, msg.editorImages, { guard: true });
   },

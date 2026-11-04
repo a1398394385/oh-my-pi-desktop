@@ -233,7 +233,6 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
     }
     send({ type: "add_project", cwd: remoteWorkspaceAdded.cwd });
     setWelcomeProject(remoteWorkspaceAdded.cwd);
-    toast(t("ssh.connectedToast", { label: `${remoteWorkspaceAdded.host}:${remoteWorkspaceAdded.remotePath}` }));
     onClose();
   }, [remoteWorkspaceAdded, onClose, t]);
 

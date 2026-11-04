@@ -9,7 +9,7 @@
 //   idea as ZCode's hook form); edit reads the hook file on mount and writes it back on save
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, toast, pathBase } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import type { HookAssetItem } from "../../../types/frames";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -63,9 +63,8 @@ function HookEditor({ hook, onClose }: { hook: HookAssetItem; onClose: () => voi
   useEffect(() => {
     if (!saved || saved.kind !== "hook" || saved.at === lastSaved.current) return;
     lastSaved.current = saved.at;
-    toast(t("settingsPage.hooks.savedToast", { name: hook.name }));
     onClose();
-  }, [saved, onClose, hook.name, t]);
+  }, [saved, onClose, hook.name]);
 
   useEffect(() => {
     if (!err || err.kind !== "hook" || err.at === lastErr.current) return;
@@ -156,9 +155,8 @@ function HookNewForm({ scope, onScopeChange, onClose }: {
   useEffect(() => {
     if (!pending.current || !file || file.kind !== "hook") return;
     pending.current = false;
-    toast(t("settingsPage.hooks.createdToast", { name: pathBase(file.path) }));
     onClose();
-  }, [file, onClose, t]);
+  }, [file, onClose]);
 
   useEffect(() => {
     if (!err || err.kind !== "hook" || err.at === lastErr.current) return;
@@ -262,7 +260,6 @@ export default function HooksPage() {
   const toggleHooks = () => {
     const next = !hooksEnabled;
     send({ type: "set_hooks_enabled", enabled: next });
-    toast(next ? t("settingsPage.hooks.onToast") : t("settingsPage.hooks.offToast"));
   };
 
   const onRefresh = () => {

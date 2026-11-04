@@ -91,7 +91,6 @@ function LimitsSection({ limits, prov, accountId, rank, total }: { limits: Provi
     });
     if (!ok) return;
     send({ type: "provider_disable_account", provider: prov, id: credId });
-    toast(t("settingsPage.model.disablingAccount"));
     send({ type: "get_provider_limits", provider: prov }); // card count changed — re-query
   };
   let body: ReactNode;
@@ -225,7 +224,6 @@ function AccountsSection({ prov }: { prov: string }) {
   }, [prov]);
   const enable = (id: number) => {
     send({ type: "provider_enable_account", provider: prov, id });
-    toast(t("settingsPage.model.enablingAccount"));
     send({ type: "get_provider_limits", provider: prov }); // the restored account gets its quota card back
   };
   if (!acc || acc.provider !== prov || acc.disabled.length === 0) return null;
@@ -909,7 +907,6 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
     });
     if (!ok) return;
     send({ type: "provider_logout", provider: prov });
-    toast(t("settingsPage.model.loggingOut"));
   };
   return (
     <>

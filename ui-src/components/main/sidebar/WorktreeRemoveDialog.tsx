@@ -25,7 +25,6 @@ export default function WorktreeRemoveDialog({ target, onClose }: { target: { pa
         toast(worktreeErrorText(t, reply.code, reply.error, "worktree.remove.removeFailed"), true);
         return;
       }
-      toast(t("worktree.remove.removedToast"));
       onClose();
     } catch (e) {
       toast(String(e instanceof Error ? e.message : e), true);
@@ -44,7 +43,6 @@ export default function WorktreeRemoveDialog({ target, onClose }: { target: { pa
         }
         setPhase({ kind: "ready", status });
         if (!status.exists) {
-          toast(t("worktree.remove.goneToast"));
           onClose();
         } else if (status.isRepo && !status.dirty) {
           void remove(false); // clean: the context-menu click was the confirmation

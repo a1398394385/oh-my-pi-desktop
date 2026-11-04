@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { useAppStore, send, toast, openSettings } from "../../../store";
+import { useAppStore, send, openSettings } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog } from "../../settings/common";
 import {
@@ -136,8 +136,7 @@ export default function AutomationsPage() {
     if (!closeOnNextList.current) return;
     closeOnNextList.current = false;
     setView({ mode: "list" });
-    toast(t("settingsPage.automations.savedToast"));
-  }, [automations, t]);
+  }, [automations]);
 
   // Optimistic enable flip; the host's fresh automations_list reconciles any divergence.
   function flipEnabled(a: Automation) {
@@ -216,9 +215,9 @@ export default function AutomationsPage() {
         <button type="button" className={"icon-btn pg-refresh" + (spin ? " spin" : "")} title={t("settingsPage.model.refresh")} onClick={onRefresh}>
           <Icon name="refresh" size={17} />
         </button>
-        {/* Automations settings page (pg-automations): the agent-tools switch lives there,
+        {/* Automations settings (bottom of pg-agents): the agent-tools switch lives there,
             not on the task cards — it decides whether new sessions get the automation tools */}
-        <button type="button" className="icon-btn" title={t("autoList.settingsTitle")} onClick={() => openSettings("pg-automations")}>
+        <button type="button" className="icon-btn" title={t("autoList.settingsTitle")} onClick={() => openSettings("pg-agents")}>
           <Icon name="settings" size={17} />
         </button>
         <button type="button" className="frm-primary" onClick={() => setView({ mode: "create" })}>{t("autoEdit.createBtn")}</button>

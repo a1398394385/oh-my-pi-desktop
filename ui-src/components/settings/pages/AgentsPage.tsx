@@ -6,7 +6,7 @@
 // editor): the form composes the frontmatter and the create reply triggers the content write.
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, toast, pathBase } from "../../../store";
+import { useAppStore, send, pathBase } from "../../../store";
 import Icon from "../../../Icon";
 import { emptyRow, EditWindowHead, FormRow } from "../common";
 import ScopeSel from "../ScopeSel";
@@ -103,15 +103,14 @@ function AgentCreateWindow({ scope, onScopeChange, profile, projects, onClose }:
     send({ type: "asset_file_write", kind: "agent", path: file.path, content });
   }, [file]);
 
-  // asset_file_saved reply: toast then close (the handler already re-listed the assets)
+  // asset_file_saved reply: close (the handler already re-listed the assets)
   useEffect(() => {
     if (!saved || saved.kind !== "agent" || saved.at === lastSaved.current) return;
     lastSaved.current = saved.at;
     if (!creating.current) return;
     creating.current = false;
-    toast(t("settingsPage.agents.form.createdToast", { name: name.trim().toLowerCase() }));
     onClose();
-  }, [saved, name, onClose, t]);
+  }, [saved, onClose]);
 
   // Error landing (invalid name / already exists) stays in the window
   useEffect(() => {

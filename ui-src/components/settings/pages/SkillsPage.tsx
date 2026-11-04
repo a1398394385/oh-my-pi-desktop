@@ -85,7 +85,6 @@ function SkillEditWindow({ skill, scope, onClose }: {
     if (isNew) {
       if (!creating.current) return;
       creating.current = false;
-      toast(t("settingsPage.skills.createdToast", { name }));
       onClose();
       return;
     }
@@ -93,15 +92,14 @@ function SkillEditWindow({ skill, scope, onClose }: {
       setText(assetFile.content ?? "");
       setStatus("");
     }
-  }, [assetFile, isNew, skill, name, onClose, t]);
+  }, [assetFile, isNew, skill, onClose]);
 
-  // asset_file_saved reply: toast then close (the host re-lists the assets on this frame)
+  // asset_file_saved reply: close (the host re-lists the assets on this frame)
   useEffect(() => {
     if (!saved || saved.kind !== "skill" || saved.at === lastSaved.current) return;
     lastSaved.current = saved.at;
-    toast(t("settingsPage.skills.savedToast", { name: skill?.name ?? name }));
     onClose();
-  }, [saved, onClose, skill, name, t]);
+  }, [saved, onClose]);
 
   // Error landing (invalid name / already exists / read failure) stays in the window
   useEffect(() => {
@@ -271,7 +269,6 @@ export default function SkillsPage() {
   function toggleSkills() {
     const next = !skillsEnabled;
     send({ type: "set_skills_enabled", enabled: next });
-    toast(next ? t("settingsPage.skills.onToast") : t("settingsPage.skills.offToast"));
   }
 
   function onToggle(item: SkillItem) {

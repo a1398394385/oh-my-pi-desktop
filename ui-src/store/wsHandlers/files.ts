@@ -9,17 +9,13 @@ import type { HandlerSlice, FrameOf } from "./types";
 function onGitWrite(msg: FrameOf<"git_staged" | "git_unstaged" | "git_discarded" | "git_committed" | "git_pushed">) {
   useAppStore.setState((s) => ({ rightState: { ...s.rightState, gitWrite: msg } })); // the reply settles the button busy state
   if (msg.type === "git_staged" || msg.type === "git_unstaged" || msg.type === "git_discarded") {
-    if (msg.ok) {
-      if (msg.type === "git_discarded") useAppStore.getState().toast(t("notify.changesDiscarded"));
-      useAppStore.getState().refreshGitDiff();
-    } else useAppStore.getState().toast(msg.error ?? t("notify.gitOpFailed"));
+    if (msg.ok) useAppStore.getState().refreshGitDiff();
+    else useAppStore.getState().toast(msg.error ?? t("notify.gitOpFailed"));
   } else if (msg.type === "git_committed") {
-    if (msg.ok) {
-      useAppStore.getState().toast(t("notify.committed", { sha: (msg.commit ?? "").slice(0, 7) }));
-      useAppStore.getState().refreshGitDiff();
-    } else useAppStore.getState().toast(msg.error ?? t("notify.commitFailed"));
-  } else {
-    useAppStore.getState().toast(msg.ok ? t("notify.pushed") : (msg.error ?? t("notify.pushFailed")));
+    if (msg.ok) useAppStore.getState().refreshGitDiff();
+    else useAppStore.getState().toast(msg.error ?? t("notify.commitFailed"));
+  } else if (!msg.ok) {
+    useAppStore.getState().toast(msg.error ?? t("notify.pushFailed"));
   }
 }
 
@@ -52,16 +48,10 @@ export const filesHandlers = {
   git_branch_switched(msg) {
     const st = useAppStore.getState();
     const activeCwd = st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined;
-    let matched = false;
-    if (msg.cwd === st.newSessionProject) {
-      matched = true;
-      useAppStore.setState({ newSessionBranch: msg.branch });
-    }
+    if (msg.cwd === st.newSessionProject) useAppStore.setState({ newSessionBranch: msg.branch });
     if (msg.cwd === activeCwd && st.headerGit) {
-      matched = true;
       useAppStore.setState({ headerGit: { ...st.headerGit, current: msg.branch } });
     }
-    if (matched) useAppStore.getState().toast(t("notify.branchSwitched", { branch: msg.branch }));
   },
   git_status(msg) {
     const dirs = new Set<string>();

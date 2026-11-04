@@ -6,7 +6,7 @@
 // and each row carries its own enable toggle writing to that scope's base-native config.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, toast } from "../../../store";
+import { useAppStore, send } from "../../../store";
 import Icon from "../../../Icon";
 import { emptyRow, FormRow } from "../common";
 import SchemaRows from "../SchemaRows";
@@ -85,7 +85,6 @@ export default function PluginsPage() {
   const togglePlugins = () => {
     const next = !pluginsEnabled;
     send({ type: "set_plugins_enabled", enabled: next });
-    toast(next ? t("settingsPage.plugins.onToast") : t("settingsPage.plugins.offToast"));
   };
 
   // Per-row enable toggle: optimistic reference swap on the current section (same

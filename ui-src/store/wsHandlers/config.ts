@@ -91,7 +91,6 @@ export const configHandlers = {
       selectedSubagent: null,
       selectedFile: null,
     }));
-    useAppStore.getState().toast(t("notify.profileActivated", { profile: msg.profile }));
   },
   usage_stats(msg) {
     useAppStore.setState((s) => ({ usageStats: msg.stats }));

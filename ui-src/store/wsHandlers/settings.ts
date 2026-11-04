@@ -36,10 +36,8 @@ export const settingsHandlers = {
   login_done(msg) {
     if (msg.reqId !== useAppStore.getState().loginReqId) return;
     if (msg.ok) {
-      useAppStore.getState().toast(t("notify.loginOk", { provider: msg.provider }));
       useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null, mpAddView: false }));
     } else if (msg.cancelled) {
-      useAppStore.getState().toast(t("notify.loginCancelled"));
       useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null }));
     } else {
       useAppStore.getState().toast(t("notify.loginFailed", { provider: msg.provider, message: msg.message }));
@@ -47,7 +45,6 @@ export const settingsHandlers = {
     }
   },
   provider_key_done(msg) {
-    useAppStore.getState().toast(t("notify.apiKeySaved", { provider: msg.provider }));
     useAppStore.setState((s) => ({ mpDetailProv: null }));
     useAppStore.getState().send({ type: "get_all_providers" });
   },
@@ -75,7 +72,6 @@ export const settingsHandlers = {
     }));
   },
   provider_models_saved(msg) {
-    useAppStore.getState().toast(t("notify.wizardSaved", { provider: msg.provider, count: msg.count }));
     // models/models_catalog frames pushed by the host already refreshed the left column;
     // land back on the add-view card grid
     useAppStore.setState((s) => ({ manualSaving: false, mpManualView: false }));
@@ -112,7 +108,6 @@ export const settingsHandlers = {
           : meta,
       };
     });
-    useAppStore.getState().toast(t("notify.wizardModelSaved", { model: msg.model.id }));
   },
   provider_model_meta(msg) {
     // Stale-response guard: only the currently selected provider's snapshot lands
@@ -154,11 +149,8 @@ export const settingsHandlers = {
     useAppStore.setState((s) => ({ assetFileSaved: { kind: msg.kind, at }, assetSaved: { kind: msg.kind, at } }));
     useAppStore.getState().send({ type: "list_agent_assets" });
   },
-  asset_file_deleted(msg) {
-    useAppStore.getState().toast(t(msg.kind === "skill" ? "notify.skillDeleted" : "notify.fileDeleted"));
-  },
   mcp_server_tested(msg) {
-    // Moved over from the old handleMcpServerTested: land the test result + sync the row status dot + toast (wholesale reference swap)
+    // Moved over from the old handleMcpServerTested: land the test result + sync the row status dot (+ failure toast on probe error; the dot covers success)
     useAppStore.setState((st) => {
       // Per-field shape of the mcp section follows the base scan function (frames.ts TODO); only test-related fields of the servers array are read here
       const mcp = st.agentAssets?.mcp as { servers?: { name: string; status?: string; error?: string; log?: string }[] } | undefined;
@@ -175,11 +167,7 @@ export const settingsHandlers = {
         agentAssets: { ...st.agentAssets!, mcp: { ...mcp, servers: nextServers } as McpAssetsPayload },
       };
     });
-    useAppStore.getState().toast(
-      msg.status === "ok"
-        ? t("notify.mcpConnected", { name: msg.name })
-        : t("notify.mcpProbeFailed", { name: msg.name, error: msg.error || "" }),
-    );
+    if (msg.status !== "ok") useAppStore.getState().toast(t("notify.mcpProbeFailed", { name: msg.name, error: msg.error || "" }));
   },
   // ---- Composer sigil: slash command list (host list_commands reply; @ candidates reply of list_files) ----
   commands(msg) {
