@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import { copyText, fmtAgo } from "../../main/sidebar/util";
 import { Toggle, confirmDialog } from "../common";
+import SshSection from "./SshSection";
 
 export default function RemotePage() {
   const { t } = useTranslation();
@@ -176,6 +177,7 @@ export default function RemotePage() {
           )}
         </div>
       </div>
+      <SshSection />
     </div>
   );
 }
