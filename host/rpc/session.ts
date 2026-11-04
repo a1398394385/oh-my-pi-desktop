@@ -713,7 +713,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     try {
       await entry.session.compact();
       entry.transcript = entriesToTranscript(entry.manager.getEntries(), entry.path);
-      // The rebuilt history already contains mention rows: align the cursor to avoid re-sending them on later read-backs
+      // The rebuilt history already folded the fileMention paths onto their user rows: align the cursor to avoid re-sending them on later read-backs
       entry.mentionScanIndex = entry.manager.getEntries().length;
       // Cross-channel: the other attached UI still holds the pre-compaction transcript;
       // the receipt below stays requestor-only (its toast is an answer to the click)

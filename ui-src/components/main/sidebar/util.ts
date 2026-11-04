@@ -2,6 +2,7 @@
 // session label / clipboard copy.
 // fmtAgo is the single shared definition (consumed by tree/SessionTreeStream);
 // fmtDuration lives in chat/util.ts.
+import { atMentions } from "../../../lib/at-mentions";
 import { t } from "../../../i18n";
 
 export function fmtAgo(iso: string): string {
@@ -21,7 +22,9 @@ interface SessionLabelLike {
 export function sessionLabel(s: SessionLabelLike): string {
   // The base scanner stamps this sentinel when its 4 KB prefix window holds no message
   // entry (dense custom injections push the first message past it). It is not a title.
-  const first = s.firstMessage === "(no messages)" ? "" : s.firstMessage;
+  // The first message carries the @path lines a path attachment appended; they are chips in
+  // the transcript, not part of what the user said.
+  const first = s.firstMessage === "(no messages)" ? "" : atMentions(s.firstMessage ?? "").text;
   return s.title || first || t("sidebar.emptySession");
 }
 

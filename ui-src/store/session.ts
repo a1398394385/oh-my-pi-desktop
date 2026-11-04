@@ -15,6 +15,7 @@ import { sealRunItems, endingErrorText } from "./run-seal";
 // module — both directions are runtime-only calls inside function bodies, no load-time eval)
 import { saveRightSlot, restoreRightSlot } from "./right";
 import { t } from "../i18n";
+import { atMentions } from "../lib/at-mentions";
 import type { ApprovalMode, EventFrame, HostRequest, MessagesFrame, PoolSessionsFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
 import type { SessionItem } from "../types/session";
@@ -572,9 +573,25 @@ export function applyEvent(msg: EventFrame): void {
     // on a stale streaming flag and drew no optimistic bubble). Dedup against the
     // sender's optimistic bubble: the tail user row without an entryId carrying
     // the same text IS that bubble, so the echo never doubles it.
-    const cur = findBySessionId(msg.sessionId);
-    const dupe = findLast(cur?.items ?? [], (it): it is UserItem => it.role === "user" && !it.entryId && it.text === msg.text);
-    if (!dupe) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
+    // The echo also carries the @path lines the host appended for path attachments, so the
+    // match strips them; a hit adopts that text (its chips render without waiting for the
+    // base's fileMention read-back, which only lands at agent_end).
+    const parsed = atMentions(msg.text);
+    const items = findBySessionId(msg.sessionId)?.items ?? [];
+    let dupe = -1;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i];
+      if (it.role === "user" && !it.entryId && (it.text === msg.text || it.text === parsed.text)) {
+        dupe = i;
+        break;
+      }
+    }
+    if (dupe < 0) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
+    else if (parsed.paths.length > 0) {
+      updateSession(msg.sessionId, (s) => {
+        s.items[dupe] = { ...(s.items[dupe] as UserItem), text: msg.text, attachments: parsed.paths };
+      });
+    }
   } else if (msg.kind === "text_delta") {
     applyDelta(msg.sessionId, (s) => {
       s.assistantDraft += msg.text;
@@ -757,9 +774,14 @@ export function applyEvent(msg: EventFrame): void {
       );
     }
   } else if (msg.kind === "mention") {
-    // @ mention persisted read-back: fileMention messages have no streaming-event counterpart; the host re-reads the session file at agent_end and re-sends it
+    // @ mention persisted read-back: fileMention messages have no streaming-event counterpart; the host re-reads the session file at agent_end and re-sends it.
+    // The paths fold onto the user bubble whose prompt triggered them (attachment chips,
+    // rendered by UserMsg); the row itself is replaced so the memo compares unequal.
     updateSession(msg.sessionId, (s) => {
-      s.items.push({ role: "mention", text: "", files: msg.files || [] });
+      const i = s.items.findLastIndex((it) => it.role === "user");
+      if (i < 0) return;
+      const cur = s.items[i] as UserItem;
+      s.items[i] = { ...cur, attachments: [...(cur.attachments ?? []), ...(msg.files || [])] };
     });
   } else if (msg.kind === "advisor") {
     // Advice batch: a row at its injection point (mid-run blocker, or the run-boundary

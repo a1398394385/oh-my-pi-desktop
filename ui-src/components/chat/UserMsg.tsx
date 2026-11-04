@@ -5,6 +5,8 @@ import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMs
 import { REMOTE } from "../../store/layout";
 import { copyText } from "../main/sidebar/util";
 import Icon from "../../Icon";
+import { fileTypeIcon } from "../../../ui/icons";
+import { atMentions } from "../../lib/at-mentions";
 import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
 import { t } from "../../i18n";
@@ -58,6 +60,8 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const imeCommitAtRef = useRef(0);
   const images = item.images ?? [];
+  // @file mentions the base auto-read: chips on top, tokens stripped from the text
+  const mention = atMentions(item.text, item.attachments);
   const lightboxList = images.map((img, i) => ({
     src: img.data.startsWith("data:") ? img.data : `data:${img.mimeType || "image/png"};base64,${img.data}`,
     name: t("chat.imageN", { n: i + 1 }),
@@ -162,6 +166,18 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
             })}
           </div>
         )}
+        {mention.paths.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {mention.paths.map((p) => (
+              <span className="atchip" key={p} title={p}>
+                <span className="at-ic">
+                  <Icon name={fileTypeIcon(p)} />
+                </span>
+                <span className="at-name">{p.split("/").pop() || p}</span>
+              </span>
+            ))}
+          </div>
+        )}
         {delivery ? (
           // Scheduler delivery: a card header instead of a plain bubble, so it never passes
           // for typed input. The header is the way back to the task that sent it (the
@@ -198,8 +214,8 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
               <Icon name="upload" size={15} />
             </button>
           </div>
-        ) : item.text ? (
-          <FadeBox className="user-msg-text whitespace-pre-wrap">{item.text}</FadeBox>
+        ) : mention.text ? (
+          <FadeBox className="user-msg-text whitespace-pre-wrap">{mention.text}</FadeBox>
         ) : null}
         {item.pending ? <PendingActs item={item} /> : null}
       </div>
@@ -227,7 +243,7 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
               title={t("chat.copyMsg")}
               onClick={(e) => {
                 e.stopPropagation();
-                copyText(item.text || "").then(
+                copyText(mention.text || "").then(
                   () => useAppStore.getState().toast(t("chat.copiedToClipboard")),
                   () => useAppStore.getState().toast(t("chat.copyFailed")),
                 );

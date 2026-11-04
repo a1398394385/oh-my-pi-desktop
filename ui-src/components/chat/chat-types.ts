@@ -14,7 +14,6 @@ export type {
   ChatItem,
   ErrItem,
   LoopItem,
-  MentionItem,
   MetaItem,
   PhaseItem,
   RailEntry,

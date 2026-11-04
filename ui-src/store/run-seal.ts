@@ -52,13 +52,13 @@ export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
 // Text of the error row a run ended on, else null. Pre-seal only (session.ts turn_end):
 // the base auto-retries a failed request, so a mid-run failure leaves its row above the
 // retry's own output — only a row at the very tail means the run was interrupted.
-// Annotation rows (advisor note / ttsr notice / mention read-back) can land after the
-// failure row and are skipped.
+// Annotation rows (advisor note / ttsr notice) can land after the failure row
+// and are skipped.
 export function endingErrorText(items: readonly SessionItem[]): string | null {
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
     if (it.role === "error") return it.text;
-    if (it.role === "advisor" || it.role === "ttsr" || it.role === "mention") continue;
+    if (it.role === "advisor" || it.role === "ttsr") continue;
     return null;
   }
   return null;

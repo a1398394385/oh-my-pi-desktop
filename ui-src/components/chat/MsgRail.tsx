@@ -18,7 +18,7 @@ import { onSpectrum, SPECTRUM_BANDS } from "./railAudio";
 import { t } from "../../i18n";
 
 // Maps rail roles to i18n keys; resolved via t() at popup time (language switch remounts the tree).
-const RAIL_ROLE_LABEL: Record<string, string> = { user: "chat.roleUser", assistant: "chat.roleAssistant", thinking: "chat.thinking", tool: "chat.roleTool", meta: "chat.roleSystem", err: "chat.railError", bash: "chat.railCommand", mention: "chat.labelRead" };
+const RAIL_ROLE_LABEL: Record<string, string> = { user: "chat.roleUser", assistant: "chat.roleAssistant", thinking: "chat.thinking", tool: "chat.roleTool", meta: "chat.roleSystem", err: "chat.railError", bash: "chat.railCommand" };
 const RAIL_SNIPPET_LEN = 280;
 const RAIL_W_BASE = 12.5; // default tick length in CSS px (the UI zoom multiplies it along with everything else: #main carries the zoom)
 const RAIL_W_PEAK = 2.5; // peak-top multiplier (the line closest to the mouse)

@@ -440,7 +440,7 @@ export interface TurnUsage {
 /** On-wire shape of session entries (element of the messages frame; host/state.ts
  * re-exports this type, as does the UI-facing ui-src/types/frames.ts shim) */
 export type TranscriptItem = {
-  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "mention" | "phase" | "error" | "advisor" | "ttsr";
+  role: "user" | "assistant" | "tool" | "thinking" | "loop" | "bash" | "phase" | "error" | "advisor" | "ttsr";
   text: string;
   name?: string;
   toolCallId?: string;
@@ -483,6 +483,10 @@ export type TranscriptItem = {
   command?: string;
   // ---- user image attachments ----
   images?: Array<{ type: "image"; data: string; mimeType: string }>;
+  /** Absolute paths of the `@file` mentions the base auto-read for this prompt: the
+   *  fileMention entry's files, folded onto the user row they belong to (the UI
+   *  renders them as attachment chips and strips the `@path` tokens from the text) */
+  attachments?: string[];
   /** Set on a user row the scheduler delivered into this session (automation run), never on typed input */
   automation?: { id: string; title: string };
   // ---- advisor rows (role "advisor": one delivered advice batch, position = injection point) ----
@@ -540,7 +544,7 @@ export type UiEvent =
   | { kind: "tool_details"; name: string; toolCallId?: string; details?: unknown } // in-flight refresh from a returned async tool (task spawn progress); carries no terminal semantics
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean; final?: boolean } // final: this turn ended stopReason "stop" — its settled text is a delivered output (loop-group lift marker)
   | { kind: "thinking_level"; configured?: string; resolved?: string }
-  | { kind: "mention"; files: string[] }
+  | { kind: "mention"; files: string[] } // @-mention read-back: paths the base auto-read; the UI folds them onto the issuing user bubble
   | { kind: "advisor"; notes: AdvisorNote[] } // one delivered advice batch (base customType "advisor"); rendered at its injection point
   | { kind: "ttsr"; rules: TtsrRule[] } // a TTSR rewind injected these rules here (read-only row; base event ttsr_triggered)
   | { kind: "error"; text: string }; // provider/request failure (quota, auth, transport): rendered as a standalone row

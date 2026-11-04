@@ -52,6 +52,8 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
   const byId = new Map<string, TranscriptItem>();
   const fileHistory = new Map<string, string>();
   let run: { items: TranscriptItem[]; usage: TurnUsage | null; startMs: number; endMs: number } | null = null;
+  // Newest user row: a following fileMention entry folds its paths onto it (attachment chips)
+  let lastUser: TranscriptItem | undefined;
 
   const finalizeRun = () => {
     if (!run) return;
@@ -197,8 +199,11 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
       continue;
     }
     if (role === "fileMention") {
-      // @ mention already read: flattened into a mention row
-      out.push({ role: "mention", text: "", files: (msg.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")) });
+      // The base appends the fileMention entry right after the prompt it auto-read, so
+      // its paths belong to the most recent user bubble: fold them in (the UI renders
+      // attachment chips) instead of emitting a standalone read-back row.
+      const paths = (msg.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")).filter(Boolean);
+      if (lastUser) lastUser.attachments = [...(lastUser.attachments ?? []), ...paths];
       continue;
     }
     // The approved-plan execution turn: map the synthetic developer message
@@ -255,6 +260,7 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
           ...(images.length > 0 ? { images } : {}),
           ...(marker ? { automation: marker } : {}),
         });
+        lastUser = out[out.length - 1];
         run = { items: [], usage: null, startMs: ts, endMs: ts };
       }
       pendingDelivery = null;

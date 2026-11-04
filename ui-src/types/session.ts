@@ -114,6 +114,7 @@ export interface UserItem {
   steerDone?: boolean; // consumed-done marker (written by store.ts)
   entryId?: string; // persisted entry id (fork targeting for branch_session; host TranscriptItem.entryId)
   images?: Array<{ type: "image"; data: string; mimeType: string }>; // image attachments
+  attachments?: string[]; // absolute paths of the @file mentions the base auto-read for this prompt
   automation?: { id: string; title: string }; // scheduler delivery into this session (not typed input)
 }
 
@@ -196,13 +197,6 @@ export interface BashItem {
   error?: string | null; // execution failure message
 }
 
-/** @ mention read-back row (items.tsx:48-50 reads item.files) */
-export interface MentionItem {
-  role: "mention";
-  text: string; // always "" on the wire (pushed directly by the host attachEntry scan)
-  files?: string[];
-}
-
 /** Centered text row (items.tsx:52-55 reads text; frontend-local entry, never through the host) */
 export interface MetaItem {
   role: "meta";
@@ -241,7 +235,6 @@ export type ChatItem =
   | ToolItem
   | LoopItem
   | BashItem
-  | MentionItem
   | MetaItem
   | PhaseItem
   | ErrItem
@@ -254,7 +247,7 @@ export type SessionItem = ChatItem;
 /** Message rail ticks (each railEntries.push site in items.tsx; MsgRail locates DOM nodes by key) */
 export interface RailEntry {
   key: string; // same origin as the data-fk anchor
-  role: string; // "user" | "assistant" | "thinking" | "tool" | "meta" | "bash" | "mention" | "err"
+  role: string; // "user" | "assistant" | "thinking" | "tool" | "meta" | "bash" | "err"
   text: string;
 }
 

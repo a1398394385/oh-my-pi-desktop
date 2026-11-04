@@ -202,14 +202,17 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       entry.consumedPending.clear();
       // fileMention read-back: the base appends fileMention messages inside
       // prompt() (request array + persistence) with no matching event; scan
-      // the new entries from mentionScanIndex onward here and turn them into
-      // mention frames
+      // the new entries from mentionScanIndex onward here, fold their paths onto
+      // the issuing user row and send a mention frame so live UIs do the same
       const entries = entry.manager.getEntries();
       for (let i = entry.mentionScanIndex; i < entries.length; i++) {
         const e = entries[i];
         if (e?.type === "message" && e.message?.role === "fileMention") {
-          const files = (e.message.files ?? []).map((f: { path?: unknown }) => String(f.path ?? ""));
-          entry.transcript.push({ role: "mention", text: "", files });
+          const files = (e.message.files ?? []).map((f: { path?: unknown }) => String(f.path ?? "")).filter(Boolean);
+          // The base writes the fileMention entry after the prompt it auto-read: fold its
+          // paths onto that user row (attachment chips) instead of a standalone row.
+          const lastUser = entry.transcript.findLast((t) => t.role === "user");
+          if (lastUser) lastUser.attachments = [...(lastUser.attachments ?? []), ...files];
           bus.send(JSON.stringify({ type: "event", sessionId, kind: "mention", files }));
         }
       }

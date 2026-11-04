@@ -17,7 +17,6 @@ import TurnActs from "./TurnActs";
 import ThinkingRow from "./ThinkingRow";
 import ToolRow from "./ToolRow";
 import BashRow from "./BashRow";
-import MentionRow from "./MentionRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
 import ReadonlyGroup, { roSummaryText } from "./ReadonlyGroup";
 import AdvisorCard, { AdvisorInline } from "./AdvisorCard";
@@ -102,15 +101,10 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
     railEntries.push({ key, role: "meta", text: loopSummaryText(item) });
     return <LoopGroup item={item} fk={key} railEntries={railEntries} key={key} />;
   }
-  // Local bash execution rows (! prefix) and @ mention read-back rows: not merged into
-  // groups, rendered one by one
+  // Local bash execution rows (! prefix): not merged into groups, rendered one by one
   if (item.role === "bash") {
     railEntries.push({ key, role: "bash", text: item.text });
     return <BashRow item={item} key={key} />;
-  }
-  if (item.role === "mention") {
-    railEntries.push({ key, role: "mention", text: (item.files || []).join("、") });
-    return <MentionRow item={item} key={key} />;
   }
   if (item.role === "meta") {
     railEntries.push({ key, role: "meta", text: item.text });
