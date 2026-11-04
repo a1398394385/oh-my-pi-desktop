@@ -308,6 +308,11 @@ function ensureSession(container: HTMLElement, key: string, ownerPath: string, s
     // Reuse: move the DOM back into the new container (scrollback and processes survive)
     container.appendChild(existing.hostEl);
     existing.detached = false;
+    // The observer still watches the previous (removed) wrap: rebinding is what makes the
+    // drawer animation's per-frame height reach fit (a mount-time fit alone would size the
+    // terminal against the animation's first, collapsed frame).
+    existing.ro?.disconnect();
+    existing.ro?.observe(container);
     scheduleFit(existing);
     return;
   }
