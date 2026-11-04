@@ -179,6 +179,7 @@ export function splitBlocks(
 	// without a settled result (unfinished turn) stay uncounted — they are a
 	// transient request tail, not compression candidates.
 	const callTokens = new Map<string, number>();
+	const callIntents = new Map<string, string>();
 	for (const { id, message } of source) {
 		// Memo key basis: fingerprint identifies the message, suffix separates
 		// the #t/#x blocks of one assistant message, length detects rewrites.
@@ -211,7 +212,7 @@ export function splitBlocks(
 				sourceId: id,
 				toolCallId: message.toolCallId,
 				tokens: count(text) + imageTokens + (callTokens.get(message.toolCallId) ?? 0),
-				intent: truncIntent(`${message.toolName}: ${text}`),
+				intent: callIntents.get(message.toolCallId) ?? truncIntent(`${message.toolName}: ${text}`),
 			});
 		} else if (message.role === "assistant") {
 			let thinking = "";
@@ -228,8 +229,12 @@ export function splitBlocks(
 					if (c.thinkingSignature) signature += c.thinkingSignature;
 				} else if (c.type === "redactedThinking") thinking += c.data;
 				else if (c.type === "text") text += c.text;
-				else if (c.type === "toolCall")
-					callTokens.set(c.id, count(`${c.name} ${JSON.stringify(c.arguments)}`, "c"));
+				else if (c.type === "toolCall") {
+					const input = JSON.stringify(c.arguments);
+					callTokens.set(c.id, count(`${c.name} ${input}`, "c"));
+					const intent = typeof c.arguments.i === "string" && c.arguments.i.trim() ? c.arguments.i : input;
+					callIntents.set(c.id, truncIntent(`${c.name}: ${intent}`));
+				}
 			}
 			if (thinking || signature) {
 				// A negative increment would shrink the block below its visible text;

@@ -71,6 +71,7 @@ export function toolArgsForUi(name: string, args: any): Record<string, unknown> 
   }
   if (name === "web_search") return { query: String(args.query ?? "").slice(0, 1000) };
   if (name === "read_session_context") return { query: args.query, sessionId: args.sessionId, fromTurn: args.fromTurn, toTurn: args.toTurn };
+  if (name === "compress_context") return { summary: String(args.summary ?? "") };
   if (name === "ask") return { questions: capValue(args.questions) };
   if (name === "debug") {
     return { action: args.action, program: args.program, file: args.file, line: args.line, function: args.function, expression: args.expression };

@@ -30,6 +30,7 @@ export const chatZh = {
   compressFolded: "上下文压缩完成 · 已压缩 {{count}} 活跃块 · 释放 {{tokens}} 上下文",
   compressStrongFolded: "上下文强力压缩完成 · 已压缩 {{count}} 活跃块 + {{zone}} 压缩块 · 释放 {{tokens}} 上下文",
   compressFailed: "压缩失败：{{error}}",
+  compressSummary: "压缩摘要",
   labelChange: "更改",
   labelReadGroup: "查阅",
   labelRead: "读取",

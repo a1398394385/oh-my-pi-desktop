@@ -33,6 +33,7 @@ export const chatEn = {
   compressStrongFolded_one: "Strong context compression done · folded {{count}} active block + {{zone}} summary block · freed {{tokens}}",
   compressStrongFolded_other: "Strong context compression done · folded {{count}} active blocks + {{zone}} summary blocks · freed {{tokens}}",
   compressFailed: "Compress failed: {{error}}",
+  compressSummary: "Compression summary",
   labelChange: "Changes",
   labelReadGroup: "Read",
   labelRead: "Read",

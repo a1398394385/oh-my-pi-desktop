@@ -34,18 +34,23 @@ const assistant = (id: string, content: AssistantMessage["content"]) => ({
 		timestamp: ts++,
 	} as unknown as AssistantMessage,
 });
-const result = (id: string, callId: string, text: string): AcpSourceMessage => ({
+const result = (id: string, callId: string, text: string, toolName = "bash"): AcpSourceMessage => ({
 	id,
 	message: {
 		role: "toolResult",
 		toolCallId: callId,
-		toolName: "bash",
+		toolName,
 		content: [{ type: "text", text }],
 		isError: false,
 		timestamp: ts++,
 	} as ToolResultMessage,
 });
-const call = (id: string) => ({ type: "toolCall", id, name: "bash", arguments: { cmd: `echo ${id}` } });
+const call = (id: string, name = "bash", args: Record<string, unknown> = { cmd: `echo ${id}` }) => ({
+	type: "toolCall",
+	id,
+	name,
+	arguments: args,
+});
 
 const keepAll = (source: AcpSourceMessage[]) => new Set(splitBlocks(source, countTokens).map((b) => b.id));
 
@@ -71,6 +76,31 @@ describe("projectContext pairing tolerance", () => {
 		expect(out.some((m) => m.role === "toolResult")).toBe(false);
 		const a = out.find((m) => m.role === "assistant");
 		expect(a).toBeUndefined(); // its only content block was the pair's call
+	});
+});
+
+describe("splitBlocks manifest labels", () => {
+	test("prefixes tool names and prefers non-empty intents over call input", () => {
+		const source = [
+			assistant("a-labels", [
+				call("c-bash", "bash", { command: "pnpm test", i: "复跑管道测试" }),
+				call("c-read", "read", { path: "packages/demo.ts:80-130", i: "读取示例文件" }),
+				call("c-eval", "eval", { code: "1 + 1", i: "计算校验结果" }),
+				call("c-blank", "bash", { command: "pwd", i: "   " }),
+				call("c-fallback", "read", { path: "packages/demo.ts" }),
+			]),
+			result("r-bash", "c-bash", "55 tests passed"),
+			result("r-read", "c-read", "const value = 1;", "read"),
+			result("r-eval", "c-eval", "2", "eval"),
+			result("r-blank", "c-blank", "/tmp"),
+			result("r-fallback", "c-fallback", "fallback output", "read"),
+		];
+		const blocks = splitBlocks(source, countTokens);
+		expect(blocks.find((b) => b.id === "r-bash")!.intent).toBe("bash: 复跑管道测试");
+		expect(blocks.find((b) => b.id === "r-read")!.intent).toBe("read: 读取示例文件");
+		expect(blocks.find((b) => b.id === "r-eval")!.intent).toBe("eval: 计算校验结果");
+		expect(blocks.find((b) => b.id === "r-blank")!.intent).toBe('bash: {"command":"pwd","i":" "}');
+		expect(blocks.find((b) => b.id === "r-fallback")!.intent).toBe('read: {"path":"packages/demo.ts"}');
 	});
 });
 

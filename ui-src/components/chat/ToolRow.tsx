@@ -1,7 +1,7 @@
 // Tool rows: tool name → label kind mapping and per-label row rendering. Migrated from
 // ui/tool-labels.js (renderToolItem/toolKind + the render functions). Adding or removing a
 // tool label only touches this file.
-import { memo } from "react";
+import { memo, useState } from "react";
 import type { ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, cmdExpand, devExpand } from "../../store/groupExpand";
 export { cmdExpand, devExpand };
@@ -11,6 +11,7 @@ import EditRow, { renderChange, renderReadGroup } from "./EditRow";
 import { isDevicePath, deviceNameOf, yieldSummary } from "./util";
 import { fmtTokens } from "../../store/utils";
 import ThinkingRow from "./ThinkingRow";
+import MdSurface from "./MdSurface";
 import { modelShort } from "../shared/agent/subShared";
 import { t } from "../../i18n";
 
@@ -469,6 +470,45 @@ function parseCompressOutput(item: ToolItem): CompressOutcomeView | null {
     return null; // truncated JSON: fall back to the plain label
   }
 }
+function CompressPhase({ item, text }: { item: ToolItem; text: string }) {
+  const rawSummary = item.args?.summary ?? deviceCmd(item)?.summary;
+  const summary = typeof rawSummary === "string" ? rawSummary.trim() : "";
+  const [open, setOpen] = useState(false);
+
+  if (!summary) {
+    return (
+      <div className="act phase">
+        <i className="ph-line" />
+        <span>{text}{item.running && <Spin />}</span>
+        <i className="ph-line" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={"compress-summary" + (open ? " open" : "")}>
+      <div className="act phase">
+        <i className="ph-line" />
+        <button
+          type="button"
+          className="compress-summary-trigger"
+          aria-expanded={open}
+          onClick={() => setOpen(v => !v)}
+        >
+          <span>{text}{item.running && <Spin />}</span>
+          <span className={"ed-arrow" + (open ? " open" : "")}><Icon name="chevronRight" /></span>
+        </button>
+        <i className="ph-line" />
+      </div>
+      {open && (
+        <div className="compress-summary-body" role="region" aria-label={t("chat.compressSummary")}>
+          <MdSurface className="md-body md-surface" text={summary} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function renderCompressContext(item: ToolItem) {
   const parsed = parseCompressOutput(item);
   if (parsed?.ok === false) {
@@ -490,16 +530,7 @@ function renderCompressContext(item: ToolItem) {
           zone: parsed.zoneBlocksFolded ?? 0,
         })
       : t("chat.labelCompressContext");
-  return (
-    <div className="act phase">
-      <i className="ph-line" />
-      <span>
-        {text}
-        {item.running && <Spin />}
-      </span>
-      <i className="ph-line" />
-    </div>
-  );
+  return <CompressPhase item={item} text={text} />;
 }
 // Debug row: action and target (launch program / file:line)
 function renderDebug(item: ToolItem) {
