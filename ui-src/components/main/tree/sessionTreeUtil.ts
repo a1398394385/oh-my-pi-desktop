@@ -96,24 +96,21 @@ export function roleClass(node: EntryNode): string {
   return "st-sys";
 }
 
-// Snap target of the "current" badge
+// Snap target of the "current" badge: the leaf itself or nothing. Snapping up to the
+// nearest visible ancestor would badge a row the session is not at (e.g. the last user
+// message while the real leaf is the filtered-out agent output).
 export function badgeTargetId(roots: EntryNode[], leafId: string | null, filter: string): string | null {
   if (!leafId) return null;
-  const byId = new Map<string, EntryNode>();
-  const parentOf = new Map<string, string | null>();
-  const walk = (n: EntryNode, parentId: string | null): void => {
-    byId.set(n.id, n);
-    parentOf.set(n.id, parentId);
-    (n.children ?? []).forEach((c) => walk(c, n.id));
+  const find = (nodes: EntryNode[]): EntryNode | null => {
+    for (const n of nodes) {
+      if (n.id === leafId) return n;
+      const hit = find(n.children ?? []);
+      if (hit) return hit;
+    }
+    return null;
   };
-  roots.forEach((r) => walk(r, null));
-  let id: string | null = byId.has(leafId) ? leafId : null;
-  while (id) {
-    const n = byId.get(id)!;
-    if (passesFilter(n, filter)) return n.id;
-    id = parentOf.get(id) ?? null;
-  }
-  return leafId;
+  const leaf = find(roots);
+  return leaf && passesFilter(leaf, filter) ? leafId : null;
 }
 
 // Recursively filter children: a child that itself fails the filter recursively promotes
