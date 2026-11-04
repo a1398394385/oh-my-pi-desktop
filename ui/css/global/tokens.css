@@ -53,6 +53,10 @@
      with --menu-hl, so a control on the input face highlights exactly like a
      dropdown row on the same face. */
   --hover-fill: var(--panel-2);
+  /* File tab nav highlight (row hover plate + the filled search box on focus). The file tree
+     rows sit directly on the card face, so their plate is a flat shade under the raised
+     --panel-2 instead of above it. Light theme reuses the raised plate (see the light block). */
+  --fp-hl:     hsl(0 0% 18%);
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);
@@ -156,6 +160,7 @@ html[data-platform="macos"][data-fullscreen="true"] {
   --sidebar:   var(--base);
   --panel:     var(--inset);
   --panel-2:   #e8e8ec;
+  --fp-hl:     var(--panel-2);
   --panel-3:   var(--select);
   --surface:   rgba(0,0,0,.04);
   --line:      #d0d0d6;

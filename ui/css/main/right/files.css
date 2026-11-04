@@ -43,7 +43,7 @@
 /* real app icon inside a menu item (the .mi-ic column is 18px wide) */
 .fv-menu .mi .mi-ic img { width: 15px; height: 15px; object-fit: contain; border-radius: 3px; }
 
-/* two-pane shell: title bar on top, content pane + splitter + always-visible nav pane below (ZCode layout).
+/* two-pane shell: title bar on top, content pane + splitter + collapsible nav pane below (ZCode layout).
    Negative margins cancel #rightBody's page inset (8px all sides, 4px bottom) so the title bar sits flush
    under the panel tab strip and both dividers reach the card edges. */
 .fp-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -8px -8px -4px; }
@@ -98,16 +98,42 @@
 .fp-crumb-sep { flex: none; display: inline-flex; align-items: center; color: var(--faint); }
 
 /* drag handle between the content pane and the nav pane */
-.fp-split { flex: none; width: 5px; cursor: col-resize; }
+.fp-split { flex: none; width: 5px; cursor: col-resize; transition: width var(--dur-base) var(--swift), opacity var(--dur-base) var(--swift); }
+
+.fp-split.collapsed { width: 0; opacity: 0; pointer-events: none; }
 
 .fp-split:hover { background: var(--hover-fill); }
 
 /* nav column: the left divider is the boundary against the content pane (the splitter beside
    it stays invisible until dragged/hovered) */
-/* max-width: the drag width is stored in px (default 260) and the panel defaults to 320, so an
-   unclamped nav left the content pane at ~40px — images collapsed to thumbnail size and text
-   rows were unreadable. Cap the nav at a share of the pane so the body always keeps room */
-.fp-nav { flex: none; min-width: 0; max-width: 55%; overflow-y: auto; border-left: 1px solid var(--line); }
+/* Inline min() caps the stored drag width to the pane share without a separate max-width clamp;
+   unlike a clamp, it remains the width transition's interpolation target for the whole animation. */
+/* the side inset lives here, not on the rows: rows carry their own hover plate, which must stay
+   off the left divider and off the card's right edge, both at the same 8px the content pane
+   uses. The plate also takes the file tab's own highlight lightness instead of the shared
+   --panel-2 raised plate. */
+.fp-nav {
+  flex: none; min-width: 0; overflow-y: auto;
+  border-left: 1px solid var(--line); padding: 0 8px 8px;
+  --hover-fill: var(--fp-hl);
+  transition: width var(--dur-base) var(--swift), padding var(--dur-base) var(--swift),
+              border-left-width var(--dur-base) var(--swift), opacity var(--dur-snap) var(--swift);
+}
+
+.fp-nav.collapsed { padding-right: 0; padding-left: 0; border-left-width: 0; opacity: 0; pointer-events: none; }
+
+/* Pointer tracking must stay immediate; only button-driven collapse/expansion animates. */
+.fp-panes.dragging .fp-split, .fp-panes.dragging .fp-nav { transition: none; }
+
+/* Keep the compact vertical rhythm; inner side padding is separate from .fp-nav's outer inset. */
+.fp-row { padding: 3px 6px; transition: background-color var(--dur-fast) var(--swift); }
+
+/* file search: no field plate on the panel face; the fill appears only while the box has focus */
+.fp-search { transition: background-color var(--dur-snap) var(--swift); }
+
+.fp-search:focus-within { background: var(--hover-fill); }
+
+.fp-search input::placeholder { color: var(--dim); opacity: 1; }
 
 /* empty state (no file open): centered hint, ZCode wording. No padding: the hint is hidden by a
    width comparison against clientWidth, so the box must be the exact content width */

@@ -91,6 +91,7 @@ export default function FilePage() {
     return v >= NAV_W_MIN && v <= NAV_W_MAX ? v : 260;
   });
   const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
+  const [navDragging, setNavDragging] = useState(false);
   const dragRef = useRef(false);
   // Fold the middle path segments only when the whole trail genuinely overflows: the hidden
   // mirror renders the unfolded trail, so the decision never depends on the current render
@@ -115,7 +116,7 @@ export default function FilePage() {
       if (!shell) return;
       setNavW(Math.max(NAV_W_MIN, Math.min(NAV_W_MAX, shell.right - e.clientX)));
     };
-    const up = () => { dragRef.current = false; };
+    const up = () => { dragRef.current = false; setNavDragging(false); };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     return () => {
@@ -159,19 +160,20 @@ export default function FilePage() {
           <Icon name={navOpen ? "collapseRight" : "collapseLeft"} size={15} />
         </button>
       </div>
-      <div className="fp-panes">
+      <div className={`fp-panes${navDragging ? " dragging" : ""}`}>
         <div className="fp-main">{fileView ? <FvDetail /> : <FvEmpty />}</div>
-        {navOpen && (
-          <>
-            <div
-              className="fp-split"
-              onPointerDown={(e) => { e.preventDefault(); dragRef.current = true; }}
-            />
-            <div className="fp-nav" style={{ width: navW, flexShrink: 1 }}>
-              <FileNav />
-            </div>
-          </>
-        )}
+        <div
+          className={`fp-split${navOpen ? "" : " collapsed"}`}
+          onPointerDown={(e) => { e.preventDefault(); dragRef.current = true; setNavDragging(true); }}
+        />
+        <div
+          className={`fp-nav${navOpen ? "" : " collapsed"}`}
+          style={{ width: navOpen ? `min(${navW}px, 55%)` : 0, flexShrink: 1 }}
+          aria-hidden={!navOpen}
+          inert={!navOpen}
+        >
+          <FileNav />
+        </div>
       </div>
     </div>
   );
@@ -414,7 +416,7 @@ function FileNav() {
   };
   return (
     <>
-      <div className="flex items-center gap-1.5 mx-2 my-1 px-1.5 py-[3px] rounded-sm bg-panel-2 border border-line text-ui-sm text-dim">
+      <div className="fp-search flex items-center gap-1.5 my-2 px-1.5 py-[3px] rounded-sm border border-line text-ui-sm text-dim">
         <Icon name="search" size={12} />
         <input
           className="flex-1 min-w-0 bg-transparent border-0 outline-none text-ui-sm text-text"
@@ -433,7 +435,7 @@ function FileNav() {
         )}
       </div>
       <div
-        className="flex items-center gap-1.5 text-ui-base text-text font-medium cursor-default py-[3px] px-2 rounded-sm whitespace-nowrap overflow-hidden text-ellipsis"
+        className="flex items-center gap-1.5 text-ui-base text-text font-medium cursor-default py-[3px] px-1.5 rounded-sm whitespace-nowrap overflow-hidden text-ellipsis"
         title={s.cwd}
       >
         <span className="inline-flex items-center text-faint">
@@ -462,8 +464,7 @@ function FileNav() {
             return (
               <div
                 key={m.path}
-                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
-                style={{ paddingLeft: 20 + "px" }}
+                className="fp-row flex items-center gap-1.5 text-ui-base text-dim rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
                 title={s.cwd + "/" + m.path}
                 onClick={() => (m.dir ? openDir(m.path) : openFileView(s.cwd + "/" + m.path))}
               >
@@ -517,8 +518,8 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
           return (
             <Fragment key={full}>
               <div
-                className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
-                style={{ paddingLeft: 6 + depth * 14 + "px" }}
+                className="fp-row flex items-center gap-1.5 text-ui-base text-dim rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
+                style={{ paddingLeft: 6 + (depth - 1) * 14 + "px" }}
                 onClick={() => {
                   // Expand/collapse: fresh Set + fresh rightState reference (subscribers notice by reference)
                   useAppStore.setState((st) => {
@@ -541,8 +542,8 @@ function FileTreeLevel({ dirPath, depth }: { dirPath: string; depth: number }) {
         return (
           <div
             key={full}
-            className="flex items-center gap-1.5 text-ui-base text-dim py-[3px] px-2 rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
-            style={{ paddingLeft: 6 + depth * 14 + "px" }}
+            className="fp-row flex items-center gap-1.5 text-ui-base text-dim rounded-sm cursor-pointer whitespace-nowrap overflow-hidden text-ellipsis hover:bg-hover-fill"
+            style={{ paddingLeft: 6 + (depth - 1) * 14 + "px" }}
             title={full}
             onClick={() => openFileView(full)}
           >
