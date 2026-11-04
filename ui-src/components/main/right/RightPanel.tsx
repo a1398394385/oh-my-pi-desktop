@@ -195,36 +195,41 @@ function AddTabMenu({
   );
 }
 
-// Single tab: equal-width flex, native drag reorder, hover-only close button, middle-click close.
-// Auto tabs (the Agent Hub linkage) have no close affordance — their lifecycle is tied to the hub.
-function TabButton({ name, on }: { name: string; on: boolean }) {
+// Single tab: equal-width flex, pointer-based reorder, hover-only close button,
+// middle-click close. Auto tabs (the Agent Hub linkage) have no close affordance — their
+// lifecycle is tied to the hub.
+// Pointer events, not HTML5 drag: tauri.conf.json enables dragDropEnabled (native file
+// drop needs it), and once Tauri owns drag & drop the webview emits no HTML5 drag events.
+function TabButton({
+  name,
+  on,
+  dragSource,
+  dragOver,
+  onDragStart,
+  onDragEnter,
+  onDrop,
+}: {
+  name: string;
+  on: boolean;
+  dragSource: string | null;
+  dragOver: string | null;
+  onDragStart: (name: string) => void;
+  onDragEnter: (name: string | null) => void;
+  onDrop: (name: string) => void;
+}) {
   const { t } = useTranslation();
-  const [over, setOver] = useState(false);
   const auto = AUTO_TABS.has(name);
   // The files tab title follows the open file; other tabs keep their static label
   const fv = useAppStore((st) => (name === "file" ? st.fileView : null));
   return (
     <button
-      className={"rtab" + (on ? " on" : "") + (over ? " drag-over" : "")}
-      draggable
+      className={"rtab" + (on ? " on" : "") + (dragOver === name && dragSource !== name ? " drag-over" : "")}
       onClick={() => { setBump({ rightTab: name }); }}
-      onDragStart={(e) => {
-        e.dataTransfer.setData("text/plain", name);
-        e.dataTransfer.effectAllowed = "move";
+      onPointerDown={(e) => {
+        if (e.button === 0) onDragStart(name);
       }}
-      onDragOver={(e) => {
-        if (![...e.dataTransfer.types].includes("text/plain")) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setOver(false);
-        const src = e.dataTransfer.getData("text/plain");
-        if (src && src !== name) moveRightTab(src, name);
-      }}
+      onPointerEnter={() => onDragEnter(name)}
+      onPointerUp={() => onDrop(name)}
       onAuxClick={(e) => {
         if (e.button === 1 && !auto) {
           e.preventDefault();
@@ -276,6 +281,24 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const addBtnRef = useRef<HTMLButtonElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [menuLeft, setMenuLeft] = useState<number | undefined>(undefined);
+  // Pointer tab reorder state (see TabButton): source tab held from pointerdown until the
+  // pointer is released, target highlighted on hover.
+  const [dragFrom, setDragFrom] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+  const endTabDrag = (over: string) => {
+    if (dragFrom && over !== dragFrom) moveRightTab(dragFrom, over);
+    setDragFrom(null);
+    setDragOver(null);
+  };
+  useEffect(() => {
+    if (!dragFrom) return;
+    const cancel = () => {
+      setDragFrom(null);
+      setDragOver(null);
+    };
+    window.addEventListener("pointercancel", cancel, { once: true });
+    return () => window.removeEventListener("pointercancel", cancel);
+  }, [dragFrom]);
 
   const updateAddMenuPos = () => {
     if (addBtnRef.current && headRef.current) {
@@ -397,7 +420,16 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
           </Tip>
           <div className="rtabs" id="rightTabs" ref={tabsRef}>
             {tabs.map((name) => (
-              <TabButton key={name} name={name} on={rightTab === name} />
+              <TabButton
+                key={name}
+                name={name}
+                on={rightTab === name}
+                dragSource={dragFrom}
+                dragOver={dragOver}
+                onDragStart={setDragFrom}
+                onDragEnter={setDragOver}
+                onDrop={endTabDrag}
+              />
             ))}
             <Tip label={t("right.openTab")}>
               <button
