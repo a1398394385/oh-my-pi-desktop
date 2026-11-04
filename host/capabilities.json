@@ -161,6 +161,12 @@
       "risk": "write"
     },
     {
+      "id": "set_advisor_default",
+      "kind": "settings",
+      "risk": "write",
+      "note": "顾问默认启用开关：写入 omp-desktop.json advisor.defaultEnabled，只影响新会话（总开关仍是底座 advisor.enabled）"
+    },
+    {
       "id": "test_kimi_cu",
       "kind": "mcp",
       "risk": "read",

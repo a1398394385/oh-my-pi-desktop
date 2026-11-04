@@ -419,7 +419,14 @@ export const settingsPageZh = {
     familyMoonshot: "Kimi",
     familyAlibaba: "Qwen",
   },
-  // ---- Providers page (ProvidersPage.tsx) ----
+  // ---- Advisor section (AdvisorSection.tsx) ----
+  advisor: {
+    masterTitle: "启用顾问",
+    masterDesc: "另一模型逐轮审查并插入意见；关闭后以下调节项隐藏。",
+    defaultTitle: "新会话默认启用",
+    defaultDesc: "新建会话自动带上顾问，现有会话不变。",
+  },
+  // ---- Services page: provider rows (merged from the former providers page) ----
   providers: {
     kimiGroup: "Kimi 思考档位",
     kimiAutoThinking: "为 Kimi 提供 auto thinking 级别",

@@ -183,6 +183,11 @@ const ALLOWED_EDGES = new Set([
   "desktop-json.ts→state.ts",
   "browser-config.ts→desktop-json.ts",
   "computer-mode.ts→desktop-json.ts", "computer-mode.ts→mcp-mount.ts", "computer-mode.ts→mcp-builtin.ts", "computer-mode.ts→stderr.ts",
+  // Advisor default-on switch (omp-desktop.json advisor section): advisor-mode.ts
+  // already owns the frame + RPC seam for the header eye, so the extra "start new
+  // sessions with it running" flag lives next to it; the settings frame projects
+  // the value and session-lifecycle closes the spawn-time seed when it is off.
+  "advisor-mode.ts→desktop-json.ts", "frames.ts→advisor-mode.ts", "session-lifecycle.ts→advisor-mode.ts",
   // Kimi auto-thinking gate (omp-desktop.json kimi section): the providers-page
   // switch writes it, the settings frame projects it, and the thinking-level
   // entry points (set_model/set_thinking/cycle_model/spawnSession) pin `auto`

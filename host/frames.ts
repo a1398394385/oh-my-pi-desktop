@@ -16,6 +16,7 @@ import { isAutoReviewEnabled, isSmartModeOffered } from "./auto-review.ts";
 import { readBranchTitles, readSessionTitleRefresh } from "./session-titles.ts";
 import { kimiCuInstalled } from "./mcp-builtin.ts";
 import { readComputerDefaultEnabled, readComputerProvider } from "./computer-mode.ts";
+import { readAdvisorDefaultEnabled } from "./advisor-mode.ts";
 import { remotePayload } from "./remote.ts";
 import { settingsGet } from "./settings-compat.ts";
 
@@ -57,6 +58,10 @@ export function settingsFrame() {
     // omp-desktop.json computer.defaultEnabled: fresh sessions start with computer use
     // on (spawn-time read; sessions already on disk are never touched)
     computerDefaultEnabled: readComputerDefaultEnabled(),
+    // omp-desktop.json advisor.defaultEnabled: fresh sessions also start with the
+    // advisor running (spawn-time read; only meaningful while the base's global
+    // advisor.enabled master gate is open)
+    advisorDefaultEnabled: readAdvisorDefaultEnabled(),
     // omp-desktop.json kimi.autoThinking: whether Kimi models are offered the
     // `auto` thinking level (off by default — each level switch re-bills the
     // whole prefix on Kimi; the providers-page switch on pg-providers)

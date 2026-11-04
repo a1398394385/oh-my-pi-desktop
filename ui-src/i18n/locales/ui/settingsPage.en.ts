@@ -428,7 +428,14 @@ export const settingsPageEn = {
     familyMoonshot: "Kimi",
     familyAlibaba: "Qwen",
   },
-  // ---- Providers page (ProvidersPage.tsx) ----
+  // ---- Advisor section (AdvisorSection.tsx) ----
+  advisor: {
+    masterTitle: "Enable Advisor",
+    masterDesc: "A second model reviews each turn and drops in notes; the tuning rows below hide while off.",
+    defaultTitle: "On for new sessions",
+    defaultDesc: "New sessions start with the advisor running; open sessions keep their state.",
+  },
+  // ---- Services page: provider rows (merged from the former providers page) ----
   providers: {
     kimiGroup: "Kimi thinking tiers",
     kimiAutoThinking: "Offer Kimi the auto thinking level",

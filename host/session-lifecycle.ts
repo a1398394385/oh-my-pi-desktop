@@ -9,11 +9,7 @@
 // from main.ts (second split cut).
 import path from "node:path";
 import fs from "node:fs";
-import {
-  createAgentSession,
-  AgentRegistry,
-  SessionManager,
- } from "./bootstrap.ts";
+import { createAgentSession, AgentRegistry, SessionManager } from "./bootstrap.ts";
 import {
   H,
   sessions,
@@ -52,7 +48,7 @@ import { createKeepaliveExtension } from "./keepalive.ts";
 import { markSeen, reportKeepaliveState } from "./keepalive-host.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
 import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
-import { pushAdvisorMode } from "./advisor-mode.ts";
+import { pushAdvisorMode, readAdvisorDefaultEnabled } from "./advisor-mode.ts";
 import { pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { bgJobsPayload } from "./async-jobs.ts";
 import { hostI18n } from "./i18n/host.ts";
@@ -485,6 +481,11 @@ export async function spawnSession(
   }
   ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { automation: opts?.automation })));
   pushComputerMode(ws, sessionId, entry); // fresh overlay is always off; the explicit frame keeps the button honest after plan-approve session swaps
+  // Advisor default-on at spawn: the base seeds a fresh session from the global
+  // advisor.enabled gate, so this switch only closes it when off (never for automation).
+  if (!opts?.automation && !readAdvisorDefaultEnabled() && entry.session.isAdvisorEnabled()) {
+    entry.session.setAdvisorEnabled(false);
+  }
   pushAdvisorMode(ws, sessionId, entry); // the header eye seeds from the global advisor.enabled default (same honesty rule)
   return { sessionId, entry };
 }

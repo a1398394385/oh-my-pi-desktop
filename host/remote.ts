@@ -24,7 +24,7 @@ export const REMOTE_DEFAULT_PORT = 16800;
 export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   // settings.ts (21)
   "set_setting", "set_locale", "set_ui_prefs", "set_external_browser", "set_computer_provider",
-  "set_computer_default", "set_approval_mode", "set_acp_enabled", "set_acp_config",
+  "set_computer_default", "set_advisor_default", "set_approval_mode", "set_acp_enabled", "set_acp_config",
   "set_session_context_enabled", "set_keepalive_enabled", "set_keepalive_config",
   "set_automation_agent_enabled",
   "set_automation_dialog_timeouts",

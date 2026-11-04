@@ -32,6 +32,7 @@ import { writeKimiAutoThinking } from "../kimi-thinking.ts";
 import { writeBranchTitles, writeSessionTitleRefresh } from "../session-titles.ts";
 import { setPlanMode } from "../plan.ts";
 import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputerDefaultEnabled, warmKimiCu } from "../computer-mode.ts";
+import { writeAdvisorDefaultEnabled } from "../advisor-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { writeExternalBrowserEnabled } from "../browser-config.ts";
@@ -386,6 +387,14 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // fresh sessions start with computer use enabled. Spawn-time read only, so no
     // live session is touched — the settings frame below just echoes the new value.
     writeComputerDefaultEnabled(msg.enabled === true);
+    pushSettings();
+  },
+  set_advisor_default(ws, msg) {
+    // Desktop-owned "default on" switch (omp-desktop.json advisor.defaultEnabled):
+    // fresh sessions start with the advisor running while the base's global
+    // advisor.enabled master gate is open. Spawn-time read only — live sessions keep
+    // whatever the header eye / /advisor left them in; the frame echoes the new value.
+    writeAdvisorDefaultEnabled(msg.enabled === true);
     pushSettings();
   },
   /**

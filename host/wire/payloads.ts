@@ -116,6 +116,10 @@ export type SettingsPayload = SettingsSnapshot & {
   // omp-desktop.json computer.defaultEnabled: fresh sessions start with computer use on
   // (spawn-time read; sessions already on disk keep their state)
   computerDefaultEnabled?: boolean;
+  // omp-desktop.json advisor.defaultEnabled (host/advisor-mode.ts): fresh sessions
+  // also start with the advisor running. Spawn-time read only; the global
+  // advisor.enabled master gate still decides whether the feature may run at all.
+  advisorDefaultEnabled?: boolean;
   // omp-desktop.json kimi.autoThinking (host/kimi-thinking.ts): whether Kimi
   // models are offered the `auto` thinking level. Off by default — each level
   // switch re-bills the whole prefix on Kimi; the providers-page switch.
