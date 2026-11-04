@@ -18,11 +18,12 @@ export function useExtSources(): void {
   useEffect(() => {
     send({ type: "list_extensions", scope: "profile" });
   }, []);
+  // Re-request on every mount: the store keeps per-scope snapshots for the page's lifetime and
+  // neither a host restart nor a provider toggle elsewhere invalidates them, so a cached
+  // disabled/shadowed row kept painting its stale tag next to a live row.
   useEffect(() => {
-    if (!scopes) return;
-    const byScope = useAppStore.getState().extensionsByScope;
-    for (const sc of scopes) {
-      if (sc.id !== "profile" && !byScope[sc.id]) send({ type: "list_extensions", scope: sc.id });
+    for (const sc of scopes ?? []) {
+      if (sc.id !== "profile") send({ type: "list_extensions", scope: sc.id });
     }
   }, [scopes]);
 }
