@@ -80,6 +80,10 @@ const ALLOWED_EDGES = new Set([
   "main.ts→assets.ts", "main.ts→stats.ts", "main.ts→translate.ts", "main.ts→limits",
   "profile.ts→state.ts", "profile.ts→bootstrap.ts", "profile.ts→models.ts",
   "models.ts→state.ts", "models.ts→bootstrap.ts",
+  // Resume-model guard (BUG-125): session creation asks the model domain to wait
+  // out the in-flight catalog refresh when a persisted session model is not
+  // resolvable yet, so the SDK does not silently resume on the default role.
+  "session-lifecycle.ts→models.ts",
   "assets.ts→state.ts", "assets.ts→bootstrap.ts", "assets.ts→profile.ts",
   "stats.ts→bootstrap.ts",
   // Stats dashboard judge: profile.ts hands the host's settings + model registry to

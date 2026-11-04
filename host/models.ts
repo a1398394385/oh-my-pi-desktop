@@ -5,9 +5,42 @@ import path from "node:path";
 import fs from "node:fs";
 import { modelKind } from "@oh-my-pi/pi-catalog/types";
 import { H, enabledDefaults } from "./state.ts";
-import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue, authPolicyFor, getSearchProvider } from "./bootstrap.ts";
+import { getSupportedEfforts, getKnownRoleIds, getRoleInfo, formatModelRoleAlias, MODEL_ROLE_IDS, resolveModelRoleValue, authPolicyFor, getSearchProvider, getRestorableSessionModels, resolveSessionModelSelector } from "./bootstrap.ts";
 import { orderedSettings } from "./bootstrap.ts";
 import { settingsGet } from "./settings-compat.ts";
+
+// Upper bound on the resume-model catalog wait: the in-flight background
+// refresh normally lands in ~5s; past this the session opens with the SDK's
+// own fallback instead of stalling the click indefinitely.
+const MODEL_RESTORE_REFRESH_WAIT_MS = 15_000;
+
+/**
+ * Resume-model restore guard (BUG-125). The catalog loaded synchronously at
+ * startup / profile switch can predate a dynamically discovered model (e.g.
+ * kimi-code/k3.1-pro comes from the online provider directory). The SDK only
+ * retries discovery-backed providers, and with hasUI=true it silently resumes
+ * on the default role instead of failing — and since no model_change is
+ * written for an existing session, every reopen repeats the replacement.
+ * Wait out the in-flight catalog refresh whenever a persisted candidate does
+ * not resolve yet. No-op for new sessions and for resolvable ones.
+ */
+export async function awaitPersistedModelRefresh(sessionManager: {
+  getEntries(): unknown[];
+  buildSessionContext(): { models: Record<string, string> };
+  getLastModelChangeRole(): string | undefined;
+}): Promise<void> {
+  if (sessionManager.getEntries().length === 0) return;
+  const persisted = getRestorableSessionModels(
+    sessionManager.buildSessionContext().models,
+    sessionManager.getLastModelChangeRole(),
+  );
+  if (persisted.every((selector) => resolveSessionModelSelector(H.modelRegistry, selector))) return;
+  // Idempotent: no-op while the startup/profile-switch refresh is still running.
+  H.modelRegistry.refreshInBackground();
+  const timeout = Promise.withResolvers<void>();
+  setTimeout(timeout.resolve, MODEL_RESTORE_REFRESH_WAIT_MS);
+  await Promise.race([H.modelRegistry.awaitBackgroundRefresh(), timeout.promise]);
+}
 
 export function rebuildScopedModels() {
   const enabledEntries: string[] = settingsGet(H.settings, "enabledModels") ?? [];

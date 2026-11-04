@@ -92,6 +92,14 @@ ensureSdkThemeSync();
 export const { listAllSessions, FileSessionStorage, loadEntriesFromFile } = await import(
   "@oh-my-pi/pi-coding-agent"
 );
+// Resume-model restore helpers (BUG-125): the same candidates the SDK's resume
+// path derives from the session journal, plus its resolver, so the host can
+// detect a not-yet-catalogued persisted model before creating the session.
+// Dynamic import is required here (not style): bootstrap must run setProfile
+// before the SDK graph loads (profile red line), so every base import in this
+// file is deferred.
+export const { resolveSessionModelSelector } = await import("@oh-my-pi/pi-coding-agent/config/model-resolver");
+export const { getRestorableSessionModels } = await import("@oh-my-pi/pi-coding-agent/session/session-context");
 export const { Tokenizer } = await import("@oh-my-pi/pi-agent-core");
 // Session file root (same source as listAllSessions' default sessionsRoot; used by the sidebar full-text search prefilter)
 export const { getSessionsDir } = await import("@oh-my-pi/pi-utils/dirs");

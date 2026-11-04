@@ -59,6 +59,7 @@ import { hostI18n } from "./i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
 import { safeStderr } from "./stderr.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { awaitPersistedModelRefresh } from "./models.ts";
 
 // Thin re-export so existing callers keep one import path; the git process
 // layer itself lives in git.ts.
@@ -201,6 +202,8 @@ export async function createSessionCore(
   // holder; a load hitting the pool reuses the same entry, and the unread
   // state lives with the entry
   const kaHolder: { entry?: PoolEntry } = {};
+  // Resume-model guard (BUG-125): see awaitPersistedModelRefresh.
+  await awaitPersistedModelRefresh(sessionManager);
   const result = await createAgentSession({
     cwd,
     authStorage: H.authStorage,
