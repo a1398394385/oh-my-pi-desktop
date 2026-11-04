@@ -2,6 +2,7 @@ import Icon from "./Icon";
 import { useAppStore } from "./store";
 import { initShell, applyZoom } from "./shell";
 import MainColumn from "./components/main/MainColumn";
+import BottomTerminal from "./components/main/BottomTerminal";
 // App shell: three-column layout (sidebar / main area / right panel) + topbar +
 // welcome-vs-session branching + the dock composer + toast.
 // The DOM structure and class names mirror the existing static skeleton of
@@ -67,7 +68,12 @@ export default function App() {
         <>
           <Sidebar collapsed={sidebarCollapsed} />
           <div id="left-resizer" className="resizer" title={t("misc.dragResize")} hidden={sidebarCollapsed}></div>
-          <MainColumn />
+          {/* Center card + bottom terminal card stacked with the shell gap; the right panel
+              spans the full height beside them. */}
+          <div id="center">
+            <MainColumn />
+            <BottomTerminal />
+          </div>
           <div id="right-resizer" className="resizer" title={t("misc.dragResize")} hidden={rightCollapsed}></div>
           <RightPanel collapsed={rightCollapsed} />
         </>

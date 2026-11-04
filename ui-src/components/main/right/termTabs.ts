@@ -181,8 +181,8 @@ export function closeBottomTermTab(groupKey: string, id: string): void {
   commit(groupKey, { ids, active });
 }
 
-/** Dock the Ctrl+Tab binding targets: the pane holding focus, else the bottom dock (it
- *  renders over the center column), else the right panel while its active tab is a terminal.
+/** Dock the Ctrl+Tab binding targets: the pane holding focus, else the bottom dock (its own
+ *  card under the center card), else the right panel while its active tab is a terminal.
  *  Overlays own the keyboard while open, so the docks behind them stay inert. */
 function visibleTermScope(): "right" | "bottom" | null {
   const el = document.activeElement instanceof HTMLElement ? document.activeElement : null;

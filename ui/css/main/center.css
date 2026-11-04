@@ -1,13 +1,22 @@
 .chat-head > .win-controls { margin-right: -10px; } /* .chat-head padding (16px) minus the 6px card-edge breathing room */
 
+/* Center column: the chat card (#main) and the bottom terminal card stacked, so both read
+   as independent cards beside #right. The center column owns the horizontal margins so
+   collapse transitions still animate the edges. The vertical gap lives on the dock's own
+   margin-top (not as a flex gap) so it collapses together with the drawer animation. */
+#center {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  margin: var(--shell-gap) 0;
+  transition: margin var(--dur-base) var(--swift);
+}
+
 #main {
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0; flex: 1; position: relative;
   overflow: hidden;
   background: var(--card); --hover-fill: var(--panel-2);
   border-radius: var(--r-card);
-  margin: var(--shell-gap) 0;
-  transition: margin var(--dur-base) var(--swift);
   /* Content column width axis, single source of truth for messages + composer
      (consumed as max-width: var(--col-w)). Percentages resolve at each
      consumer's own containing block. --col-user-max is the drag override; the
@@ -261,15 +270,43 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
 .col-resize-h:hover::after, .col-resize-h.dragging::after { opacity: 1; }
 @media (max-width: 768px) { .col-resize-h { display: none; } }
 
-/* Bottom dock (⌘/Ctrl+J): terminal-only panel, full width of the center column. flex:none
-   so #stream (flex:1) gives the height up instead of squeezing the dock; xterm re-fits
-   through its own ResizeObserver on every layout change. */
+/* Bottom dock (⌘/Ctrl+J): its own card under the chat card, sized by --bottom-h. flex:none
+   keeps the chat card (flex:1) absorbing the remaining height; xterm re-fits through its
+   own ResizeObserver on every layout change. */
 #bottom-panel {
   flex: none;
   height: var(--bottom-h, 260px); min-height: 0;
   display: flex; flex-direction: column;
-  border-top: 1px solid var(--line-soft);
+  background: var(--card); --hover-fill: var(--panel-2);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  /* Outside #main's inline zoom, so it carries the same factor itself (--ui-zoom is
+     written by applyZoom on documentElement). */
+  zoom: var(--ui-zoom, 1);
+  /* Drawer: the card slides out of the center column's bottom edge. Height + gap animate
+     together (the gap is this margin, not #center's), and closing keeps the card mounted
+     for the exit leg — animationend in BottomTerminal unmounts it afterwards. */
+  margin-top: var(--shell-gap);
+  animation: bottomDrawerIn var(--dur-sheet) var(--swift);
 }
+
+#bottom-panel.closing { animation: bottomDrawerOut var(--dur-sheet) var(--swift) forwards; }
+
+@keyframes bottomDrawerIn {
+  from { height: 0; margin-top: 0; opacity: 0; }
+}
+
+@keyframes bottomDrawerOut {
+  to { height: 0; margin-top: 0; opacity: 0; }
+}
+
+/* The drawer is a functional space transition, so the motion switch keeps it; with
+   animations disabled the closing leg would otherwise never leave the resting box, so
+   collapse it outright instead (both switch modes, matching global/animations.css). */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) #bottom-panel.closing { height: 0; margin-top: 0; opacity: 0; }
+}
+html[data-motion="off"] #bottom-panel.closing { height: 0; margin-top: 0; opacity: 0; }
 
 /* Height drag handle on the dock's top edge (row-resize). It is a real flex child
    (not an overlay) so it never swallows clicks on the head's tab strip. The visible
