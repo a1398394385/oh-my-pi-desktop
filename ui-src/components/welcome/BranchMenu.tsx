@@ -1,5 +1,5 @@
-// Branch menu (pops upward): branch list + ✓ check on the current branch + click
-// to switch.
+// Branch menu (up when the trigger sits low, down when it sits near the top): branch
+// list + ✓ check on the current branch + click to switch.
 // Migrated from the wbBranchBtn open logic in ui/welcome.js; the git_branch_switched reply is
 // landed by the store + toast.
 // Aligned with the original: the menu container doesn't block clicks — clicking any item
@@ -33,7 +33,13 @@ export default function BranchMenu({ anchorRect, onClose, branches, remotes, cur
     placeMenu(menu, 0, 0);
     const rect = menu.getBoundingClientRect();
     const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - rect.width - 8));
-    const top = Math.max(8, Math.min(anchorRect.top - rect.height - 4, window.innerHeight - rect.height - 8));
+    // Side follows the space above the trigger: welcome capsules sit at the bottom of the
+    // window (menu pops up), the header chip sits at the top — an upward menu there gets
+    // clamped onto the chip itself, so it drops below instead.
+    const aboveTop = anchorRect.top - rect.height - 4;
+    const top = aboveTop >= 8
+      ? aboveTop
+      : Math.max(8, Math.min(anchorRect.bottom + 4, window.innerHeight - rect.height - 8));
     placeMenu(menu, left, top);
   });
 

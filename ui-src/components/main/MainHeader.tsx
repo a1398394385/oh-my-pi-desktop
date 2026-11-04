@@ -49,7 +49,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
       ? diskProjects.find((p) => p.cwd === cwd)?.remoteLabel ?? pathBase(cwd)
       : null;
   const git = !gitManage && headerGit && headerGit.cwd === cwd ? headerGit : null;
-  // null = closed; when open, holds the trigger chip's viewport coords (menu pops upward)
+  // null = closed; when open, holds the trigger chip's viewport coords (menu drops below it)
   const [branchMenu, setBranchMenu] = useState<DOMRect | null>(null);
   // "⋯" session menu (same items as the sidebar row right-click): null = closed, otherwise the
   // trigger's viewport coords (menu drops downward)
