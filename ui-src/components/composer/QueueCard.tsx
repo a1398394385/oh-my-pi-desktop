@@ -18,6 +18,7 @@ import { useAppStore, sendNowQueueMsg, editQueueMsg, dropQueueMsg, reorderQueueM
 import type { UserItem } from "../../types/session";
 import Icon from "../../Icon";
 import ImageLightbox, { type LightboxImage } from "../chat/ImageLightbox";
+import { armMarquee } from "../shared/models/marquee";
 
 // Horizontal scrollable queue text: wheel converts to horizontal scroll (React's
 // onWheel is passive at the root, so it rides a manual listener, same recipe as
@@ -47,7 +48,8 @@ function QcText({ text }: { text: string }) {
       el.removeEventListener("wheel", onWheel);
     };
   }, [text]);
-  return <span ref={ref} className="qc-tx">{text}</span>;
+  // .mq-run is the billboard carrier: the transform must move the text, not the scroller
+  return <span ref={ref} className="qc-tx"><span className="mq-run">{text}</span></span>;
 }
 
 export default function QueueCard() {
@@ -71,7 +73,8 @@ export default function QueueCard() {
         const canDown = i < items.length - 1;
         const single = items.length === 1;
         return (
-          <div className="qc-row" key={i} title={t("composer.queuedHint")}>
+          <div className="qc-row" key={i} title={t("composer.queuedHint")}
+            onMouseOver={(e) => armMarquee(e, ".qc-tx")}>
             <span className="qc-sortctl">
               {(canUp || single) && (
                 <button

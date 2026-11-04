@@ -425,6 +425,12 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   --qc-fade: 14px;
 }
 .qc-tx::-webkit-scrollbar { display: none; }
+/* Billboard scroll on hover for a line wider than the row: armMarquee (QueueCard row) writes the
+   clipped remainder into --mq; the mqRun keyframes live in shared/model-picker.css. Wheel
+   scrolling still works (transform leaves scrollWidth alone), so scrolling while hovering moves
+   the text on top of the sweep — accepted, the sweep already covers the whole line. */
+.qc-tx > .mq-run { flex: none; display: inline-block; }
+.qc-tx.mq:hover > .mq-run { animation: mqRun var(--mq-t, 3s) ease-in-out infinite alternate; }
 /* Edge fades (ql/qr toggled from QcText) only cover sides with hidden content,
    same three-state recipe as .ro-body.rt/.rb in readonly-group.css */
 .qc-tx.ql {
