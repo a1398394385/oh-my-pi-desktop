@@ -116,6 +116,8 @@
 | BUG-122 | 子代理失败只显示 failed 没有原因——translateSubagentEvent 缺 message_end 分支（BUG-034 已知遗留转正） | 2026-10-30 |
 | BUG-123 | 文件 tab 看不了图片——默认 320px 面板减去 260px 导航后正文只剩 39px，图片压成缩略图；刷新文件树后永久 Loading | 2026-10-30 |
 | BUG-124 | 会话复制按钮只复制最后一段——一轮回复被拆成多个 assistant 条目，item.text 只是尾段 | 2026-10-30 |
+| BUG-125 | 重开会话模型被静默换成默认模型——启动期目录缓存缺动态发现模型，hasUI=true 时底座不报错直接回落 | 2026-11-04 |
+| BUG-126 | 新会话发消息后立刻 Esc，会话变成死的——abort 抢在 prompt RPC 的 await 之间，回执先到（UI 已收敛），prompt 才 dispatch，此后无 turn 事件、宿主 isStreaming 恒真、归档/逐出被拒 | 2026-11-04 |
 ---
 
 ## 详情
@@ -502,9 +504,11 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 
 **根因**：两处叠加。(1) 平台事件顺序：WebKit（= Tauri macOS 的 WKWebView）确认候选时先派发 `compositionend`、再派发这次 Enter 的 `keydown`（WebKit bug 165004；Stum 2016 记录「Safari 会补发 which=229 的 keydown」同源），到达 keydown 处理器时事件上 `isComposing` 已是 false。(2) Lexical 核心的守卫只覆盖「组合进行中」：`onKeyDown` 里 `if (editor.isComposing()) return`（`LexicalEvents.ts:1611`），而 composition 收尾在 `$handleCompositionEnd` 里就把 `_compositionKey` 置空。插件层 `KEY_ENTER_COMMAND` 处理里只判 `ev === null`（那是组合文本以 `\n` 收尾的派发），对 `isComposing === false` 的确认回车没有任何拦截——于是 `sendPrompt()` 被调用。旧 textarea 实现的 `!e.nativeEvent.isComposing`（commit c970d17^）正是补这个缺口，迁移时按注释「isComposing 守卫在核心层」删掉了。
 
-**修复**：`ui-src/components/composer/lexical/ComposerPlugin.tsx` 记 `imeCommitAtRef`（最近一次 `compositionend` 的 `event.timeStamp`，0 = 无），经 `editor.registerRootListener` 在挂载后的 root 元素挂 `compositionstart`/`compositionend` 原生监听（root 元素由 ContentEditable 回调 `setRootElement` 挂载，晚于插件挂载，故只能走 root listener；不与 Lexical 自己的重入守卫冲突）。`KEY_ENTER_COMMAND` 处理里：回车落在 `IME_COMMIT_ENTER_WINDOW_MS`（100ms）窗口内 = IME 确认选字，吞掉不发送并清零（**只吞一次**，确认后下一次真回车照常发送）；窗口取小值是因为 WebKit 上两个事件几乎同一 tick，同时防「鼠标点候选收尾后紧接着按的真回车」被误吞。非 Apple 平台顺序相反，`imeCommitAt` 恒 0，本分支不生效。窗口判定用 `ev.timeStamp`（同源高精度时钟，不受 IME 长按导致 `Date.now()` 漂移影响）。验证：`vite dev` + `?preview=1` 真实 contentEditable 上按 WebKit 顺序注入事件，五项回归矩阵全绿——纯回车发 `prompt`；`compositionend` 紧跟回车不发送且草稿保留；250ms 后的真回车照常发送；组合进行中回车不发送（core 守卫）；窗口外 Ctrl+↵ steer 照常。CDP 真实按键复核（`page.keyboard` 真键、非合成事件，插桩收 `prompt` 帧 + `window.onerror`）：纯回车发 / IME 确认回车不发且草稿保留 / 400ms 后回车照发 / ⇧↵ 不发且草稿留 / 窗口外 Ctrl+↵ steer 发，全程 0 错误。同一探针在 `git stash` 掉本改动后复现 `prompt:zhong wen` 发出（红→绿）。`bun run check`（含 tsc）、`bun run ui:build`、`bun run smoke:react` 全绿。真机 Tauri 窗口手测留用户确认。
+**修复（初版，已被下列 v2 取代）**：`ui-src/components/composer/lexical/ComposerPlugin.tsx` 记 `imeCommitAtRef`（最近一次 `compositionend` 的 `event.timeStamp`，0 = 无），经 `editor.registerRootListener` 在挂载后的 root 元素挂 `compositionstart`/`compositionend` 原生监听（root 元素由 ContentEditable 回调 `setRootElement` 挂载，晚于插件挂载，故只能走 root listener；不与 Lexical 自己的重入守卫冲突）。`KEY_ENTER_COMMAND` 处理里：回车落在 `IME_COMMIT_ENTER_WINDOW_MS` 窗口内 = IME 确认选字，吞掉不发送并清零（**只吞一次**）。验证：`vite dev` + `?preview=1` 真实 contentEditable 上按 WebKit 顺序注入事件，五项回归矩阵全绿。CDP 真实按键复核（`page.keyboard` 真键、非合成事件，插桩收 `prompt` 帧 + `window.onerror`）：纯回车发 / IME 确认回车不发且草稿保留 / ⇧↵ 不发且草稿留 / 窗口外 Ctrl+↵ steer 发，全程 0 错误。同一探针在 `git stash` 掉本改动后复现 `prompt:zhong wen` 发出（红→绿）。
 
-**教训**：「库核心有守卫」不等于「你的场景被守住」——核心守卫的判据（组合进行中）与真实平台事件顺序（先 compositionend 后 keydown）之间的缝，只有实测事件流才暴露。IME 场景的判据必须是「刚才是否发生过 composition 收尾」这类时间关系，不是事件自身的 `isComposing` 快照。ProseMirror 0c54477 是同源对策（记 `compositionEndedAt` + 时间戳窗口），照抄即可，不要自造。残留：WKWebView 上部分第三方输入法（如 Rime/搜狗的部分模式）干脆不派发 composition 事件，那时连 `compositionend` 都没有、时间戳窗口也无从谈起——那属于输入法不送组合事件，无解（VSCode/xterm 同样受影响，xterm 的规避是自定义 key handler 拦 229）。
+**修复 v2（2026-11-03，真机数据否掉时间窗口）**：时间窗口被判据错误的直接证据来自用户日常 release 包的采样（`<agentDir>/ime-enter.log`，临时 `/debug-log` 路由，采样后已删）。19 条真机样本：**确认候选的 Enter 一律 `keyCode === 229`（3/3）**，且其 `timeStamp` 比 `compositionend` **早** 16–23ms（负 dt：keydown 实际先派发，`compositionend` 的 timeStamp 在后）；用户主动发送的 Enter 一律 `keyCode === 13`，其与最近一次 `compositionend` 的间隔是 204 / 216 / 225 / 325 / 380 / 539 / 619 / 767 / 768 / 2098 / 2530 / 5277ms 的连续分布——**没有任何时间阈值能把两者分开**：250ms 窗口吞掉了 204/216/225 那三次真实发送（用户必须按两次 = 「卡手」），500ms 更糟。故删除 `IME_COMMIT_ENTER_WINDOW_MS` / `imeCommitAtRef` / root 上的 composition 监听，`KEY_ENTER_COMMAND` 与 `UserMsg` 编辑框的判据改为 `ev.isComposing || ev.keyCode === 229`（`isComposing` 保留作非 WebKit 平台的组合中守卫）。验证：`ui:typecheck`、`host:build` 全绿；dev-browser 真实 contentEditable 实测——输入 `PROBE229` → `compositionend` + keyCode 229 Enter ×2 文本原样保留（连续两次都不发）→ keyCode 13 Enter 清空且消息出现在会话（`message visible: true`）。真机 Tauri 手测留用户确认。
+
+**教训**：「库核心有守卫」不等于「你的场景被守住」——核心守卫的判据（组合进行中）与真实平台事件顺序（先 compositionend 后 keydown）之间的缝，只有实测事件流才暴露。IME 场景的可靠判据是**平台事件自身的标记**（WebKit 给确认候选的 keydown 打 `keyCode === 229`），既不是 `isComposing` 快照，也不是时间窗口；ProseMirror 0c54477 的「记 compositionEndedAt + 时间戳窗口」照抄到 WKWebView 会吞掉真实发送（v2 已证伪）。残留：WKWebView 上部分第三方输入法（如 Rime/搜狗的部分模式）干脆不派发 composition 事件，那时连 `compositionend` 都没有——但 229 判据不依赖 composition 事件，因此这类输入法同样被覆盖（xterm 的规避也正是自定义 key handler 拦 229）。
 
 ### BUG-032: 输入框按一下 Esc 焦点外流、必须鼠标点回来——RichTextPlugin 在 EDITOR 优先级绑了 editor.blur()
 
@@ -1799,3 +1803,33 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：`ui:typecheck`、`bun run check` 全绿；复制路径为纯文本拼接，未单独写测试（无分支逻辑，输入取自既有 items 数组）。
 
 **教训**：「渲染合并」与「数据分裂」并存时，任何取 `item.text` 的读者都要先问一句这是不是整轮文本——复制、导出、引用这类功能最容易踩，因为它们在视觉上看不出差别。
+
+### BUG-125: 重开会话模型被静默换成默认模型
+
+**日期**：2026-11-04
+
+**现象**：会话 `01a1a005` 首条 `model_change` 是 `kimi-code/k3.1-pro`，重启桌面后打开它却以 `opencode-go/deepseek-v4.1-flash`（配置默认模型）运行，界面上看不出任何提示。
+
+**根因**：启动 / 切 profile 时 `ModelRegistry` 只同步加载磁盘缓存（`models.db`），在线目录发现走 `refreshInBackground()`（实测约 4~5 秒）。`kimi-code/k3.1-pro` 是目录动态发现的模型，缓存行是旧版客户端写的（不含它），于是这个窗口内 `resolveSessionModelSelector()` 解析失败。底座对 discovery-backed provider 有重试（`refreshDiscoverableProviders`），但 `kimi-code` 不是 discovery provider；同时宿主为了审批门禁传了 `hasUI: true`，触发底座 `allowSessionModelFallback` 默认放行——恢复失败不报错，直接落到 settings 默认模型。已有会话不会补写 `model_change`，所以每次重启后重开都重复一次，且用户只能从输入框模型名发现。
+
+**修复**：`host/models.ts` 新增 `awaitPersistedModelRefresh()`：用底座同一套候选（`getRestorableSessionModels` + `getLastModelChangeRole`）判断持久化模型是否可解析，不可解析时 `refreshInBackground()`（已在跑则幂等）并等待其落地，上限 15 秒。`createSessionCore` 在建会话前调用一次（新建会话直接返回，可解析的会话零等待）。`host/bootstrap.ts` 转出两个底座辅助函数。
+
+**验证**：临时探针（复制该会话到 /tmp，空缓存 DB 模拟启动窗口，`hasUI:true` 与宿主一致）——不等待时 `createAgentSession` 得到 `opencode-go/deepseek-v4.1-flash`（复现），走 `awaitPersistedModelRefresh` 后得到 `kimi-code/k3.1-pro`（约 4 秒）。`bun run check` 全绿。
+
+**教训**：`hasUI: true` 在底座是双关的——宿主为审批门禁打开它，代价是「会话模型恢复失败静默回落」也一并打开。凡是宿主为了某个 UI 能力打开底座开关，都要顺带查它还有哪些副作用分支；「静默回落 + 不写回 journal」这类组合会长期潜伏，因为界面上只有一个模型名不对。
+
+### BUG-126: 新会话发消息后立刻 Esc，会话变成死的（转圈、不可归档/逐出）
+
+**日期**：2026-11-04
+
+**现象**：新会话里发一条消息后马上按 Esc：主消息页停下（无输出、无「工作中」计时），左侧该会话行一直转圈，会话 tree 里没有这条 user message，右键归档与逐出都被 `running` 挡掉。之后再也无法取消——Esc 只对 `streaming` 的槽发 abort。
+
+**根因**：`handlePrompt` 在 `await Promise.race([entry.mcpMountInFlight, Bun.sleep(5000)])`（首轮最久等 5s）与 `await dispatchSlashInput(...)` 之后，无条件调用 `entry.session.prompt()`。用户 Esc 时 `abort_session` 只作用于「此刻已存在于底座的那一轮」：abort 立刻返回并回执，UI 按 BUG-110 的 2s 兜底把 streaming 收敛为 false；随后这条 prompt 才 dispatch，开启一轮 UI 看不见的 turn。那一轮若卡在 setup/首个请求上，宿主的 `session.isStreaming`（`agent.isStreaming || #promptInFlightCount > 0`）恒真 → `pool_sessions.busy` 恒真 → 侧栏永转、`sessionBusy()` 让 archive/unload 全被拒；没有 `turn_start`，所以 UI 也不会重新点亮 streaming，用户没有可点的停止。
+
+同一条链还有第二个缺口：底座在 turn setup 阶段被 abort 抢掉时会走 `setPromptDropped` 钩子（消息从未进入 agent 或会话文件），桌面宿主此前从未安装它，于是宿主 transcript 与 UI 气泡留下一条磁盘上不存在的消息——tree/fork 看到的会话与消息页不一致。
+
+**修复**：①`PoolEntry.abortEpoch` 由 `abort_session` 同步自增，`handlePrompt` 在入口快照、在 dispatch 前比对，变了就丢弃这条 prompt（不 push transcript、不发 agent），改发 `prompt_dropped` 帧；②`session-entry-core.ts` 安装底座的 `setPromptDropped`，同样走 `pushPromptDropped`（`host/state.ts`：回撤尾部同文本且无 entryId 的 user 条目 + 广播帧）；③UI `prompt_dropped` 处理器撤回乐观气泡、收敛本地 streaming（`turnItemStart` 非空时不动）、把文本放回输入框并 toast。
+
+**验证**：宿主探针（`smokeEnv()` 起真宿主，`create_session` → `prompt` → 立刻 `abort_session`）——修复前帧序为 `session_aborted` 之后仍出现 `turn_start`（与线上死会话同形），修复后为 `prompt_dropped`、无 `turn_start`、`pool_sessions.busy` 全程 0；abort 延迟 6s（turn 已开跑）路径不变，仍正常 `turn_end` 收尾、busy 归 0。UI 侧用真实 dev 宿主 + 注入 `prompt_dropped` 帧验证：气泡撤回、输入框回填「已取消，消息已放回输入框」、`streaming` 收敛。`scripts/prompt-dropped.test.ts`（3 例，短路处理器时第 1 例转红）；`bun run check` 全绿。
+
+**教训**：`abort_session` 的语义是「停掉现有的一轮」，不是「作废用户刚发出的意图」——所有跨 await 的 RPC 都该问一句：await 期间用户可能改变主意，恢复执行时谁来判断这份意图还成立？并且当底座的丢弃钩子存在（`setPromptDropped`）时，宿主不接就等于把「用户取消」翻译成「消息静默消失」。
