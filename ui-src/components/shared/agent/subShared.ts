@@ -78,3 +78,21 @@ export const STATUS_ORDER: Record<string, number> = { started: 0, running: 0, co
 export function subStatus(sub: SubagentState): string {
   return sub.streaming ? "running" : sub.status;
 }
+
+// Display groups shared by the roster pills and the header counts: "started" (lifecycle
+// register, before the first progress heartbeat) renders under running, matching STATUS_ORDER.
+export type StGroup = "running" | "completed" | "failed" | "aborted";
+export const ST_GROUPS: readonly StGroup[] = ["running", "completed", "failed", "aborted"];
+export const ST_GROUP: Record<string, StGroup> = {
+  started: "running",
+  running: "running",
+  completed: "completed",
+  failed: "failed",
+  aborted: "aborted",
+};
+export const ST_KEY: Record<StGroup, string> = {
+  running: "right.subStRunning",
+  completed: "right.subStCompleted",
+  failed: "right.subStFailed",
+  aborted: "right.subStAborted",
+};

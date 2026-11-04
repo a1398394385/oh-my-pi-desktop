@@ -36,11 +36,17 @@
 
 .hub-mode.on { color: var(--accent); font-weight: 600; }
 
-.hub-head .hub-st.st-running { color: var(--green); }
+/* Status counts wear the roster pills' colors (blue / green-ink / red / neutral) and are
+   separated by spacing alone — the colors already group them, a "·" glyph only adds noise. */
+.hub-head .hub-st { margin-left: 12px; }
 
-.hub-head .hub-st.st-completed { color: var(--green-soft); }
+.hub-head .hub-st.st-running { color: var(--blue); }
 
-.hub-head .hub-st.st-failed, .hub-head .hub-st.st-aborted { color: var(--err); }
+.hub-head .hub-st.st-completed { color: var(--green-ink); }
+
+.hub-head .hub-st.st-failed { color: var(--err); }
+
+.hub-head .hub-st.st-aborted { color: var(--faint); }
 
 /* Aggregate usage line */
 .hub-usage { font-size: var(--ui-fs-sm); display: flex; flex-wrap: wrap; }

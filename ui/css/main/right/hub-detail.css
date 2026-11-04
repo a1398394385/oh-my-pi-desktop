@@ -18,20 +18,38 @@
 
 .hub-sec {
   margin-top: 12px; padding-top: 8px;
-  border-top: 1px solid var(--line-soft);
+  border-top: 1px solid var(--line);
   font-weight: 700; color: var(--accent); font-size: var(--ui-fs-sm);
   text-transform: uppercase; letter-spacing: .04em;
 }
 
 .hub-sec-body { margin-top: 3px; font-size: var(--ui-fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
 
+/* Section head carrying the source/preview switch (task + result markdown blocks) */
+.hub-sec-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.hub-md-toggle { display: inline-flex; gap: 2px; text-transform: none; letter-spacing: 0; }
+
+.hub-md-btn {
+  border: 0; background: transparent; color: var(--faint);
+  font: inherit; font-size: var(--ui-fs-sm); font-weight: 500; line-height: 1.2;
+  padding: 2px 6px; border-radius: 6px; cursor: pointer;
+}
+
+.hub-md-btn:hover { color: var(--text); }
+
+.hub-md-btn.on { color: var(--text); background: var(--hover-fill); }
+
+/* Task/result content frame: border only, no fill, same 1px/--line weight as .hub-sec's rule */
+.hub-box { margin-top: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+
+.hub-box-scroll { max-height: 260px; overflow-y: auto; }
+
+/* Raw markdown text (source view) — same metrics as the former pre-wrap block */
+.hub-src { font-size: var(--ui-fs-sm); line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--dim); }
+
 /* Task markdown: keep the section's small scale instead of .md-body's larger body size */
 .hub-task-md { font-size: var(--ui-fs-sm); }
-/* Submitted report (terminal runs only): pre-wrap block capped with scroll */
-.hub-result {
-  max-height: 260px; overflow-y: auto;
-  white-space: pre-wrap; color: var(--dim);
-}
 
 /* Context gauge: token/contextWindow bar */
 .hub-gauge {

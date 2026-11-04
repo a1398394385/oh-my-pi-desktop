@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs, openSessionByPath } from "../../../store";
 import { SubControls, SteerInput } from "./SubControls";
 import { SubStatusPill } from "./SubStatusPill";
-import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, subStatus, currentProgress, type SegT } from "./subShared";
+import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, ST_GROUP, ST_GROUPS, ST_KEY, subStatus, currentProgress, type SegT, type StGroup } from "./subShared";
 import type { SubagentState } from "../../../types/session";
 
 // The subset of the open-session snapshot the roster reads; both surfaces pass the live
@@ -98,10 +98,15 @@ export function RosterHead({ s }: { s: RosterSession }) {
     return { cost, dur, reqs, tools, tok, measured, timed, total: s.subagents.size };
   }, [s]);
 
+  // Grouped and ordered like the roster (running → completed → failed → aborted), so the
+  // header never reshuffles as statuses arrive and reads in the pills' color language.
   const statusCounts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const [, sub] of s.subagents) c[subStatus(sub)] = (c[subStatus(sub)] ?? 0) + 1;
-    return c;
+    const c: Partial<Record<StGroup, number>> = {};
+    for (const [, sub] of s.subagents) {
+      const g = ST_GROUP[subStatus(sub)] ?? "running";
+      c[g] = (c[g] ?? 0) + 1;
+    }
+    return ST_GROUPS.flatMap((g) => (c[g] ? [[g, c[g]] as const] : []));
   }, [s]);
 
   return (
@@ -124,10 +129,9 @@ export function RosterHead({ s }: { s: RosterSession }) {
         >
           {t("right.hubTree")}
         </button>
-        {Object.entries(statusCounts).map(([st, n]) => (
-          <span className={"text-faint hub-st st-" + st} key={st}>
-            {" · "}
-            {n} {st}
+        {statusCounts.map(([st, n]) => (
+          <span className={"hub-st st-" + st} key={st}>
+            {n} {t(ST_KEY[st])}
           </span>
         ))}
       </div>

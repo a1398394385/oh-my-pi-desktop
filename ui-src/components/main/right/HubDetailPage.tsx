@@ -3,13 +3,14 @@
 // Recent activity feed. Rendered two ways: through the middle-card Agent Hub selection
 // (hubSel, while the hub is open), and from the subagent tab's list (selectedSubagent) with
 // a back-to-list button pinned above (see SubagentPage).
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../../store";
 import { bgJobsKey } from "../../../store/session";
 import { modelShort, fmtClock, subStatus, currentProgress, type SegT } from "../../shared/agent/subShared";
 import { rowSpec } from "./subRowSpec";
 import { Ellip, Spin } from "../../chat/parts";
+import MdSurface from "../../chat/MdSurface";
 import Icon from "../../../Icon";
 import type { SubagentState } from "../../../types/session";
 import { sendGetBgJobs, sendCancelBgJob } from "../../shared/agent/hubExt";
@@ -21,6 +22,27 @@ function ageText(sec: number, t: SegT): { text: string; isNow: boolean } {
   if (sec < 3600) return { text: t("right.closedMin", { n: Math.floor(sec / 60) || 1 }), isNow: false };
   if (sec < 86400) return { text: t("right.closedHour", { n: Math.floor(sec / 3600) }), isNow: false };
   return { text: t("right.closedDay", { n: Math.floor(sec / 86400) }), isNow: false };
+}
+
+// Markdown block with a source/preview switch: the task and the result both carry markdown,
+// the switch picks between the raw text and the rendered surface (default: preview).
+function MdSec({ label, view, onView, t, children }: { label: string; view: boolean; onView: (v: boolean) => void; t: SegT; children: ReactNode }) {
+  return (
+    <>
+      <div className="hub-sec hub-sec-row">
+        <span>{label}</span>
+        <span className="hub-md-toggle">
+          <button type="button" className={"hub-md-btn" + (view ? " on" : "")} onClick={() => onView(true)}>
+            {t("right.mdPreview")}
+          </button>
+          <button type="button" className={"hub-md-btn" + (view ? "" : " on")} onClick={() => onView(false)}>
+            {t("right.mdSource")}
+          </button>
+        </span>
+      </div>
+      {children}
+    </>
+  );
 }
 
 // Context gauge, TUI-style: a compact token/contextWindow bar
@@ -76,6 +98,9 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
   }, [sessionId, subagentId]);
   const model = modelShort(u?.resolvedModel);
   const current = currentProgress(sub);
+  // Markdown blocks default to the rendered preview; the section switch flips to raw text
+  const [mdTask, setMdTask] = useState(true);
+  const [mdResult, setMdResult] = useState(true);
   // Task block renders as markdown; the raw transcript fallback stays truncated
   const task = sub.description || sub.task || (sub.text ? sub.text.slice(0, 300) : "");
   const segs: string[] = [];
@@ -102,11 +127,11 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
       </div>
 
       {task ? (
-        <>
-          <div className="hub-sec">{t("right.hubTask")}</div>
-          {/* Plain text, same call as the task card's assignment area (markdown rendering dropped) */}
-          <div className="hub-sec-body hub-task-md whitespace-pre-wrap">{task}</div>
-        </>
+        <MdSec label={t("right.hubTask")} view={mdTask} onView={setMdTask} t={t}>
+          <div className="hub-box">
+            {mdTask ? <MdSurface className="md-body md-surface hub-task-md" text={task} /> : <div className="hub-src">{task}</div>}
+          </div>
+        </MdSec>
       ) : null}
 
       {current ? (
@@ -152,10 +177,11 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
       {/* Submitted report — terminal runs only (a running subagent has no result yet).
           Sits above Recent activity per the hub layout contract. */}
       {st !== "running" && sub.result ? (
-        <>
-          <div className="hub-sec">{t("right.hubResult")}</div>
-          <div className="hub-sec-body hub-result">{sub.result}</div>
-        </>
+        <MdSec label={t("right.hubResult")} view={mdResult} onView={setMdResult} t={t}>
+          <div className="hub-box hub-box-scroll">
+            {mdResult ? <MdSurface className="md-body md-surface hub-task-md" text={sub.result} /> : <div className="hub-src">{sub.result}</div>}
+          </div>
+        </MdSec>
       ) : null}
 
       {/* Failure reason — terminal runs only. A failed child run's transcript keeps the
