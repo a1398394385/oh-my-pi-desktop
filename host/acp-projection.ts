@@ -37,7 +37,7 @@ export type CountImage = (image: { data: string; detail?: ImageDetail }) => numb
  */
 export type CountSignatureTokens = (message: AssistantMessage) => number;
 
-/** Whole-list count from the base counter; the drift calibration's local basis (spec §5.2). */
+/** Whole-list count from the base counter; the ratio calibration's local basis (spec §5.2). */
 export type CountMessages = (messages: readonly AgentMessage[]) => number;
 
 /**

@@ -78,7 +78,7 @@
 
 判定量:**活跃区精确 token**(§8,prune 后)。每轮结束后判定档位。
 
-**计价口径(v11,2026-10-30 实测对账)**:块 token = 块内文本计数 + 加密推理计价 + provider 漂移。①加密推理(thinking 签名)的价格由底座 catalog 的 `thinking-replay-tokens` 轴决定,ACP 侧读取 base `countMessage` 的差值而非自带 provider 表:`none`(kimi-code/moonshot 的 k3)不计签名、`output`(Claude)按该轮 output、未声明按签名字节。②漂移 = 上一请求 `contextSnapshot.promptTokens − nonMessageTokens − 本地投影计数`,把 provider 的消息框架开销与 system 低估学成固定偏移,累加在活跃区上,并限制在本地计数的 −30%~+60% 防止单次异常 usage 摆动档位;换模型时清零,压缩后由下一次 usage 自动重算。两处口径必须同源:`context_status` 的展示、`compress_context` 的 minCompress 门禁与档位判定共用同一个漂移值。
+**计价口径(v11,2026-11-03 实测对账)**:块 token = (块内文本计数 + 加密推理计价) × provider 比例。①加密推理(thinking 签名)的价格由底座 catalog 的 `thinking-replay-tokens` 轴决定,ACP 侧读取 base `countMessage` 的差值而非自带 provider 表:`none`(kimi-code/moonshot 的 k3)不计签名、`output`(Claude)按该轮 output、未声明按签名字节。②比例 = 上一请求 `contextSnapshot.promptTokens − nonMessageTokens` ÷ 同一次投影的本地计数,把 provider 的编码误差学成缩放系数——固定偏移跨不过压缩(内容变了、编码没变),实测 −15% 的差在块折叠后必须按比例缩;钳制 0.7~1.6 防止单次异常 usage 摆动档位;换模型时归 1,之后由下一次 usage 自动重算。两处口径必须同源:`context_status` 的展示、`compress_context` 的 minCompress 门禁与档位判定共用同一个比例值。
 
 ### 5.1 提示档位(ephemeral 注入,见 §7)
 

@@ -1,8 +1,10 @@
-// ACP drift calibration (§5.2): the provider bills a fixed per-message framing
-// cost the local counter never sees, plus a system-prompt estimate that runs
-// low, so the active zone has to learn that offset from the last request's
-// contextSnapshot instead of trusting the block sum (2026-10-30: DeepSeek read
-// 101,670 locally vs 106,984 billed — a constant +5,363 over 127 messages).
+// ACP ratio calibration (§5.2): the provider's billed message tokens and the
+// local counter disagree by an encoding error rate over the content, so the
+// active zone learns that scale from the last request's contextSnapshot instead
+// of trusting the block sum. Learned as a ratio because the content changes
+// (compression) while the encoding does not (2026-11-03: a 269,442-token local
+// projection billed 229,184 — a −15% scale that an absolute offset could not
+// carry across a compression).
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/acp-drift.test.ts
 import { describe, expect, test } from "bun:test";
 import { AcpRuntimeState } from "../host/acp-runtime.ts";
@@ -40,15 +42,15 @@ function statusText(state: AcpRuntimeState): string {
 	return s.text;
 }
 
-describe("ACP drift calibration", () => {
-	test("the active zone carries the provider's learned offset", () => {
+describe("ACP ratio calibration", () => {
+	test("the active zone carries the provider's learned scale", () => {
 		const fx = fixture();
 		fx.state.projectView(fx.view);
 		expect(statusText(fx.state)).toMatch(/tokens active=300\b/);
 
 		// The provider answers the request it just received: 850 prompt tokens,
 		// of which the base counter already estimates 400 as system + tools, so
-		// the message side really cost 450 — 150 more than the local 300.
+		// the message side really cost 450 — 1.5x the local 300.
 		fx.entries.push({
 			type: "message",
 			id: "a1",
@@ -85,8 +87,33 @@ describe("ACP drift calibration", () => {
 		} as never as SessionEntry);
 
 		fx.state.projectView(fx.view);
-		// +60% of the local 300, not the +9,300 the report implies.
+		// Clamped at 1.6x the local 300, not the 32x the report implies.
 		expect(statusText(fx.state)).toMatch(/tokens active=480\b/);
+	});
+
+	test("the learned scale survives a shrunken active zone (compression)", () => {
+		const fx = fixture();
+		fx.state.projectView(fx.view);
+		fx.entries.push({
+			type: "message",
+			id: "a1",
+			message: {
+				role: "assistant",
+				content: [],
+				api: "openai-completions",
+				provider: "opencode-go",
+				model: "deepseek-v4.1-flash",
+				timestamp: 2,
+				contextSnapshot: { promptTokens: 850, nonMessageTokens: 400 },
+			},
+		} as never as SessionEntry);
+		fx.state.projectView(fx.view);
+		expect(statusText(fx.state)).toMatch(/tokens active=450\b/);
+
+		// Compression folds two of the three blocks away: the scale still applies
+		// to what is left (a learned offset would have kept charging 450).
+		fx.state.projectView([fx.view[0]]);
+		expect(statusText(fx.state)).toMatch(/tokens active=150\b/);
 	});
 
 	test("without a provider report the active zone stays local", () => {

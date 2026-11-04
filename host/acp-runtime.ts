@@ -100,7 +100,7 @@ export interface AcpRuntimeDeps {
 	countImage?: CountImage;
 	/** Encrypted-reasoning charge per assistant message (catalog thinking-replay axis); omitted = signature bytes. */
 	countSignatureTokens?: CountSignatureTokens;
-	/** Whole-list count over the final projected messages: the drift calibration's local basis (§5.2). */
+	/** Whole-list count over the final projected messages: the ratio calibration's local basis (§5.2). */
 	countMessages?: CountMessages;
 	/** Journal write channel for compaction blocks (SessionManager, spec §9). */
 	sink: AcpSummarySink;
@@ -215,14 +215,16 @@ export class AcpRuntimeState {
 	/** Tokens of the latest context_status return; the compress it feeds records it (stats telemetry). */
 	#lastStatusTokens: number | null = null;
 	/**
-	 * Learned offset between the provider's billed message tokens and the local
-	 * count of the same request (§5.2 drift): message framing the local counter
-	 * omits, plus a system-prompt estimate that runs low. Fixed offset, not a
-	 * ratio — both measured providers showed a constant per-message gap.
+	 * Learned scale between the provider's billed message tokens and the local
+	 * count of the same request (§5.2 drift). A ratio, not a fixed offset: the
+	 * gap tracks the encoding's error rate over the content (2026-11-03: a
+	 * 269,442-token local projection billed 229,184 — −15%), so an offset learned
+	 * before a compression stops describing the shrunken active zone. Ratios
+	 * survive content changes; 1 = the local count is taken at face value.
 	 */
-	#drift = 0;
+	#ratio = 1;
 	/** Previous request's basis awaiting the provider's report: entry count at projection + local message tokens. */
-	#pendingDrift: { entries: number; localTokens: number } | null = null;
+	#pendingRatio: { entries: number; localTokens: number } | null = null;
 
 	constructor(deps: AcpRuntimeDeps) {
 		this.#deps = deps;
@@ -405,23 +407,25 @@ export class AcpRuntimeState {
 		this.lastProjected = out;
 		// Calibrate against the PREVIOUS request's report first: the provider's
 		// contextSnapshot for this request does not exist yet.
-		this.#calibrateDrift();
+		this.#calibrateRatio();
 		const localTokens = this.#deps.countMessages?.(out);
-		if (localTokens !== undefined) this.#pendingDrift = { entries: this.#deps.getEntries().length, localTokens };
+		if (localTokens !== undefined) this.#pendingRatio = { entries: this.#deps.getEntries().length, localTokens };
 		return out;
 	}
 
 	/**
-	 * Learn the provider's local-vs-reported gap from the last request's
+	 * Learn the provider's local-vs-reported scale from the last request's
 	 * contextSnapshot. `promptTokens` covers system + tools + messages and
 	 * `nonMessageTokens` is the base's own system/tools estimate, so the
 	 * remainder is what the provider actually billed for messages — the part a
-	 * local block sum has to match. Clamped so one anomalous usage report
-	 * cannot swing tier judgment.
+	 * local block sum has to match. Learned as a ratio of that remainder to the
+	 * local count of the same projection, so a later compression (which changes
+	 * the content, not the encoding) keeps the calibration valid. Clamped so one
+	 * anomalous usage report cannot swing tier judgment.
 	 */
-	#calibrateDrift(): void {
-		const pending = this.#pendingDrift;
-		if (!pending) return;
+	#calibrateRatio(): void {
+		const pending = this.#pendingRatio;
+		if (!pending || pending.localTokens <= 0) return;
 		const entries = this.#deps.getEntries();
 		let snapshot: { promptTokens: number; nonMessageTokens: number } | undefined;
 		for (let i = entries.length - 1; i >= pending.entries; i--) {
@@ -434,9 +438,9 @@ export class AcpRuntimeState {
 			}
 		}
 		if (!snapshot) return;
-		const d = snapshot.promptTokens - snapshot.nonMessageTokens - pending.localTokens;
-		this.#drift = Math.max(-0.3 * pending.localTokens, Math.min(0.6 * pending.localTokens, d));
-		this.#pendingDrift = null;
+		const billed = snapshot.promptTokens - snapshot.nonMessageTokens;
+		this.#ratio = Math.max(0.7, Math.min(1.6, billed / pending.localTokens));
+		this.#pendingRatio = null;
 	}
 
 	/**
@@ -578,7 +582,7 @@ export class AcpRuntimeState {
 		const manifestIds = candidates.slice(0, keptCount).map((b) => b.id);
 		if (adopt) this.manifest = { ids: manifestIds, consumed: false };
 		const zoneTokens = this.#zoneTokens();
-		const activeTokens = active.reduce((n, b) => n + b.tokens, 0) + this.#drift;
+		const activeTokens = Math.round(active.reduce((n, b) => n + b.tokens, 0) * this.#ratio);
 		const plan = computeRoundPlan(activeTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
 		const rs: AcpRoundStatus = {
 			tier: plan.tier,
@@ -631,7 +635,7 @@ export class AcpRuntimeState {
 				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
 			};
 		}
-		const activeTokens = this.activeBlocks().reduce((n, b) => n + b.tokens, 0) + this.#drift;
+		const activeTokens = Math.round(this.activeBlocks().reduce((n, b) => n + b.tokens, 0) * this.#ratio);
 		if (activeTokens < this.params.minCompress) {
 			return {
 				ok: false,
@@ -664,9 +668,9 @@ export class AcpRuntimeState {
 		this.#deps.countTokens = (s) => tokenizer.countTokens(s);
 		this.#deps.countSignatureTokens = signatureTokensOf(tokenizer);
 		this.#deps.countMessages = (msgs) => tokenizer.countMessages(msgs);
-		// The learned gap belongs to the previous provider's billing.
-		this.#drift = 0;
-		this.#pendingDrift = null;
+		// The learned scale belongs to the previous provider's billing.
+		this.#ratio = 1;
+		this.#pendingRatio = null;
 		this.#tokenMemo.clear();
 		this.#zoneRenderTokens.clear();
 		this.#recomputeWindowLines((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0);
@@ -699,7 +703,7 @@ export class AcpRuntimeState {
 				zoneTokens: zoneTokensBefore,
 				zoneLimitTokens: this.#zoneLimitTokens,
 				forcedExecution: this.#forcedExecution,
-				drift: this.#drift,
+				ratio: this.#ratio,
 				params: this.params,
 				countTokens: this.#deps.countTokens,
 				resolve: (ref) => this.#refs.resolve(ref),

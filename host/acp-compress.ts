@@ -78,10 +78,10 @@ export interface CompressSnapshot {
 	/** Armed level-3 force: the next compress executes forced-strong (§5.2). */
 	forcedExecution: boolean;
 	/**
-	 * Learned provider offset over the active zone (§5.2 drift); the gate below
-	 * must read the same total `status()` reports.
+	 * Learned provider/local scale over the active zone (§5.2 drift); the gate
+	 * below must read the same total `status()` reports.
 	 */
-	drift: number;
+	ratio: number;
 	params: AcpParams;
 	countTokens: (text: string) => number;
 	/** bN short-ref decode (spec §3 v10); unknown refs pass through for §6.2 to judge. */
@@ -129,7 +129,8 @@ export function planCompression(
 			},
 		};
 	}
-	const activeTokens = snapshot.active.reduce((n, b) => n + b.tokens, 0) + snapshot.drift;
+	const activeBlocks = snapshot.active.reduce((n, b) => n + b.tokens, 0);
+	const activeTokens = Math.round(activeBlocks * snapshot.ratio);
 	if (activeTokens < p.minCompress) {
 		return {
 			reject: {
@@ -253,7 +254,7 @@ export function planCompression(
 	// the whole live zone and inherits its full compressedIds/index union, so
 	// the zone renders as a single block and rebuild never walks supersedes
 	// chains (§9). depth counts strong generations (normal blocks sit at 0).
-	const activeTokensAfter = activeTokensBefore - compressedTokens;
+	const activeTokensAfter = Math.max(0, Math.round((activeBlocks - compressedTokens) * snapshot.ratio));
 	const supersedes = method === "strong" ? snapshot.zone.map((z) => z.id) : [];
 	const inheritedIds = new Set<string>();
 	const index: AcpIndexLine[] = [];
