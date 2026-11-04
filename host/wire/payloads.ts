@@ -734,11 +734,14 @@ export interface AgentAssetsPayload {
 /** Asset kind (host/assets.ts AssetKind) */
 export type AssetKind = "agent" | "skill" | "mcp" | "hook";
 
-/** Prompt attachment (UI → host; host/host.ts PromptAttachment, sent by the UI along with the prompt) */
+/** Prompt attachment (UI → host; host/rpc/prompt.ts PromptAttachment, sent along with the prompt) */
 export interface PromptAttachment {
-  kind: "image" | "text";
+  kind: "image" | "text" | "path";
   mime?: string; // image: base64 (no data: prefix)
   name?: string; // text: file name
   text?: string; // text: file content
   data?: string;
+  /** path: absolute path of a natively picked/dropped file; the host appends it as an
+   *  @mention so the base reads it into its own fileMention message */
+  path?: string;
 }

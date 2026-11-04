@@ -1,6 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store";
+import { addIncomingFiles } from "../../lib/incoming-files";
+import Icon from "../../Icon";
 import { bashAccentColor, sessionAccentColor } from "../../lib/session-color";
 import { toggleSidebar, toggleRightPanel, bindColResizer } from "../../shell";
 import MainHeader from "./MainHeader";
@@ -94,8 +97,40 @@ export default function MainColumn() {
   useEffect(() => {
     if (showSessionDetail) bindColResizer();
   }, [showSessionDetail]);
+  // Whole-column file drop (browser build only: with dragDropEnabled the Tauri shell hands
+  // file drops to the native handler in main.tsx, which keeps the absolute paths). The input
+  // card is no longer the only target, so the overlay marks the acceptance area. Enter/leave
+  // arrive nested and paired, hence the depth counter; leave skips the types check because
+  // some engines hand dragleave an emptied dataTransfer, which would strand the counter above
+  // zero and pin the overlay open.
+  const dragDepth = useRef(0);
+  const [dropActive, setDropActive] = useState(false);
   return (
-      <main id="main">
+      <main
+        id="main"
+        onDragEnter={(e) => {
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          dragDepth.current++;
+          setDropActive(true);
+        }}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setDropActive(false);
+        }}
+        onDrop={(e) => {
+          if (!e.dataTransfer.types.includes("Files")) return;
+          e.preventDefault();
+          dragDepth.current = 0;
+          setDropActive(false);
+          void addIncomingFiles([...e.dataTransfer.files]);
+        }}
+      >
         <MainHeader onToggleSidebar={toggleSidebar} onToggleRight={toggleRightPanel} />
         <ConnBanner />
         {gitManage ? (
@@ -153,6 +188,20 @@ export default function MainColumn() {
             <div className="col-resize-h" data-side="left" />
             <div className="col-resize-h" data-side="right" />
           </>
+        )}
+        {/* Visual acceptance area for the whole-column drop (the drop handler itself
+            sits on #main); pointer-events stay off so the drag never leaves #main. */}
+        {dropActive && (
+          <div className="dz-overlay" aria-hidden="true">
+            <div className="dz-frame" />
+            <div className="dz-hint">
+              <div className="dz-icon">
+                <Icon name="upload" size={21} />
+              </div>
+              <div className="dz-title">{t("composer.dropTitle")}</div>
+              <div className="dz-sub">{t("composer.dropSub")}</div>
+            </div>
+          </div>
         )}
       </main>
   );

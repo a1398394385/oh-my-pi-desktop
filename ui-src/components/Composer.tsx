@@ -15,7 +15,7 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useCallback } from "react";
 import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, setBump, send, toast } from "../store";
+import { useAppStore, setBump, send } from "../store";
 import { bgJobsKey } from "../store/session";
 import { invoke } from "../store/ws";
 import { expandRightPanel } from "./main/right/tabs";
@@ -58,10 +58,7 @@ import {
 import ComposerPlugin from "./composer/lexical/ComposerPlugin";
 import type { ComposerHandle } from "./composer/lexical/ComposerPlugin";
 import { setTtsDuck } from "../lib/speechOut";
-
-// Size cap for attachments to send: images go through ImageContent (base64),
-// text-like files are inlined into the prompt
-const MAX_ATTACH_BYTES = 10 * 1024 * 1024;
+import { addIncomingFiles, addIncomingPaths } from "../lib/incoming-files";
 
 // Provider sigils (copied from ui/settings/index.js PROV_IC; that module has
 // settings-page binding side effects at top level, so importing it is not viable)
@@ -91,7 +88,9 @@ function buildAttachPayload(): PromptAttachment[] {
     .pendingFiles.map((f) =>
       f.kind === "image"
         ? { kind: "image", mime: f.mime, data: f.data }
-        : { kind: "text", name: f.name, text: f.data },
+        : f.kind === "path"
+          ? { kind: "path", name: f.name, path: f.path }
+          : { kind: "text", name: f.name, text: f.data },
     );
 }
 
@@ -647,42 +646,14 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const onTaOpen = useCallback(() => setTaOpen(true), []);
   const onTaClose = useCallback(() => setTaOpen(false), []);
 
-  // ---- Attachment handling: pick files / paste screenshots / drag-drop files into the list ----
-  const addIncomingFiles = useCallback(async (picked: File[]) => {
-    const added: (PromptAttachment & { id: number })[] = [];
-    for (const file of picked) {
-      if (file.size > MAX_ATTACH_BYTES) {
-        toast(t("composer.oversizeFile", { name: file.name }));
-        continue;
-      }
-      try {
-        if (file.type.startsWith("image/")) {
-          const dataUrl = await new Promise<string>((ok, no) => {
-            const r = new FileReader();
-            r.onload = () => ok(r.result as string); // readAsDataURL result is always a dataURL string
-            r.onerror = () => no(r.error);
-            r.readAsDataURL(file);
-          });
-          const b64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-          added.push({ id: 0, name: file.name, kind: "image", mime: file.type, data: b64 });
-        } else {
-          added.push({ id: 0, name: file.name, kind: "text", mime: file.type || "text/plain", data: await file.text() });
-        }
-      } catch {
-        toast(t("composer.readFail", { name: file.name }));
-      }
-    }
-    if (added.length === 0) return;
-    // Attachment append + render trigger merged into one setState (pendingFiles
-    // container gets a new reference)
-    useAppStore.setState((st) => {
-      let seq = st.fileSeq;
-      const files = [...st.pendingFiles];
-      for (const a of added) files.push({ ...a, id: ++seq });
-      return { pendingFiles: files, fileSeq: seq };
-    });
-  }, []);
-
+  // ---- Attachment handling: pick files / paste screenshots (drag-drop lives on #main) ----
+  // Native picker (Tauri): returns absolute paths, which the host turns into @mentions —
+  // the browser <input type=file> fallback yields File objects with no path (web/remote).
+  const pickNative = async () => {
+    const picked = await invoke?.("plugin:dialog|open", { options: { multiple: true, title: t("composer.addContext") } });
+    if (!picked) return;
+    addIncomingPaths(Array.isArray(picked) ? picked.map(String) : [String(picked)]);
+  };
   // Attachment picking (ported from the old filePicker change)
   const onPick = async (e: ChangeEvent<HTMLInputElement>) => {
     const picked = [...(e.target.files ?? [])];
@@ -718,29 +689,6 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     comp.addEventListener("paste", onPaste, true);
     return () => comp.removeEventListener("paste", onPaste, true);
   }, [addIncomingFiles]);
-
-  const [dragOver, setDragOver] = useState(false);
-  const onDragOver = (e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("Files")) {
-      e.preventDefault();
-      e.stopPropagation();
-      setDragOver(true);
-    }
-  };
-  const onDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-  };
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    const files = [...(e.dataTransfer.files ?? [])];
-    if (files.length > 0) {
-      void addIncomingFiles(files);
-    }
-  };
 
   // ---- Stop-button double-click guard reset (the old code reset disabled when
   // turn_end repainted) ----
@@ -962,14 +910,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         className={
           (inWelcome ? "in-welcome " : "") +
           (isBashMode(text) ? "bash-mode " : "") +
-          (dragOver ? "ring-1 ring-accent " : "") +
           (flash ? "flash-on " : "") +
           (returning ? "flash-return " : "")
         }
         ref={rootRef}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
         aria-hidden={blocking ? true : undefined}
         style={blocking ? { display: "none" } : undefined}
       >
@@ -1019,7 +963,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         )}
         <div className="cbar-fold">
           <div className="cbar" ref={cbarRef}>
-          <button className="icon-btn plus-btn" id="plusBtn" title={t("composer.addContext")} onClick={() => pickerRef.current?.click()}>
+          <button className="icon-btn plus-btn" id="plusBtn" title={t("composer.addContext")} onClick={() => { if (invoke) void pickNative(); else pickerRef.current?.click(); }}>
             <Icon name="plus" />
           </button>
           {!narrow && modePill}

@@ -133,6 +133,13 @@
   /* Same reasoning for the search palette panel: it draws its own 1px border,
      so the extra 1px ring only doubled that edge. */
   --shadow-panel: var(--shadow-sm);
+  /* Drag-over veil on #main: low-opacity wash + blur so the message list stays
+     readable underneath while the drop target reads as one surface. Neutral by
+     design — the accent stays reserved for focus rings. */
+  --dz-veil: rgba(30,30,30,.28);
+  --dz-fill: rgba(255,255,255,.03);
+  --dz-dash: var(--line);
+  --dz-card: rgba(48,48,50,.66);
 }
 
 html[data-platform="macos"][data-fullscreen="true"] {
@@ -158,6 +165,10 @@ html[data-platform="macos"][data-fullscreen="true"] {
   --faint:     #808088;
   --green-ink: #1e8a3e;
   --bash:      var(--green); /* light fallback: green (--green inherits the :root definition) */
+  --dz-veil:   rgba(216,216,220,.35);
+  --dz-fill:   rgba(0,0,0,.02);
+  --dz-dash:   #b8b8be;
+  --dz-card:   rgba(243,243,245,.7);
 }
 
 /* ── Lightweight diff (in-house, ported from ZCode lightweight-diff-preview): row background color-mix +

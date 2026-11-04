@@ -442,13 +442,13 @@ export function initShell(): void {
   window.addEventListener("click", closeAllMenus);
   window.addEventListener("blur", closeAllMenus);
 
-  // Packaged-webview hardening. tauri.conf.json sets dragDropEnabled=false so HTML5
-  // drop reaches the app (Windows requires it for any in-page drag & drop), which
-  // leaves the native handlers in charge: a file dropped outside the composer
-  // navigates the whole window to that file, and the native context menu still
-  // offers Reload / Inspect Element. Cancelling those defaults here is the only
-  // layer that exists in release builds (the devtools feature is compiled out, so
-  // nothing native can turn them off). Text fields keep the native edit menu.
+  // Packaged-webview hardening. tauri.conf.json sets dragDropEnabled=true so file drops
+  // arrive as native paths (main.tsx listens on tauri://drag-drop); the webview therefore
+  // sees no HTML5 drop, and these guards only matter for the browser build (dev ?ws=
+  // and remote), where a file dropped outside the composer would navigate the window to
+  // it. The native context menu still offers Reload / Inspect Element: cancelling it here
+  // is the only layer that exists in release builds (the devtools feature is compiled out,
+  // so nothing native can turn it off). Text fields keep the native edit menu.
   window.addEventListener("dragover", (e) => {
     if (e.dataTransfer?.types.includes("Files")) e.preventDefault();
   });

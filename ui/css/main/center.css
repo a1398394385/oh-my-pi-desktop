@@ -15,9 +15,61 @@
   --col-w: min(var(--col-user-max, 100vw), min(var(--col-max, 50vw), max(calc(100% - 150px), min(var(--col-max-35, 35vw), calc(100% - 40px)))));
 }
 
-body:has(#sidebar.collapsed) #main { margin-left: var(--shell-gap); }
+/* Whole-column file drop (MainColumn): a veil marking #main as one acceptance surface,
+   with a centered hint. z-110 clears the dock (z-100) so the input card is covered too,
+   and stays under the popup tier (z-500). pointer-events:none is load-bearing: it keeps
+   every dragenter/dragleave inside #main, so the depth counter cannot drift and strand
+   the overlay open. */
+.dz-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dz-veil);
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  pointer-events: none;
+}
 
-body:has(#right.collapsed) #main { margin-right: var(--shell-gap); }
+.dz-frame {
+  position: absolute;
+  inset: 12px;
+  border: 1px dashed var(--dz-dash);
+  border-radius: 14px;
+  background: var(--dz-fill);
+}
+
+.dz-hint {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 24px 32px;
+  border-radius: var(--r-card);
+  background: var(--dz-card);
+  border: 1px solid var(--line-soft);
+  text-align: center;
+}
+
+.dz-icon {
+  width: 42px; height: 42px;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  color: var(--dim);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.dz-title { font-size: var(--ui-fs-lg); font-weight: 600; color: var(--text); }
+
+.dz-sub { font-size: var(--ui-fs-sm); color: var(--faint); }
+
+body:has(#sidebar.collapsed) #center { margin-left: var(--shell-gap); }
+
+body:has(#right.collapsed) #center { margin-right: var(--shell-gap); }
 
 /* The TODO process card (#statusWrap: absolute + z-60 + shadow) overlays the message area when expanded, without squeezing the message/input content column width; the card sits outside the scroll container and does not scroll */
 .chat-head {

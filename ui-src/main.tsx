@@ -15,6 +15,7 @@ import { IS_MAC } from "./platform";
 import { emitBrowserFrame, emitBrowserPick } from "./store/browserMirror";
 import { syncAudioToPref } from "./components/chat/railAudio";
 import { openSessionByPath } from "./store/session";
+import { addIncomingPaths } from "./lib/incoming-files";
 
 // Restore the first-frame render cache (the localStorage mirror of
 // omp-desktop.json's ui section) before React mounts — this is what keeps the
@@ -217,6 +218,14 @@ if (new URLSearchParams(location.search).has("preview")) {
   });
   const nativeEvents = window.__TAURI__?.event;
   const invokeNative = window.__TAURI__?.core?.invoke;
+  // Native file drop (dragDropEnabled in tauri.conf.json): the webview never sees an HTML5
+  // drop event once Tauri owns drag & drop, so absolute paths arrive here. The browser build
+  // keeps MainColumn's HTML5 handler. See the dragDropEnabled note in shell.ts.
+  void nativeEvents?.listen("tauri://drag-drop", (event) => {
+    const payload = event.payload as { type?: string; paths?: string[] } | undefined;
+    if (payload?.type !== "drop" || !Array.isArray(payload.paths)) return;
+    addIncomingPaths(payload.paths);
+  });
   if (nativeEvents && invokeNative) {
     void nativeEvents.listen("notification-open", (event) => openNotification(event.payload.path))
       .then(() => invokeNative<string | null>("notification_frontend_ready"))

@@ -22,6 +22,8 @@ export const composerEn = {
   needSession: "Create or open a session first",
   oversizeFile: "\"{{name}}\" exceeds 10MB, not added",
   readFail: "Failed to read \"{{name}}\"",
+  dropTitle: "Release to add to this session",
+  dropSub: "Images, text and code files",
   imageN: "Image {{n}}",
   voiceHoldTitle: "Hold to dictate, release to finish",
   voiceListening: "Listening — release to finish",

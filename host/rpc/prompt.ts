@@ -42,13 +42,15 @@ import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
 
-// Attachments sent by the frontend along with prompt: images as base64, text-kind as file contents
+// Attachments sent by the frontend along with prompt: images as base64, text-kind as file
+// contents (legacy inline path), path-kind as absolute paths the base @-reads itself
 interface PromptAttachment {
-  kind: "image" | "text";
+  kind: "image" | "text" | "path";
   mime?: string;
   data?: string; // image: base64 (no data: prefix)
   name?: string; // text: file name
   text?: string; // text: file contents
+  path?: string; // path: absolute path, appended to the prompt as an @mention
 }
 
 // ---------- Composer sigils: command list and @ file candidates ----------
@@ -572,6 +574,14 @@ async function handlePrompt(
   if (textBlocks.length > 0) {
     finalText = text ? `${textBlocks.join("\n\n")}\n\n${text}` : textBlocks.join("\n\n");
   }
+  // Natively picked / dropped files arrive as absolute paths. Append each as an @mention so
+  // the base reads it into its own fileMention message (text, images, video contact sheets and
+  // binary skips are all handled there) instead of inlining the bytes into the user's prompt.
+  // Whitespace in a path needs the quoted form the base's mention regex accepts.
+  const atLines = (files ?? [])
+    .filter((f) => f.kind === "path" && typeof f.path === "string" && f.path.length > 0)
+    .map((f) => (/\s/.test(f.path!) ? `@"${f.path}"` : `@${f.path}`));
+  if (atLines.length > 0) finalText = [finalText, ...atLines].filter(Boolean).join("\n\n");
   if (!finalText && images.length === 0) throw new Error(hostI18n.t("errors.prompt.emptyMessage"));
   if (!finalText) finalText = hostI18n.t("errors.prompt.imageOnlyFallback");
   // Collab guest: prompts relay to the host over the wire instead of running

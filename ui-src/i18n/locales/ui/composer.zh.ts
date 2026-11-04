@@ -22,6 +22,8 @@ export const composerZh = {
   needSession: "先新建或打开一个会话",
   oversizeFile: "「{{name}}」超过 10MB，未添加",
   readFail: "读取「{{name}}」失败",
+  dropTitle: "松开以添加到当前会话",
+  dropSub: "图片、文本与代码文件",
   imageN: "图片{{n}}",
   voiceHoldTitle: "按住说话，松开结束",
   voiceListening: "正在听写，松开结束",
