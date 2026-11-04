@@ -29,7 +29,7 @@ import { saveUiPrefs, applyAppearance } from "./appearance";
 import type { ModelRoleEntry } from "./types/frames";
 import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
-import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
+import { computeShortcutProjects, computeSidebarSessionShortcuts } from "./components/main/sidebar/util";
 import { pushInputHistory } from "./components/composer/lexical/draft";
 import { cycleTermTab, termGroupKey } from "./components/main/right/termTabs";
 import { patchActiveItem } from "./components/chat/parts";
@@ -563,10 +563,13 @@ function setCommandPressed(on: boolean): void {
   // Manage mode is already fully expanded; no transient expansion needed
   const toExpand = new Set<string>();
   if (!st.isProjectManageMode) {
-    for (const p of getAvailableProjects()) {
-      if (st.expandedProjects.has(p.cwd)) continue;
-      if (p.sessions.some((s) => isSessionRunning(st.openSessions.get(s.path)))) toExpand.add(p.cwd);
-    }
+    for (const cwd of computeShortcutProjects({
+      availableProjects: getAvailableProjects(),
+      expandedProjects: st.expandedProjects,
+      projectLimits: st.projectLimits,
+      openSessions: st.openSessions,
+      unseenFinished: st.unseenFinished,
+    })) toExpand.add(cwd);
   }
   autoExpandedProjects = toExpand.size > 0 ? toExpand : null;
   useAppStore.setState(

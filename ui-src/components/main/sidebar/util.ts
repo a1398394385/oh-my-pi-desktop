@@ -202,3 +202,38 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
 
   return result;
 }
+
+export interface ShortcutExpansionState {
+  availableProjects: { cwd: string; sessions: ShortcutSessionCandidate[] }[];
+  expandedProjects: Set<string>;
+  projectLimits: Map<string, number>;
+  openSessions: Map<string, { streaming?: boolean; items?: { role: string; running?: boolean }[] }>;
+  unseenFinished: Set<string>;
+}
+
+/**
+ * Projects to transiently expand while ⌘ is held: the ones whose rows receive a
+ * ⌘1~9 badge (running first, unread fills the rest, at most 9 — same priority and
+ * project row-limit rule as computeSidebarSessionShortcuts). A collapsed project
+ * hides its badge rows, unread ones included.
+ */
+export function computeShortcutProjects(st: ShortcutExpansionState): string[] {
+  const running: string[] = [];
+  const unread: string[] = [];
+  for (const p of st.availableProjects) {
+    const limit = st.projectLimits.get(p.cwd) ?? 5;
+    for (const s of p.sessions.slice(0, limit)) {
+      if (isSessionRunning(st.openSessions.get(s.path))) running.push(p.cwd);
+      else if (st.unseenFinished.has(s.path)) unread.push(p.cwd);
+    }
+  }
+  // shortcut: pinned sessions are ordered first by computeSidebarSessionShortcuts, here
+  // they follow their project row — only shifts which projects expand when >9 sessions
+  // compete, upgrade if badge/project mismatch shows up.
+  const chosen =
+    running.length >= SHORTCUT_DIGITS.length
+      ? running.slice(0, SHORTCUT_DIGITS.length)
+      : [...running, ...unread.slice(0, SHORTCUT_DIGITS.length - running.length)];
+  // Already-expanded projects consumed digits above but are not auto-expanded.
+  return [...new Set(chosen)].filter((cwd) => !st.expandedProjects.has(cwd));
+}

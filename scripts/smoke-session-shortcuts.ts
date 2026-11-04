@@ -3,7 +3,7 @@
 // 1. Priority: jump to running sessions first; if fewer than 9 are running, fill the rest with sessions that have unread messages.
 // 2. Mapping: digits 1-9 follow the order of the left session list.
 
-import { computeSidebarSessionShortcuts, SHORTCUT_DIGITS } from "../ui-src/components/main/sidebar/util";
+import { computeShortcutProjects, computeSidebarSessionShortcuts, SHORTCUT_DIGITS } from "../ui-src/components/main/sidebar/util";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) {
@@ -197,6 +197,41 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
   assert(shortcuts.get("/projA/s2") === "2");
   assert(!shortcuts.has("/projB/s1"), "折叠项目中的会话不应被分配快捷键");
   console.log("✓ 场景 4（项目视图置顶与展开过滤）通过");
+}
+
+// Scenario 5: ⌘ hold expands collapsed projects holding unread (not just running) sessions
+{
+  const projA = { cwd: "/projA", sessions: [{ path: "/projA/a1", modified: "2026-09-27T10:00:00Z" }] }; // running, expanded
+  const projB = { cwd: "/projB", sessions: [{ path: "/projB/b1", modified: "2026-09-27T09:00:00Z" }] }; // unread, collapsed
+  const expand = computeShortcutProjects({
+    availableProjects: [projA, projB],
+    expandedProjects: new Set(["/projA"]),
+    projectLimits: new Map(),
+    openSessions: new Map([["/projA/a1", { streaming: true }]]),
+    unseenFinished: new Set(["/projB/b1"]),
+  });
+  assert(expand.length === 1 && expand[0] === "/projB", `应只展开含未读会话的 projB，实际为 ${JSON.stringify(expand)}`);
+  console.log("✓ 场景 5（未读会话所在折叠项目也会展开）通过");
+}
+
+// Scenario 6: 9 running sessions fill the quota -> unread projects stay collapsed;
+// rows past the project limit never get a badge, so they must not trigger expansion
+{
+  const runningRows = Array.from({ length: 9 }, (_, i) => ({ path: `/projR/r${i}`, modified: "2026-09-27T10:00:00Z" }));
+  const overflow = Array.from({ length: 6 }, (_, i) => ({ path: `/projO/o${i}`, modified: "2026-09-27T09:00:00Z" }));
+  const expand = computeShortcutProjects({
+    availableProjects: [
+      { cwd: "/projR", sessions: runningRows },
+      { cwd: "/projU", sessions: [{ path: "/projU/u1", modified: "2026-09-27T09:00:00Z" }] },
+      { cwd: "/projO", sessions: overflow }, // unread at row 6 only -> beyond limit 5
+    ],
+    expandedProjects: new Set(),
+    projectLimits: new Map([["/projR", 9]]), // raise projR's row limit so all 9 running rows are visible
+    openSessions: new Map(runningRows.map((s) => [s.path, { streaming: true }])),
+    unseenFinished: new Set(["/projU/u1", "/projO/o5"]),
+  });
+  assert(expand.length === 1 && expand[0] === "/projR", `运行中满额时应只展开 projR，实际为 ${JSON.stringify(expand)}`);
+  console.log("✓ 场景 6（运行中满额排除未读、超出项目行数的会话不触发展开）通过");
 }
 
 console.log("🎉 全部测试用例均通过！");
