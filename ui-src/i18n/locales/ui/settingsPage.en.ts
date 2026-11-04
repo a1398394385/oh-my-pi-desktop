@@ -661,7 +661,7 @@ export const settingsPageEn = {
     emptyNone: "None yet",
     nameFirst: "Enter a name first",
   },
-  // ---- Automations page (AutomationsPage.tsx) ----
+  // ---- Automations section (pages/AutomationsSection.tsx, bottom of pg-agents) ----
   auto: {
     agentGroup: "Agent capabilities",
     agentTitle: "Allow the agent to manage automations",
@@ -1019,7 +1019,7 @@ export const settingsPageEn = {
         resultFailed: "Last run failed after {{progress}}{{failed}}: {{error}}. Spent {{cost}}.",
         resultIdle: "No judge run yet. Classify the unjudged messages to replace regex estimates with verdicts.",
         starting: "Starting…",
-        unavailableHint: "Judging needs a judge model: pick one under Settings → Capabilities → Judge; without it messages are classified by regex signals.",
+        unavailableHint: "Judging needs a judge model: pick one under Settings → Services → Judge; without it messages are classified by regex signals.",
         unjudgedMessages: "Unjudged unique messages",
         unknownError: "unknown error",
       },

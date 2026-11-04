@@ -1,4 +1,4 @@
-/* SSH hosts settings page (SshPage.tsx). Reuses the shared settings language
+/* SSH hosts settings section (SshSection.tsx, on the remote page). Reuses the shared settings language
    (.set-card/.set-edit-card/.srow.mem-row/.inp/.add-btn/.save-btn); only the form
    grid and the probe status line are page-specific. */
 

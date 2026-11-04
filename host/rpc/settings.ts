@@ -205,7 +205,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     pushSettings();
   },
   async set_automation_agent_enabled(ws, msg) {
-    // Automations settings page switch: writes automations.agentTools in
+    // Automations section switch (pg-agents): writes automations.agentTools in
     // omp-desktop.json. Gates the automations_list / automations_manage tools at
     // session creation, so already-open sessions keep whatever surface they got.
     await writeAutomationAgentEnabled(!!msg.enabled);
@@ -249,7 +249,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     pushSettings();
   },
   async set_kimi_auto_thinking(ws, msg) {
-    // Providers page switch: writes kimi.autoThinking in omp-desktop.json —
+    // Services page switch (pg-services): writes kimi.autoThinking in omp-desktop.json —
     // whether Kimi models are offered the `auto` thinking level. Takes effect
     // on the next thinking-level pick/session create (existing sessions keep
     // their configured level; Kimi + auto + off pins to `high`).

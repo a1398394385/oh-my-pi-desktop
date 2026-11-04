@@ -650,7 +650,7 @@ export const settingsPageZh = {
     emptyNone: "暂无",
     nameFirst: "先输入名称",
   },
-  // ---- Automations settings page (pages/AutomationsPage.tsx) ----
+  // ---- Automations section (pages/AutomationsSection.tsx, bottom of pg-agents) ----
   auto: {
     agentGroup: "Agent 能力",
     agentTitle: "允许 agent 操控自动化",
@@ -1005,7 +1005,7 @@ export const settingsPageZh = {
         resultFailed: "上次运行在 {{progress}}{{failed}} 后失败：{{error}}。花费 {{cost}}。",
         resultIdle: "尚未运行评判。分类未评判的消息，以结论取代正则估算。",
         starting: "正在启动…",
-        unavailableHint: "评判需要判定模型：在「特殊功能 → 智能判定」中选择模型，否则按正则信号分类。",
+        unavailableHint: "评判需要判定模型：在「服务与集成 → 智能判定」中选择模型，否则按正则信号分类。",
         unjudgedMessages: "未评判的唯一消息",
         unknownError: "未知错误",
       },

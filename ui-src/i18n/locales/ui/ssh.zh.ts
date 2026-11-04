@@ -1,7 +1,7 @@
 // zh copy for the ssh domain (welcome remote-connection dialog + settings SSH
 // hosts page). Keys are prefixed `ssh.` — see ui-src/i18n/README.md.
 export const sshZh = {
-  // RemoteDialog.tsx + SshPage.tsx
+  // RemoteDialog.tsx + SshSection.tsx
   title: "远程连接",
   desc: "连接 SSH 主机上的远程工作区（OMP 原生 ssh:// 支持）",
   hostSection: "SSH 主机",
@@ -42,7 +42,7 @@ export const sshZh = {
   connectedToast: "已连接 {{label}}，发送消息开始任务",
   connFail: "连接失败",
   cancel: "取消",
-  // SshPage.tsx
+  // SshSection.tsx
   nav: "SSH 主机",
   addHost: "添加主机",
 };

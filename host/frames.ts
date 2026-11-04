@@ -64,7 +64,7 @@ export function settingsFrame() {
     advisorDefaultEnabled: readAdvisorDefaultEnabled(),
     // omp-desktop.json kimi.autoThinking: whether Kimi models are offered the
     // `auto` thinking level (off by default — each level switch re-bills the
-    // whole prefix on Kimi; the providers-page switch on pg-providers)
+    // whole prefix on Kimi; the services-page switch on pg-services)
     kimiAutoThinking: readKimiAutoThinking(),
     // omp-desktop.json autoReview.enabled: the LLM tool-approval gate in
     // uiCtx.select — explicit low/medium verdicts approve unseen, everything
