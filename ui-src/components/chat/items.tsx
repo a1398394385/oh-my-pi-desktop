@@ -247,6 +247,15 @@ function processStyle(): "standard" | "detailed" | "expanded" {
   return v === "detailed" || v === "expanded" ? v : "standard";
 }
 
+// A running row whose "expand while running" switch is on (Ctrl+T / Ctrl+O) stays out of
+// every fold: it lays out expanded on its own, then joins the block once it completes (the
+// next event turns running/streaming off). Switched off, folds keep swallowing it as before.
+function liveOpen(item: ChatItem): boolean {
+  const p = useAppStore.getState().uiPrefs;
+  if (item.role === "thinking") return !!item.streaming && p.showThinking;
+  return item.role === "tool" && !!item.running && p.expandToolOutput;
+}
+
 // Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
 // Thinking, request-error and TTSR-injection rows inside the run are collected into the block
 // but not counted; any other role or a non-read-only tool event ends the run. Returns null when
@@ -262,6 +271,7 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
   let j = i;
   while (j < items.length) {
     const it = items[j];
+    if (liveOpen(it)) break; // the running row renders standalone outside the block
     if (isReadonlyEvent(it)) {
       run.push(it);
       roCount++;
@@ -319,7 +329,7 @@ export function renderItems(
       const mergeSameType = processStyle() !== "expanded";
       if (mergeSameType && isEditEvent(item)) {
         const subs: ChatItem[] = [item];
-        while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
+        while (i + 1 < items.length && !liveOpen(items[i + 1]) && isEditEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
           const groupItem: ChatItem = { role: "tool", text: t("chat.labelChange"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
@@ -329,7 +339,7 @@ export function renderItems(
       }
       if (mergeSameType && isReadEvent(item)) {
         const subs: ChatItem[] = [item];
-        while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
+        while (i + 1 < items.length && !liveOpen(items[i + 1]) && isReadEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
           const groupItem: ChatItem = { role: "tool", name: "read", text: t("chat.labelReadGroup"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
@@ -342,7 +352,7 @@ export function renderItems(
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length) {
           const nx = items[i + 1];
-          if (!isDeviceEvent(nx) || deviceNameOf(nx.args?.path) !== dev) break;
+          if (liveOpen(nx) || !isDeviceEvent(nx) || deviceNameOf(nx.args?.path) !== dev) break;
           subs.push(nx);
           i++;
         }
@@ -355,7 +365,7 @@ export function renderItems(
       }
       if (mergeSameType && isCmdEvent(item)) {
         const subs: ChatItem[] = [item];
-        while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
+        while (i + 1 < items.length && !liveOpen(items[i + 1]) && isCmdEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
           const groupItem: ChatItem = { role: "tool", name: "cmd", text: t("chat.labelTerminal"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
@@ -489,7 +499,7 @@ export function renderItems(
     const mergeSameType = processStyle() !== "expanded";
     if (mergeSameType && isEditEvent(item)) {
       const subs: ChatItem[] = [item];
-      while (i + 1 < items.length && isEditEvent(items[i + 1])) subs.push(items[++i]);
+      while (i + 1 < items.length && !liveOpen(items[i + 1]) && isEditEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", text: t("chat.labelChange"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
@@ -498,7 +508,7 @@ export function renderItems(
     }
     if (mergeSameType && !node && isReadEvent(item)) {
       const subs: ChatItem[] = [item];
-      while (i + 1 < items.length && isReadEvent(items[i + 1])) subs.push(items[++i]);
+      while (i + 1 < items.length && !liveOpen(items[i + 1]) && isReadEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", name: "read", text: t("chat.labelReadGroup"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
@@ -510,7 +520,7 @@ export function renderItems(
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length) {
         const nx = items[i + 1];
-        if (!isDeviceEvent(nx) || deviceNameOf(nx.args?.path) !== dev) break;
+        if (liveOpen(nx) || !isDeviceEvent(nx) || deviceNameOf(nx.args?.path) !== dev) break;
         subs.push(nx);
         i++;
       }
@@ -522,7 +532,7 @@ export function renderItems(
     }
     if (mergeSameType && !node && isCmdEvent(item)) {
       const subs: ChatItem[] = [item];
-      while (i + 1 < items.length && isCmdEvent(items[i + 1])) subs.push(items[++i]);
+      while (i + 1 < items.length && !liveOpen(items[i + 1]) && isCmdEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", name: "cmd", text: t("chat.labelTerminal"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });

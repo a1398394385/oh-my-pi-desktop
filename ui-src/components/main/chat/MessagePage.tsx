@@ -69,10 +69,10 @@ const SWITCH_SETTLE_MS = 1000;
 //    last one; content-growth scrolls (streaming bottom-follow) never arm it, so cards
 //    stay scrollable while output streams. Keep the CSS selector in sync with
 //    INLINE_CARD_SELECTOR below.
-//    Same gesture, card-owned: when the wheel starts on a card's own scroll body (a long
-//    .ro-body, a nested .chg-body …) that card becomes the .wheel-owner — the only card
-//    exempt from the pointer-transparency — so wheels keep reaching it while the pointer
-//    drifts across sibling expansions, and that card alone un-scrolls after the idle gap.
+//    Same gesture, card-owned: when the wheel starts inside an inline card, the innermost
+//    actual scrollport becomes the .wheel-owner — the only scrollport kept addressable — so
+//    nested tool output keeps scrolling while sibling expansions stay pointer-transparent.
+//    After the idle gap, pointer transparency lifts and all inner scrollers work normally.
 // 2. Floating popups (popcards .ring-pop / menus, portaled outside the stream): a
 //    document-capture wheel listener redirects their wheels back to the stream while the
 //    scroll gesture is stream-owned. Ownership model: the first wheel after an idle gap
@@ -97,6 +97,22 @@ const INLINE_CARD_SELECTOR = ".ed-brief, .cmd-card, .bash-out, .think-body, .chg
 // short/non-scrollable areas, and code blocks/tables are far too prevalent for that.
 // Both selectors ARE part of the .wheel-through CSS transparency list (superset).
 const SCROLL_OWNER_SELECTOR = `${INLINE_CARD_SELECTOR}, .md-code-block-frame [data-streamdown="code-block-body"], .sticky-user-wrap .user-msg-text`;
+
+// Resolve the actual scrollport, not its card wrapper: nested tool output can scroll inside
+// a scrolling group, and disabling the inner target during wheel capture hands the gesture
+// to the outer stream before the browser performs the default scroll.
+function inlineScrollOwner(target: HTMLElement): HTMLElement | null {
+  const card = target.closest<HTMLElement>(INLINE_CARD_SELECTOR);
+  if (!card) return null;
+  let el: HTMLElement | null = target;
+  while (el) {
+    const oy = window.getComputedStyle(el).overflowY;
+    if ((oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight + 1) return el;
+    if (el === card) break;
+    el = el.parentElement;
+  }
+  return null;
+}
 
 // Per-session scroll restore (survives across sessions because the stream node is reused,
 // not remounted): positions saved from scroll events, keyed "<channel>:<activePath>".
@@ -421,27 +437,8 @@ export default function MessagePage() {
       if (!target) return;
       const stream = streamRef.current;
       if (!stream || !stream.contains(target)) return;
-      const card = target.closest<HTMLElement>(INLINE_CARD_SELECTOR);
-      if (card) {
-        // Find the innermost vertically scrollable container containing the current trigger point
-        let scroller: HTMLElement | null = target;
-        while (scroller && scroller !== card) {
-          const style = window.getComputedStyle(scroller);
-          const oy = style.overflowY;
-          if ((oy === "auto" || oy === "scroll") && scroller.scrollHeight > scroller.clientHeight) {
-            break;
-          }
-          scroller = scroller.parentElement;
-        }
-        if (!scroller || scroller === card) {
-          const style = window.getComputedStyle(card);
-          const oy = style.overflowY;
-          if ((oy === "auto" || oy === "scroll") && card.scrollHeight > card.clientHeight) {
-            scroller = card;
-          } else {
-            scroller = null;
-          }
-        }
+      if (target.closest(INLINE_CARD_SELECTOR)) {
+        const scroller = inlineScrollOwner(target);
 
         // The card's current area is not vertically scrollable: fully block the wheel event
         // from bleeding through and dragging the outer message stream
@@ -501,11 +498,9 @@ export default function MessagePage() {
   const gestureOwner = useRef<"stream" | "popup" | "other">("other");
   const lastWheelAt = useRef(0);
   const wheelThroughTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  // The card that owns the current wheel gesture (an inline expand card scrolling its own
-  // body, e.g. a long .ro-body). It is exempt from .wheel-through's pointer-transparency so
-  // it keeps receiving wheels while every sibling expansion (including the ones nested
-  // inside it) goes pointer-transparent — a pointer drifting across another expanded card
-  // can no longer steal the wheel mid-scroll.
+  // The actual scrollport that owns the current wheel gesture (e.g. .cmd-card-out nested in
+  // a long .ro-body). It stays pointer-addressable while every sibling expansion goes
+  // pointer-transparent, so drifting across another expanded card cannot steal the gesture.
   const wheelOwnerCard = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const setOwnerCard = (card: HTMLElement | null) => {
@@ -521,16 +516,6 @@ export default function MessagePage() {
         stream.classList.remove("wheel-through");
         setOwnerCard(null);
       }, GESTURE_IDLE_MS);
-    };
-    // Nearest inline card that actually scrolls inside the wheel's ancestor chain: a wheel
-    // over a short nested row still resolves to the tall .ro-body around it.
-    const scrollableCard = (el: HTMLElement | null, root: HTMLElement) => {
-      let n = el;
-      while (n && n !== root) {
-        if (n.matches(INLINE_CARD_SELECTOR) && n.scrollHeight > n.clientHeight + 1) return n;
-        n = n.parentElement;
-      }
-      return null;
     };
     const onWheelCapture = (e: WheelEvent) => {
       if (e.deltaY === 0) return;
@@ -569,7 +554,7 @@ export default function MessagePage() {
         stream.scrollTop += e.deltaY;
         armWheelThrough(stream);
       } else if (inStream && !inPopup) {
-        const card = scrollableCard(target, stream);
+        const card = inlineScrollOwner(target);
         if (card) {
           setOwnerCard(card);
           armWheelThrough(stream);
@@ -642,6 +627,10 @@ export default function MessagePage() {
   // layout are untouched, so the toggle state resets per turn (and per session).
   const turnStartAt = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.turnStartAt : null));
   const processStyle = useAppStore((st) => st.uiPrefs.agentProcessStyle);
+  // Ctrl+T / Ctrl+O decide whether the running row stays outside the folds (items.tsx
+  // liveOpen reads them via getState), so the memo below must re-run when they flip.
+  const showThinking = useAppStore((st) => st.uiPrefs.showThinking);
+  const expandToolOutput = useAppStore((st) => st.uiPrefs.expandToolOutput);
   const [conciseOpen, setConciseOpen] = useState(false);
   useEffect(() => {
     setConciseOpen(false);
@@ -686,11 +675,12 @@ export default function MessagePage() {
   // stay unconditional); with no session items is undefined and the pass is trivially empty.
   // processStyle is a dep of its own: renderItems reads the fold style from the store
   // (non-reactive), so the subscription is what re-lays out messages when it changes.
+  // showThinking/expandToolOutput ride the same reason (liveOpen's fold opt-out).
   const { nodes, railEntries } = useMemo(() => {
     const entries: RailEntry[] = [];
     const out = renderItems(items ?? [], "", entries, streamTail, { hideProcessFrom, branchNav });
     return { nodes: out, railEntries: entries };
-  }, [items, draft, streamTail, processStyle, hideProcessFrom, branchNav]);
+  }, [items, draft, streamTail, processStyle, showThinking, expandToolOutput, hideProcessFrom, branchNav]);
 
   if (!hasSession) {
     return (

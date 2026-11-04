@@ -8,7 +8,7 @@
 // (mousemove continuous peaks / peak grace-period popcard / click-to-scroll) rely on
 // imperative listeners, so the imperative implementation is kept wholesale inside a
 // useLayoutEffect (done before paint, no flicker).
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useReducer, useRef } from "react";
 import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import type { RailEntry } from "./chat-types";
 import type { TimerHandle } from "../../store";
@@ -234,6 +234,31 @@ function showRailPop(entry: RailEntry, idx: number, total: number, tick: HTMLDiv
 // entries: { key, role, text } (collected along the traversal in items.tsx); each message is located via its data-fk anchor
 export default function MsgRail({ entries, sessionId, streamRef }: { entries: RailEntry[]; sessionId: string; streamRef: RefObject<HTMLDivElement | null> }) {
   const railRef = useRef<HTMLDivElement | null>(null);
+  // The tick layout is derived from the scrollport height (rail box + tick pitch), and the
+  // layout effect below only re-runs on a render. Dock toggles, dock-height drags and column
+  // resizes change that height without touching `entries`, so the rail would keep the old
+  // geometry — nudge a render per height change (rAF-coalesced, width-only resizes skipped).
+  const [, bumpRailLayout] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const streamEl = streamRef.current;
+    if (!streamEl) return;
+    let h = streamEl.clientHeight;
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      if (streamEl.clientHeight === h) return;
+      h = streamEl.clientHeight;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        bumpRailLayout();
+      });
+    });
+    ro.observe(streamEl);
+    return () => {
+      ro.disconnect();
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [streamRef]);
 
   // Click: send the message whose pop card is showing (the pointer's peak tick) to the
   // top of the stream, where its sticky wrap pins it. The peak tick — not the raw DOM

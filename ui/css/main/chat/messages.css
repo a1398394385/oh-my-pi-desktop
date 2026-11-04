@@ -879,12 +879,14 @@
    pointer drifting over them cannot hijack the wheel — the event passes through to the
    stream natively in every web engine. After 1s of wheel idle the class lifts and the
    inner scrollers own their wheels again (with their own overscroll containment).
-   `.wheel-owner` is the one card that owns the gesture because the wheel started on its own
-   scroll body: it stays addressable (its body keeps scrolling) while every other card,
-   including expansions nested inside it, is transparent.
+   `.wheel-owner` is the actual scrollport that owns the gesture. It stays addressable even
+   when a transparent card ancestor would otherwise inherit pointer-events:none to it.
    Selector = union of INLINE_CARD_SELECTOR and SCROLL_OWNER_SELECTOR in MessagePage.tsx. */
 #stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .ro-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text):not(.wheel-owner) {
   pointer-events: none;
+}
+#stream.wheel-through .wheel-owner {
+  pointer-events: auto;
 }
 
 /* ── Inline expansion cards: scrollbars visible during scroll/hover, matching VSCode scrollbarSlider and #stream ── */

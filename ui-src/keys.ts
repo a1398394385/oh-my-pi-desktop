@@ -32,6 +32,7 @@ import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeSidebarSessionShortcuts, isSessionRunning } from "./components/main/sidebar/util";
 import { pushInputHistory } from "./components/composer/lexical/draft";
 import { cycleTermTab, termGroupKey } from "./components/main/right/termTabs";
+import { patchActiveItem } from "./components/chat/parts";
 
 // ---------- Actions ----------
 
@@ -344,11 +345,13 @@ function toggleThinking(): void {
   // frame's hideThinkingBlock would overwrite and revert it
   send({ type: "set_setting", key: "hideThinkingBlock", value: !showThinking });
   // Immediate feedback: only follow thinking rows currently streaming (finished
-  // collapsed rows and rows the user manually expanded stay untouched)
+  // collapsed rows and rows the user manually expanded stay untouched). patchActiveItem
+  // copies the row so the memoized row re-renders now — an in-place field write would
+  // wait for the next delta flush.
   const s = activeOpen();
   if (s) {
     for (const it of s.items) {
-      if (it.role === "thinking" && it.streaming) it.expanded = showThinking;
+      if (it.role === "thinking" && it.streaming) patchActiveItem(it, (x) => { x.expanded = showThinking; });
     }
   }
   toast(t(showThinking ? "misc.thinkingExpandOn" : "misc.thinkingExpandOff"));
@@ -360,12 +363,13 @@ function toggleToolOutput(): void {
   const expandToolOutput = !useAppStore.getState().uiPrefs.expandToolOutput;
   useAppStore.setState(st => ({ uiPrefs: { ...st.uiPrefs, expandToolOutput } }));
   saveUiPrefs();
-  // Immediate feedback: only follow tool rows currently running (finished rows
-  // keep the user's current expand/collapse state)
+  // Immediate feedback: only follow tool rows currently running (finished rows keep the
+  // user's current expand/collapse state). patchActiveItem copies the row so the
+  // memoized row re-renders now — an in-place field write waits for the next delta flush.
   const s = activeOpen();
   if (s) {
     for (const it of s.items) {
-      if (it.role === "tool" && it.running) it[toolExpandKey(it.name)] = expandToolOutput;
+      if (it.role === "tool" && it.running) patchActiveItem(it, (x) => { x[toolExpandKey(x.name)] = expandToolOutput; });
     }
   }
   toast(t(expandToolOutput ? "misc.toolExpandOn" : "misc.toolExpandOff"));

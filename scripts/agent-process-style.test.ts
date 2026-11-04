@@ -37,6 +37,12 @@ const setStyle = (v: AgentProcessStyle) =>
 type RowProps = { item?: ToolItem };
 const rowProps = (el: ReactElement): RowProps => el.props as RowProps;
 
+// ReadonlyGroup carries its folded run as `subs`; same unknown-props situation as rowProps
+const groupSubCount = (el: ReactElement): number => {
+  const props = el.props as { subs: ChatItem[] };
+  return props.subs.length;
+};
+
 const tool = (o: Partial<ToolItem> & Pick<ToolItem, "name" | "toolCallId">): ToolItem =>
   ({ role: "tool", text: "", ...o });
 
@@ -140,5 +146,38 @@ describe("agent process display style", () => {
     const bogus = "bogus" as AgentProcessStyle;
     setStyle(bogus);
     expect(scan(reads3).readonlyBlocks).toBe(1);
+  });
+
+  test("expand while running keeps the live row out of every fold", () => {
+    setStyle("standard");
+    const setPrefs = (p: { showThinking?: boolean; expandToolOutput?: boolean }) =>
+      useAppStore.setState((s) => ({ uiPrefs: { ...s.uiPrefs, ...p } }));
+    // The folded block's sub count tells whether the running row was swallowed
+    const blockSizes = (items: ChatItem[]) =>
+      renderItems(items, "", []).filter((el) => el.type === ReadonlyGroup).map(groupSubCount);
+
+    const reads4 = [...reads3, tool({ name: "read", toolCallId: "r24", args: { path: "/f4" } })];
+    const liveReads4 = reads4.map((it, i) => (i === 3 ? { ...it, running: true } : it));
+
+    setPrefs({ expandToolOutput: false });
+    expect(blockSizes(liveReads4)).toEqual([4]);
+    setPrefs({ expandToolOutput: true });
+    expect(blockSizes(liveReads4)).toEqual([3]);
+    expect(scan(liveReads4)).toEqual({ readonlyBlocks: 1, mergedGroups: 0, toolRows: 1 });
+
+    // same-type merge stops at the running row too
+    const liveCmds2 = [cmds2[0], { ...cmds2[1], running: true }];
+    setPrefs({ expandToolOutput: false });
+    expect(scan(liveCmds2)).toEqual({ readonlyBlocks: 0, mergedGroups: 1, toolRows: 1 });
+    setPrefs({ expandToolOutput: true });
+    expect(scan(liveCmds2)).toEqual({ readonlyBlocks: 0, mergedGroups: 0, toolRows: 2 });
+
+    // a streaming thinking row stays outside the run instead of being collected into it
+    const thinkLive = { role: "thinking", text: "t", thinking: "", streaming: true } as ChatItem;
+    setPrefs({ showThinking: false });
+    setPrefs({ expandToolOutput: false });
+    expect(blockSizes([...reads3, thinkLive])).toEqual([4]);
+    setPrefs({ showThinking: true });
+    expect(blockSizes([...reads3, thinkLive])).toEqual([3]);
   });
 });
