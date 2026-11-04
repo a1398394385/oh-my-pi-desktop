@@ -11,8 +11,10 @@ import type { HostFrame } from "../../types/frames";
 // the host keeps the query for smoke-branch.ts. The right-panel capabilities dock was removed
 // too, so its snapshot/incremental frames have no consumer until a display surface returns.
 // Runtime dispatch still ignores them silently via the Partial lookup in index.ts.
-// kicked is consumed at the dispatch entry in store/ws.ts (takeover gate), never by a domain table
-export type IgnoredFrames = "session_tree" | "kicked" | "capabilities" | "capabilities_mcp" | "extension_status";
+// kicked is consumed at the dispatch entry in store/ws.ts (takeover gate), never by a domain table.
+// asset_file_deleted: the host follows it with an agent_assets refresh, so the list itself is the
+// confirmation — no toast, no handler.
+export type IgnoredFrames = "session_tree" | "kicked" | "capabilities" | "capabilities_mcp" | "extension_status" | "asset_file_deleted";
 export type FrameType = Exclude<HostFrame["type"], IgnoredFrames>;
 export type FrameOf<K extends FrameType> = Extract<HostFrame, { type: K }>;
 export type FrameHandler<K extends FrameType> = (msg: FrameOf<K>) => void;
