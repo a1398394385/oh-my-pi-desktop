@@ -127,6 +127,12 @@ export type PoolEntry = {
   // so the first request carries the full tool surface; cleared on completion
   mcpMountInFlight?: Promise<void>;
   mcpMountGen: number;
+  // Bumped by every abort_session RPC. A prompt still inside rpc/prompt's own
+  // awaits (MCP mount, slash dispatch) when the bump lands must not reach the
+  // agent afterwards: the UI already settled that submit as stopped, so Esc can
+  // no longer reach abort_session and the turn would run unstoppable (a new
+  // session stuck "generating", unarchivable). See handlePrompt.
+  abortEpoch?: number;
   // (18.5) RpcSubagentRegistry built from this session's subagent event bus on
   // first attach (modes/rpc/rpc-subagents): control_subagent resolves live
   // subagents through it; lives on the entry so a frontend reload reuses the
@@ -152,7 +158,7 @@ export type PoolEntry = {
   // global ask.timeout.
   approvalTimeoutSec?: number;
   // fileMention read-back cursor: at agent_end, re-reads manager.getEntries()
-  // and turns fileMention entries added since this index into mention frames
+  // and folds fileMention entries added since this index onto their user rows
   // (the base persists them inside prompt() with no matching event)
   mentionScanIndex: number;
   // /goal command controller: command dispatch + goal re-run scheduling (see host/goal.ts)
@@ -488,6 +494,25 @@ export function pushCommandOutput(sessionId: string, text: string) {
   if (!entry) return;
   const data = JSON.stringify({ type: "command_output", sessionId, text });
   for (const w of entry.uiSockets) w.send(data);
+}
+
+/** Withdraw a prompt that never reached the agent and hand its text back to the UI.
+ *
+ * Two paths land here: an abort_session that beat rpc/prompt's own awaits (the
+ * host gate in handlePrompt) and the SDK's pre-dispatch drop hook
+ * (setPromptDropped — turn setup lost its generation race with the abort). Both
+ * leave the optimistically drawn bubble behind while the session file — and so
+ * the tree/fork surfaces — never had the message; nothing else retracts it.
+ */
+export function pushPromptDropped(
+  entry: PoolEntry,
+  sessionId: string,
+  text: string,
+  images?: Array<{ type: "image"; data: string; mimeType: string }>,
+) {
+  const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === text && !t.entryId);
+  if (i >= 0) entry.transcript.splice(i, 1);
+  entryBus(entry).send(JSON.stringify(stampEvent({ type: "prompt_dropped", sessionId, text, ...(images && images.length > 0 ? { images } : {}) })));
 }
 
 // Pending approval requests. The whole approval state machine lives in this

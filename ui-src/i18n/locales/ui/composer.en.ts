@@ -58,6 +58,8 @@ export const composerEn = {
   dropGoal: "Drop goal (/goal drop)",
   // PaletteMenu.tsx
   noMatch: "No match",
+  // prompt_dropped handler: the submit was cancelled before it reached the agent
+  cancelledBeforeSend: "Cancelled — message restored to the input",
 };
 
 export default composerEn;

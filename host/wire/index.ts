@@ -21,6 +21,7 @@ import type {
   GitGraphFrame,
   GitPushedFrame, GitStagedFrame, GitStatusFrame, GitUnstagedFrame, GoalFrame, ImageContentFrame,
   LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, PoolSessionsFrame, ProviderAccountEntry, ProviderAccountsFrame,
+  PromptDroppedFrame,
   ProviderDisabledAccount, ProviderLimitsResultFrame, ReadyFrame, SessionAbortedFrame, SessionArchivedFrame, SessionBranchedFrame,
   SessionCompactedFrame, SessionCreatedFrame, SessionEditedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
   SessionFinishedFrame, SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame,
@@ -54,13 +55,14 @@ export * from "./frames-session";
 export * from "./frames-models";
 export * from "./frames-live";
 
-/** Discriminated union of all host → UI frames (88 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Discriminated union of all host → UI frames (89 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
   | CommandsFrame
   | CommandOutputFrame
   | CommandResultFrame
+  | PromptDroppedFrame
   | CommandPhaseFrame
   | GoalFrame
   | TodosFrame

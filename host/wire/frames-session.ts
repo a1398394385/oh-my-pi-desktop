@@ -54,6 +54,16 @@ export interface CommandResultFrame {
   consumed: boolean; // always true (sender-side literal)
 }
 
+/** Prompt dropped before it reached the agent (host/state.ts pushPromptDropped): an
+    abort_session raced the prompt RPC's own awaits, or the SDK's turn-setup drop hook
+    fired. The UI withdraws the optimistic bubble and restores the text to the composer. */
+export interface PromptDroppedFrame {
+  type: "prompt_dropped";
+  sessionId: string;
+  text: string;
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
+}
+
 /** Phase separator frame for slow background commands (host/host.ts start / 2776 / 2781 fail) */
 export interface CommandPhaseFrame {
   type: "command_phase";

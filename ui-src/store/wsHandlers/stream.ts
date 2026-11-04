@@ -13,6 +13,7 @@ import {
   updateSession,
 } from "../session";
 import { notifyDesktop } from "../notify";
+import { pathOfSessionId } from "../session-lookup";
 import type { SessionItem } from "../../types/session";
 import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
@@ -234,6 +235,33 @@ export const streamHandlers = {
         }
       }
     });
+  },
+  // Prompt dropped before it reached the agent (host pushPromptDropped: an abort_session
+  // beat the prompt RPC's awaits, or the SDK's turn-setup drop hook fired). Same retraction
+  // as a consumed command — the bubble was optimistic, the run never starts — plus the text
+  // goes back to the composer so the submit is not silently lost.
+  prompt_dropped(msg) {
+    updateSession(msg.sessionId, (s) => {
+      for (let i = s.items.length - 1; i >= 0; i--) {
+        const it = s.items[i];
+        if (it.role === "user" && it.text === msg.text && !it.entryId) {
+          s.items.splice(i, 1);
+          break;
+        }
+      }
+      // No turn_start/turn_end will ever follow: retract the optimistic running state,
+      // but never a run this UI saw confirmed (turnItemStart).
+      if (s.streaming && s.turnItemStart == null) {
+        s.streaming = false;
+        s.workingText = null;
+        s.turnStartAt = null;
+      }
+    });
+    const st = useAppStore.getState();
+    if (pathOfSessionId(msg.sessionId, st.openSessions) === st.activePath) {
+      st.setComposerValue(msg.text, msg.images ?? []);
+    }
+    st.toast(t("composer.cancelledBeforeSend"));
   },
   subagent_lifecycle(msg) {
     updateSession(msg.sessionId, (s) => {

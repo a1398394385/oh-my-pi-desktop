@@ -25,7 +25,7 @@ import {
   discoverCustomTSCommands,
   cfgSkills,
 } from "../bootstrap.ts";
-import { H, sessions, defaultCwd, stampEvent, entryBus, sendSessionState, type PoolEntry, type TranscriptItem } from "../state.ts";
+import { H, sessions, defaultCwd, stampEvent, entryBus, sendSessionState, pushPromptDropped, type PoolEntry, type TranscriptItem } from "../state.ts";
 import { relayGuestPrompt } from "./collab.ts";
 import { markSeen } from "../keepalive-host.ts";
 import { PHASE_TEXT } from "../translate.ts";
@@ -521,6 +521,10 @@ async function handlePrompt(
 ) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
+  // Cancel gate baseline: every await below (MCP mount wait, slash dispatch) can
+  // outlive a user Esc. The gate right before dispatch drops this submit instead
+  // of starting an unstoppable turn (see pushPromptDropped).
+  const abortEpoch = entry.abortEpoch ?? 0;
   // Subagent session focus: slash commands and terminal commands are not supported
   if (entry.isSubagent && (text.trim().startsWith("/") || text.trim().startsWith("!"))) {
     throw new Error(hostI18n.t("errors.prompt.subagentSlashNotSupported"));
@@ -585,6 +589,18 @@ async function handlePrompt(
     return;
   }
   finalText = dispatched;
+  // Esc landed while this submit sat in the awaits above (MCP mount is the long
+  // one; it runs for up to 5s on a fresh session). The UI already settled the
+  // submit as stopped, so nothing can abort this turn once it starts — dispatching
+  // now wedges the session in "generating": sidebar spinner forever, archive/eject
+  // refused by sessionBusy, no user message ever reaching the session file (the
+  // tree/fork surfaces disagree), and no Esc left to cancel it. Drop it instead
+  // and hand the text back to the composer.
+  if ((entry.abortEpoch ?? 0) !== abortEpoch) {
+    pushPromptDropped(entry, sessionId, finalText, images);
+    sendQueued(entryBus(entry), sessionId, entry); // withdraw any queued-row mirror of this submit
+    return;
+  }
   entry.transcript.push({
     role: "user",
     text: finalText,

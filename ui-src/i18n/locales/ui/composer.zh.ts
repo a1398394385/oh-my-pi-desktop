@@ -58,6 +58,8 @@ export const composerZh = {
   dropGoal: "删除目标 (/goal drop)",
   // PaletteMenu.tsx
   noMatch: "无匹配",
+  // prompt_dropped handler: 消息未到达模型即被取消
+  cancelledBeforeSend: "已取消，消息已放回输入框",
 };
 
 export default composerZh;

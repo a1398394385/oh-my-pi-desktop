@@ -18,6 +18,7 @@ import {
   entryBus,
   eachUiWs,
   handleRunLifecycleEvent,
+  pushPromptDropped,
   type PoolEntry,
 } from "./state.ts";
 import { USER_INTERRUPT_LABEL, isUserQueuedMessage, toRestoredQueuedMessage } from "./bootstrap.ts";
@@ -519,6 +520,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     const data = JSON.stringify({ type: "session_title_changed", sessionId, title, path: entry.path });
     eachUiWs((w) => w.send(data));
   });
+  entry.session.setPromptDropped((d) => pushPromptDropped(entry, sessionId, d.text, d.images)); // base-dropped turn setup: withdraw row/bubble + hand the text back (pushPromptDropped)
   entry.unsubscribe = () => {
     // Flush the coalesced delta tail while sockets are attached; restart the N2 idle clock at detach
     deltas.flush();

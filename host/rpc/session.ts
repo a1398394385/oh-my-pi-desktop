@@ -639,6 +639,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // agent_end/turn events — no extra wind-down needed.
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
+    // Bumped before any await: a prompt RPC still inside its own awaits must see
+    // the cancel when it resumes (see handlePrompt's dispatch gate).
+    entry.abortEpoch = (entry.abortEpoch ?? 0) + 1;
     // Collab guest: aborts relay to the host over the wire (the local replica
     // has no in-flight run of its own); still ack so the UI button resets.
     if (relayGuestAbort(String(msg.sessionId))) {
