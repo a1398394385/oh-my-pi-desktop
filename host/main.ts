@@ -25,7 +25,6 @@
 // narrow events) / rpc/ (nine RPC handler domains) / assets.ts ·
 // extensions.ts · models.ts · stats.ts · limits/ · mcp-pool.ts · mcp-mount.ts · pty.ts ·
 // session-poll.ts (pooled-session file polling).
-import { appendFileSync } from "node:fs";
 import { initialProfile } from "./bootstrap.ts";
 import { H, sessions, eachUiWs } from "./state.ts";
 import { hostI18n } from "./i18n/host.ts";
@@ -77,14 +76,6 @@ const server = Bun.serve<{ sessionId: string | null }>({
   hostname: "127.0.0.1",
   async fetch(req, srv) {
     if (srv.upgrade(req)) return;
-    // TEMP diag: the [ime] Enter-gap sampling lands in <agentDir>/ime-enter.log
-    // (release builds have no inspector). Loopback-only server, so the LAN remote
-    // cannot reach it. Remove together with the [ime] logging in ComposerPlugin.
-    if (new URL(req.url).pathname === "/debug-log") {
-      if (req.method === "POST") appendFileSync(`${H.agentDir}/ime-enter.log`, `${await req.text()}\n`);
-      // The webview origin differs from this loopback port (dev server / tauri://)
-      return new Response("ok", { headers: { "access-control-allow-origin": "*" } });
-    }
     const statsRes = await handleStatsHttp(req, srv);
     if (statsRes) return statsRes;
     return new Response("websocket only", { status: 400 });

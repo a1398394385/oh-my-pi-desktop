@@ -11,11 +11,6 @@ import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
 import { t } from "../../i18n";
 
-// Enter key-swallow window for IME candidate confirmation, mirroring the composer's
-// ComposerPlugin.IME_COMMIT_ENTER_WINDOW_MS (WebKit fires compositionend before the
-// confirming keydown; same quirk the composer guards against): keep the two in sync.
-const IME_COMMIT_ENTER_WINDOW_MS = 250;
-
 // Left-side action group of a pending-consumption bubble: queued state (send now / edit /
 // delete) | steer state (edit / requeue to top)
 function PendingActs({ item }: { item: UserItem }) {
@@ -58,7 +53,6 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState(item.text);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const imeCommitAtRef = useRef(0);
   const images = item.images ?? [];
   // @file mentions the base auto-read: chips on top, tokens stripped from the text
   const mention = atMentions(item.text, item.attachments);
@@ -116,12 +110,10 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
       return;
     }
     if (ev.key !== "Enter" || ev.shiftKey) return;
-    const ime =
-      ev.nativeEvent.isComposing ||
-      (imeCommitAtRef.current !== 0 && Math.abs(ev.timeStamp - imeCommitAtRef.current) < IME_COMMIT_ENTER_WINDOW_MS);
-    if (ime) {
-      imeCommitAtRef.current = 0;
-      ev.preventDefault(); // IME-confirm Enter: swallow once, the next deliberate Enter sends
+    // WebKit marks the candidate-commit Enter keyCode 229 with isComposing already
+    // false (BUG-031; the composer's ComposerPlugin carries the field evidence).
+    if (ev.nativeEvent.isComposing || ev.nativeEvent.keyCode === 229) {
+      ev.preventDefault();
       return;
     }
     if (!canSend) return;
@@ -206,9 +198,6 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
               aria-label={t("chat.editResend")}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onTaKeyDown}
-              onCompositionEnd={(ev) => {
-                imeCommitAtRef.current = ev.timeStamp;
-              }}
             />
             <button className="q-btn" title={t("chat.editResendSend")} disabled={!canSend} onClick={sendEdit}>
               <Icon name="upload" size={15} />

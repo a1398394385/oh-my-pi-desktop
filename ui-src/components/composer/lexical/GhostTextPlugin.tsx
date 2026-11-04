@@ -16,8 +16,8 @@
 //  · IME: compositionstart cancels the pending request timer and drops the
 //    ghost, and no request fires while composing. This plugin never
 //    intercepts Enter, so the WebKit compositionend-before-Enter quirk (see
-//    ComposerPlugin's IME_COMMIT_ENTER_WINDOW_MS) cannot leak a confirmation
-//    keystroke into the ghost path.
+//    ComposerPlugin's keyCode 229 guard) cannot leak a confirmation keystroke
+//    into the ghost path.
 //  · Ghost insert/remove updates run with tag ["historic", GHOST_TAG]:
 //    excluded from the undo stack and recognizable by the update listener,
 //    which skips own commits via the tag instead of dismissing the ghost.

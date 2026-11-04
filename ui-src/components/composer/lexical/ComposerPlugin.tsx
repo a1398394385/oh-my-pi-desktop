@@ -5,8 +5,8 @@
 //    Ctrl+Q queues, Alt+↑ recalls queued messages; semantics aligned line by
 //    line with the old textarea onKeyDown; IME commit-Enter guard lives in this
 //    plugin (core only covers composition in progress, which misses WebKit
-//    ordering where compositionend arrives before the confirming keydown -- see
-//    IME_COMMIT_ENTER_WINDOW_MS);
+//    ordering where compositionend arrives before the confirming keydown -- the
+//    commit Enter is told apart by keyCode 229);
 //  · Esc: swallow RichTextPlugin's default editor.blur() (still yields to the
 //    typeahead menu to close itself) so focus stays in the input and Esc only
 //    drives the global route (double-Esc clear / abort / open tree) -- matches
@@ -41,17 +41,6 @@ import { editQueueMsg } from "../../../store/session";
 import { $flattenText, $setText } from "./flat";
 import { saveDraft, getDraftText, recallHistory, resetHistoryCursor } from "./draft";
 
-// Enter key-swallow window for IME candidate confirmation (ms): on WebKit,
-// compositionend and the following Enter keydown land in nearly the same tick;
-// the window covers the dispatch misordering during that span (generous at
-// 500ms so a slow candidate-panel commit on a loaded main thread is still
-// caught; swallowing is one-shot, so a deliberate Enter right after
-// confirmation still sends)
-// TEMP: 500ms caused false swallows of a fast send-Enter right after an IME
-// candidate commit; 250ms pending field measurement of the real gap (see the
-// [ime] diagnostic log in KEY_ENTER_COMMAND).
-const IME_COMMIT_ENTER_WINDOW_MS = 250;
-
 export type ComposerHandle = {
   focus(): void;
   setText(text: string): void;
@@ -79,15 +68,6 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
   onTextChangeRef.current = onTextChange;
   const sendPromptRef = useRef(sendPrompt);
   sendPromptRef.current = sendPrompt;
-  // Timestamp of the most recent compositionend (0 = none). Safari/WebKit (the
-  // WKWebView of Tauri on macOS) dispatches compositionend first when a
-  // candidate is confirmed, then the keydown of that Enter; isComposing is
-  // already false on the event, so Lexical core's isComposing guard cannot stop
-  // it -> the confirmation Enter gets treated as a send. Recording the moment
-  // adds this guard at the plugin layer (same-countermeasure as ProseMirror
-  // 0c54477). Non-Apple platforms dispatch in the reverse order; it stays 0 and
-  // never fires.
-  const imeCommitAtRef = useRef(0);
   // History-browse mode over the slot's input history: entered with plain ↑ on
   // an empty input, ↑/↓ walk it while active, any user text edit exits
   // (update listener below). histApplyTextRef marks the text just applied by
@@ -118,28 +98,6 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
   );
 
 
-  useEffect(() => {
-    // compositionstart/end are dispatched before the root element mounts (the
-    // editor mounts later inside Composer), hence registerRootListener: attach
-    // native listeners to the post-mount root element, without conflicting
-    // with Lexical's own re-entrancy guard.
-    return editor.registerRootListener((root) => {
-      if (!root) return;
-      const onEnd = (e: CompositionEvent) => {
-        imeCommitAtRef.current = e.timeStamp;
-      };
-      const onStart = () => {
-        imeCommitAtRef.current = 0;
-      };
-      root.addEventListener("compositionend", onEnd);
-      root.addEventListener("compositionstart", onStart);
-      return () => {
-        root.removeEventListener("compositionend", onEnd);
-        root.removeEventListener("compositionstart", onStart);
-      };
-    });
-  }, [editor]);
-
   useEffect(
     () => {
       const recallStep = (ev: KeyboardEvent, dir: 1 | -1): boolean => {
@@ -162,28 +120,19 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
         // path (composition text ending with \n); let the default insert a line
         // break -- never send on composition's coattails, aligned with the old
         // textarea era where the IME Enter did not send.
-        // An unmodified Enter within the imeCommitAt window = IME candidate
-        // confirmation; swallow it, do not send; swallow only once -- the next
-        // real Enter after confirmation sends as usual.
+        // An Enter carrying keyCode 229 (or an in-progress composition) is the IME
+        // candidate commit; swallow it, never send.
         editor.registerCommand(
           KEY_ENTER_COMMAND,
           (ev) => {
             if (typeaheadOpenRef.current) return false;
             if (!ev || ev.shiftKey) return false;
-            const imeCommitAt = imeCommitAtRef.current;
-            // TEMP diag: calibrate the compositionend→Enter gap. dt = none when no
-            // compositionend is on record; keyCode 229 marks a WebKit candidate commit.
-            // Also POSTs to the host's loopback /debug-log (release builds have no
-            // DevTools): the line lands in <agentDir>/ime-enter.log. Best-effort.
-            {
-              const line = `dt=${imeCommitAt ? Math.round(ev.timeStamp - imeCommitAt) : "none"} key=${ev.key} keyCode=${ev.keyCode} composing=${ev.isComposing} at=${new Date().toISOString()}`;
-              console.log(`[ime] ${line}`);
-              const wsUrl = useAppStore.getState().ws?.url;
-              // WebSocket.url is normalized with a trailing slash → build through URL
-              if (wsUrl) void fetch(new URL("/debug-log", wsUrl.replace(/^ws/, "http")), { method: "POST", body: line }).catch(() => {});
-            }
-            if (imeCommitAt !== 0 && Math.abs(ev.timeStamp - imeCommitAt) < IME_COMMIT_ENTER_WINDOW_MS) {
-              imeCommitAtRef.current = 0;
+            // IME candidate commit: WebKit (WKWebView) dispatches compositionend
+            // before this Enter's keydown, so isComposing is already false (BUG-031);
+            // WebKit marks that keydown keyCode 229 (field log: 3/3 commits, gap
+            // -16..-23ms), while a deliberate send Enter is 13. No time window: it
+            // swallowed real sends (dt 204/216/225ms) and cost a second keystroke.
+            if (ev.isComposing || ev.keyCode === 229) {
               ev.preventDefault();
               ev.stopPropagation();
               return true;
