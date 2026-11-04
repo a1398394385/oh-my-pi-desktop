@@ -28,8 +28,9 @@
 4. **图标尺寸/风格**：同语义控件跨页取同一图标、同一 `data-size`；新增图标进 `ui/icons.js` 注册表（FA 是实心块时优先手写线条版，如 `refresh`）。
 5. **整页按钮风格统一**：同一页面（含其弹层/详情视图）内所有按钮必须复用同一尺寸体系的既有类，禁止混排不同大小的按钮——工具行/卡片头部一律用小号 `.save-btn`（危险操作 `.danger` 变体 hover 变红），大号 `.confirm-btn`（及 `.danger`）只用于弹窗与延展区底部操作行，`.add-btn` 31px 用于页级新建。往页面里加按钮先看同页/同类页已有按钮的高度与 padding，取同一类。
 6. **交互反馈约束（全站通用）**：**没有点击反馈的位置，不允许触发 hover 高亮**——hover 高亮是「可点」的 affordance，只能挂在有点击行为的元素上。行内只有局部控件可点时（如角色行的胶囊/删除按钮），高亮只挂控件、不挂承载行；`.srow` 的默认行 hover 仅用于整行可点的列表（记忆/技能行），纯展示承载行必须显式关闭——用更高特异性 `.srow.xxx-row:hover { background: none }`（`ui/css/global/controls.css` 里 `.srow:hover` 的位置可能在覆盖规则之后，同特异性会反杀），浅色主题规则一并覆盖。
-7. **卡片行统一 `.set-row`**：独立 `.set-card` 内的不可点行一律 `.srow.set-row`（标准行几何 13px 16px、关行 hover、ctl 右对齐、标题内 `.tag` 弹性排列，定义在 `ui/css/settings/common.css` 末尾）；**禁止**复用其他页面的上下文行类——模型页 `.mp-role-row` 是为其自带内边距的 `.mp-r` 面板设计的（2px 侧边距），挪进独立卡片内容会贴边。新设置页的行结构照抄 `CapabilityPage.tsx` 的 `Group` + `.srow.set-row` 组合。
-8. **字号按位置分档**（除代码档外全部随 `--ui-fs` 等比缩放，用户调「界面字号」时同步变化）：
+7. **卡片行统一 `.set-row`**：独立 `.set-card` 内的不可点行一律 `.srow.set-row`（标准行几何 13px 16px、关行 hover、ctl 右对齐、标题内 `.tag` 弹性排列，定义在 `ui/css/settings/common.css` 末尾）；**禁止**复用其他页面的上下文行类——模型页 `.mp-role-row` 是为其自带内边距的 `.mp-r` 面板设计的（2px 侧边距），挪进独立卡片内容会贴边。新设置页的行结构照抄 `ServicesPage.tsx` 的 `Group` + `.srow.set-row` 组合。
+8. **页面归属只有一个分类轴**：导航固定 4 组 24 页（基础 / 代理与扩展 / 能力与集成 / 系统）。设置项按"它配置的对象"归页，同一项只渲染一处；归属 SSOT 是 `components/settings/placement.ts` 的 `PAGE_PLACEMENT`，搜索跳转由它派生（`buildKeyToPageMap`），不要手写第二份映射。模型目录与角色不占导航项：模型配置页首行的「模型管理」在页内切到 `ModelPage.tsx` 并带返回按钮。没有 `ui` 元数据的键落「高级」。
+9. **字号按位置分档**（除代码档外全部随 `--ui-fs` 等比缩放，用户调「界面字号」时同步变化）：
 
    | 位置 | 档位 |
    |---|---|

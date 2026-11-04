@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置页重新分类原型 · omp-desktop</title>
+<!-- 丢弃型原型：token 值抄自 ui/css/global/tokens.css，仅用于观感比较，不参与构建。 -->
+<style>
+  :root {
+    --base:#292B2C; --card:#161616; --inset:#2B2B2B; --select:#3F4141;
+    --panel-2:#353738; --surface:rgba(255,255,255,.05); --line:#3A3C3D; --line-soft:rgba(255,255,255,.06);
+    --text:#ededef; --dim:#b0b0b6; --faint:#8c8c92;
+    --green:#34c759; --blue:#6fb3d8; --purple:#a86fe0; --accent:#4a9eff;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB",sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --ui-fs-base:13px; --ui-fs-sm:11.5px; --ui-fs-xs:10px;
+    --r-sm:6px; --r-md:10px; --r-lg:12px;
+    --swift:cubic-bezier(.16,1,.3,1);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--base); color: var(--text); font: var(--ui-fs-base)/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+  .app { display: grid; grid-template-columns: 214px minmax(0,1fr); height: 100%; gap: 8px; padding: 8px; }
+
+  /* ── 左侧设置导航 ── */
+  .nav { background: var(--base); border-radius: var(--r-lg); padding: 12px 8px; overflow: auto; }
+  .nav-hd { font-size: var(--ui-fs-sm); color: var(--faint); padding: 2px 10px 10px; letter-spacing: .02em; }
+  .nav-grp { font-size: var(--ui-fs-xs); color: var(--faint); padding: 12px 10px 4px; letter-spacing: .04em; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); color: var(--dim); font-size: var(--ui-fs-sm); cursor: default; }
+  .nav-item:hover { background: var(--surface); color: var(--text); }
+  .nav-item.on { background: var(--select); color: var(--text); }
+  .nav-item .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .45; flex: none; }
+  .nav-item.on .dot { opacity: 1; background: var(--accent); }
+
+  /* ── 右侧页面 ── */
+  .page { background: var(--card); border-radius: var(--r-lg); overflow: auto; }
+  .page-in { max-width: 820px; margin: 0 auto; padding: 26px 32px 120px; }
+  .set-tt { font-size: 17px; font-weight: 600; margin-bottom: 18px; }
+  .set-group-tt { font-size: var(--ui-fs-sm); color: var(--faint); margin: 18px 2px 8px; }
+  .set-card { background: var(--inset); border-radius: var(--r-md); overflow: hidden; }
+  .srow { display: flex; align-items: center; gap: 16px; padding: 11px 14px; border-top: 1px solid var(--line-soft); }
+  .srow:first-child { border-top: 0; }
+  .srow-tx { flex: 1; min-width: 0; }
+  .srow-tx b { display: block; font-weight: 500; font-size: var(--ui-fs-base); }
+  .srow-tx span { display: block; color: var(--faint); font-size: var(--ui-fs-sm); margin-top: 2px; }
+  .ctl { flex: none; }
+
+  .sel { display: flex; align-items: center; gap: 6px; min-width: 104px; justify-content: space-between; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 4px 8px; font-size: var(--ui-fs-sm); color: var(--text); }
+  .sel i { color: var(--faint); font-style: normal; }
+  .tg { width: 34px; height: 20px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); position: relative; }
+  .tg i { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--faint); transition: left 160ms var(--swift); }
+  .tg.on { background: rgba(74,158,255,.28); border-color: rgba(74,158,255,.55); }
+  .tg.on i { left: 16px; background: var(--accent); }
+  .num { display: flex; align-items: center; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; background: var(--panel-2); }
+  .num button { border: 0; background: transparent; color: var(--dim); width: 24px; height: 24px; font: inherit; }
+  .num span { padding: 0 8px; font-size: var(--ui-fs-sm); }
+  .num em { font-style: normal; color: var(--faint); font-size: var(--ui-fs-xs); }
+  .btn { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: var(--r-sm); font: inherit; font-size: var(--ui-fs-sm); padding: 4px 10px; }
+  .pills { display: flex; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 2px; gap: 2px; }
+  .pills span { font-size: var(--ui-fs-sm); color: var(--dim); padding: 2px 9px; border-radius: 999px; }
+  .pills span.on { background: var(--select); color: var(--text); }
+  .tag { font-size: var(--ui-fs-xs); color: var(--green); border: 1px solid rgba(52,199,89,.35); border-radius: 999px; padding: 1px 7px; }
+  .tag.dim { color: var(--faint); border-color: var(--line); }
+  .list-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line-soft); font-size: var(--ui-fs-sm); }
+  .list-row:first-child { border-top: 0; }
+  .list-row .nm { flex: 1; min-width: 0; }
+  .list-row .nm small { display: block; color: var(--faint); font-size: var(--ui-fs-xs); }
+  .swatches { display: flex; gap: 6px; }
+  .sw { width: 22px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,.15); }
+  .hint { color: var(--faint); font-size: var(--ui-fs-sm); margin: 10px 2px 0; }
+  .empty { color: var(--faint); font-size: var(--ui-fs-sm); padding: 40px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="nav" id="nav"></aside>
+  <main class="page"><div class="page-in" id="page"></div></main>
+</div>
+
+<script>
+// 行构造器：t 标题 / d 描述 / c 控件（sel|tg|num|btn|pills|tag|swatch|none）
+const r = (t, d, c = "") => ({ t, d, c });
+const SEL = (v) => `sel:${v}`, TG = (on = false) => `tg:${on ? 1 : 0}`, NUM = (v, u = "px") => `num:${v}|${u}`;
+const BTN = (v) => `btn:${v}`, PILLS = (arr, on = 0) => `pills:${arr.join("|")}|${on}`, TAG = (v, dim) => `tag:${v}|${dim ? 1 : 0}`;
+
+const PAGES = {
+  general: { label: "通用", groups: [
+    ["启动与更新", [
+      r("启动时静音", "启动阶段不弹更新提示和变更日志横幅。", TG(false)),
+      r("更新渠道", "检查更新的来源。", SEL("稳定版")),
+      r("自动恢复会话", "打开应用时自动继续当前目录的最近一次会话。", TG(true)),
+    ]],
+    ["电源", [
+      r("睡眠防止", "会话在跑的时候不让系统睡着；级别越高管得越宽。", SEL("会话运行中")),
+    ]],
+    ["Git", [
+      r("Git 集成", "在侧栏显示分支与变更入口。", TG(true)),
+      r("提交信息模型", "生成提交说明时使用的模型角色。", SEL("默认角色")),
+    ]],
+    ["会话", [
+      r("询问超时", "工具发起的确认框等待多久后按默认处理。", NUM(60, "s")),
+    ]],
+  ]},
+
+  appearance: { label: "外观", groups: [
+    ["界面", [
+      r("主题", "跟随系统，或固定在深色 / 浅色。", SEL("跟随系统")),
+      r("字体", "整个应用的正文与界面字体。", SEL("系统默认")),
+      r("界面字号", "设置页与消息区的基础字号。", NUM(13)),
+      r("动效", "界面过渡与弹层动画的强度。", PILLS(["系统", "开", "关"], 0)),
+    ]],
+    ["代码", [
+      r("代码主题", "代码块与 diff 的语法配色。", SEL("GitHub Dark")),
+      r("行号", "代码块左侧显示行号。", TG(true)),
+      r("自动换行", "长行在代码块内折行。", TG(false)),
+      r("代码字号", "代码块的字号，与界面字号独立。", NUM(12)),
+    ]],
+    ["消息流", [
+      r("显示思考块", "模型推理过程在消息流里可见。", TG(true)),
+      r("工具输出", "工具运行中自动展开输出卡片，完成时折叠。", TG(true)),
+      r("Agent 处理过程显示风格", "控制工具调用等处理过程的折叠粒度：简洁只保留 Agent 输出，详细关闭连续只读折叠，完全展开再关闭同类合并。", SEL("标准")),
+    ]],
+  ]},
+
+  interaction: { label: "输入与交互", groups: [
+    ["输入", [
+      r("输入历史召回", "空输入框按 ↑ 浏览发过的消息与清掉的草稿。", TG(true)),
+      r("自动补全条目数", "下拉列表最多同时显示几条。", NUM(8, "条")),
+      r("拼写错误检测", "用 macOS 词典标出输入框里拼错的词。", TG(true)),
+      r("Emoji 补全", "输入 :name: 时给出建议。", TG(true)),
+      r("大段粘贴菜单", "粘贴超过该行数时提供包成代码块 / 文件的选择。", NUM(20, "行")),
+    ]],
+    ["对话节奏", [
+      r("引导模式", "Agent 工作时排队发送的消息怎么交付：一次全给或一次一条。", SEL("一次全给")),
+      r("后续消息模式", "一轮结束后接着发的消息怎么消化。", SEL("一次全吃")),
+      r("中断模式", "引导消息是否打断正在跑的工具。", SEL("等待工具完成")),
+      r("循环模式", "每轮重发提示词前先做什么。", SEL("直接继续")),
+    ]],
+    ["通知", [
+      r("完成通知", "后台会话跑完时发系统通知。", TG(true)),
+      r("出错通知", "会话出错时发系统通知。", TG(true)),
+      r("提醒权限", "macOS 通知授权状态。", TAG("已授权")),
+    ]],
+  ]},
+
+  model: { label: "模型配置", tabs: {
+    "账号与目录": [
+      ["模型账号", [
+        r("已认证服务商", "凭据与端点管理、额度查看。", BTN("管理")),
+        r("启用模型", "会话里可选的模型集合。", BTN("58 个")),
+        r("切换顺序", "Ctrl+P 循环切换的模型顺序。", BTN("编辑")),
+      ]],
+    ],
+    "模型角色": [
+      ["角色分配", [
+        r("默认角色", "普通对话使用的模型。", SEL("claude-sonnet")),
+        r("小模型", "标题、摘要、审查等轻任务。", SEL("claude-haiku")),
+        r("视觉角色", "图片输入走哪个模型。", SEL("跟随默认")),
+      ]],
+      ["自定义角色", [
+        r("审查角色", "自动审批工具调用的审查模型。", SEL("未分配")),
+        r("子代理角色", "派生子代理时的默认模型。", SEL("跟随默认")),
+      ]],
+    ],
+    "思考与推理": [
+      ["思考", [
+        r("思考级别", "默认推理深度。", SEL("中")),
+        r("隐藏思考块", "消息流里收起推理文本。", TG(false)),
+      ]],
+      ["思考预算", [
+        r("最低 / 低", "轻量推理的 token 上限。", NUM(1024, "tk")),
+        r("中 / 高", "常规推理的 token 上限。", NUM(8192, "tk")),
+        r("极高 / 最大", "重度推理的 token 上限。", NUM(32768, "tk")),
+      ]],
+    ],
+    "采样与提示": [
+      ["采样", [
+        r("温度", "越高越发散。", NUM(0.7, "")),
+        r("Top P", "核采样截断阈值。", NUM(0.95, "")),
+        r("最大输出", "单次回复的 token 上限。", NUM(8192, "tk")),
+      ]],
+      ["提示", [
+        r("系统提示补充", "追加到每次会话的额外指令。", BTN("编辑")),
+        r("提示缓存", "复用不变的提示前缀以降低开销。", TG(true)),
+      ]],
+    ],
+    "可靠性与 Advisor": [
+      ["重试与回退", [
+        r("自动重试", "请求失败后重试的次数与退避。", TG(true)),
+        r("回退模型", "主模型不可用时的备选。", SEL("未设置")),
+        r("请求超时", "单次模型请求的最长等待。", NUM(120, "s")),
+      ]],
+      ["Advisor", [
+        r("Advisor 模式", "让更强的模型在关键节点给建议。", SEL("关闭")),
+        r("触发时机", "何时把回合交给 Advisor。", SEL("风险节点")),
+        r("笔记合并投递", "终答笔记在边界窗口合并后投递。", TG(true)),
+      ]],
+    ],
+  }},
+
+  context: { label: "上下文", groups: [
+    ["压缩", [
+      r("自动压缩", "接近上下文上限时自动总结历史。", TG(true)),
+      r("触发阈值", "占用达到该比例开始压缩。", NUM(85, "%")),
+      r("保留最近", "压缩后仍原样保留的 token 量。", NUM(20000, "tk")),
+      r("压缩后自动继续", "压缩完成直接接着跑，不用再确认。", TG(true)),
+    ]],
+    ["规则（TTSR）", [
+      r("启用规则", "按文件路径注入项目规则片段。", TG(true)),
+      r("规则来源", "额外扫描的规则目录。", BTN("3 个")),
+    ]],
+    ["会话预算", [
+      r("费用告警", "单会话花费超过该值时提醒。", NUM(5, "$")),
+      r("费用上限", "达到上限后停止会话。", NUM(20, "$")),
+    ]],
+  ]},
+
+  files: { label: "文件与代码", groups: [
+    ["编辑", [
+      r("编辑前重读", "工具改动文件前重新读取最新内容。", TG(true)),
+      r("保留空白", "编辑时保持原有缩进与行尾空白。", TG(true)),
+    ]],
+    ["读取", [
+      r("默认读取行数", "未指定范围时读取的行数上限。", NUM(400, "行")),
+      r("大文件摘要", "超长文件先给结构摘要。", TG(true)),
+    ]],
+    ["LSP", [
+      r("语言服务器", "为代码文件启用诊断与跳转。", TG(true)),
+      r("诊断级别", "注入给模型的最低严重级别。", SEL("警告及以上")),
+    ]],
+  ]},
+
+  memory: { label: "记忆", tabs: {
+    "引擎": [
+      ["记忆后端", [
+        r("后端", "记忆的存储与检索实现。", SEL("本地")),
+        r("启用记忆", "会话启动时注入已有记忆。", TG(true)),
+      ]],
+      ["检索", [
+        r("召回条数", "每次注入的最多记忆条数。", NUM(8, "条")),
+        r("召回上下文轮数", "检索时参考的最近对话轮数。", NUM(6, "轮")),
+      ]],
+    ],
+    "自动学习": [
+      ["学习", [
+        r("启用自动学习", "会话结束后提炼可复用的经验。", TG(true)),
+        r("自动继续", "学习完成后自动继续主任务。", TG(false)),
+        r("触发工具调用数", "达到该工具调用数才触发学习。", NUM(8, "次")),
+      ]],
+    ],
+    "底层管线": [
+      ["扫描", [
+        r("启动扫描卷数", "每次启动最多处理的会话数。", NUM(50, "个")),
+        r("扫描空闲小时", "只处理闲置超过该时长的会话。", NUM(24, "h")),
+      ]],
+      ["并发", [
+        r("阶段一并发", "提炼阶段并行度。", NUM(2, "")),
+        r("租约时长", "阶段锁的持有上限。", NUM(600, "s")),
+      ]],
+    ],
+  }},
+
+  skills: { label: "技能", groups: [
+    ["技能设置", [
+      r("注册技能命令", "把技能注册为斜杠命令。", TG(true)),
+      r("用户级目录", "扫描 ~/.agents/skills。", TG(true)),
+      r("项目级目录", "扫描仓库内 .agents/skills。", TG(true)),
+      r("自定义目录", "额外加载的技能根目录。", BTN("2 个")),
+      r("注册表地址", "从远端技能库拉取清单。", SEL("官方")),
+    ]],
+  ]},
+
+  plugins: { label: "插件", groups: [
+    ["本地已装", [
+      r("发现总开关", "扫描并加载插件与扩展。", TG(true)),
+      r("作用域", "Profile 或当前项目，各自独立启用。", SEL("Profile")),
+    ]],
+    ["插件列表", []],
+  ]},
+
+  extensions: { label: "拓展中心", groups: [
+    ["来源", [
+      r("服务商来源", "启用的扩展提供方。", BTN("4 / 6")),
+      r("用户来源", "扫描用户目录下安装的扩展。", TG(true)),
+    ]],
+    ["市场", [
+      r("自动更新", "后台检查已安装扩展的新版本。", TG(true)),
+      r("浏览市场", "搜索并安装新的扩展。", BTN("打开")),
+    ]],
+  ]},
+
+  mcp: { label: "MCP 服务器", groups: [
+    ["服务器", [
+      r("启用 MCP", "加载已配置的 MCP 服务器。", TG(true)),
+      r("连接超时", "启动握手的最长等待。", NUM(30, "s")),
+      r("探针", "连不上时记录诊断日志。", TG(false)),
+    ]],
+  ]},
+
+  hooks: { label: "钩子", groups: [
+    ["钩子运行配置", [
+      r("工具调用处理器超时", "扩展的工具调用处理器最多能工作多久；等待 OMP 弹窗不计入。", NUM(30000, "ms")),
+    ]],
+    ["已注册钩子", [
+      r("保存时格式化", "PostToolUse · 匹配 Write / Edit", TAG("启用")),
+      r("会话结束归档", "Stop · 匹配全部", TAG("禁用", true)),
+    ]],
+  ]},
+
+  agents: { label: "子代理与任务", tabs: {
+    "子代理资产": [
+      ["作用域", [
+        r("当前作用域", "全局 / Profile / 项目三级，互不继承。", SEL("Profile")),
+      ]],
+      ["资产列表", []],
+    ],
+    "任务模式": [
+      ["模式", [
+        r("默认任务模式", "派生任务时使用的执行模式。", SEL("子代理")),
+        r("最大并发", "同时运行的子代理上限。", NUM(8, "个")),
+      ]],
+    ],
+    "隔离": [
+      ["工作区隔离", [
+        r("隔离方式", "子代理改动落在哪里。", SEL("独立工作树")),
+        r("清理策略", "任务结束后是否保留工作树。", SEL("自动清理")),
+      ]],
+    ],
+  }},
+
+  automations: { label: "自动化", groups: [
+    ["定时任务", [
+      r("每日摘要", "每天 09:00 · 已运行 42 次", TAG("启用")),
+      r("周报生成", "每周一 10:00 · 已运行 8 次", TAG("禁用", true)),
+    ]],
+  ]},
+
+  tools: { label: "工具", tabs: {
+    "开关": [
+      ["可用工具", [
+        r("文件工具", "读、写、编辑、搜索。", TG(true)),
+        r("Shell 工具", "执行命令与后台作业。", TG(true)),
+        r("任务工具", "派生子代理与待办。", TG(true)),
+        r("记忆工具", "写入长期记忆。", TG(false)),
+      ]],
+    ],
+    "搜索与网页": [
+      ["Grep", [
+        r("默认输出模式", "命中行的呈现方式。", SEL("按文件分组")),
+        r("最大命中数", "单次搜索返回的上限。", NUM(200, "条")),
+      ]],
+      ["网页", [
+        r("抓取超时", "单页抓取的最长等待。", NUM(20, "s")),
+        r("浏览器镜像", "把网页渲染结果交给模型。", TG(true)),
+      ]],
+    ],
+    "Git 与外部工具": [
+      ["GitHub", [
+        r("GitHub 集成", "读取 issue / PR 与仓库信息。", TG(true)),
+        r("默认仓库", "未指定时使用的仓库。", SEL("当前项目")),
+      ]],
+      ["IDA Pro", [
+        r("启用 IDA", "反汇编与二进制分析工具。", TG(false)),
+      ]],
+    ],
+    "限额与执行": [
+      ["输出限额", [
+        r("单次输出上限", "工具返回给模型的字符上限。", NUM(60000, "字符")),
+        r("截断策略", "超限时保留头部还是首尾。", SEL("首尾各半")),
+      ]],
+      ["执行", [
+        r("命令超时", "单条命令的最长执行时间。", NUM(120, "s")),
+        r("自动后台", "超过该时长转到后台继续。", NUM(30, "s")),
+      ]],
+    ],
+  }},
+
+  shell: { label: "Shell 与终端", groups: [
+    ["Bash", [
+      r("Shell 路径", "执行命令使用的解释器。", SEL("/bin/zsh")),
+      r("Shell 前缀", "每条命令前追加的语句。", BTN("编辑")),
+      r("审批规则", "按命令模式决定自动放行 / 询问 / 拒绝。", BTN("12 条")),
+    ]],
+    ["Shell 拦截器", [
+      r("启用拦截器", "在执行前解析并精简命令。", TG(true)),
+      r("源码大纲级别", "拦截器解析源码的深度。", SEL("标准")),
+    ]],
+    ["Shell 精简器", [
+      r("启用精简器", "压缩冗长的命令输出。", TG(true)),
+      r("单次捕获上限", "精简前的最大捕获字节。", NUM(200000, "B")),
+    ]],
+    ["终端", [
+      r("继承 Profile", "终端复用当前 Profile 的环境。", TG(true)),
+      r("终端共享", "同一项目的会话共用终端标签。", TG(false)),
+      r("终端字号", "终端面板的字号。", NUM(13)),
+    ]],
+  ]},
+
+  computer: { label: "电脑与浏览器", groups: [
+    ["电脑控制", [
+      r("启用电脑控制", "允许 Agent 操作桌面应用。", TG(true)),
+      r("显示器", "截图与点击使用的显示器。", SEL("主显示器")),
+    ]],
+    ["浏览器", [
+      r("启用浏览器", "由 Agent 驱动浏览器标签。", TG(true)),
+      r("外部浏览器", "用系统浏览器而不是内置镜像。", TG(false)),
+      r("连接地址", "外部浏览器的调试端点。", SEL("自动检测")),
+    ]],
+  ]},
+
+  services: { label: "服务与集成", tabs: {
+    "凭据与端点": [
+      ["服务商", [
+        r("Kimi 自动思考", "Kimi 模型按提示自动开启思考。", TG(true)),
+        r("网页搜索超时", "搜索请求的最长等待。", NUM(20, "s")),
+        r("隐私模式", "不把请求内容写入服务商日志。", TG(true)),
+      ]],
+    ],
+    "搜索": [
+      ["搜索后端", [
+        r("搜索引擎", "网页搜索使用的实现。", SEL("Exa")),
+        r("SearXNG 端点", "自建实例的地址。", SEL("未设置")),
+      ]],
+    ],
+    "语音": [
+      ["语音输入", [
+        r("启用语音输入", "按住快捷键语音转文字。", TG(true)),
+        r("语言", "识别使用的语言。", SEL("中文")),
+        r("提交方式", "识别完成后自动发送还是填入输入框。", SEL("填入")),
+      ]],
+      ["语音生成", [
+        r("增强语音", "使用更自然的合成音色。", TG(true)),
+        r("音色", "朗读使用的音色。", SEL("Kokoro")),
+      ]],
+    ],
+    "协作与推流": [
+      ["协作", [
+        r("启用协作", "多人观察同一会话。", TG(false)),
+        r("显示名称", "其他参与者看到的名字。", BTN("设置")),
+      ]],
+      ["推流", [
+        r("服务端地址", "推流中转的地址。", SEL("未设置")),
+        r("脱敏规则", "推流前移除的敏感字段。", BTN("编辑")),
+      ]],
+    ],
+  }},
+
+  remote: { label: "远程与 SSH", groups: [
+    ["远程控制", [
+      r("启用远程控制", "允许浏览器只读接管当前会话。", TG(true)),
+      r("监听端口", "远程服务的端口。", NUM(16800, "")),
+      r("访问密钥", "打开远程界面的凭据。", BTN("复制链接")),
+    ]],
+    ["SSH 主机", [
+      r("默认主机", "新会话使用的 SSH 目标。", SEL("dev-box")),
+      r("连接复用", "同一主机的连接复用以加快启动。", TG(true)),
+    ]],
+  ]},
+
+  keyboard: { label: "键盘快捷键", groups: [
+    ["会话", [
+      r("新建会话", "", "pills:⌘ N|⌘ T|—"),
+      r("切换模型", "", "pills:⌘ P|—|—"),
+      r("中断运行", "", "pills:Esc|⌘ .|—"),
+    ]],
+    ["输入框", [
+      r("展开工具输出", "", "pills:⌘ O|—|—"),
+      r("历史召回", "", "pills:↑|↓|—"),
+    ]],
+  ]},
+
+  experimental: { label: "实验特性", groups: [
+    ["功能开关", [
+      r("音乐律动消息轨道", "让消息轨道随系统音频跳动。", TG(false)),
+      r("上下文环探针", "在状态环里显示额外计数。", TG(true)),
+      r("并行工具调用", "同一轮里并发执行互不依赖的工具。", TG(true)),
+    ]],
+  ]},
+
+  developer: { label: "开发者", groups: [
+    ["自动 QA", [
+      r("启用自动 QA", "会话结束后自动跑质量检查。", TG(false)),
+      r("上报端点", "检查结果发送到该地址。", SEL("未设置")),
+    ]],
+    ["垃圾回收（GC）", [
+      r("会话保留天数", "超过该天数的会话进入归档。", NUM(30, "天")),
+      r("冷归档", "把旧会话打包压缩。", TG(true)),
+    ]],
+    ["压缩（底层）", [
+      r("保留 token", "压缩时预留的输出空间。", NUM(20000, "tk")),
+      r("保留最近消息", "压缩时原样保留的最近消息量。", NUM(8, "条")),
+    ]],
+  ]},
+
+  advanced: { label: "高级", groups: [
+    ["无界面设置项", [
+      r("shellCommandPrefix", "未设界面的原始配置键，可直接编辑。", BTN("编辑")),
+      r("retry.baseDelayMs", "未设界面的原始配置键，可直接编辑。", NUM(500, "ms")),
+      r("gc.compressAfterDays", "未设界面的原始配置键，可直接编辑。", NUM(90, "天")),
+    ]],
+  ]},
+
+  stats: { label: "使用统计", groups: [
+    ["用量", [
+      r("今日花费", "6 个会话 · 42 次模型请求", "tag:$3.84|1"),
+      r("本周花费", "31 个会话 · 218 次模型请求", "tag:$18.20|1"),
+      r("本月 token", "输入 4.2M / 输出 0.8M", "tag:5.0M|1"),
+    ]],
+  ]},
+};
+
+const NAV = [
+  ["基础", ["general", "appearance", "interaction", "model", "context", "files"]],
+  ["代理", ["memory", "skills", "plugins", "extensions", "mcp", "hooks", "agents", "automations"]],
+  ["能力", ["tools", "shell", "computer", "services", "remote"]],
+  ["系统", ["keyboard", "experimental", "developer", "advanced", "stats"]],
+];
+
+let cur = "appearance";
+
+function ctl(c) {
+  if (!c) return "";
+  const [k, v] = c.split(/:(.*)/s);
+  if (k === "sel") return `<div class="sel"><span>${v}</span><i>⌄</i></div>`;
+  if (k === "tg") return `<div class="tg${v === "1" ? " on" : ""}"><i></i></div>`;
+  if (k === "num") { const [n, u] = v.split("|"); return `<div class="num"><button>−</button><span>${n} ${u ? `<em>${u}</em>` : ""}</span><button>+</button></div>`; }
+  if (k === "btn") return `<button class="btn">${v}</button>`;
+  if (k === "pills") { const [a, on] = v.split("|"); return `<div class="pills">${a.split("|").map((s, i) => `<span${i === +on ? ' class="on"' : ""}>${s}</span>`).join("")}</div>`; }
+  if (k === "tag") { const [t, d] = v.split("|"); return `<span class="tag${d === "1" ? " dim" : ""}">${t}</span>`; }
+  return "";
+}
+
+function rows(list) {
+  if (!list.length) return "";
+  return `<div class="set-card">${list.map((x) => `<div class="srow"><div class="srow-tx"><b>${x.t}</b>${x.d ? `<span>${x.d}</span>` : ""}</div><div class="ctl">${ctl(x.c)}</div></div>`).join("")}</div>`;
+}
+
+function renderNav() {
+  document.getElementById("nav").innerHTML =
+    `<div class="nav-hd">设置</div>` +
+    NAV.map(([g, ids]) => `<div class="nav-grp">${g}</div>` + ids.map((id) => `<div class="nav-item${id === cur ? " on" : ""}" data-id="${id}"><span class="dot"></span>${PAGES[id].label}</div>`).join("")).join("");
+}
+
+function renderPage() {
+  const p = PAGES[cur];
+  let html = `<div class="set-tt">${p.label}</div>`;
+  if (p.tabs) {
+    // 已取消页内分段条：原 tab 的分组按序平铺到一页（数据形状保留 tab 名，仅作分组来源）。
+    for (const [, groups] of Object.entries(p.tabs)) for (const [tt, list] of groups) {
+      html += `<div class="set-group-tt">${tt}</div>`;
+      html += tt === "资产列表" || tt === "插件列表"
+        ? `<div class="set-card">
+            <div class="list-row"><span class="nm">code-review<small>Profile · v1.2.3</small></span><span class="tag">启用</span><div class="tg on"><i></i></div></div>
+            <div class="list-row"><span class="nm">kimi-browser-bridge<small>当前项目 · v0.9.0</small></span><span class="tag dim">禁用</span><div class="tg"><i></i></div></div>
+            <div class="list-row"><span class="nm">archify<small>Profile · v2.0.1</small></span><span class="tag">启用</span><div class="tg on"><i></i></div></div>
+          </div>`
+        : rows(list);
+    }
+  } else {
+    for (const [g, list] of p.groups) {
+      html += `<div class="set-group-tt">${g}</div>`;
+      html += g.includes("列表")
+        ? `<div class="set-card">
+            <div class="list-row"><span class="nm">code-review<small>Profile · v1.2.3</small></span><span class="tag">启用</span><div class="tg on"><i></i></div></div>
+            <div class="list-row"><span class="nm">kimi-browser-bridge<small>当前项目 · v0.9.0</small></span><span class="tag dim">禁用</span><div class="tg"><i></i></div></div>
+          </div>`
+        : rows(list);
+    }
+  }
+  document.getElementById("page").innerHTML = html;
+}
+
+function renderAll() { renderNav(); renderPage(); }
+
+document.addEventListener("click", (e) => {
+  const ni = e.target.closest(".nav-item");
+  if (ni) { cur = ni.dataset.id; renderAll(); document.querySelector(".page").scrollTop = 0; return; }
+});
+
+renderAll();
+</script>
+</body>
+</html>

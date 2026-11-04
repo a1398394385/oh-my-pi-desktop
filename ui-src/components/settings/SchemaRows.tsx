@@ -152,6 +152,11 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
 
   const type = def.type;
   const cred = def.credential === true;
+  // Rows typed as a free number instead of the schema's preset list: `ui.options` only feeds
+  // the submenu (the registry accepts any finite number), and these two want exact values.
+  // task.maxRuntimeMs is additionally entered in minutes and stored in ms.
+  const freeNumber = k === "task.maxRuntimeMs" || k === "task.softRequestBudget";
+  const inMinutes = k === "task.maxRuntimeMs";
 
   // Local edit state for input controls + refill guard (only refill inputs that aren't focused; never disturb while focused)
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -164,7 +169,9 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
         ? JSON.stringify(v ?? {}, null, 2)
         : v === undefined || v === null
           ? ""
-          : String(v);
+          : inMinutes
+            ? String(Number(v) / 60_000)
+            : String(v);
   const [text, setText] = useState(fmt(value));
   useEffect(() => {
     if (document.activeElement !== inputRef.current) setText(fmt(value));
@@ -174,7 +181,7 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
   const commit = () => {
     if (type === "number") {
       const n = Number(text);
-      if (Number.isFinite(n)) send({ type: "set_setting", key: k, value: n });
+      if (Number.isFinite(n)) send({ type: "set_setting", key: k, value: inMinutes ? Math.round(n * 60_000) : n });
     } else if (type === "array") {
       const arr = text.split(",").map((s) => s.trim()).filter(Boolean);
       send({ type: "set_setting", key: k, value: arr });
@@ -193,9 +200,10 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
 
   const opts = resolveSettingOptions(k, def, lang === "zh-CN" ? OPTS_ZH : OPTS_EN);
   const isChoiceSetting =
-    type === "enum" ||
-    (opts.length > 0 && (type === "number" || type === "string")) ||
-    def.ui?.options === "runtime";
+    !freeNumber &&
+    (type === "enum" ||
+      (opts.length > 0 && (type === "number" || type === "string")) ||
+      def.ui?.options === "runtime");
 
   let ctl: ReactElement;
   if (type === "boolean" && opts.length === 0) {
@@ -215,7 +223,7 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
   } else if (type === "record") {
     ctl = <Textarea rows={3} className="w-[360px] max-w-full" ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // same ref reused for input/textarea, only read at the activeElement comparison, narrowing is safe
   } else if (type === "number") {
-    ctl = <Input type="number" className="w-[130px]" ref={inputRef as RefObject<HTMLInputElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
+    ctl = <Input type="number" min={freeNumber ? 0 : undefined} step={freeNumber ? 1 : undefined} className="w-[130px]" ref={inputRef as RefObject<HTMLInputElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />;
   } else {
     // string / string+credential(password) / array(comma-separated)
     ctl = (

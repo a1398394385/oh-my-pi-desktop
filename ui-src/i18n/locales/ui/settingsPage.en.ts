@@ -6,9 +6,9 @@ export const settingsPageEn = {
   // ---- Sidebar navigation + page titles (Settings.tsx) ----
   nav: {
     sectionBasic: "Basics",
-    sectionAgent: "Agent Capabilities",
-    sectionBehavior: "Behavior & Rules",
-    sectionData: "Data & Stats",
+    sectionAgent: "Agents & extensions",
+    sectionBehavior: "Capabilities & integrations",
+    sectionData: "System",
     general: "General",
     appearance: "Appearance",
     model: "Model Config",
@@ -16,24 +16,20 @@ export const settingsPageEn = {
     keyboard: "Keyboard Shortcuts",
     extensions: "Extension Center",
     memory: "Memory",
-    subagents: "Subagents",
+    subagents: "Subagents & tasks",
     plugins: "Plugins",
     mcp: "MCP Servers",
     skills: "Skills",
     hooks: "Hooks",
-    modelBehavior: "Model Behavior",
-    providers: "Provider Settings",
-    capabilities: "Special Features",
-    interaction: "Interaction",
+    services: "Services & integrations",
+    interaction: "Input & interaction",
     context: "Context",
-    files: "Files",
+    files: "Files & code",
     tools: "Tools",
-    tasks: "Tasks & Subagents",
-    automations: "Automations",
     developer: "Developer",
     advanced: "Advanced",
     experimental: "Experimental",
-    remote: "Remote Control",
+    remote: "Remote & SSH",
     stats: "Usage Stats",
   },
   // ---- Settings shell: back button, search box, resizer (Settings.tsx) ----
@@ -150,6 +146,7 @@ export const settingsPageEn = {
   // ---- Appearance page (AppearancePage.tsx) ----
   appearance: {
     groupInterface: "Interface",
+    groupProcess: "Message stream",
     themeTitle: "UI theme",
     themeDesc: "Choose the light, dark or system theme.",
     themeDark: "Dark",
@@ -205,7 +202,7 @@ export const settingsPageEn = {
     previewDarkTag: "Dark",
     previewActive: "Active",
   },
-  // ---- Special features page (CapabilityPage.tsx) ----
+  // ---- Services page (ServicesPage.tsx): search / roles / keys / voice ----
   cap: {
     keysDesc: "Paste a per-engine API key here, or configure the environment variable instead. Engines without a key still fall back to the built-in chain after selection.",
     keyConfigured: "Key configured (stored credential or environment variable)",
@@ -272,6 +269,10 @@ export const settingsPageEn = {
   },
 
   model: {
+    manageTitle: "Model manager",
+    manageDesc: "Model catalog, role assignments and quick-switch order.",
+    manageOpen: "Open",
+    backToConfig: "Back to model config",
     desc: "Manage custom model providers; configured models become selectable in chats.",
     refresh: "Refresh",
     addProvider: "＋ Add provider",

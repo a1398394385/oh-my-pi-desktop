@@ -10,6 +10,9 @@ import { useAppStore, send, pathBase } from "../../../store";
 import Icon from "../../../Icon";
 import { emptyRow, EditWindowHead, FormRow } from "../common";
 import ScopeSel from "../ScopeSel";
+import SchemaRows from "../SchemaRows";
+import { PAGE_PLACEMENT } from "../placement";
+import AutomationsSection from "./AutomationsSection";
 import { EnabledModelPicker } from "../../ModelPicker";
 import type { AgentAssetsPayload } from "../../../types/frames";
 
@@ -395,6 +398,8 @@ export default function AgentsPage() {
           <div className="ae-status" id="aeStatus">{status}</div>
         </div>
       </div>
+      <SchemaRows sections={PAGE_PLACEMENT["pg-agents"]} />
+      <AutomationsSection />
     </div>
   );
 }

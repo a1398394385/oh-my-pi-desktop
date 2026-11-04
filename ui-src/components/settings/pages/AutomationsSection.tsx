@@ -1,13 +1,14 @@
-// Settings page: automations (pg-automations), opened from the gear on the
-// Automations list header. Desktop-owned config only — the rows are hand
-// written (not SchemaRows) because omp-desktop.json fields are not part of the
-// base settings registry, same as the experimental page's rows.
+// Settings · automations section (rendered at the bottom of the subagents & tasks page).
+// The automations settings page was merged here: it only holds the agent-tools switch and
+// the unattended-run dialog deadlines. Desktop-owned config only — rows are hand written
+// (not SchemaRows) because omp-desktop.json fields are not part of the base settings
+// registry, same as the experimental page's rows.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import { Toggle } from "../common";
 
-export default function AutomationsPage() {
+export default function AutomationsSection() {
   const { t } = useTranslation();
   const hostSettings = useAppStore((s) => s.hostSettings);
   const known = typeof hostSettings?.automationAgentEnabled === "boolean";
@@ -42,9 +43,7 @@ export default function AutomationsPage() {
   };
 
   return (
-    <div className="set-page" id="pg-automations">
-      <div className="set-tt">{t("settingsPage.nav.automations")}</div>
-
+    <>
       <div className="set-group-tt">{t("settingsPage.auto.agentGroup")}</div>
       <div className="set-card">
         <div className="srow">
@@ -89,6 +88,6 @@ export default function AutomationsPage() {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -27,27 +27,22 @@ const AppearancePage = lazy(() => import("./pages/AppearancePage"));
 const KeyboardPage = lazy(() => import("./pages/KeyboardPage"));
 const ExperimentalPage = lazy(() => import("./pages/ExperimentalPage"));
 const RemotePage = lazy(() => import("./pages/RemotePage"));
-const SshPage = lazy(() => import("./pages/SshPage"));
 const ComputerPage = lazy(() => import("./pages/ComputerPage"));
 const PluginsPage = lazy(() => import("./pages/PluginsPage"));
 const ExtensionsPage = lazy(() => import("./pages/ExtensionsPage"));
 const HooksPage = lazy(() => import("./pages/HooksPage"));
-const ModelPage = lazy(() => import("./pages/ModelPage"));
+const ModelSettingsPage = lazy(() => import("./pages/ModelSettingsPage"));
 const McpPage = lazy(() => import("./pages/McpPage"));
 const SkillsPage = lazy(() => import("./pages/SkillsPage"));
 const MemoryPage = lazy(() => import("./pages/MemoryPage"));
 const AgentsPage = lazy(() => import("./pages/AgentsPage"));
 const StatsPage = lazy(() => import("./pages/StatsPage"));
-const ModelBehaviorPage = lazy(() => import("./pages/ModelBehaviorPage"));
-const ProvidersPage = lazy(() => import("./pages/ProvidersPage"));
-const CapabilityPage = lazy(() => import("./pages/CapabilityPage"));
+const ServicesPage = lazy(() => import("./pages/ServicesPage"));
 const InteractionPage = lazy(() => import("./pages/InteractionPage"));
 const ContextPage = lazy(() => import("./pages/ContextPage"));
 const FilesPage = lazy(() => import("./pages/FilesPage"));
 const ShellPage = lazy(() => import("./pages/ShellPage"));
 const ToolsPage = lazy(() => import("./pages/ToolsPage"));
-const TasksPage = lazy(() => import("./pages/TasksPage"));
-const AutomationsPage = lazy(() => import("./pages/AutomationsPage"));
 const DeveloperPage = lazy(() => import("./pages/DeveloperPage"));
 const AdvancedPage = lazy(() => import("./pages/AdvancedPage"));
 
@@ -59,46 +54,43 @@ const NAV_SECTIONS = [
     items: [
       { id: "pg-general", icon: "sliders", label: "settingsPage.nav.general" },
       { id: "pg-appearance", icon: "palette", label: "settingsPage.nav.appearance" },
+      { id: "pg-interaction", icon: "comment", label: "settingsPage.nav.interaction" },
       { id: "pg-model", icon: "box", label: "settingsPage.nav.model" },
-      { id: "pg-capabilities", icon: "bulb", label: "settingsPage.nav.capabilities" },
-      { id: "pg-computer", icon: "monitor", label: "settingsPage.nav.computer" },
-      { id: "pg-remote", icon: "globe", label: "settingsPage.nav.remote" },
-      { id: "pg-ssh", icon: "server", label: "ssh.nav" },
+      { id: "pg-context", icon: "folderOpen", label: "settingsPage.nav.context" },
+      { id: "pg-files", icon: "file", label: "settingsPage.nav.files" },
       { id: "pg-keyboard", icon: "keyboard", label: "settingsPage.nav.keyboard" },
     ],
   },
   {
     title: "settingsPage.nav.sectionAgent",
     items: [
-      { id: "pg-extensions", icon: "extensions", label: "settingsPage.nav.extensions" },
       { id: "pg-memory", icon: "memory", label: "settingsPage.nav.memory" },
-      { id: "pg-agents", icon: "agents", label: "settingsPage.nav.subagents" },
-      { id: "pg-automations", icon: "clock", label: "settingsPage.nav.automations" },
-      { id: "pg-plugins", icon: "plugins", label: "settingsPage.nav.plugins" },
-      { id: "pg-mcp", icon: "mcp", label: "settingsPage.nav.mcp" },
       { id: "pg-skills", icon: "skills", label: "settingsPage.nav.skills" },
+      { id: "pg-plugins", icon: "plugins", label: "settingsPage.nav.plugins" },
+      { id: "pg-extensions", icon: "extensions", label: "settingsPage.nav.extensions" },
+      { id: "pg-mcp", icon: "mcp", label: "settingsPage.nav.mcp" },
       { id: "pg-hooks", icon: "hook", label: "settingsPage.nav.hooks" },
+      { id: "pg-agents", icon: "agents", label: "settingsPage.nav.subagents" },
     ],
   },
   {
     title: "settingsPage.nav.sectionBehavior",
     items: [
-      { id: "pg-model-behavior", icon: "think", label: "settingsPage.nav.modelBehavior" },
-      { id: "pg-providers", icon: "cloud", label: "settingsPage.nav.providers" },
-      { id: "pg-interaction", icon: "comment", label: "settingsPage.nav.interaction" },
-      { id: "pg-context", icon: "folderOpen", label: "settingsPage.nav.context" },
-      { id: "pg-files", icon: "file", label: "settingsPage.nav.files" },
-      { id: "pg-shell", icon: "termBox", label: "Shell" },
       { id: "pg-tools", icon: "plug", label: "settingsPage.nav.tools" },
-      { id: "pg-tasks", icon: "todo", label: "settingsPage.nav.tasks" },
-      { id: "pg-developer", icon: "code", label: "settingsPage.nav.developer" },
-      { id: "pg-advanced", icon: "settings", label: "settingsPage.nav.advanced" },
-      { id: "pg-experimental", icon: "flask", label: "settingsPage.nav.experimental" },
+      { id: "pg-shell", icon: "termBox", label: "Shell" },
+      { id: "pg-computer", icon: "monitor", label: "settingsPage.nav.computer" },
+      { id: "pg-services", icon: "cloud", label: "settingsPage.nav.services" },
+      { id: "pg-remote", icon: "globe", label: "settingsPage.nav.remote" },
     ],
   },
   {
     title: "settingsPage.nav.sectionData",
-    items: [{ id: "pg-stats", icon: "stats", label: "settingsPage.nav.stats" }],
+    items: [
+      { id: "pg-experimental", icon: "flask", label: "settingsPage.nav.experimental" },
+      { id: "pg-developer", icon: "code", label: "settingsPage.nav.developer" },
+      { id: "pg-advanced", icon: "settings", label: "settingsPage.nav.advanced" },
+      { id: "pg-stats", icon: "stats", label: "settingsPage.nav.stats" },
+    ],
   },
 ];
 
@@ -110,27 +102,22 @@ const PAGES: Record<string, ComponentType> = {
   "pg-keyboard": KeyboardPage,
   "pg-experimental": ExperimentalPage,
   "pg-remote": RemotePage,
-  "pg-ssh": SshPage,
   "pg-computer": ComputerPage,
   "pg-plugins": PluginsPage,
   "pg-extensions": ExtensionsPage,
   "pg-hooks": HooksPage,
-  "pg-model": ModelPage,
+  "pg-model": ModelSettingsPage,
   "pg-mcp": McpPage,
   "pg-skills": SkillsPage,
   "pg-memory": MemoryPage,
   "pg-agents": AgentsPage,
-  "pg-automations": AutomationsPage,
   "pg-stats": StatsPage,
-  "pg-model-behavior": ModelBehaviorPage,
-  "pg-providers": ProvidersPage,
-  "pg-capabilities": CapabilityPage,
+  "pg-services": ServicesPage,
   "pg-interaction": InteractionPage,
   "pg-context": ContextPage,
   "pg-files": FilesPage,
   "pg-shell": ShellPage,
   "pg-tools": ToolsPage,
-  "pg-tasks": TasksPage,
   "pg-developer": DeveloperPage,
   "pg-advanced": AdvancedPage,
 };

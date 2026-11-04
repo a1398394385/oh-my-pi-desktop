@@ -43,7 +43,9 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   ],
   "pg-general": [
     { from: "interaction/Startup & Updates" },
-    { from: "interaction/Git" },
+    // ui-less commit.* keys adopted from the advanced page: they belong to the Git card
+    // (commit message generation), which previously had no rows for them.
+    { from: "interaction/Git", keys: ["commit.cacheEnabled", "commit.cacheTtlDays", "commit.mapReduceEnabled", "commit.mapReduceThreshold", "commit.mapBatchTokenBudget", "commit.changelogMaxDiffChars"] },
     { from: "interaction/Power" },
   ],
   "pg-memory": [
@@ -98,8 +100,8 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   ],
   "pg-mcp": [{ from: "tools/Discovery & MCP" }],
   "pg-plugins": [
-    { from: "tools/Extensions", titleZh: "扩展运行", titleEn: "Extension runtime" },
-    { titleZh: "市场与更新", titleEn: "Marketplace & updates", keys: ["marketplace.autoUpdate"] },
+    // Tool-call handler timeout renders on pg-hooks (single home); exclude it here.
+    { from: "tools/Extensions", titleZh: "扩展运行", titleEn: "Extension runtime", excludeKeys: ["extensionHandlers.toolCallTimeoutMs"] },
     { titleZh: "外部扩展与禁用名单", titleEn: "External extensions & disabled list", keys: ["extensions", "disabledExtensions"], hint: "手动指定额外加载的扩展路径，或指定禁用的插件/扩展模块 ID（逗号分隔）", hintEn: "Manually specify extra extension paths to load, or extension module IDs to disable (comma-separated)" },
   ],
   "pg-skills": [
@@ -127,31 +129,36 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   ],
 
   // ── New topic pages (pg-* components + SchemaRows) ──
-  "pg-model-behavior": [
+  // Model page: catalog/roles live in the ModelManager page opened from the first row;
+  // everything here is the model-behavior schema (formerly its own page).
+  "pg-model": [
     { from: "model/Thinking", excludeKeys: ["hideThinkingBlock"] },
     { titleZh: "思考预算", titleEn: "Thinking budgets", hint: "不同思考级别下用于推理的 token 预算", hintEn: "Token budget used for reasoning at each thinking level", keys: ["thinkingBudgets.minimal", "thinkingBudgets.low", "thinkingBudgets.medium", "thinkingBudgets.high", "thinkingBudgets.xhigh", "thinkingBudgets.max"] },
     { from: "model/Sampling" },
     { from: "model/Prompt" },
-    { from: "model/Retry & Fallback" },
-    { from: "model/Advisor" },
+    { from: "model/Retry & Fallback", keys: ["retry.enabled", "retry.baseDelayMs"] },
+    { id: "advisor", from: "model/Advisor", excludeKeys: ["advisor.enabled"] },
     { from: "model/Prewalk" },
     { from: "model/Vision" },
   ],
-  "pg-providers": [
-    // Web-search-specific rows (timeout, SearXNG endpoint, Exa toggles) moved to the capability
-    // backends page; excluded here so they render in exactly one place
+  // Services page: provider endpoints/credentials + search + speech details + collab/stream.
+  // Speech runtime rows render through VoiceTtsSection/VoiceSttSection inside the page.
+  "pg-services": [
+    {
+      titleZh: "搜索相关设置", titleEn: "Search settings",
+      keys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs"],
+    },
     { from: "providers/Services", excludeKeys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs", "speech.enabled", "speech.mode", "speech.enhanced", "speech.voice", "tts.localVoice"] },
     { from: "providers/Fireworks" },
     { from: "providers/Tiny Model" },
-    { from: "providers/Protocol" },
+    { from: "providers/Protocol", keys: ["providers.anthropic.slowMode"] },
     { from: "providers/Timeouts" },
     { from: "providers/Privacy" },
-  ],
-  "pg-capabilities": [
-    { titleZh: "搜索相关设置", titleEn: "Search settings", keys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs"] },
+    { from: "interaction/Collab" },
+    { from: "interaction/Stream" },
     // ui-less keys adopted from the advanced page: per-destination options and
     // credentials for the image URL publishing chain (backends/enabled/command
-    // live in the model-behavior Vision group)
+    // live in the model page's Vision group)
     { titleZh: "图像发布后端", titleEn: "Image publishing backends", keys: ["images.urls.options", "images.urls.credentials"] },
     // Kokoro speech-generation details (the tts tool / ask-tool vocalizer):
     // every speech-related key lives on this page per the voice-sections move
@@ -163,17 +170,21 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "interaction/Notifications", excludeKeys: ["ask.timeout"] },
     // Speech group (stt.enabled/submitTrigger) and the stt.language single-row
     // group live in the custom VoiceTtsSection/VoiceSttSection blocks on the
-    // capabilities page (pages/VoiceSection.tsx)
-    { from: "interaction/Collab" },
-    { from: "interaction/Stream" },
+    // services page (pages/VoiceSection.tsx)
     { from: "interaction/Magic Keywords" },
     { from: "interaction/Agent" },
   ],
   "pg-context": [
     { from: "context/General" },
-    { from: "context/Compaction" },
+    { from: "context/Compaction", keys: ["compaction.modelThresholdsEnabled"] },
     { from: "context/Rules (TTSR)" },
     { from: "context/Experimental" },
+    // ui-less keys adopted from the advanced page: the cost gates and the branch-summary
+    // budget had no panel row before.
+    {
+      titleZh: "费用与摘要", titleEn: "Cost & summaries",
+      keys: ["session.warnCost", "session.maxCost", "branchSummary.reserveTokens"],
+    },
   ],
   "pg-files": [
     { from: "files/Editing" },
@@ -187,7 +198,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     // auto-background threshold key joins the Bash group's card via keys-append.
     // bash.patterns joins the same card as the graphical approval rules editor
     // (ShellPage.tsx, see SPECIAL_KEY_PAGES).
-    { from: "shell/Bash", keys: ["bash.autoBackground.thresholdMs"], excludeKeys: ["bash.patterns", "bashInterceptor.enabled", "shellMinimizer.enabled", "shellMinimizer.sourceOutlineLevel"] },
+    { from: "shell/Bash", keys: ["bash.autoBackground.thresholdMs", "shellPath", "shellCommandPrefix"], excludeKeys: ["bash.patterns", "bashInterceptor.enabled", "shellMinimizer.enabled", "shellMinimizer.sourceOutlineLevel"] },
     // id'd section: ShellPage owns the layout — the enabled toggle (SchemaRowsBare)
     // and the graphical rules editor (bashInterceptor.patterns, see
     // SPECIAL_KEY_PAGES) share one card
@@ -211,10 +222,10 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "tools/GitHub" },
     { from: "tools/IDA Pro" },
     { from: "tools/Output Limits" },
-    { from: "tools/Execution" },
+    { from: "tools/Execution", keys: ["async.maxJobs"] },
     { from: "tools/Developer", excludeKeys: ["dev.autoqa", "dev.autoqaPush.endpoint"] },
   ],
-  "pg-tasks": [
+  "pg-agents": [
     { from: "tasks/Modes" },
     { from: "tasks/Subagents" },
     { from: "tasks/Isolation" },
@@ -224,7 +235,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   // page's Developer group; user-facing compaction switches stay on pg-context
   "pg-developer": [
     { titleZh: "自动 QA", titleEn: "Auto QA", keys: ["dev.autoqa", "dev.autoqaPush.endpoint", "dev.autoqaPush.token", "dev.autoqaConsent"] },
-    { titleZh: "垃圾回收（GC）", titleEn: "Garbage collection", keys: ["gc.blobs", "gc.archive", "gc.wal", "gc.coldArchiveAfterDays", "gc.retainNewestGlobal", "gc.retainNewestPerCwd", "gc.stale", "gc.staleRetainNewest", "gc.staleRetainDays"] },
+    { titleZh: "垃圾回收（GC）", titleEn: "Garbage collection", keys: ["gc.blobs", "gc.archive", "gc.wal", "gc.coldArchiveAfterDays", "gc.retainNewestGlobal", "gc.retainNewestPerCwd", "gc.stale", "gc.staleRetainNewest", "gc.staleRetainDays", "gc.compress", "gc.compressAfterDays"] },
     { titleZh: "压缩（底层）", titleEn: "Compaction (low-level)", keys: ["compaction.reserveTokens", "compaction.keepRecentTokens", "compaction.autoContinue", "compaction.remoteEndpoint", "compaction.v2RetainedMessageBudget"] },
   ],
   // pg-advanced: no static sections — grouped at runtime by the first path segment of keys lacking ui metadata (see AdvancedPage)
@@ -258,7 +269,7 @@ export function expandSection(section: Section, schema: Record<string, SchemaDef
 
 // Keys excluded from expansion, or hardcoded-rendered on a specific settings page
 export const SPECIAL_KEY_PAGES: Record<string, string> = {
-  "hideThinkingBlock": "pg-general",
+  "hideThinkingBlock": "pg-appearance",
   "ask.timeout": "pg-general",
   "computer.enabled": "pg-computer",
   "computer.display": "pg-computer",
@@ -273,10 +284,10 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "commands.enableOpencodeUser": "pg-skills",
   "commands.enableOpencodeProject": "pg-skills",
   "extensionHandlers.toolCallTimeoutMs": "pg-hooks",
-  // Fully managed by dedicated graphical controls (model page eye-toggle /
-  // role cards / ctrl+p cycle editor, skills page master switch / row toggles,
-  // extensions page source master switch / foreign-tool-dir opt-in), written
-  // through dedicated RPCs — no raw SchemaRows editor anywhere
+  // Fully managed by dedicated graphical controls (model manager opened from the
+  // model page's first row / skills page master switch / extensions page source
+  // master switch / foreign-tool-dir opt-in), written through dedicated RPCs — no
+  // raw SchemaRows editor anywhere. Search lands on pg-model, which owns the entry row.
   "enabledModels": "pg-model",
   "modelRoles": "pg-model",
   "cycleOrder": "pg-model",
@@ -288,6 +299,12 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   // instead" (memories/settings.ts); the memory page's local-pipeline group
   // keys off memory.backend directly, so this legacy switch stays invisible
   "memories.enabled": "pg-memory",
+  // Hand-written master switch (AdvisorSection.tsx) — excluded from the section's
+  // SchemaRows rows, so the search map needs the explicit page.
+  "advisor.enabled": "pg-model",
+  // Rendered by the voice section's hand-written rows (VoiceSection.tsx) on the services
+  // page; ui-less, so without this entry the advanced page would render a second copy.
+  "stt.language": "pg-services",
   // Graphical rules editor on the Shell page (fixed-structure JSON array:
   // pattern/flags/tool/message per rule, ordered first-match); no raw
   // SchemaRows editor anywhere
@@ -307,6 +324,8 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
 // mirror.) startup.quiet stays visible: it also gates the SDK-side xd:// mount
 // notices, which desktop sessions do emit.
 export const HIDDEN_KEYS: Record<string, true> = {
+  // Internal bookkeeping: written by the base's setup flow, meaningless to edit by hand.
+  setupVersion: true,
   doubleEscapeAction: true,
   "browser.tern": true,
   "browser.cmux": true,
@@ -395,7 +414,7 @@ export const HIDDEN_KEYS: Record<string, true> = {
 // Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests
 const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-general": [
-    "power.sleepPrevention", "startup.quiet", "ask.timeout", "hideThinkingBlock",
+    "power.sleepPrevention", "startup.quiet", "ask.timeout",
   ],
   "pg-interaction": [
     "steeringMode", "followUpMode", "interruptMode", "tui.vimMode",
@@ -404,10 +423,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "spelling.autocomplete", "spelling.autocorrect", "emojiAutocomplete", "paste.largeMenuThreshold",
     "magicKeywords.enabled", "magicKeywords.ultrathink", "magicKeywords.orchestrate", "magicKeywords.workflow",
     "completion.notify", "error.notify", "ask.notify", "recap.enabled",
-    "recap.idleSeconds", "collab.relayUrl", "collab.webUrl", "collab.displayName",
-    "collab.autoStart", "share.serverUrl", "share.store", "share.redactSecrets",
-    "stream.serverUrl", "stream.redactPatterns", "stt.enabled", "stt.modelName",
-    "stt.submitTrigger", "tools.approval", "tools.approvalMode", "features.unexpectedStopDetection",
+    "recap.idleSeconds", "tools.approval", "tools.approvalMode", "features.unexpectedStopDetection",
   ],
   "pg-context": [
     "workspace.additionalDirectories", "contextPromotion.enabled", "extendedContext", "compaction.enabled",
@@ -441,14 +457,14 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "mcp.renderMarkdownResults", "mcp.notifications", "mcp.notificationDebounceMs",
   ],
   "pg-plugins": [
-    "extensionHandlers.toolCallTimeoutMs", "marketplace.autoUpdate", "extensions", "disabledExtensions",
+    "extensionHandlers.toolCallTimeoutMs", "extensions", "disabledExtensions",
   ],
   "pg-appearance": [
-    "colorBlindMode",
+    "colorBlindMode", "hideThinkingBlock",
     "images.autoResize", "images.blockImages",
     "display.showTokenUsage",
   ],
-  "pg-model-behavior": [
+  "pg-model": [
     "advisor.enabled", "prewalk.enabled", "advisor.syncBacklog", "advisor.immuneTurns",
     "advisor.maxNotesPerUpdate", "modelRoleStorage", "images.describeForTextModels", "images.urls.enabled",
     "images.urls.backends", "images.urls.command", "images.urls.publicBaseUrl", "images.urls.ttlHours",
@@ -493,7 +509,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "eval.workpool.freshAgents", "eval.autoBackground.enabled", "eval.autoBackground.thresholdMs", "python.kernelMode",
     "python.interpreter", "bash.autoBackground.thresholdMs",
   ],
-  "pg-tasks": [
+  "pg-agents": [
     "plan.enabled", "plan.defaultOnStartup", "plan.autosave", "plan.autosaveDir",
     "goal.enabled", "goal.statusInFooter", "goal.continuationModes", "title.refreshOnReplan",
     "task.eager", "task.batch", "task.enableEffort", "task.maxConcurrency",
@@ -516,7 +532,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-hooks": [
     "extensionHandlers.toolCallTimeoutMs",
   ],
-  "pg-providers": [
+  "pg-services": [
     "providers.maxInFlightRequests", "providers.openai-codex.codeMode", "providers.openai-codex.codeModeDirectTools", "providers.ollama-cloud.maxConcurrency",
     "providers.antigravityEndpoint", "live.voice",
     "providers.fetch", "codexResets.autoRedeem",
@@ -525,12 +541,14 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "providers.tinyModelDevice", "providers.tinyModelDtype",
     "providers.kimiApiFormat", "providers.openaiWebsockets", "providers.cacheRetention", "providers.openrouterVariant",
     "provider.appendOnlyContext", "providers.streamFirstEventTimeoutSeconds", "providers.streamIdleTimeoutSeconds", "secrets.enabled",
-  ],
-  "pg-capabilities": [
     // Speech keys render on this page (voice sections + Kokoro details group);
     // the map only drives settings-search page jumps
     "tts.localVoice", "speech.enabled", "speech.mode", "speech.enhanced", "speech.voice",
     "stt.enabled", "stt.language", "stt.submitTrigger",
+    // Collab / stream / share moved here from the interaction page
+    "collab.relayUrl", "collab.webUrl", "collab.displayName", "collab.autoStart",
+    "share.serverUrl", "share.store", "share.redactSecrets",
+    "stream.serverUrl", "stream.redactPatterns",
   ],
 };
 

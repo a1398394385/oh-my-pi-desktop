@@ -1,4 +1,6 @@
-// Settings · Special features page: the model-kind roles (web search /
+// Settings · Services page (pg-services): provider endpoints + search engines + voice
+// (TTS/STT) + collab/stream, plus the kimi auto-thinking switch moved from the old
+// providers page. Special-features page origin: the model-kind roles (web search /
 // dictation / judge / image — the speech tts-model picker lives inside the
 // voice output block, VoiceTtsSection) plus their engine API keys. Split out
 // of the Model page on
@@ -166,8 +168,11 @@ function Group({ title, hint, children }: { title: string; hint?: string; childr
   );
 }
 
-export default function CapabilityPage() {
+export default function ServicesPage() {
   const { t } = useTranslation();
+  const hostSettings = useAppStore((s) => s.hostSettings);
+  const kimiKnown = typeof hostSettings?.kimiAutoThinking === "boolean";
+  const kimiAutoThinking = kimiKnown && !!hostSettings?.kimiAutoThinking;
   const allModels = useAppStore((s) => s.modelCatalog);
   const modelRoles = useAppStore((s) => s.modelRoles);
   const capabilityKeys = useAppStore((s) => s.capabilityKeys);
@@ -177,8 +182,24 @@ export default function CapabilityPage() {
   const typesafeKey = (capabilityKeys ?? []).find((k) => k.id === "typesafe");
   const webRole = role("web");
   return (
-    <div className="set-page" id="pg-capabilities">
-      <div className="set-tt">{t("settingsPage.nav.capabilities")}</div>
+    <div className="set-page" id="pg-services">
+      <div className="set-tt">{t("settingsPage.nav.services")}</div>
+      <div className="set-group-tt">{t("settingsPage.providers.kimiGroup")}</div>
+      <div className="set-card">
+        <div className="srow">
+          <div className="srow-tx">
+            <b>{t("settingsPage.providers.kimiAutoThinking")}</b>
+            <span>{t("settingsPage.providers.kimiAutoThinkingDesc")}</span>
+          </div>
+          <div
+            className={"tg" + (kimiAutoThinking ? " on" : "") + (kimiKnown ? "" : " disabled")}
+            id="tgKimiAutoThinking"
+            onClick={() => send({ type: "set_kimi_auto_thinking", enabled: !kimiAutoThinking })}
+          >
+            <i></i>
+          </div>
+        </div>
+      </div>
 
       {webRole && (
         <Group title={t("settingsPage.cap.web.title")} hint={t("settingsPage.cap.keysDesc")}>
@@ -210,7 +231,7 @@ export default function CapabilityPage() {
         </Group>
       )}
 
-      <SchemaRows sections={PAGE_PLACEMENT["pg-capabilities"]} />
+      <SchemaRows sections={PAGE_PLACEMENT["pg-services"]} />
     </div>
   );
 }

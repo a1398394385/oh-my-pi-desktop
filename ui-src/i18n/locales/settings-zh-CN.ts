@@ -321,7 +321,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "task.maxConcurrency": { "label": "最大并发任务数", "description": "同时只让这么多子智能体一起跑，其余的排队等位置空出来；0 表示不限。" },
   "task.enableLsp": { "label": "子智能体使用 LSP", "description": "让派出去的子智能体也能用 lsp 工具。默认关闭以省钱，需要它查定义和引用时再开。" },
   "task.maxRecursionDepth": { "label": "最大任务递归深度", "description": "子智能体还能再往下派几层子智能体；0 表示不允许再派。" },
-  "task.maxRuntimeMs": { "label": "子智能体最长运行时间", "description": "每个子智能体最多跑多久（毫秒），0 表示不限。兜住供应商那边卡住不返回的流，超时后子智能体会以「超时」正常中止。" },
+  "task.maxRuntimeMs": { "label": "子智能体最长运行时间（分钟）", "description": "每个子智能体最多跑多久（分钟），0 表示不限。兜住供应商那边卡住不返回的流，超时后子智能体会以「超时」正常中止。" },
   "task.agentIdleTtlMs": { "label": "agent 空闲 TTL", "description": "子智能体闲下来多久后从内存挪到磁盘（毫秒）。挪走后再次收到消息或被唤醒会自动复活，0 表示一直留到退出。" },
   "task.softRequestBudget": { "label": "子智能体软性请求预算", "description": "单个子智能体一次运行的请求数上限（软限制）。超了会收到收尾提醒，到 1.5 倍被强制停下并交出已有发现；0 表示不限制。scout/sonic 上限更低。" },
   "task.softRequestBudgetNotice": { "label": "软性请求预算提醒", "description": "子智能体超出软性请求预算时，给它一条收尾提醒，让它在被强制停下之前先收工。" },
@@ -427,7 +427,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "secrets.enabled": { "label": "隐藏密钥", "description": "发给模型前先把配置里的密钥打码，并把长得像凭据的内容抹掉。" }
 ,
 
-  // ---- pg-providers ----
+  // ---- pg-services (provider rows) ----
   "providers.openaiLiveSteering": { "label": "OpenAI 实时插话", "description": "GPT-6 回复正在流出时，你新打的字会通过 Codex WebSocket 插进这条回复，不用等下一次工具调用。" },
   "providers.muse-code.storeResponses": { "label": "Muse Code 存储响应", "description": "把 Muse Code 的结果存在 Meta 的服务器上：哪一轮中途断线可以接着恢复，而不是重跑。代价是提示和回复留在 Meta 那边。" },
   "providers.cacheWarming": { "label": "缓存预热", "description": "提示缓存快过期前，用只允许输出一个 token 的请求把它续上，省得下次重新算前缀。" },
@@ -439,7 +439,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "speech.speed": { "label": "语音朗读语速", "description": "朗读助手回复时的语速。1 是正常速度，最低 0.5、最高 2.5。" },
   "telemetry.otlpExportEnabled": { "label": "OTLP 遥测导出", "description": "允许 OMP 通过 OTEL_* 端点导出链路、日志和指标。下次启动后生效。" },
 
-  // ---- pg-model-behavior ----
+  // ---- pg-model ----
   "prewalk.auto": { "label": "自动预演", "description": "让 judge 角色背后的原生评审判断新任务是否把难点前置；没有原生评审就不判断，与「启用预演」独立。" },
   "prewalk.autoTarget": { "label": "自动预演目标", "description": "自动预演在第一次动手改文件时交给哪个模型或角色，默认 '@smol'。" },
   "expandThinkingBlocks": { "label": "展开思考块", "description": "一轮结束后，思考内容保持展开，不自动折叠。" },
@@ -478,7 +478,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   // ---- pg-mcp ----
   "mcp.startupTimeoutMs": { "label": "MCP 启动等待（毫秒）", "description": "启动时最多等这么久（毫秒）去找 MCP 工具；填 0 就一直等到连接都稳定。" },
 
-  // ---- pg-tasks ----
+  // ---- pg-agents ----
   "title.generator": { "label": "标题生成器", "description": "新会话还没名字时用什么起名：fork 借当前回复另起一轮来取名，tiny 只用专门的标题模型。" },
   "task.structured": { "label": "结构化任务结果", "description": "让 task 工具能按结构校验子智能体的结果。关掉后子智能体只回最后一段文字（定义里声明结构化的除外），eval 派生的一直保留。" },
   "task.speculativeLaunch": { "label": "任务提前启动", "description": "批量任务里某一项写完就立刻派它开工，不用等整批写完；若这批调用没通过校验、被拦下或参数变了，已开跑的会被中止。需任务自动放行。" },
@@ -492,6 +492,26 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   // ---- pg-shell ----
   "bash.gitGuard": { "label": "Git 危险操作拦截", "description": "拒绝 stash、reset --hard、切到别的提交，以及合并/变基冲突外的 checkout、switch、restore，这些会丢弃或搬走共享成果。" },
   "eval.autoProvision": { "label": "求值环境自动创建", "description": "首次安装时自动创建托管的 JavaScript eval 包环境。" },
+
+  // ---- UI-ified from the advanced page (2026-11): previously raw editors only ----
+  "session.warnCost": { "label": "花费提醒（USD）", "description": "会话累计花费达到该金额时提醒一次；留空不提醒。" },
+  "session.maxCost": { "label": "花费上限（USD）", "description": "会话累计花费达到该金额时停止发送模型请求；留空不限。" },
+  "branchSummary.reserveTokens": { "label": "分支摘要预留", "description": "离开分支时生成摘要，为输出预留的 token 空间。" },
+  "compaction.modelThresholdsEnabled": { "label": "按模型阈值压缩", "description": "允许各模型用各自的压缩触发点；子代理覆盖优先。" },
+  "retry.enabled": { "label": "自动重试", "description": "模型请求失败时按退避策略重试。" },
+  "retry.baseDelayMs": { "label": "重试起始延迟（ms）", "description": "第一次重试前等待的时间，之后逐次加倍。" },
+  "providers.anthropic.slowMode": { "label": "Anthropic 慢速模式", "description": "在限速压力下放慢请求节奏；自动模式按错误信号切换。" },
+  "commit.mapReduceEnabled": { "label": "提交说明分段汇总", "description": "改动过大时先分段摘要，再合成提交说明。" },
+  "commit.mapReduceThreshold": { "label": "分段汇总阈值（token）", "description": "改动总 token 超过该值改用分段汇总。" },
+  "commit.mapBatchTokenBudget": { "label": "分段预算（token）", "description": "每段送给模型的最大 token 数。" },
+  "commit.cacheEnabled": { "label": "提交说明缓存", "description": "复用相同改动的提交说明，减少模型调用。" },
+  "commit.cacheTtlDays": { "label": "缓存有效天数", "description": "提交说明缓存保留多久，过期后重新生成。" },
+  "commit.changelogMaxDiffChars": { "label": "变更日志 diff 上限（字符）", "description": "生成变更日志时读取的最大 diff 长度。" },
+  "shellPath": { "label": "Shell 路径", "description": "执行命令使用的解释器；留空按系统默认。" },
+  "shellCommandPrefix": { "label": "命令前缀（旧扩展）", "description": "只转发给旧扩展；OMP 原生 Shell 不套用。" },
+  "async.maxJobs": { "label": "后台作业上限", "description": "同时运行的后台作业数量，超出后排队。" },
+  "gc.compress": { "label": "压缩冷会话", "description": "用文件系统透明压缩就地压缩旧会话文件。" },
+  "gc.compressAfterDays": { "label": "压缩起始天数", "description": "会话闲置超过该天数后压缩。" },
 };
 
 export const OPTS_ZH: Record<string, Record<string, string>> = {
@@ -568,8 +588,6 @@ export const OPTS_ZH: Record<string, Record<string, string>> = {
   "task.eager": { "default": "默认", "preferred": "优先", "always": "始终" },
   "task.maxConcurrency": { "0": "不限", "1": "1 个任务", "2": "2 个任务", "4": "4 个任务", "8": "8 个任务", "16": "16 个任务", "32": "32 个任务", "64": "64 个任务" },
   "task.maxRecursionDepth": { "0": "无", "1": "单层", "2": "双层", "3": "三层", "-1": "不限" },
-  "task.maxRuntimeMs": { "0": "不限", "300000": "5 分钟", "900000": "15 分钟", "1800000": "30 分钟", "3600000": "1 小时" },
-  "task.softRequestBudget": { "0": "禁用", "90": "90 次请求", "150": "150 次请求", "200": "200 次请求" },
   "task.maxEffort": { "minimal": "最小", "low": "低", "medium": "中", "high": "高", "xhigh": "超高", "max": "最大" },
   "isolation.backend": { "auto": "自动", "apfs": "APFS", "btrfs": "btrfs", "zfs": "ZFS", "reflink": "Reflink", "overlayfs": "Overlayfs", "projfs": "ProjFS", "block-clone": "块克隆", "rcopy": "递归复制" },
   "task.isolation.merge": { "patch": "补丁", "branch": "分支" },
@@ -593,6 +611,7 @@ export const OPTS_ZH: Record<string, Record<string, string>> = {
   "providers.streamFirstEventTimeoutSeconds": { "0": "关闭", "300": "5 分钟", "600": "10 分钟", "1800": "30 分钟", "-1": "自动" },
   "providers.streamIdleTimeoutSeconds": { "0": "关闭", "300": "5 分钟", "600": "10 分钟", "1800": "30 分钟", "-1": "自动" },
   "advisor.syncBacklog": { "off": "关闭", "1": "1 轮", "3": "3 轮", "5": "5 轮" },
+  "providers.anthropic.slowMode": { "off": "关闭", "auto": "自动" },
   "advisor.continueSeverity": { "nit": "提示", "concern": "疑虑", "blocker": "阻塞" },
   "computer.backgroundFallback": { "takeover": "临时接管", "refuse": "拒绝" },
   "providers.openai-codex.codeMode": { "off": "关闭", "on": "开启", "auto": "自动" },

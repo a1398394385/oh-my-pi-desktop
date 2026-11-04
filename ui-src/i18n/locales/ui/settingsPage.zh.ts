@@ -3,35 +3,31 @@
 export const settingsPageZh = {
   // ---- Sidebar navigation + page titles (Settings.tsx) ----
   nav: {
-    sectionBasic: "基础设置",
-    sectionAgent: "Agent 能力",
-    sectionBehavior: "行为与规则",
-    sectionData: "数据与统计",
-    general: "常规",
+    sectionBasic: "基础",
+    sectionAgent: "代理与扩展",
+    sectionBehavior: "能力与集成",
+    sectionData: "系统",
+    general: "通用",
     appearance: "外观",
     model: "模型配置",
     computer: "电脑与浏览器",
     keyboard: "键盘快捷键",
     extensions: "拓展中心",
     memory: "记忆",
-    subagents: "子智能体",
+    subagents: "子代理与任务",
     plugins: "插件",
     mcp: "MCP 服务器",
     skills: "技能",
     hooks: "钩子",
-    modelBehavior: "模型行为",
-    providers: "供应商设置",
-    capabilities: "特殊功能",
-    interaction: "交互",
+    services: "服务与集成",
+    interaction: "输入与交互",
     context: "上下文",
-    files: "文件",
+    files: "文件与代码",
     tools: "工具",
-    tasks: "任务·子代理",
-    automations: "自动化",
     developer: "开发者",
     advanced: "高级",
-    experimental: "实验性功能",
-    remote: "远程控制",
+    experimental: "实验特性",
+    remote: "远程与 SSH",
     stats: "使用统计",
   },
   // ---- Settings shell: back button, search box, resizer (Settings.tsx) ----
@@ -146,6 +142,7 @@ export const settingsPageZh = {
   // ---- Appearance page (AppearancePage.tsx) ----
   appearance: {
     groupInterface: "界面设置",
+    groupProcess: "消息流显示",
     themeTitle: "界面主题",
     themeDesc: "选择浅色、深色或跟随系统主题。",
     themeDark: "深色",
@@ -201,7 +198,7 @@ export const settingsPageZh = {
     previewDarkTag: "深色",
     previewActive: "当前生效",
   },
-  // ---- Special features page (CapabilityPage.tsx) ----
+  // ---- Services page (ServicesPage.tsx): search / roles / keys / voice ----
   cap: {
     keysDesc: "按引擎粘贴 API Key；也可用环境变量配置（无需在此保存）。未配置的引擎仅在选择后仍可回退到内置链。",
     keyConfigured: "密钥已配置（存储凭证或环境变量）",
@@ -269,6 +266,10 @@ export const settingsPageZh = {
 
   // ---- Models page (ModelPage.tsx) ----
   model: {
+    manageTitle: "模型管理",
+    manageDesc: "模型目录、角色分配与快速切换顺序。",
+    manageOpen: "打开",
+    backToConfig: "返回模型配置",
     desc: "管理自定义模型供应商，配置后可在聊天时选择使用。",
     refresh: "刷新",
     addProvider: "＋ 添加供应商",

@@ -1,4 +1,4 @@
-// Settings · SSH hosts page: the user-scope ssh.json host table (same RPC
+// Settings · SSH hosts section (rendered inside the remote page): the user-scope ssh.json host table (same RPC
 // surface as the welcome RemoteDialog: ssh_list_hosts / ssh_save_host /
 // ssh_remove_host / ssh_test_host). Create & edit open the page-level editor
 // window that replaces the page body (.set-edit-* head, same as skills/MCP/hooks)
@@ -165,7 +165,7 @@ function SshEditor({ host, onClose }: { host: SshHostRow | null; onClose: () => 
   );
 }
 
-export default function SshPage() {
+export default function SshSection() {
   const { t } = useTranslation();
   const hosts = useAppStore((s) => s.sshHosts);
   // Open editor window (replaces the page body): { host: null } = create, { host } = edit, null = list
@@ -177,16 +177,11 @@ export default function SshPage() {
 
   // Editor window replaces the whole page body
   if (edit) {
-    return (
-      <div className="set-page" id="pg-ssh">
-        <SshEditor host={edit.host} onClose={() => setEdit(null)} />
-      </div>
-    );
+    return <SshEditor host={edit.host} onClose={() => setEdit(null)} />;
   }
 
   return (
-    <div className="set-page" id="pg-ssh">
-      <div className="set-tt">{t("ssh.nav")}</div>
+    <>
       <div className="set-group-tt ssh-head">
         <span>{t("ssh.hostSection")}</span>
         <button type="button" className="add-btn" onClick={() => setEdit({ host: null })}>
@@ -216,6 +211,6 @@ export default function SshPage() {
           ))
         )}
       </div>
-    </div>
+    </>
   );
 }

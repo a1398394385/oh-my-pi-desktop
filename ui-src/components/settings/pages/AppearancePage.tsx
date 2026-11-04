@@ -212,7 +212,10 @@ export default function AppearancePage() {
             ))}
           </div>
         </div>
-        <div className="srow">
+      </div>
+      <div className="set-group-tt">{t("settingsPage.appearance.groupProcess")}</div>
+      <div className="set-card">
+        <div className="srow" data-key="hideThinkingBlock">
           <div className="srow-tx"><b>{t("settingsPage.appearance.showThinkingTitle")}</b><span>{t("settingsPage.appearance.showThinkingDesc")}</span></div>
           <div className={"tg" + (showThinking ? " on" : "")} id="tgThinking" onClick={toggleThinking}><i></i></div>
         </div>

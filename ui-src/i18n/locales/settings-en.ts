@@ -33,7 +33,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "skills.customDirectories": { "label": "Custom skills directories", "description": "Extra folders to load skills from, separated by commas; ~ means your home directory." },
   "skills.includeSkills": { "label": "Skills allowlist", "description": "Glob patterns matched against skill names, comma-separated; only matching skills load. Leave empty to load them all." },
 
-  // ---- pg-model-behavior: thinking budget tokens ----
+  // ---- pg-model: thinking budget tokens ----
   "thinkingBudgets.minimal": { "label": "Minimal", "description": "Reasoning-token budget for this level, default 1024. Only applies to APIs that accept a thinking budget." },
   "thinkingBudgets.low": { "label": "Low", "description": "Reasoning-token budget for this level, default 2048. Only applies to APIs that accept a thinking budget." },
   "thinkingBudgets.medium": { "label": "Medium", "description": "Reasoning-token budget for this level, default 8192. Only applies to APIs that accept a thinking budget." },
@@ -41,7 +41,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "thinkingBudgets.xhigh": { "label": "Extra high", "description": "Reasoning-token budget for this level, default 32768. Only applies to APIs that accept a thinking budget." },
   "thinkingBudgets.max": { "label": "Max", "description": "Reasoning-token budget for this level, default 32768. Only applies to APIs that accept a thinking budget." },
 
-  // ---- pg-capabilities / pg-interaction ----
+  // ---- pg-services / pg-interaction ----
   "images.urls.options": { "label": "Image publishing options", "description": "JSON object keyed by backend name with per-backend options for image publishing (gist, s3, …); pick backends in the Vision group of Model behavior." },
   "images.urls.credentials": { "label": "Image publishing credentials", "description": "JSON object keyed by backend name holding the account details and keys each publishing backend needs." },
   "stt.language": { "label": "Recognition language", "description": "The language code used for dictation, such as zh or en." },
@@ -127,7 +127,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "compaction.v2RetainedMessageBudget": { "label": "V2 retained-message budget", "description": "In the newer streaming remote compaction, how many tokens of messages are kept verbatim alongside the summary." },
 
 
-  // ---- pg-providers ----
+  // ---- pg-services (provider rows) ----
   "providers.maxInFlightRequests": { "label": "Max In-Flight Requests", "description": "How many requests a provider (\"openai\", \"anthropic\") may have in flight at once. Shared by local processes on the same config root; unlisted providers are unlimited." },
   "providers.ollama-cloud.maxConcurrency": { "label": "Ollama Cloud Max Concurrency", "description": "How many Ollama Cloud subagents may run at the same time in one process. 0 removes the special limit for this provider." },
   "providers.antigravityEndpoint": { "label": "Antigravity Endpoint Mode", "description": "Chooses which endpoint google-antigravity sends chat, search, image and discovery requests to." },
@@ -159,7 +159,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "secrets.enabled": { "label": "Hide Secrets", "description": "Scrambles configured secrets and strips anything credential-shaped before it is sent to the model." },
   "telemetry.otlpExportEnabled": { "label": "OTLP Telemetry Export", "description": "Lets OMP export traces, logs and metrics to OTEL_* endpoints. Takes effect on the next launch." },
 
-  // ---- pg-model-behavior ----
+  // ---- pg-model ----
   "model.loopGuard.enabled": { "label": "Loop Guard", "description": "Stops a turn that keeps repeating itself instead of making progress." },
   "model.loopGuard.checkAssistantContent": { "label": "Loop Guard Scan Prose", "description": "Also checks the assistant's written reply, not just its thinking." },
   "model.loopGuard.toolCallReminder": { "label": "Loop Guard Tool-Call Reminder", "description": "When Gemini only writes planning headers without calling a tool, interrupt it and nudge it to make a tool call. Requires Loop Guard." },
@@ -400,7 +400,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "edit.blackbox.enabled": { "label": "Record Parse Regressions", "description": "When an edit breaks parsing, the full before-and-after source is recorded so you can dig in later." },
   "edit.autoRepair.enabled": { "label": "Auto-Repair Parse Regressions", "description": "If an edit breaks the file's parsing, the smol model is asked to repair the broken region; if that fails you just get a warning." },
 
-  // ---- pg-capabilities ----
+  // ---- pg-services ----
   "exa.enabled": { "label": "Exa", "description": "Turn on the Exa web search provider as a source for online searches." },
   "exa.searchDelayMs": { "label": "Exa Search Delay", "description": "Minimum gap between Exa searches in milliseconds; 0 turns the pacing off." },
   "speech.enhanced": { "label": "Enhanced Speech Rewriting", "description": "Before speaking, the tiny/smol model rewrites the reply into natural spoken prose: describes code, drops links and markdown. Falls back to plain cleanup on failure." },
@@ -442,7 +442,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "startup.quiet": { "label": "Quiet Startup", "description": "Skips the welcome screen and startup status messages; on desktop that only means the in-session notices (such as xd:// device mount/unmount), since there is no startup banner." },
   "power.sleepPrevention": { "label": "Sleep Prevention", "description": "Keeps the system awake while a session is active; each level adds the flags of all lower levels." },
 
-  // ---- pg-tasks ----
+  // ---- pg-agents ----
   "plan.enabled": { "label": "Plan Mode", "description": "Turns on plan mode: the model explores read-only and lays out a plan instead of jumping straight to edits." },
   "plan.defaultOnStartup": { "label": "Start in Plan Mode", "description": "Every new session starts in plan mode, so you don't have to switch it on yourself." },
   "plan.autosave": { "label": "Autosave Plans", "description": "Approved plans are written to disk automatically once plan mode finishes." },
@@ -461,7 +461,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "task.maxConcurrency": { "label": "Max Concurrent Tasks", "description": "Caps how many subagents run at once; the rest wait in line for a free slot. 0 means no limit." },
   "task.enableLsp": { "label": "LSP in Subagents", "description": "Lets subagents spawned through the task tool use the lsp tool. Off by default to keep them cheap; turn it on when delegation needs LSP awareness." },
   "task.maxRecursionDepth": { "label": "Max Task Recursion", "description": "How many levels deep a subagent may spawn its own subagents; 0 forbids further spawning." },
-  "task.maxRuntimeMs": { "label": "Max Subagent Runtime", "description": "Hard time limit per subagent in milliseconds; 0 disables it. Catches provider streams that hang and aborts the subagent with a 'timed out' reason." },
+  "task.maxRuntimeMs": { "label": "Max subagent runtime (minutes)", "description": "Hard time limit per subagent, in minutes; 0 disables it. Catches provider streams that hang and aborts the subagent with a 'timed out' reason." },
   "task.completionProbe": { "label": "Subagent Completion Probe", "description": "Asks a working subagent how complete it is, after 2, 5, 10 and 30 minutes, then hourly. The estimate shows next to the subagent." },
   "task.agentIdleTtlMs": { "label": "Agent Idle TTL", "description": "How long an idle subagent stays in memory before being parked to disk, in milliseconds. Parked agents wake up when messaged or resumed; 0 keeps them alive." },
   "task.softRequestBudget": { "label": "Soft Subagent Request Budget", "description": "Soft cap on requests per subagent run. Crossing it triggers a wrap-up notice; at 1.5x the run is force-stopped and partial findings handed back. 0 disables it." },
@@ -512,10 +512,31 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "python.kernelMode": { "label": "Python Kernel Mode", "description": "Whether the IPython kernel stays alive across eval calls or starts fresh each time." },
   "python.interpreter": { "label": "Python Interpreter", "description": "Optional path to a specific Python executable; when set, Python runtime auto-discovery is skipped." },
   "bashInterceptor.enabled": { "label": "Bash Interceptor", "description": "Blocks shell commands that a dedicated tool already covers, pointing at that tool instead." },
+
+  // ---- UI-ified from the advanced page (2026-11): previously raw editors only ----
+  "session.warnCost": { "label": "Warn cost (USD)", "description": "Warn once when the session tree has spent this much; leave empty to never warn." },
+  "session.maxCost": { "label": "Max cost (USD)", "description": "Stop sending model requests when the session tree reaches this spend; leave empty for no cap." },
+  "branchSummary.reserveTokens": { "label": "Branch summary reserve", "description": "Token space reserved for the output of the summary generated when leaving a branch." },
+  "compaction.modelThresholdsEnabled": { "label": "Model compaction thresholds", "description": "Let each model carry its own compaction trigger point; a subagent override wins." },
+  "retry.enabled": { "label": "Auto retry", "description": "Retry failed model requests with backoff." },
+  "retry.baseDelayMs": { "label": "Retry base delay (ms)", "description": "Wait before the first retry; later attempts double it." },
+  "providers.anthropic.slowMode": { "label": "Anthropic slow mode", "description": "Slow the request pace under rate-limit pressure; automatic switches on error signals." },
+  "commit.mapReduceEnabled": { "label": "Commit map-reduce", "description": "Summarize large diffs in chunks before composing the commit message." },
+  "commit.mapReduceThreshold": { "label": "Map-reduce threshold (tokens)", "description": "Diffs above this token count switch to chunked summarization." },
+  "commit.mapBatchTokenBudget": { "label": "Map batch budget (tokens)", "description": "Maximum tokens sent to the model per chunk." },
+  "commit.cacheEnabled": { "label": "Commit message cache", "description": "Reuse commit messages for identical diffs to save model calls." },
+  "commit.cacheTtlDays": { "label": "Cache TTL (days)", "description": "How long cached commit messages stay valid before regeneration." },
+  "commit.changelogMaxDiffChars": { "label": "Changelog diff limit (chars)", "description": "Maximum diff length read when generating the changelog." },
+  "shellPath": { "label": "Shell path", "description": "Interpreter used to run commands; empty uses the system default." },
+  "shellCommandPrefix": { "label": "Command prefix (legacy)", "description": "Forwarded to legacy extensions only; OMP's native shell never applies it." },
+  "async.maxJobs": { "label": "Background job limit", "description": "Background jobs allowed to run at once; extra jobs queue." },
+  "gc.compress": { "label": "Compress cold sessions", "description": "Compress old session files in place with the filesystem's transparent compression." },
+  "gc.compressAfterDays": { "label": "Compress after (days)", "description": "Compress sessions idle longer than this many days." },
 };
 
 export const OPTS_EN: Record<string, Record<string, string>> = {
   "advisor.continueSeverity": { "nit": "Nit", "concern": "Concern", "blocker": "Blocker" },
+  "providers.anthropic.slowMode": { "off": "Off", "auto": "Automatic" },
   "computer.backgroundFallback": { "takeover": "Takeover", "refuse": "Refuse" },
   "hindsight.recallBudget": { "low": "Low", "mid": "Mid", "high": "High" },
   "dev.autoqaConsent": { "unset": "Not asked", "granted": "Granted", "denied": "Denied" },

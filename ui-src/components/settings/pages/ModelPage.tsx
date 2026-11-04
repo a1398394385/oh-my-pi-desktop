@@ -1032,7 +1032,7 @@ function ProviderModelsView({ prov, models }: { prov: string; models: CatalogMod
   );
 }
 
-export default function ModelPage() {
+export default function ModelPage({ onBack }: { onBack?: () => void } = {}) {
   const { t } = useTranslation();
   const modelCatalog = useAppStore((s) => s.modelCatalog);
   const mpAddView = useAppStore((s) => s.mpAddView);
@@ -1076,7 +1076,19 @@ export default function ModelPage() {
 
   return (
     <div className="set-page" id="pg-model">
-      <div className="set-tt">{t("settingsPage.nav.model")}</div>
+      <div className="set-tt">
+        {onBack && (
+          <button
+            type="button"
+            className="icon-btn"
+            title={t("settingsPage.model.backToConfig")}
+            onClick={onBack}
+          >
+            <Icon name="back" size={15} />
+          </button>
+        )}
+        {t("settingsPage.nav.model")}
+      </div>
       <div className="set-desc-row">
         <span className="text-ui-sm text-faint">{t("settingsPage.model.desc")}</span>
         <span className="sp" />
