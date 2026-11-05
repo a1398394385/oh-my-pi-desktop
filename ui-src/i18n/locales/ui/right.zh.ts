@@ -169,6 +169,9 @@ export const rightZh = {
   btwPhNew: "问一个侧边问题…",
   btwPhFollowUp: "继续追问…",
   btwSend: "发送",
+  btwInjectSend: "发送到主会话",
+  btwInjectSent: "已发送",
+  btwInjectFailed: "主机未连接，未能发送",
 };
 
 export default rightZh;

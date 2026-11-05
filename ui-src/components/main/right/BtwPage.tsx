@@ -4,12 +4,13 @@
 // topics stay available from the directory.
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore } from "../../../store";
+import { useAppStore, send } from "../../../store";
 import { DOUBLE_ESC_MS } from "../../../keys";
 import { pushInputHistory, recallHistory, resetHistoryCursor } from "../../composer/lexical/draft";
 import Icon from "../../../Icon";
 import MdSurface from "../../chat/MdSurface";
 import type { BtwRecord, BtwTurn } from "../../../types/frames";
+import { splitInject } from "./btwInject";
 
 /** Opening turn first, then follow-ups: the transcript order of one topic. */
 function turnsOf(topic: BtwRecord): readonly BtwTurn[] {
@@ -148,13 +149,48 @@ function Composer({
   );
 }
 
-function Turn({ turn }: { turn: BtwTurn }) {
+/** The answer's steering prompt: send it to the main session as a steer. Sent state is local —
+ *  the host persists nothing, so a remount offers the send again. */
+function InjectBlock({ sessionId, text }: { sessionId: string; text: string }) {
   const { t } = useTranslation();
+  const connected = useAppStore((s) => s.connected);
+  const [sent, setSent] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="btw-u">
+      <div>{text}</div>
+      <button
+        className="save-btn"
+        disabled={sent}
+        onClick={() => {
+          if (!connected) {
+            setFailed(true);
+            return;
+          }
+          send({ type: "prompt", sessionId, text, steer: true });
+          setSent(true);
+        }}
+      >
+        {sent ? t("right.btwInjectSent") : t("right.btwInjectSend")}
+      </button>
+      {failed && !sent && <div className="btw-err">{t("right.btwInjectFailed")}</div>}
+    </div>
+  );
+}
+
+function Turn({ turn, sessionId }: { turn: BtwTurn; sessionId: string }) {
+  const { t } = useTranslation();
+  const parts = turn.answer ? splitInject(turn.answer) : undefined;
+  const prose = parts?.before ?? turn.answer;
   return (
     <div className="btw-turn">
       <div className="btw-u">{turn.question}</div>
       {turn.answer ? (
-        <MdSurface className="btw-a md-body md-surface" text={turn.answer} />
+        <>
+          {prose.trim() && <MdSurface className="btw-a md-body md-surface" text={prose} />}
+          {parts && <InjectBlock sessionId={sessionId} text={parts.inject} />}
+          {parts?.after.trim() && <MdSurface className="btw-a md-body md-surface" text={parts.after} />}
+        </>
       ) : (
         <div className="btw-wait">{turn.status === "running" ? t("right.btwWaiting") : t("right.btwEmptyAnswer")}</div>
       )}
@@ -204,8 +240,10 @@ function TopicChat({ sessionId, topic, onBack }: { sessionId: string; topic: Btw
         </button>
       </div>
       <div className="btw-scroll" ref={scrollRef}>
-        {turnsOf(topic).map((turn, index) => (
-          <Turn key={index} turn={turn} />
+        {turnsOf(topic).map((turn) => (
+          // Key by identity, not index: the inject block's sent state must not carry over
+          // to another topic that happens to reuse an index.
+          <Turn key={`${topic.id}:${turn.createdAt}`} turn={turn} sessionId={sessionId} />
         ))}
       </div>
       <Composer

@@ -11,9 +11,10 @@
 // store fresh from disk (crash recovery marks running turns "interrupted").
 import type { BtwHistoryRecord, BtwHistoryTurn } from "@oh-my-pi/pi-coding-agent/session/btw-history";
 import { BtwHistoryStore, beginBtwTurn, patchLatestBtwTurn, runBtwTurn } from "./bootstrap.ts";
-import { sessions, stampEvent, entryBus } from "./state.ts";
+import { H, sessions, stampEvent, entryBus } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
 import { hostI18n } from "./i18n/host.ts";
+import { settingsGet } from "./settings-compat.ts";
 
 type BtwWs = { send(data: string): unknown };
 
@@ -129,6 +130,8 @@ async function runTopic(
       question,
       history,
       conversationKey,
+      // Read per turn so a settings edit applies to the next question without a restart.
+      inject: settingsGet(H.settings, "btw.inject") === true,
       signal: run.abort.signal,
       onTextDelta: (delta: string) => {
         if (st.running.get(run.record.id) !== run) return;

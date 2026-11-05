@@ -170,6 +170,9 @@ export const rightEn = {
   btwPhNew: "Ask a side question…",
   btwPhFollowUp: "Follow up…",
   btwSend: "Send",
+  btwInjectSend: "Send to main session",
+  btwInjectSent: "Sent",
+  btwInjectFailed: "Host not connected — not sent",
 };
 
 export default rightEn;

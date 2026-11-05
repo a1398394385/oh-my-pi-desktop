@@ -441,6 +441,8 @@ const ALLOWED_EDGES = new Set([
   // /btw side conversations: btw.ts owns the topic lifecycle over the SDK primitives;
   // rpc/btw.ts narrows the wire and promotes topics into pooled sessions
   "btw.ts→bootstrap.ts", "btw.ts→state.ts", "btw.ts→stderr.ts",
+  // btw.ts reads `btw.inject` per turn so the steering-prompt switch applies without a restart
+  "btw.ts→settings-compat.ts",
   "rpc/btw.ts→btw.ts", "rpc/btw.ts→bootstrap.ts", "rpc/btw.ts→state.ts",
   "rpc/btw.ts→session-lifecycle.ts", "rpc/btw.ts→stderr.ts", "rpc/btw.ts→rpc/types.ts",
   "rpc/index.ts→rpc/btw.ts",
