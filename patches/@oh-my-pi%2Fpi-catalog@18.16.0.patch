@@ -16,10 +16,10 @@ index 8dccede..04c048d 100644
  /** How `reader` bills replayed thinking; `signature` unless its lineage declares otherwise. */
  export declare function resolveThinkingReplayTokens(reader: ImageTokenizationTarget): ThinkingReplayTokens;
 diff --git a/src/compat/axes.ts b/src/compat/axes.ts
-index d7887c2..c89a6da 100644
+index c2c7594..a62c18d 100644
 --- a/src/compat/axes.ts
 +++ b/src/compat/axes.ts
-@@ -447,14 +447,15 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
+@@ -443,14 +443,15 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
  	/**
  	 * How the model line bills a replayed signed thinking block as input:
  	 * `output` bills the reasoning its signature carries, at the size the turn
@@ -36,8 +36,8 @@ index d7887c2..c89a6da 100644
 -		values: ["output", "signature"],
 +		values: ["output", "signature", "none"],
  	},
- 	"delegation-bias": { key: "delegationBias", set: "catalog", shape: "scalar", values: DELEGATION_BIASES },
- 	"discovery-api": { key: "discoveryApi", set: "catalog", shape: "scalar" },
+ 	/**
+ 	 * Stream loop guard for the model line, on every host and API (read
 diff --git a/src/compat/cascade.ts b/src/compat/cascade.ts
 index 7728ebe..6155cdf 100644
 --- a/src/compat/cascade.ts

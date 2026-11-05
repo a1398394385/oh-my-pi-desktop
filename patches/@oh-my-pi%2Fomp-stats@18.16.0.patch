@@ -1,5 +1,5 @@
 diff --git a/src/db.ts b/src/db.ts
-index ae30ecb..7fb3770 100644
+index e6a7a71..117eabe 100644
 --- a/src/db.ts
 +++ b/src/db.ts
 @@ -7,6 +7,8 @@ import {
@@ -11,7 +11,7 @@ index ae30ecb..7fb3770 100644
  	hasRecurringTariff,
  } from "@oh-my-pi/pi-catalog/models";
  import type { ModelCost } from "@oh-my-pi/pi-catalog/types";
-@@ -116,8 +118,10 @@ const COST_UNPRICED_BACKFILL_KEY = "messages_cost_unpriced_v1";
+@@ -118,8 +120,10 @@ const COST_UNPRICED_BACKFILL_KEY = "messages_cost_unpriced_v1";
  const NO_CACHE_INPUT_BACKFILL_KEY = "cost_no_cache_input_v1";
  // Zero-cost rows are repriced from the bundled catalog once per release (the
  // value stored is the version that ran it), since only a catalog update can
@@ -24,7 +24,7 @@ index ae30ecb..7fb3770 100644
  function shouldResetBackfill(value: string | undefined): boolean {
  	return value !== BACKFILL_COMPLETE && value !== BACKFILL_PENDING;
  }
-@@ -376,6 +380,24 @@ function hasBillableCost(cost: ModelCost): boolean {
+@@ -397,6 +401,24 @@ function hasBillableCost(cost: ModelCost): boolean {
  	return cost.input !== 0 || cost.output !== 0 || cost.cacheRead !== 0 || cost.cacheWrite !== 0;
  }
  
@@ -49,7 +49,7 @@ index ae30ecb..7fb3770 100644
  function getBundledModelCost(provider: string, modelId: string): ModelCost | null {
  	const model = getBundledModel(provider as GeneratedProvider, modelId);
  	return model?.cost ?? null;
-@@ -402,7 +424,7 @@ function getCatalogCost(provider: string, modelId: string): ModelCost | null {
+@@ -423,7 +445,7 @@ function getCatalogCost(provider: string, modelId: string): ModelCost | null {
  		}
  	}
  

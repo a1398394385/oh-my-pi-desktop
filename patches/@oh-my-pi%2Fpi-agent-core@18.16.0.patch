@@ -1,8 +1,8 @@
 diff --git a/src/tokenizer.ts b/src/tokenizer.ts
-index 25cd497..f02d4a7 100644
+index b0eaba3..7bc04fc 100644
 --- a/src/tokenizer.ts
 +++ b/src/tokenizer.ts
-@@ -493,11 +493,14 @@ export class Tokenizer {
+@@ -530,11 +530,14 @@ export class Tokenizer {
  				// The visible text undercounts a native replay: the provider rebuilds
  				// the full reasoning from its signature, billed at the turn's output
  				// size less the visible text shake has since elided from it. The

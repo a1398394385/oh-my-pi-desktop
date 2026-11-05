@@ -1,8 +1,8 @@
 diff --git a/dist/types/sdk.d.ts b/dist/types/sdk.d.ts
-index b7da6ad..9186d07 100644
+index 44dbf5c..e9ddb72 100644
 --- a/dist/types/sdk.d.ts
 +++ b/dist/types/sdk.d.ts
-@@ -367,6 +367,14 @@ export interface CreateAgentSessionOptions {
+@@ -392,6 +392,14 @@ export interface CreateAgentSessionOptions {
      localProtocolOptions?: LocalProtocolOptions;
      /** Settings instance. Default: Settings.init({ cwd, agentDir }) */
      settings?: Settings;
@@ -18,10 +18,10 @@ index b7da6ad..9186d07 100644
       * Legacy alias for `settings`. Older Pi extensions pass SettingsManager.create(...)
       * through this field; accept it so their SDK calls keep the configured settings.
 diff --git a/dist/types/session/agent-session-types.d.ts b/dist/types/session/agent-session-types.d.ts
-index 5a0b45f..29983ed 100644
+index 697cb1c..784f382 100644
 --- a/dist/types/session/agent-session-types.d.ts
 +++ b/dist/types/session/agent-session-types.d.ts
-@@ -284,6 +284,14 @@ export interface AgentSessionConfig {
+@@ -304,6 +304,14 @@ export interface AgentSessionConfig {
      sideStreamFn?: StreamFn;
      /** Stream wrapper for advisor requests. */
      advisorStreamFn?: StreamFn;
@@ -37,13 +37,13 @@ index 5a0b45f..29983ed 100644
      codexResetCoordinator?: CodexAutoRedeemCoordinator;
      /** Provider payload hook used by the active session request path. */
 diff --git a/dist/types/session/session-advisors.d.ts b/dist/types/session/session-advisors.d.ts
-index 88cc5e4..7627920 100644
+index b48951c..0639f10 100644
 --- a/dist/types/session/session-advisors.d.ts
 +++ b/dist/types/session/session-advisors.d.ts
-@@ -137,6 +137,13 @@ export interface SessionAdvisorsOptions {
-     configWarnings?: string[];
+@@ -138,6 +138,13 @@ export interface SessionAdvisorsOptions {
      streamFn?: StreamFn;
-     transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
+     /** Builds each advisor's provider request transform; called once per advisor agent. */
+     createTransformProviderContext?: () => (context: Context, model: Model) => Context | Promise<Context>;
 +    /**
 +     * Override the `compaction.enabled` half of this advisor's own compaction gate.
 +     * `undefined` (default) reads the session settings. A host that overrides
@@ -55,15 +55,15 @@ index 88cc5e4..7627920 100644
  /** Options accepted when an advisor injects a primary-session message. */
  export interface AdvisorMessageDeliveryOptions {
 diff --git a/scripts/legacy-pi-virtual-module.ts b/scripts/legacy-pi-virtual-module.ts
-index a6ec37a..4596552 100644
+index 46e636c..23a5258 100644
 --- a/scripts/legacy-pi-virtual-module.ts
 +++ b/scripts/legacy-pi-virtual-module.ts
 @@ -1,3 +1,4 @@
 +import * as fs from "node:fs";
  import * as path from "node:path";
  import { isEnoent } from "@oh-my-pi/pi-utils/fs-error";
- 
-@@ -21,18 +22,20 @@ interface BundledPackage {
+ import { isRecord } from "@oh-my-pi/pi-utils/type-guards";
+@@ -22,18 +23,20 @@ interface BundledPackage {
  	readonly identifier: string;
  	readonly rootShim: string | null;
  	readonly rootWildcard: RootWildcard;
@@ -91,7 +91,7 @@ index a6ec37a..4596552 100644
  ];
  
  const TYPEBOX_MODULE_KEY = "typebox";
-@@ -125,7 +128,13 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
+@@ -122,7 +125,13 @@ export async function collectBundledPiEntries(): Promise<BundledPiEntry[]> {
  	}
  
  	for (const pkg of BUNDLED_PACKAGES) {
@@ -107,10 +107,10 @@ index a6ec37a..4596552 100644
  		const manifest: unknown = await Bun.file(manifestPath).json();
  		if (!isRecord(manifest) || typeof manifest.name !== "string") {
 diff --git a/src/sdk.ts b/src/sdk.ts
-index d4103c2..26ba4be 100644
+index ef6a078..ff81a3f 100644
 --- a/src/sdk.ts
 +++ b/src/sdk.ts
-@@ -878,6 +878,14 @@ export interface CreateAgentSessionOptions {
+@@ -917,6 +917,14 @@ export interface CreateAgentSessionOptions {
  
  	/** Settings instance. Default: Settings.init({ cwd, agentDir }) */
  	settings?: Settings;
@@ -125,7 +125,7 @@ index d4103c2..26ba4be 100644
  	/**
  	 * Legacy alias for `settings`. Older Pi extensions pass SettingsManager.create(...)
  	 * through this field; accept it so their SDK calls keep the configured settings.
-@@ -4898,6 +4906,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
+@@ -5123,6 +5131,7 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
  			onResponse,
  			sideStreamFn: settingsAwareStreamFn,
  			advisorStreamFn: settingsAwareStreamFn,
@@ -134,10 +134,10 @@ index d4103c2..26ba4be 100644
  			rebuildSystemPrompt,
  			getXdevToolEntries: () => (toolSession.xdev ? xdevEntries(toolSession.xdev) : []),
 diff --git a/src/session/agent-session-types.ts b/src/session/agent-session-types.ts
-index 059ff90..880d9f7 100644
+index 4580d8c..108327c 100644
 --- a/src/session/agent-session-types.ts
 +++ b/src/session/agent-session-types.ts
-@@ -313,6 +313,14 @@ export interface AgentSessionConfig {
+@@ -333,6 +333,14 @@ export interface AgentSessionConfig {
  	sideStreamFn?: StreamFn;
  	/** Stream wrapper for advisor requests. */
  	advisorStreamFn?: StreamFn;
@@ -153,25 +153,25 @@ index 059ff90..880d9f7 100644
  	codexResetCoordinator?: CodexAutoRedeemCoordinator;
  	/** Provider payload hook used by the active session request path. */
 diff --git a/src/session/agent-session.ts b/src/session/agent-session.ts
-index cd35ccf..f3d51f4 100644
+index eecfac3..9c11cb4 100644
 --- a/src/session/agent-session.ts
 +++ b/src/session/agent-session.ts
-@@ -2522,6 +2522,7 @@ export class AgentSession implements SettingsScope {
- 			configWarnings: config.advisorConfigWarnings,
- 			streamFn: config.advisorStreamFn,
- 			transformProviderContext: config.transformProviderContext,
+@@ -2691,6 +2691,7 @@ export class AgentSession implements SettingsScope {
+ 			createTransformProviderContext:
+ 				config.createAdvisorTransformProviderContext ??
+ 				(sharedTransformProviderContext ? () => sharedTransformProviderContext : undefined),
 +			compactionEnabled: config.advisorCompactionEnabled,
  		});
  
  		const maintenanceHost: SessionMaintenanceHost = {
 diff --git a/src/session/session-advisors.ts b/src/session/session-advisors.ts
-index beffbc5..75fe29e 100644
+index f2645c3..ec9b559 100644
 --- a/src/session/session-advisors.ts
 +++ b/src/session/session-advisors.ts
-@@ -455,6 +455,19 @@ export interface SessionAdvisorsOptions {
- 	configWarnings?: string[];
+@@ -467,6 +467,19 @@ export interface SessionAdvisorsOptions {
  	streamFn?: StreamFn;
- 	transformProviderContext?: (context: Context, model: Model) => Context | Promise<Context>;
+ 	/** Builds each advisor's provider request transform; called once per advisor agent. */
+ 	createTransformProviderContext?: () => (context: Context, model: Model) => Context | Promise<Context>;
 +	/**
 +	 * Override the `compaction.enabled` half of this advisor's own compaction gate.
 +	 * `undefined` (default) reads the session settings, which is what every host
@@ -188,24 +188,24 @@ index beffbc5..75fe29e 100644
  }
  
  /** Options accepted when an advisor injects a primary-session message. */
-@@ -555,6 +568,8 @@ export class SessionAdvisors {
+@@ -568,6 +581,8 @@ export class SessionAdvisors {
+ 	#advisorContextPrompt: string | undefined;
  	#advisorMemoryPrompt: string | undefined;
  	#advisorStreamFn: StreamFn | undefined;
- 	#transformProviderContext: ((context: Context, model: Model) => Context | Promise<Context>) | undefined;
 +	/** See {@link SessionAdvisorsOptions.compactionEnabled}. */
 +	#advisorCompactionEnabled: boolean | undefined;
+ 	#createTransformProviderContext: (() => (context: Context, model: Model) => Context | Promise<Context>) | undefined;
  	#advisors: ActiveAdvisor[] = [];
  	#advisorConfigs: AdvisorConfig[] | undefined;
- 	#advisorConfigWarnings: string[];
-@@ -630,6 +645,7 @@ export class SessionAdvisors {
+@@ -643,6 +658,7 @@ export class SessionAdvisors {
+ 		this.#advisorConfigs = options.configs;
  		this.#advisorConfigWarnings = options.configWarnings ?? [];
  		this.#advisorStreamFn = options.streamFn;
- 		this.#transformProviderContext = options.transformProviderContext;
 +		this.#advisorCompactionEnabled = options.compactionEnabled;
+ 		this.#createTransformProviderContext = options.createTransformProviderContext;
  		if (this.#advisorEnabled) this.#buildAdvisorRuntime();
  	}
- 
-@@ -2342,7 +2358,7 @@ export class SessionAdvisors {
+@@ -2402,7 +2418,7 @@ export class SessionAdvisors {
  
  		const configuredCompaction = cfgCompaction.get(this.#host.settings);
  		const methods = resolveCompactionMethodOrder(configuredCompaction.methodOrder);
