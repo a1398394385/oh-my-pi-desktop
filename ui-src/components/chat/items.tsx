@@ -5,6 +5,7 @@
 // dispatches per item. Migrated from renderItemList/appendChatItem in ui/chat.js;
 // railEntries are collected along the traversal (message rail data: one tick per message —
 // the key shares the same source as the data-fk anchors; MsgRail locates the DOM by key).
+import { Fragment } from "react";
 import type { ReactElement, ReactNode } from "react";
 import type { AdvisorItem, AdvisorNote, ChatItem, RailEntry, UserItem, AssistantItem } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
@@ -16,6 +17,7 @@ import AssistantMsg from "./AssistantMsg";
 import TurnActs from "./TurnActs";
 import ThinkingRow from "./ThinkingRow";
 import ToolRow from "./ToolRow";
+import MdSurface from "./MdSurface";
 import BashRow from "./BashRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
 import ReadonlyGroup, { roSummaryText } from "./ReadonlyGroup";
@@ -79,22 +81,36 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   }
   if (item.role === "tool") {
     railEntries.push({ key, role: "tool", text: railToolText(item) });
-    // The extra scalars are mutation snapshots (T2): tool_update mutates the item in
-    // place (same object reference), so memo compares these captured values instead —
-    // only rows whose own data changed re-render on a delta flush
+    // `out://` replies read as the agent talking to the user, mid-turn. They render as their
+    // own block after the row (never inside the tool card): a folded compact row or a merged
+    // terminal group would otherwise swallow the only copy the user ever sees. Items carrying
+    // replies also stay out of the command group below for the same reason.
+    const replies = item.replies;
     return (
-      <ToolRow
-        item={item}
-        key={key}
-        output={item.output}
-        running={!!item.running}
-        files={item.files}
-        added={item.added}
-        removed={item.removed}
-        todo={item.todo}
-        details={item.details}
-        diffContent={item.diffContent}
-      />
+      <Fragment key={key}>
+        {/* The extra scalars are mutation snapshots (T2): tool_update mutates the item in
+            place (same object reference), so memo compares these captured values instead —
+            only rows whose own data changed re-render on a delta flush */}
+        <ToolRow
+          item={item}
+          output={item.output}
+          running={!!item.running}
+          files={item.files}
+          added={item.added}
+          removed={item.removed}
+          todo={item.todo}
+          details={item.details}
+          diffContent={item.diffContent}
+        />
+        {replies?.length ? (
+          <div className="out-reply" key={key + "-out"}>
+            <div className="out-reply-lbl">{t("chat.toolReplies")}</div>
+            {replies.map((reply, i) => (
+              <MdSurface className="md-body md-surface" text={reply} key={i} />
+            ))}
+          </div>
+        ) : null}
+      </Fragment>
     );
   }
   if (item.role === "loop") {
@@ -290,6 +306,11 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
 // hideProcessFrom: index of the live turn's user row; everything after it that is not an
 // assistant output is dropped (the concise style's live view). Folding is untouched, so
 // the same rows lay out in standard shape once the reveal toggle disables the filter.
+/** A terminal row that carries `out://` replies renders on its own (see the tool branch above). */
+function hasOutReply(item: ChatItem): boolean {
+  return item.role === "tool" && !!item.replies?.length;
+}
+
 export function renderItems(
   items: ChatItem[],
   pfx: string,
@@ -363,9 +384,9 @@ export function renderItems(
           continue;
         }
       }
-      if (mergeSameType && isCmdEvent(item)) {
+      if (mergeSameType && isCmdEvent(item) && !hasOutReply(item)) {
         const subs: ChatItem[] = [item];
-        while (i + 1 < items.length && !liveOpen(items[i + 1]) && isCmdEvent(items[i + 1])) subs.push(items[++i]);
+        while (i + 1 < items.length && !liveOpen(items[i + 1]) && isCmdEvent(items[i + 1]) && !hasOutReply(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
           const groupItem: ChatItem = { role: "tool", name: "cmd", text: t("chat.labelTerminal"), group: subs };
           railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
@@ -530,7 +551,7 @@ export function renderItems(
         node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (mergeSameType && !node && isCmdEvent(item)) {
+    if (mergeSameType && !node && isCmdEvent(item) && !hasOutReply(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && !liveOpen(items[i + 1]) && isCmdEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {

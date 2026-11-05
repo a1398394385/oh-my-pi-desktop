@@ -39,6 +39,7 @@ export const chatEn = {
   labelRead: "Read",
   labelDirectory: "Directory",
   thinking: "Thinking",
+  toolReplies: "Mid-run replies",
   // ---- placeholders / empty states ----
   noCommand: "(no command)",
   noOutput: "(no output)",

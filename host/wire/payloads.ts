@@ -544,6 +544,10 @@ export type UiEvent =
       output?: string;
       details?: unknown;
       diffContent?: string;
+      /** `out://` replies the call has produced so far (base eval/bash details.replies, verbatim, cumulative) */
+      replies?: string[];
+      /** Non-terminal frame (the call is still running): update the card but do not seal/fold it */
+      running?: boolean;
     }
   | { kind: "tool_details"; name: string; toolCallId?: string; details?: unknown } // in-flight refresh from a returned async tool (task spawn progress); carries no terminal semantics
   | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean; final?: boolean } // final: this turn ended stopReason "stop" — its settled text is a delivered output (loop-group lift marker)

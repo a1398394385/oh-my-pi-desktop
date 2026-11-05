@@ -653,6 +653,11 @@ export function applyEvent(msg: EventFrame): void {
     updateSession(msg.sessionId, (s) => {
       const last = findToolRow(s, msg.toolCallId, msg.name);
       if (last) {
+        // `out://` replies ride a running (non-terminal) update: refresh the card body only.
+        // Sealing here would stop the spinner mid-call and collapse the card again — only the
+        // terminal frame (running unset) folds the row.
+        if (msg.replies?.length) last.replies = msg.replies;
+        if (msg.running) return;
         if (msg.files) last.files = uniqueFiles(msg.files);
         if (msg.added != null) last.added = msg.added;
         if (msg.removed != null) last.removed = msg.removed;

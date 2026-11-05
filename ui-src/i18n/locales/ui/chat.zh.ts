@@ -36,6 +36,7 @@ export const chatZh = {
   labelRead: "读取",
   labelDirectory: "目录",
   thinking: "思考",
+  toolReplies: "中途回复",
   // ---- placeholders / empty states ----
   noCommand: "（无命令）",
   noOutput: "（无输出）",

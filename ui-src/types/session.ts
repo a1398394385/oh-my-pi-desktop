@@ -156,6 +156,7 @@ export interface ToolItem {
   running?: boolean; // executing (landed by store.ts: set by tool frames, reset by tool_update; clearRunningTools as fallback)
   todo?: { content?: string; total?: number; done?: number };
   diffContent?: string;
+  replies?: string[]; // `out://` mid-call replies (host tool_update.replies), cumulative; rendered in the card body
   streaming?: boolean; // executing (written in place by components)
   cmdExpanded?: boolean; // terminal output expanded (written in place by components)
   diffExpanded?: boolean; // diff expanded (written in place by components)

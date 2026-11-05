@@ -14,12 +14,25 @@ import { advisorEvent, advisorHistoryRow } from "./translate-advisor.ts";
 // rendering must still strip (kept verbatim from acp-context.ts).
 const REF_TAG_RE = /<dcp-message-id>m\d{1,5}<\/dcp-message-id>\n?/g;
 
+// `out://` mid-call replies (base eval/bash details.replies): each tool update repeats
+// the replies so far, so the frame carries the whole array rather than a delta.
+function repliesOf(details: unknown): string[] | undefined {
+  const replies = (details as { replies?: unknown } | null | undefined)?.replies;
+  if (!Array.isArray(replies)) return undefined;
+  const texts = replies.filter((r): r is string => typeof r === "string");
+  return texts.length > 0 ? texts : undefined;
+}
+
 // In-flight write tool snapshot before mutation: caches the pre-write text to
 // generate an accurate diff between the old and new file contents when the
 // tool completes, avoiding whole-file fallbacks; `owner` scopes agent_end cleanup to the parking session.
 // Exported for the diff tests: they spin the event loop until a pending snapshot lands
 // before overwriting the fixture file (the pre-read is async, see preadWriteOldText).
 export const pendingWrites = new Map<string, { path: string; oldText?: string; owner?: PoolEntry }>();
+
+// Reply count already forwarded per tool call: eval/bash repeat every reply on each update
+// (~20/s while output streams), so only a longer array is worth a frame.
+const forwardedReplies = new Map<string, { count: number; owner: PoolEntry }>();
 
 // 3c: async pre-read of the file a `write` tool is about to overwrite (the sync
 // version ran on every socket fan-out's critical path). Placeholder set synchronously,
@@ -364,6 +377,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         [...entry.transcript].reverse().find((t) => t.role === "tool" && t.name === ev.toolName);
       const pendingWrite = ev.toolCallId ? pendingWrites.get(ev.toolCallId) : undefined;
       if (ev.toolCallId) pendingWrites.delete(ev.toolCallId);
+      if (ev.toolCallId) forwardedReplies.delete(ev.toolCallId);
       if (item) Object.assign(item, summarizeResult(ev.toolName, { ...(item.args || {}), ...(ev.args || {}) }, ev.result, pendingWrite));
       return {
         kind: "tool_update",
@@ -376,21 +390,31 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         output: item?.output,
         details: item?.details,
         diffContent: item?.diffContent, // The edit row's inline expansion prefers the real diff from this call's reply
+        // Terminal frame keeps the out:// replies the row showed while running (bash/eval
+        // results carry the last full set; a backgrounded call omits them, the store then keeps
+        // whatever the running frames already delivered)
+        replies: repliesOf(ev.result?.details),
       };
     }
     case "tool_execution_update": {
       // Async task jobs keep reporting spawn progress after the call returned and its
       // tool_execution_end settled the card, so late-resolved models (spawns still in
-      // setup when the result snapshot was taken) would stay missing. Forward details
-      // only: reusing tool_update would mark the row finished and collapse it again.
-      // shortcut: only `task` is forwarded — it is the one tool whose work outlives the
-      // call. Another tool that starts reporting after its result will silently stop
-      // refreshing the card here; upgrade to a frame with an explicit running flag (and
-      // make the store fold only on the terminal one) when that happens.
-      if (ev.toolName !== "task") return null;
-      const details = ev.partialResult?.details;
-      if (!details) return null;
-      return { kind: "tool_details", name: ev.toolName, toolCallId: ev.toolCallId, details };
+      // setup when the result snapshot was taken) would stay missing. Forward details only.
+      if (ev.toolName === "task") {
+        const details = ev.partialResult?.details;
+        if (!details) return null;
+        return { kind: "tool_details", name: ev.toolName, toolCallId: ev.toolCallId, details };
+      }
+      // `out://` mid-call replies (eval/bash): the base repeats every reply so far on each
+      // update while the call runs. running:true keeps the store from sealing/folding the
+      // row — only the terminal tool_update marks it done. Other progress output is not
+      // forwarded: it would churn the card on every stdout chunk.
+      const replies = repliesOf(ev.partialResult?.details);
+      if (!replies) return null;
+      const forwarded = ev.toolCallId ? forwardedReplies.get(ev.toolCallId) : undefined;
+      if (forwarded && replies.length <= forwarded.count) return null;
+      if (ev.toolCallId) forwardedReplies.set(ev.toolCallId, { count: replies.length, owner: entry });
+      return { kind: "tool_update", name: ev.toolName, toolCallId: ev.toolCallId, replies, running: true };
     }
     case "agent_end":
       // isTerminal === false means maintenance/async delivery will keep running; not a true end
@@ -398,6 +422,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       flushAssistantDraft(entry);
       // 3c: an interrupted turn can strand a pre-read snapshot (≤2MB) — sweep this session's at terminal end
       for (const [k, v] of pendingWrites) if (v.owner === entry) pendingWrites.delete(k);
+      for (const [k, v] of forwardedReplies) if (v.owner === entry) forwardedReplies.delete(k);
       const userEntryId = backfillUserEntryIds(entry);
       return {
         kind: "turn_end",
