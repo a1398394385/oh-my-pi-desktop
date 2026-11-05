@@ -1,6 +1,7 @@
 /* ── Layout: middle / right rounded cards inset on the base ───────────────────────────────── */
 /* ── site-wide z-index scale (the single source of truth; pick a tier here for new overlays, don't invent your own) ────────────
    20   .sticky-user-wrap (sticky user message bar)
+   21   .scroll-bottom (floating scroll-to-bottom button: must stay clickable over that bubble)
    60   #statusWrap (#main inset TODO card) / .find-bar / #msgRail / .resizer (in-panel fixed overlays)
    100  .dock (composer container: its inner dropdown menus cap here, always below hover cards/settings/toasts)
    200  .ring-pop (hover detail cards)

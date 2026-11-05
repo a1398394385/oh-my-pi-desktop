@@ -847,7 +847,9 @@
   flex: none;
   background: var(--panel); --hover-fill: var(--menu-hl); border: 1px solid var(--line); color: var(--dim);
   display: flex; align-items: center; justify-content: center;
-  cursor: pointer; z-index: 5; box-shadow: 0 4px 12px var(--tint-black-350);
+  /* Above .sticky-user-wrap (z-20): the pinned user bubble sits in the same flow, so at the
+     bottom of a long turn it paints over the button otherwise. */
+  cursor: pointer; z-index: 21; box-shadow: 0 4px 12px var(--tint-black-350);
 }
 
 .scroll-bottom:hover { color: var(--text); background: var(--hover-fill); }
