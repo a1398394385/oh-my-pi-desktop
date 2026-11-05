@@ -8,9 +8,7 @@ export const hubExtZh = {
   bgExit: "退出码 {{code}}",
   bgCancel: "停止该任务",
   stopSub: "停止",
-  steerSub: "转向",
-  steerSend: "发送转向指令",
-  steerPh: "输入转向指令，回车发送",
+  openSub: "打开会话",
   warming: "缓存保温中",
 };
 export default hubExtZh;

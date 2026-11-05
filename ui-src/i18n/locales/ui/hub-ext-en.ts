@@ -8,9 +8,7 @@ export const hubExtEn = {
   bgExit: "exit {{code}}",
   bgCancel: "Cancel job",
   stopSub: "Stop",
-  steerSub: "Steer",
-  steerSend: "Send steer message",
-  steerPh: "Steer message — Enter to send",
+  openSub: "Open session",
   warming: "Cache warming",
 };
 export default hubExtEn;

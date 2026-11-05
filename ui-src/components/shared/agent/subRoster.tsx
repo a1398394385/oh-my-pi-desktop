@@ -2,10 +2,11 @@
 // middle-card Agent Hub and the right-sidebar subagent tab (one component, two surfaces).
 // Only the surrounding chrome differs: the hub adds its keybind bar and back button, and
 // passes onOpen so a row opens the sidebar detail instead of the hub's session jump.
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs, openSessionByPath } from "../../../store";
-import { SubControls, SteerInput } from "./SubControls";
+import { expandRightPanel } from "../../main/right/tabs";
+import { SubControls } from "./SubControls";
 import { SubStatusPill } from "./SubStatusPill";
 import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, ST_GROUP, ST_GROUPS, ST_KEY, subStatus, currentProgress, type SegT, type StGroup } from "./subShared";
 import type { SubagentState } from "../../../types/session";
@@ -13,6 +14,16 @@ import type { SubagentState } from "../../../types/session";
 // The subset of the open-session snapshot the roster reads; both surfaces pass the live
 // session object, whose extra fields stay invisible to the roster.
 export type RosterSession = { sessionId: string; subagents: Map<string, SubagentState> };
+
+/** Switch the middle column to a subagent: its own session when the child persisted one,
+ * otherwise the sidebar detail. Shared by the Agent Hub Enter key, the roster row's
+ * double-click and its open button; leaving the hub first keeps the surfaces consistent. */
+export function openSubagentSession(id: string, sub: SubagentState | undefined): void {
+  const st = useAppStore.getState();
+  st.closeHub();
+  if (sub?.sessionFile) openSessionByPath(sub.sessionFile);
+  else expandRightPanel("subagent", { selectedSubagent: id });
+}
 
 // Relative age for the roster's "active N ago" column (seconds bucketed like the TUI's formatAge)
 function ageText(sec: number, t: SegT): string {
@@ -162,9 +173,6 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
   const age = ageText(Math.max(1, Math.round((Date.now() - lastActivity) / 1000)), t);
   const model = modelShort(sub.usage?.resolvedModel);
   const rowTask = sub.description || sub.task || sub.text.slice(0, 80) || "…";
-  // Steer input expands in place below the row (div root: the controls are buttons, which
-  // cannot nest inside the old <button> root)
-  const [steerOpen, setSteerOpen] = useState(false);
   return (
     <div
       role="option"
@@ -174,10 +182,7 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
       onDoubleClick={() => {
         // Sidebar tab: both clicks land on the same inspector (onOpen), so nothing to do
         if (onOpen) return onOpen();
-        if (sub.sessionFile) {
-          useAppStore.getState().closeHub();
-          openSessionByPath(sub.sessionFile);
-        }
+        openSubagentSession(row.id, sub);
       }}
     >
       <span className="hub-row-head">
@@ -187,7 +192,7 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
         <SubStatusPill sub={sub} />
         <span className="hub-name">{sub.name ?? sub.agent}</span>
         {flat && sub.parent && sub.parent !== "Main" ? <span className="text-faint"> ↳ {sub.parent}</span> : null}
-        {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onSteer={() => setSteerOpen((v) => !v)} /> : null}
+        {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onOpen={() => openSubagentSession(row.id, sub)} /> : null}
         {model ? <span className="hub-model">{model}</span> : null}
       </span>
       {/* Running rows show the live progress line ("Current" in the detail) instead of the
@@ -205,7 +210,6 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
         <span className="hub-meta-usage">{segs.join(" · ")}</span>
         <span className="hub-meta-right">{times.concat(age).join(" · ")}</span>
       </span>
-      {steerOpen && sub.streaming ? <SteerInput sessionId={sessionId} agentId={row.id} onClose={() => setSteerOpen(false)} /> : null}
     </div>
   );
 }

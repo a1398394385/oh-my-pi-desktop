@@ -5,9 +5,8 @@
 // bridges into the regular subagent tab; x kills via kill_subagent.
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, openSessionByPath } from "../../store";
-import { expandRightPanel } from "./right/tabs";
-import { HubRow, RosterHead, useRosterRows, useRosterTick } from "../shared/agent/subRoster";
+import { useAppStore, send } from "../../store";
+import { HubRow, RosterHead, useRosterRows, useRosterTick, openSubagentSession } from "../shared/agent/subRoster";
 
 const DOUBLE_LEFT_MS = 500;
 
@@ -67,15 +66,7 @@ export default function AgentHub() {
           e.stopPropagation();
           // Open the subagent session (or fallback to subagent detail tab) and leave the hub
           const id = st.hubSel;
-          if (!id) return;
-          const sub = s?.subagents.get(id);
-          if (sub?.sessionFile) {
-            st.closeHub();
-            openSessionByPath(sub.sessionFile);
-            return;
-          }
-          st.closeHub();
-          expandRightPanel("subagent", { selectedSubagent: id });
+          if (id) openSubagentSession(id, s?.subagents.get(id));
           return;
         }
         case "x": {
