@@ -66,3 +66,121 @@
   border-color: var(--tint-job-running-350);
   background: var(--tint-job-running-80);
 }
+
+/* Live job widget (base SDK JobWidgetView) inside the expanded background-command card.
+   Blocks are plain DOM (no chart dependency); tones are mapped to semantic tokens in
+   JobWidget.tsx. The panel is tinted, not bordered: the expand card already ends on a
+   hairline, and a second boundary on the same edge would double the divider. */
+.bgw {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 8px 0 10px; padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  font-size: var(--ui-fs-sm); color: var(--dim);
+  min-width: 0;
+}
+
+.bgw-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+
+.bgw-title {
+  flex: 1 1 auto; min-width: 0;
+  color: var(--text); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.bgw-tag {
+  flex: none; color: var(--faint);
+  font-size: var(--ui-fs-xs); line-height: 1;
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 2px 6px; white-space: nowrap;
+}
+
+.bgw-glance {
+  flex: none; display: inline-flex; align-items: baseline; gap: 6px;
+  white-space: nowrap; font-size: var(--ui-fs-xs);
+}
+
+.bgw-num { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.bgw-muted { color: var(--faint); }
+.bgw-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+
+.bgw-caption { color: var(--faint); font-size: var(--ui-fs-xs); line-height: 1.4; }
+
+.bgw-stage {
+  color: var(--dim); font-size: var(--ui-fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.bgw-block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.bgw-cap {
+  color: var(--faint); font-size: var(--ui-fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.bgw-spark-row { display: flex; align-items: stretch; gap: 10px; min-width: 0; }
+
+.bgw-spark { position: relative; flex: 1 1 auto; min-width: 0; height: 44px; border-bottom: 1px solid var(--line-soft); }
+
+.bgw-spark-bars { position: absolute; inset: 0; display: flex; align-items: flex-end; gap: 2px; }
+
+.bgw-spark-bar { flex: 1 1 0; min-width: 1px; border-radius: 1px 1px 0 0; opacity: .8; }
+
+/* Reference line over the columns; the tone rides on borderTopColor from the view. */
+.bgw-spark-mark {
+  position: absolute; left: 0; right: 0; height: 0;
+  border-top: 1px dashed var(--faint); opacity: .7;
+  pointer-events: none; z-index: 1;
+}
+
+.bgw-spark-side {
+  flex: none; display: flex; flex-direction: column; justify-content: center; align-items: flex-end;
+  gap: 2px; max-width: 45%; font-size: var(--ui-fs-xs); text-align: right;
+}
+
+.bgw-spark-side .bgw-num { font-size: var(--ui-fs-sm); }
+
+.bgw-mark-lbl { color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+.bgw-rows { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+
+.bgw-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+.bgw-row-lbl {
+  flex: 0 1 auto; max-width: 40%; min-width: 0;
+  color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.bgw-track {
+  flex: 1 1 auto; min-width: 24px; height: 6px;
+  border-radius: 999px; background: var(--tint-black-150); overflow: hidden;
+}
+
+.bgw-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+
+.bgw-row-num {
+  flex: none; color: var(--text); font-size: var(--ui-fs-xs);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+.bgw-stat { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+
+.bgw-stat-item { display: inline-flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+
+.bgw-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.bgw-cell {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 1px 7px; border-radius: 999px;
+  background: var(--tint-black-150);
+  font-size: var(--ui-fs-xs); min-width: 0;
+}
+
+.bgw-cell-lbl { color: var(--faint); white-space: nowrap; }
+
+.bgw-text {
+  font-family: var(--font-mono); font-size: var(--code-fs);
+  color: var(--dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

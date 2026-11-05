@@ -207,6 +207,10 @@ export function summarizeResult(name: string, args: any, result: any, pendingWri
     // Terminal/eval tools: carry the output text for the frontend's expandable card (truncated; details go through the artifact)
     const text = resultText(result);
     if (text) patch.output = text;
+    // Backgrounded runs carry `async.jobId` only in the result details (the output text says
+    // "Backgrounded as job …" in prose): the UI needs the id to attach the live job widget
+    // and to fold this transcript row into its bg_jobs row instead of listing both.
+    if (details?.async) patch.details = { async: details.async };
     return patch;
   }
   if (name === "hub") {

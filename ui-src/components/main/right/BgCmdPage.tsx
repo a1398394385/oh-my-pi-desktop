@@ -7,6 +7,7 @@
 // conditional rendering).
 import { Fragment, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { JobWidgetView } from "@oh-my-pi/pi-tui/tools/job-widget";
 import { useAppStore } from "../../../store";
 import { bgJobsKey } from "../../../store/session";
 import type { BgJobEntry } from "../../../store/session";
@@ -14,6 +15,7 @@ import { sendGetBgJobs } from "../../shared/agent/hubExt";
 import { t } from "../../../i18n";
 import Icon from "../../../Icon";
 import { Spin } from "../../chat/parts";
+import JobWidget from "./JobWidget";
 
 // Session items entry (loose view of the store session structure; to be replaced by the exact
 // discriminated union once types/session.ts converges)
@@ -44,6 +46,8 @@ interface BgTask {
   statusText: string;
   cwd?: string;
   timeIndex: number;
+  caption?: string | null;
+  widget?: JobWidgetView | null;
   // Snapshot-sourced rows have no transcript item behind them
   rawItem?: SessionItemLike;
 }
@@ -174,6 +178,8 @@ function getBgTasksForSession(
       statusText: job.running ? t("right.bgRunning") : t("right.bgDone"),
       cwd: job.cwd || s.cwd,
       timeIndex: baseIndex + jobIndex,
+      caption: job.caption ?? null,
+      widget: job.widget ?? null,
     });
     jobIndex++;
   }
@@ -262,6 +268,8 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
           {t("right.collapse")}
         </button>
       </div>
+      {/* Live widget for snapshot-sourced jobs: caption + whatever the job is doing now */}
+      {(task.widget || task.caption) && <JobWidget view={task.widget ?? null} caption={task.caption} />}
       {/* 2. Command line and args */}
       {task.command ? (
         <>

@@ -33,7 +33,7 @@ import { approvalDeadlineMs, timedOutAskAnswer } from "./dialog-deadline.ts";
 import { markTurnWrapped } from "./keepalive-host.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { handleVoiceEvent } from "./voice.ts";
-import { bgJobsCorrection } from "./async-jobs.ts";
+import { createBgJobsRefresh } from "./async-jobs.ts";
 import { maybeRefreshSessionTitle, syncBranchTitle } from "./session-titles.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
@@ -102,8 +102,8 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
   // it when the card is pushed (same-session tools are serial, a single
   // value slot cannot cross-contaminate)
   let askIntent: string | undefined;
-  // bg_jobs latch (see bgJobsCorrection): keeps the "all finished" correction frame flowing
-  let bgJobsHadRunning = false;
+  // bg_jobs refresh: live widget/caption frames while a job runs (see async-jobs.ts)
+  const bgJobsRefresh = createBgJobsRefresh(entry.session, sessionId, bus);
   // Realtime queue push coalescing (shared by the onQueueChange subscription
   // below and the user message_start injection confirmation): bursts of queue
   // mutations (park + release + steer in one operation) coalesce into one
@@ -131,16 +131,11 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       bus.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
     }
-    // Background jobs (18.5): a finished job's async-result delivery resumes the loop as
-    // a fresh turn, so turn_start corrects the composer badge (auto-backgrounded bash
-    // goes silent after "Backgrounded as job"; subagent tabs pull their own scope)
-    if (ev.type === "turn_start") {
-      const correction = bgJobsCorrection(entry.session, bgJobsHadRunning);
-      if (correction) {
-        bgJobsHadRunning = correction.hadRunning;
-        bus.send(JSON.stringify(stampEvent({ type: "bg_jobs", sessionId, jobs: correction.jobs })));
-      }
-    }
+    // Background jobs (18.5): tool ends can start/finish a job (auto-backgrounded
+    // bash goes silent after "Backgrounded as job") and a finished job's async-result
+    // delivery resumes the loop as a fresh turn, so both points refresh the badge and
+    // arm the widget ticker (subagent tabs pull their own scope).
+    if (ev.type === "turn_start" || ev.type === "tool_execution_end") bgJobsRefresh.sync();
     // Plan approval rides a `write` to xd://propose, dispatched OUT of band
     // exactly like the base TUI's event-controller (issue #7684): awaiting it
     // here would hold the subscription for the whole execution turn, and
@@ -524,9 +519,12 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     eachUiWs((w) => w.send(data));
   });
   entry.session.setPromptDropped((d) => pushPromptDropped(entry, sessionId, d.text, d.images)); // base-dropped turn setup: withdraw row/bubble + hand the text back (pushPromptDropped)
+  // Reload/attach while jobs already run: push once and arm the ticker.
+  bgJobsRefresh.sync();
   entry.unsubscribe = () => {
     // Flush the coalesced delta tail while sockets are attached; restart the N2 idle clock at detach
     deltas.flush();
+    bgJobsRefresh.stop();
     entry.lastActiveAt = Date.now();
     entry.coreAttached = false;
     unsubSession();

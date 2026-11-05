@@ -127,13 +127,13 @@ export async function createSessionCore(
   // live object (hoisted here): the §5.3 degrade path writes compaction.enabled
   // back to true on it (the session's compaction getter resolves the settings
   // every turn).
-  // async.widgets OFF: the base draws a live job widget per background job by
-  // calling the `widget` model role (one real model call per job). The desktop
-  // renders no widget, so the base only burns tokens — the switch is hidden on
-  // the settings page for the same reason.
+  // async.widgets stays ON: the desktop draws job widgets now (async-jobs.ts
+  // caption/widget passthrough + the 1.5s live refresh). out.enabled ON: the base
+  // gates out:// replies to TUI transcripts unless set; the desktop draws them
+  // now (translate.ts + ToolRow).
   const sessionSettings = H.settings.overlay({
     "computer.enabled": false,
-    "async.widgets": false,
+    "out.enabled": true,
     // Automation runs carry their task's ask deadline (seconds) as a per-session
     // override; the base ask tool resolves it per session, and the host's
     // permission-approval gate reads the same value back for non-automation runs.

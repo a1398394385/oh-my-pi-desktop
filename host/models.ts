@@ -241,14 +241,8 @@ export function modelsDefaults() {
 // fallback);
 // builtin = whether the id is one of the SDK's built-in roles (the composer
 // model menu groups custom roles under its "Model Role" section).
-// Roles with no desktop consumer: `widget` only authors TUI job-widget specs and
-// the session overlay pins async.widgets off (session-lifecycle.ts), so showing
-// the row would offer a setting that changes nothing here.
-const HIDDEN_ROLES: Record<string, true> = { widget: true };
-
 export function modelRolesPayload() {
   return getKnownRoleIds(H.settings)
-    .filter((role) => !HIDDEN_ROLES[role])
     .map((role) => {
       const info = getRoleInfo(role, H.settings);
       const value = H.settings.getModelRole(role) ?? null;

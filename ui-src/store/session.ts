@@ -4,6 +4,7 @@
 // Transitional: container references stay constant (mutate + bump fallback; references get swapped
 // in wave 3 when components switch to selectors).
 import type { StateCreator } from "zustand";
+import type { JobWidgetView } from "@oh-my-pi/pi-tui/tools/job-widget";
 import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import { findLast, pathOfSessionId } from "./session-lookup";
@@ -76,6 +77,10 @@ export interface BgJobEntry {
   pids: number[];
   exitCode: number | null;
   running: boolean;
+  /** Base-authored one-liner on what the job does and when it ends (null with widgets off) */
+  caption: string | null;
+  /** Live widget view while the job runs (null for settled jobs / no registry) */
+  widget: JobWidgetView | null;
 }
 
 /** Snapshot slot key: one per (session, subagent scope). Subagent-scoped replies replace

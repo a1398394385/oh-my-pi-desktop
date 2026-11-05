@@ -3,6 +3,7 @@
 // Shared payload shapes live in payloads.ts, the HostFrame union in index.ts.
 import type { QueuedMessage, SessionStatsPayload, UiEvent } from "./payloads";
 import type { BrowserTabInfo } from "./frames-models";
+import type { JobWidgetView } from "@oh-my-pi/pi-tui/tools/job-widget";
 import type { Automation, AutomationRun } from "../automations/types";
 
 
@@ -126,6 +127,8 @@ export interface BgJobsFrame {
     pids: number[]; // live pids while running, empty once settled
     exitCode: number | null; // null while running or when the body reported none
     running: boolean;
+    caption: string | null; // base-authored one-liner (null with async.widgets off)
+    widget: JobWidgetView | null; // live view while running; null for settled rows
   }[];
   hi?: string; // stamped frame
   seq?: number;
