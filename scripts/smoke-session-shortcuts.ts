@@ -3,7 +3,7 @@
 // 1. Priority: jump to running sessions first; if fewer than 9 are running, fill the rest with sessions that have unread messages.
 // 2. Mapping: digits 1-9 follow the order of the left session list.
 
-import { computeShortcutProjects, computeSidebarSessionShortcuts, SHORTCUT_DIGITS } from "../ui-src/components/main/sidebar/util";
+import { computeHeldSidebarWidth, computeShortcutProjects, computeSidebarSessionShortcuts, HELD_SIDEBAR_EXTRA, SHORTCUT_DIGITS } from "../ui-src/components/main/sidebar/util";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) {
@@ -232,6 +232,23 @@ console.log("▶ 开始测试侧栏会话快捷键与数字分配映射...");
   });
   assert(expand.length === 1 && expand[0] === "/projR", `运行中满额时应只展开 projR，实际为 ${JSON.stringify(expand)}`);
   console.log("✓ 场景 6（运行中满额排除未读、超出项目行数的会话不触发展开）通过");
+}
+
+// Scenario 7: ⌘-hold sidebar widening — current + EXTRA, capped by the center-card
+// floor (30% of the window, min 240px); a narrow window keeps the stored width.
+{
+  const wide = computeHeldSidebarWidth(240, 320, 1600);
+  assert(wide === 240 + HELD_SIDEBAR_EXTRA, `宽窗应加宽 ${HELD_SIDEBAR_EXTRA}px，实际 ${wide}`);
+
+  // 600px window, no right panel: floor 240 → room = 600 - 240 - 32 = 328
+  const mid = computeHeldSidebarWidth(240, 0, 600);
+  assert(mid === 328, `中等窗口应封顶到 328，实际 ${mid}`);
+
+  // 400px window: no room at all → unchanged (never narrower than the stored width)
+  const tight = computeHeldSidebarWidth(240, 0, 400);
+  assert(tight === 240, `窄窗应保持原宽，实际 ${tight}`);
+
+  console.log("✓ 场景 7（按住 ⌘ 的临时加宽与主区下限）通过");
 }
 
 console.log("🎉 全部测试用例均通过！");

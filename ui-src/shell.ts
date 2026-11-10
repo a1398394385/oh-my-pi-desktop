@@ -13,6 +13,7 @@ import { yieldSummary } from "./components/chat/util";
 import { t } from "./i18n";
 import { THEMES, type ThemeId } from "./theme-registry";
 import { REMOTE } from "./store/layout";
+import { computeHeldSidebarWidth } from "./components/main/sidebar/util";
 
 // Theme/motion modes. Persistence is file-first: omp-desktop.json's ui section
 // is the source of truth (saveTheme/saveMotion write it via the set_ui_prefs
@@ -123,6 +124,38 @@ export function toggleRightPanel(): void {
 // Widths go through CSS variables, remembered in localStorage; the center card
 // is guaranteed to compress down to a minimum of 30% of the viewport total width.
 // The first call restores the remembered width from localStorage (omp-w-*).
+
+// Transient sidebar widening while ⌘ is held (the session-jump hints): the stored
+// width cuts long titles off, the hold shows them in full. Writes the same inline
+// --left-w the resize handle owns and puts the previous inline value back on
+// release — the persisted omp-w---left-w is never touched.
+let heldLeftW: string | null = null;
+
+export function widenSidebarForHints(on: boolean): void {
+  const root = document.documentElement;
+  if (!on) {
+    if (heldLeftW === null) return;
+    if (heldLeftW) root.style.setProperty("--left-w", heldLeftW);
+    else root.style.removeProperty("--left-w");
+    heldLeftW = null;
+    return;
+  }
+  if (heldLeftW !== null) return;
+  const sidebar = document.getElementById("sidebar");
+  // A collapsed sidebar is off screen and its hidden width feeds the right panel's
+  // split bonus (shell.css), so widening it would jump that panel instead.
+  if (!sidebar || sidebar.classList.contains("collapsed")) return;
+  const cur = parseFloat(getComputedStyle(root).getPropertyValue("--left-w")) || 240;
+  const right = document.getElementById("right");
+  const rightW = right && !right.classList.contains("collapsed") ? right.offsetWidth : 0;
+  const target = computeHeldSidebarWidth(cur, rightW, root.clientWidth || window.innerWidth || 1000);
+  if (target <= cur) return; // narrow window: the center-card floor leaves no room
+  // shortcut: a resize drag during the hold is rolled back on release, upgrade if
+  // anyone actually drags the handle with ⌘ down.
+  heldLeftW = root.style.getPropertyValue("--left-w");
+  root.style.setProperty("--left-w", target + "px");
+}
+
 export function attachResizer(handleId: string, cssVar: string, min: number, invert: boolean, maxPct?: number): void {
   const panel = handleId === "left-resizer" ? document.getElementById("sidebar") : document.getElementById("right");
   if (!panel) return;

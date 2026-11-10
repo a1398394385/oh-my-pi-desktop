@@ -27,7 +27,7 @@ import {
 import { t } from "./i18n";
 import { saveUiPrefs, applyAppearance } from "./appearance";
 import type { ModelRoleEntry } from "./types/frames";
-import { toggleSidebar, toggleRightPanel, closeAllMenus } from "./shell";
+import { toggleSidebar, toggleRightPanel, closeAllMenus, widenSidebarForHints } from "./shell";
 import { IS_WINDOWS, MOD, modDown } from "./platform";
 import { computeShortcutProjects, computeSidebarSessionShortcuts } from "./components/main/sidebar/util";
 import { pushInputHistory } from "./components/composer/lexical/draft";
@@ -547,6 +547,7 @@ let autoExpandedProjects: Set<string> | null = null;
 function setCommandPressed(on: boolean): void {
   const st = useAppStore.getState();
   if (st.isCommandPressed === on) return;
+  if (!on || !st.narrow) widenSidebarForHints(on);
   if (!on) {
     if (autoExpandedProjects) {
       const cur = useAppStore.getState();

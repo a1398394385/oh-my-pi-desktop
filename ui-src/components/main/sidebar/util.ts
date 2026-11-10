@@ -228,6 +228,20 @@ export function computeSidebarSessionShortcuts(st: ShortcutComputationState): Ma
   return result;
 }
 
+/** Extra width granted to the sidebar while ⌘ is held (titles get cut off at the
+ * stored width otherwise) */
+export const HELD_SIDEBAR_EXTRA = 140;
+
+/**
+ * Sidebar width while ⌘ is held: current + HELD_SIDEBAR_EXTRA, capped by the same
+ * center-card floor the resize handle enforces (30% of the window, at least 240px).
+ * Returns `cur` unchanged when the window is too narrow to give the sidebar more room.
+ */
+export function computeHeldSidebarWidth(cur: number, rightW: number, winW: number): number {
+  const minMainW = Math.max(240, Math.floor(winW * 0.3));
+  return Math.round(Math.min(cur + HELD_SIDEBAR_EXTRA, Math.max(cur, winW - minMainW - rightW - 32)));
+}
+
 export interface ShortcutExpansionState {
   availableProjects: { cwd: string; sessions: ShortcutSessionCandidate[] }[];
   expandedProjects: Set<string>;
