@@ -29,10 +29,14 @@ const MD_PREVIEW_MAX_CHARS = 300_000;
 // File page shell (ZCode two-pane parity): content pane (title bar + empty hint / opened file)
 // on the left, persistent navigation pane (search + root row + tree) on the right, draggable
 // splitter between. Nav width and collapse state are pure UI prefs persisted to localStorage.
-const NAV_WIDTH_KEY = "omp-file-nav-w";
+const NAV_PCT_KEY = "omp-file-nav-pct";
 const NAV_COLLAPSED_KEY = "omp-file-nav-collapsed";
-const NAV_W_MIN = 200;
-const NAV_W_MAX = 480;
+// Share of the panes box, not pixels: the pane is user-resizable, and a stored pixel width
+// froze the tree at whatever it was when the panel was narrow (names stayed clipped after
+// widening the panel). 180px keeps the tree usable on a narrow pane.
+const NAV_PCT_MIN = 25;
+const NAV_PCT_MAX = 92;
+const NAV_MIN_PX = 180;
 
 // Title-bar trail: the project name followed by the path segments inside it; a file outside
 // the project root falls back to its own absolute segments
@@ -88,9 +92,9 @@ export default function FilePage() {
   const { t } = useTranslation();
   const fileView = useAppStore((s) => s.fileView);
   const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
-  const [navW, setNavW] = useState(() => {
-    const v = Number(localStorage.getItem(NAV_WIDTH_KEY));
-    return v >= NAV_W_MIN && v <= NAV_W_MAX ? v : 260;
+  const [navPct, setNavPct] = useState(() => {
+    const v = Number(localStorage.getItem(NAV_PCT_KEY));
+    return v >= NAV_PCT_MIN && v <= NAV_PCT_MAX ? v : 70;
   });
   const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem(NAV_COLLAPSED_KEY) === "1");
   const [navDragging, setNavDragging] = useState(false);
@@ -110,13 +114,15 @@ export default function FilePage() {
   useEffect(() => { setNavPeek(false); }, [fileView?.path]);
   const pathSegments = fileView ? titleSegments(fileView.path, cwd) : [t("right.tabFile")];
   // Splitter drag tracks the pointer on window (fast drags never lose the gesture);
-  // width = shell right edge minus pointer x, clamped
+  // the pointer's distance from the panes' right edge becomes a share of the panes width,
+  // so the tree keeps its proportion when the panel itself is resized
   useEffect(() => {
     const move = (e: PointerEvent) => {
       if (!dragRef.current) return;
       const shell = document.getElementById("fpShell")?.getBoundingClientRect();
-      if (!shell) return;
-      setNavW(Math.max(NAV_W_MIN, Math.min(NAV_W_MAX, shell.right - e.clientX)));
+      if (!shell || !shell.width) return;
+      const wanted = Math.max(NAV_MIN_PX, Math.min(shell.width * NAV_PCT_MAX / 100, shell.right - e.clientX));
+      setNavPct((wanted / shell.width) * 100);
     };
     const up = () => { dragRef.current = false; setNavDragging(false); };
     window.addEventListener("pointermove", move);
@@ -126,7 +132,7 @@ export default function FilePage() {
       window.removeEventListener("pointerup", up);
     };
   }, []);
-  useEffect(() => { localStorage.setItem(NAV_WIDTH_KEY, String(navW)); }, [navW]);
+  useEffect(() => { localStorage.setItem(NAV_PCT_KEY, String(navPct)); }, [navPct]);
   useEffect(() => { localStorage.setItem(NAV_COLLAPSED_KEY, navCollapsed ? "1" : "0"); }, [navCollapsed]);
   useLayoutEffect(() => {
     const el = pathRef.current;
@@ -170,7 +176,7 @@ export default function FilePage() {
         />
         <div
           className={`fp-nav${navOpen ? "" : " collapsed"}`}
-          style={{ width: navOpen ? `min(${navW}px, 55%)` : 0, flexShrink: 1 }}
+          style={{ width: navOpen ? `clamp(${NAV_MIN_PX}px, ${navPct}%, ${NAV_PCT_MAX}%)` : 0, flexShrink: 1 }}
           aria-hidden={!navOpen}
           inert={!navOpen}
         >
