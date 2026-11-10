@@ -7,7 +7,7 @@ import { menuZoom, toggleTheme, toggleSidebar, applyTheme, applyMotion } from ".
 import { useAppStore, connect, showWelcomeScreen, initNewSessionModel, setConnected, openSettings, closeSettings, setBump, activateSession } from "./store";
 import { initKeys } from "./keys";
 import { initI18n } from "./i18n";
-import type { ToolItem } from "./types/session";
+import type { ChatItem, ToolItem } from "./types/session";
 import { warmupHighlighter } from "./lib/highlighter";
 import { resolveTheme } from "./theme-registry";
 import { landBrowserTabs, restoreRightSlot } from "./store/right";
@@ -130,11 +130,26 @@ if (new URLSearchParams(location.search).has("preview")) {
   // Browser comparison: ?preview=1 injects action samples (edit rows / change
   // groups / read groups / read rows / thinking / terminal cards); no host
   // connection
+  const params = new URLSearchParams(location.search);
+  // ?gallery=1 swaps in one real captured row per tool. Dynamic import keeps the
+  // capture data out of the shipped entry chunk.
+  const gallery = params.has("gallery")
+    ? ((await import("./preview/gallery-items.json")).default as unknown as ToolItem[])
+    : null;
   const diffSample = ["@@ -1,4 +1,5 @@", " body {", "-  color: red;", "+  color: blue;", "+  margin: 0;", " }"].join("\n");
   const readItem = (p: string): ToolItem => ({
     role: "tool", name: "read", text: "", args: { path: p }, files: [p],
     details: { resolvedPath: p, displayContent: { text: "body {\n  color: red;\n}", startLine: 1 } },
   });
+  // Read rows show project-relative paths and keep absolute ones outside the cwd;
+  // these two cover both branches (cwd is /preview)
+  const pathSamples: ChatItem[] = gallery
+    ? [
+        { ...readItem("/preview/src/style.css"), intent: "读取项目内的样式文件" },
+        { role: "assistant", text: "—" }, // breaks the lookup group so both rows stay standalone
+        { ...readItem("/Users/xys/elsewhere/demo.ts"), intent: "读取项目外部的文件" },
+      ]
+    : [];
   // Inject samples by swapping the openSessions Map reference in one shot
   // (equivalent to the old "S silent write + openSessions.set", with the _v bump
   // merging the old trailing notify)
@@ -142,7 +157,8 @@ if (new URLSearchParams(location.search).has("preview")) {
     openSessions: new Map(st.openSessions).set("/preview", {
       sessionId: "preview",
       cwd: "/preview",
-      items: [
+      // ?gallery=1 renders one real captured row per tool instead of the hand-written samples
+      items: gallery ? [...gallery, ...pathSamples] : [
         { role: "user", text: "把主题色改成蓝色" },
         { role: "assistant", text: "先读一下样式文件。" },
         readItem("src/style.css"),

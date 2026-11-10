@@ -6,7 +6,7 @@
 }
 
 .palette-box {
-  margin-top: 86px; /* 2 × the center column .chat-head height (43px) */
+  margin-top: 96px; /* 2 × the center column .chat-head height (48px) */
   width: min(620px, calc(100vw - 96px));
   max-height: min(70vh, 640px);
   display: flex;

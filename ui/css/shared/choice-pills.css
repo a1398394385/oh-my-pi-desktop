@@ -60,7 +60,7 @@
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);
 }
 
-.fork-pill:hover {
+.fork-pill:hover, .fork-pill:focus-visible {
   background: var(--hover-fill);
   color: var(--text);
   box-shadow: inset 0 0 0 1px var(--line-soft);

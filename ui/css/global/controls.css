@@ -23,21 +23,35 @@
 
 .icon-btn.on { background: var(--select); color: var(--text); }
 
-.icon-btn:focus-visible,
-.task:focus-visible,
-.nav-item:focus-visible,
-.pill-btn:focus-visible,
-.send:focus-visible,
-.set-back:focus-visible,
-.set-item:focus-visible,
-.sel:focus-visible,
-.save-btn:focus-visible,
-.num-btn:focus-visible,
-.tg:focus-visible,
-.add-btn:focus-visible {
-  outline: 2px solid var(--accent, var(--blue));
-  outline-offset: 1px;
+/* Keyboard focus mirrors hover — a highlight plate, never the accent ring (Tab
+   navigation must not paint a blue border). Values deliberately duplicate each
+   control's :hover treatment; keep the pairs in sync when a hover style changes. */
+:is(.icon-btn, .pill-btn, .num-btn, .add-btn, .sel, .task):not(.on):focus-visible {
+  outline: none;
+  background: var(--hover-fill); color: var(--text);
 }
+:is(.nav-item, .set-back, .set-item):focus-visible {
+  outline: none;
+  background: var(--tint-nav-hover-420); color: var(--text);
+}
+:is([data-theme="light"], [data-theme-mode="light"]) :is(.nav-item, .set-back, .set-item):focus-visible {
+  background: var(--tint-black-60);
+}
+.save-btn:focus-visible { outline: none; background: var(--button-hover-dark); color: var(--text); }
+:is([data-theme="light"], [data-theme-mode="light"]) .save-btn:focus-visible { background: var(--button-hover-light); }
+.send:focus-visible { outline: none; filter: brightness(1.25); background: var(--send-idle); }
+.tg:focus-visible:not(.on) { outline: none; background: var(--panel-3); filter: brightness(1.2); }
+/* Segmented slots rest on the --panel-2 track, so the raised --hover-fill plate would be
+   invisible; the recessed --inset chip (the thumb's own color) reads as the highlight. */
+.seg button:focus-visible { background: var(--inset); }
+.rt-item:focus-visible:not(.off) {
+  outline: none;
+  background: var(--hover-fill);
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line);
+}
+/* Catch-all for every other button: menu items and overlay controls inherit the local
+   --hover-fill override, so they highlight exactly like their own hover. */
+button:focus-visible { outline: none; background: var(--hover-fill); }
 
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -161,7 +175,7 @@ svg { vertical-align: middle; }
   border: none; background: none; appearance: none; text-align: left;
 }
 
-.menu .mi:hover, .menu .mi.on { background: var(--menu-hl); } /* .on = keyboard-active row (picker arrow-key navigation) */
+.menu .mi:hover, .menu .mi.on, .menu .mi:focus-visible { background: var(--menu-hl); } /* .on = keyboard-active row (picker arrow-key navigation) */
 
 .menu .mi.empty { cursor: default; color: var(--dim); }
 
@@ -209,7 +223,7 @@ svg { vertical-align: middle; }
 .srow.disabled:hover { background: none; }
 
 .inp {
-  display: inline-block; background: var(--bg); --hover-fill: var(--panel-2); border: 1px solid transparent;
+  display: inline-block; background: var(--bg); --hover-fill: var(--card-hl); border: 1px solid transparent;
   border-radius: 9px; padding: 6px 10px; color: var(--text); font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm);
   min-width: 240px; outline: none;
   box-shadow: inset 0 0 0 1px var(--line-soft);

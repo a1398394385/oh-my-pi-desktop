@@ -53,7 +53,8 @@
    Blended into existing card headers: on the top right of the middle column's .chat-head when the right sidebar is collapsed, or of the right sidebar's .sp-head when expanded.
    Highlight uses the site-wide .icon-btn language (26x26, --r-sm, --panel-2); negative margins cancel the header padding to leave a 6px breathing room from the card edge — with the 8px --shell-gap card inset that puts the close button 14px from the window edge, exactly mirroring the sidebar toggle 14px from the left edge.
    .win-hot is a transparent fixed overlay over the window's literal top-right corner (the cards are inset by --shell-gap): hovering it highlights the close button via :has, clicking closes — the Windows muscle-memory slam corner.
-   Dragging/double-click maximize is handled by the Tauri core via the header's data-tauri-drag-region. */
+   Dragging is handled by the Tauri core via the header's data-tauri-drag-region; the double-click maximize it
+   would also do is suppressed by lib/titlebar-drag.ts (headers are app content, not a title bar). */
 .win-controls {
   display: flex; align-items: center; gap: 2px; flex: none;
   margin-right: 0; /* .sp-head padding (6px) minus the 6px card-edge breathing room */
@@ -67,9 +68,9 @@
   color: var(--dim); cursor: default;
 }
 
-.win-controls .win-btn:hover { background: var(--hover-fill); color: var(--text); }
+.win-controls .win-btn:hover, .win-controls .win-btn:focus-visible { background: var(--hover-fill); color: var(--text); }
 
-.win-controls .win-btn.win-close:hover { background: var(--window-close); color: var(--white); }
+.win-controls .win-btn.win-close:hover, .win-controls .win-btn.win-close:focus-visible { background: var(--window-close); color: var(--white); }
 /* .win-hot hover lights the close button exactly as hovering the button itself */
 .win-controls:has(.win-hot:hover) .win-btn.win-close { background: var(--window-close); color: var(--white); }
 .win-hot {
@@ -116,7 +117,14 @@
   cursor: pointer; color: var(--text);
 }
 
-.ctx-menu button:hover { background: var(--menu-hl); }
+/* Copy rows only: the icon rides in a left gutter so text-only rows keep their exact layout. */
+.ctx-menu button.ctx-copy { position: relative; padding-left: 34px; }
+.ctx-menu button.ctx-copy .mi-ic {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--menu-hl); }
 .ctx-menu button:disabled { opacity: .45; cursor: default; }
 .ctx-menu button:disabled:hover { background: none; }
 

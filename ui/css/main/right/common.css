@@ -26,12 +26,15 @@
 
 /* side panel (subagents / Git Diff dual tabs) */
 #sidepanel {
-  flex: 1; margin: 0 0 8px; min-height: 0;
+  flex: 1; margin: 0; min-height: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
   display: flex; flex-direction: column;
-  padding: 0 0 4px; /* full-bleed: the tab bar/action bar/detail blocks span the sidebar width; the sidebar is one whole */
+  /* full-bleed to the card's bottom edge, same as the center/bottom column content: any
+     bottom inset here strands the file-tab nav divider (and every page edge) above the
+     edge the bottom terminal card reaches */
+  padding: 0;
 }
 
 /* tab header (ZCode Side Pane style): one h-12 row + bottom divider;
@@ -41,12 +44,6 @@
   display: flex; gap: 4px; align-items: center; flex: none;
   height: 48px; padding: 0 6px;
   border-bottom: 1px solid var(--line-soft);
-}
-
-/* Match the macOS sidebar toggle's 27px center line without shortening the tab header. */
-html[data-platform="macos"] .sp-head .icon-btn {
-  position: relative;
-  top: -4.5px;
 }
 
 /* right-sidebar tab bar: equal-width layout (flex 1 1 0 + min/max widths), horizontal scroll on overflow with the scrollbar hidden. Narrow phones override the flex recipe below (three per row, then scroll) — see remote.css. */
@@ -106,7 +103,7 @@ html[data-platform="macos"] .sp-head .icon-btn {
 
 .rtab:hover .rtab-x { opacity: 1; }
 
-.rtab-x:hover { background: var(--panel-3); color: var(--text); }
+.rtab-x:hover, .rtab-x:focus-visible { background: var(--panel-3); color: var(--text); }
 
 .sp-pop-search {
   display: flex; align-items: center; gap: 6px;

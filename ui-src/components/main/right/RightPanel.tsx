@@ -13,11 +13,13 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, activeOpen, refreshGitDiff, effZoom, pathBase } from "../../../store";
 import Icon from "../../../Icon";
 import { toggleRightPanel } from "../../../shell";
+import { noMaximizeOnDoubleClick } from "../../../lib/titlebar-drag";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
 import {
   TAB_META,
   AUTO_TABS,
   COMPOSER_ONLY_TABS,
+  CONTEXT_TABS,
   openRightTab, closeRightTab, reopenRightTab, moveRightTab,
   isTerminalTab, terminalTabId, terminalTabNumber, tabMeta,
 } from "./tabs";
@@ -27,6 +29,7 @@ import SubagentPage from "./SubagentPage";
 import HubDetailPage from "./HubDetailPage";
 import GitDiffPage from "./GitDiffPage";
 import FilePage from "./FilePage";
+import RunDiffPage from "./RunDiffPage";
 import BgCmdPage from "./BgCmdPage";
 import TerminalPage from "./TerminalPage";
 import BrowserPage from "./BrowserPage";
@@ -168,7 +171,7 @@ function AddTabMenu({
     >
       <div className="sp-pop-scroll">
         {Object.keys(TAB_META)
-          .filter((name) => !AUTO_TABS.has(name) && !COMPOSER_ONLY_TABS.has(name))
+          .filter((name) => !AUTO_TABS.has(name) && !COMPOSER_ONLY_TABS.has(name) && !CONTEXT_TABS[name])
           .map((name) => {
             const off = name === "gitdiff" && !isGit;
             // Terminal opens a NEW tab per click, so the checkmark would be misleading
@@ -379,6 +382,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   const detail =
     (rightTab === "gitdiff" && !!s?.isGit && !!selectedFile) ||
     rightTab === "file" || // file tab keeps the detail shell (rb-head/rb-scroll) even with no file open: the pane hosts the two-column layout
+    rightTab === "rundiff" || // run change review reuses the detail shell (fixed head + scrolling body)
     (rightTab === "subagent" && !!selectedSubagent && !!s?.subagents?.has(selectedSubagent));
   let body;
   if (rightTab === "hub") body = <HubDetailPage />;
@@ -386,6 +390,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "gitdiff") body = <GitDiffPage />;
   else if (rightTab === "bgcmd") body = <BgCmdPage />;
   else if (rightTab === "file") body = <FilePage />;
+  else if (rightTab === "rundiff") body = <RunDiffPage />;
   // Legacy slot state still holds the bare "terminal" name (pre multi-terminal); it maps to
   // an empty tab id and keeps working (terminalTabId returns "")
   else if (rightTab === "terminal" || isTerminalTab(rightTab)) body = <TerminalPage scope="right" tabId={terminalTabId(rightTab)} />;
@@ -398,7 +403,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
     <TooltipProvider delayDuration={400}>
     <aside id="right" className={collapsed ? "collapsed" : ""}>
       <div id="sidepanel">
-        <div className="sp-head" ref={headRef} data-tauri-drag-region="">
+        <div className="sp-head" ref={headRef} data-tauri-drag-region="" {...noMaximizeOnDoubleClick}>
           {/* Narrow: the panel is a full page — back to the chat on the left edge (ZCode's
               side-pane page). Desktop keeps the tab-overview trigger first. */}
           {narrow && (
@@ -488,7 +493,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
           {!collapsed && !narrow && (
             <Tip label={t("misc.collapseRightPanel")}>
               <button className="icon-btn shrink-0" onClick={toggleRightPanel}>
-                <Icon name="collapseRight" />
+                <Icon name="panelRightClose" />
               </button>
             </Tip>
           )}

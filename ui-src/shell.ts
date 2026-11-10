@@ -261,7 +261,16 @@ export function applyZoom(): void {
   // Re-resolve when a target is missing or detached: App can remount after a
   // language/key change (Root renders <App key={lang}>), leaving the cached
   // nodes orphaned and silently dropping every later zoom write
-  if (!zoomTargets || zoomTargets.some((el) => !el || !el.isConnected)) zoomTargets = ["sidebar", "main", "right", "settings"].map((id) => document.getElementById(id));
+  if (!zoomTargets || zoomTargets.some((el) => !el || !el.isConnected))
+    zoomTargets = [
+      document.getElementById("sidebar"),
+      // Zoom the center COLUMN (#center wraps the chat card and the bottom dock), not the
+      // chat card alone: a zoomed node's own margins scale with it, so #right's shell-gap
+      // would drift inward against an unscaled #center. Narrow layouts render #main bare.
+      document.getElementById("center") ?? document.getElementById("main"),
+      document.getElementById("right"),
+      document.getElementById("settings"),
+    ];
   // style.zoom is a non-standard property (absent from TS lib.dom): assert the
   // write, semantics unchanged from the original. The narrow baseline folds in here:
   // phone zoom level 100% renders the 80% size the phone layout was tuned at.
@@ -438,8 +447,12 @@ export function initShell(): void {
 
   // Global coordination of menu open/close (ported from the old window
   // click/blur -> closeAllMenus; React state-driven menus close via the
-  // omp:close-menus event; toggle buttons that stopPropagation are unaffected)
-  window.addEventListener("click", closeAllMenus);
+  // omp:close-menus event; toggle buttons that stopPropagation are unaffected.
+  // Slash category/result clicks update Lexical state and must not close the panel.)
+  window.addEventListener("click", (event) => {
+    if (event.target instanceof Element && event.target.closest(".menu.palette.slash")) return;
+    closeAllMenus();
+  });
   window.addEventListener("blur", closeAllMenus);
 
   // Packaged-webview hardening. tauri.conf.json sets dragDropEnabled=true so file drops
@@ -459,6 +472,28 @@ export function initShell(): void {
     if ((e.target as Element | null)?.closest("input, textarea, [contenteditable]")) return;
     e.preventDefault();
   });
+
+  // Scrollbar thumbs stay invisible until a container actually scrolls (global/scrollbars.css
+  // reveals `.scrolling`), so a pointer resting over a panel never pins the thumb on screen.
+  // Capture phase: this also covers containers that own no scroll handler of their own.
+  const litTimers = new WeakMap<Element, number>();
+  document.addEventListener(
+    "scroll",
+    (e) => {
+      const el = e.target;
+      if (!(el instanceof Element)) return;
+      el.classList.add("scrolling");
+      clearTimeout(litTimers.get(el));
+      litTimers.set(
+        el,
+        window.setTimeout(() => {
+          el.classList.remove("scrolling");
+          litTimers.delete(el);
+        }, 800),
+      );
+    },
+    { capture: true, passive: true },
+  );
 
   // Soft keyboard (phones): iOS Safari keeps the layout viewport at full height when the
   // keyboard opens, so the height:100% shell leaves the composer underneath it and Safari

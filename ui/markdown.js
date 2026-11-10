@@ -219,7 +219,7 @@ function copyCodeBlock(btn) {
     setTimeout(() => {
       btn.textContent = "复制";
       btn.classList.remove("copied");
-    }, 2000);
+    }, 1000);
   };
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(finish).catch(() => {

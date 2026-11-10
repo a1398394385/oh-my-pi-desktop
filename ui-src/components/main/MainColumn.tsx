@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store";
@@ -18,6 +18,7 @@ import ApprovalCard from "../chat/ApprovalCard";
 import SessionStatsBar from "./SessionStatsBar";
 import QueueCard from "../composer/QueueCard";
 import GoalCard from "../composer/GoalCard";
+import SessionNotice from "../composer/SessionNotice";
 import ConnBanner from "./ConnBanner";
 
 export default function MainColumn() {
@@ -48,6 +49,7 @@ export default function MainColumn() {
   // halo) follows one color: the next palette slot, never the input's own
   const bashAccent = bashAccentColor(title);
   const ringRef = useRef<SVGSVGElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   // The column width handles belong to the session detail page only (mirrors the
   // MessagePage branch of the page switch below).
   const showSessionDetail =
@@ -94,6 +96,44 @@ export default function MainColumn() {
   useEffect(() => {
     if (showSessionDetail) bindColResizer();
   }, [showSessionDetail]);
+  // Snap the traveling-ring svg to the device-pixel grid. The rect stroke straddles the
+  // svg viewport edge, so snapped edges put every stroke centerline on a device integer
+  // and all four edges rasterize with the same profile; left unsnapped, the top and
+  // bottom strokes land on different pixel phases (the dock height is content-driven)
+  // and read as different thicknesses on 1x displays. Positions come from
+  // getBoundingClientRect, so under #main's narrow-mode zoom they are divided by the
+  // zoom factor to convert back to local css px. Re-snaps on every dock resize (typing,
+  // attachments, window moves); the ring shifts at most half a device px and paints the
+  // same color, so the adjustment is invisible. deps: the dock mounts only when the
+  // welcome/new-task pages are gone, so the effect must re-run on that transition (at
+  // first mount the ref is still null).
+  const dockMounted = !isCreatingNew && !automationsOpen && !hubOpen && !gitManage;
+  useLayoutEffect(() => {
+    const dock = dockRef.current;
+    const ring = ringRef.current;
+    if (!dockMounted || !dock || !ring) return;
+    const snap = () => {
+      const r = dock.getBoundingClientRect();
+      const zoom = r.width / dock.offsetWidth || 1;
+      const dpr = window.devicePixelRatio;
+      const L = Math.round(r.left * dpr) / dpr;
+      const T = Math.round(r.top * dpr) / dpr;
+      const R = Math.round(r.right * dpr) / dpr;
+      const B = Math.round(r.bottom * dpr) / dpr;
+      ring.style.left = `${(L - r.left) / zoom}px`;
+      ring.style.top = `${(T - r.top) / zoom}px`;
+      ring.style.width = `${(R - L) / zoom}px`;
+      ring.style.height = `${(B - T) / zoom}px`;
+    };
+    snap();
+    const ro = new ResizeObserver(snap);
+    ro.observe(dock);
+    window.addEventListener("resize", snap);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", snap);
+    };
+  }, [dockMounted]);
   // Whole-column file drop (browser build only: with dragDropEnabled the Tauri shell hands
   // file drops to the native handler in main.tsx, which keeps the absolute paths). The input
   // card is no longer the only target, so the overlay marks the acceptance area. Enter/leave
@@ -149,10 +189,12 @@ export default function MainColumn() {
                 top down (the goal bar shifts up as the queue grows). Each card
                 pulls up with -mb-28px and the next card presses on its bottom
                 edge with z, exposing the upper half as a second-level stack */}
+            <SessionNotice />
             <GoalCard />
             <QueueCard />
             <div
               className={(pendingApproval ? "dock approval-active" : "dock") + (accent ? " has-session-accent" : "")}
+              ref={dockRef}
               style={
                 accent
                   ? ({ "--session-accent": accent, "--bash": bashAccent } as CSSProperties)
@@ -162,9 +204,10 @@ export default function MainColumn() {
               {pendingApproval ? <ApprovalCard key={pendingApproval.requestId} item={pendingApproval} /> : null}
               <Composer key={activePath || "composer"} inWelcome={false} blocking={Boolean(pendingApproval)} />
               {/* Traveling ring: rendered always, shown by CSS only for a titled session or in
-                  bash mode (both are focus states). The rect is drawn 0.5px in so its 1px
-                  stroke lands on the dock edge; pathLength=100 normalises the dash to percent
-                  of perimeter. */}
+                  bash mode (both are focus states). The rect fills the svg viewport so its
+                  stroke straddles the viewport edge; the effect above snaps the viewport to
+                  the device-pixel grid. pathLength=100 normalises the dash to percent of
+                  perimeter. */}
               <svg className="dock-ring" aria-hidden="true" ref={ringRef}>
                 <rect width="100%" height="100%" rx="15.5" pathLength="100" />
               </svg>

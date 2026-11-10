@@ -82,7 +82,6 @@
   transition: background-color var(--dur-base) var(--swift);
 }
 
-#stream:hover::-webkit-scrollbar-thumb,
 #stream.scrolling::-webkit-scrollbar-thumb {
   background-color: color-mix(in srgb, var(--dim) 50%, transparent);
 }
@@ -321,7 +320,7 @@
 .ub-edit { display: flex; align-items: flex-end; gap: 6px; min-width: 220px; }
 .ub-edit textarea {
   flex: 1; min-width: 0; resize: none;
-  background: var(--card); --hover-fill: var(--panel-2); color: var(--text);
+  background: var(--card); --hover-fill: var(--card-hl); color: var(--text);
   border: 1px solid var(--line); border-radius: var(--r-sm);
   padding: 6px 8px; line-height: 1.55;
 }
@@ -407,7 +406,6 @@
 }
 
 .compress-summary .compress-summary-trigger > span:first-child { overflow: hidden; text-overflow: ellipsis; }
-.compress-summary .compress-summary-trigger:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
 .compress-summary-body {
   --compress-fade: 24px;
@@ -541,6 +539,12 @@
 .ed-arrow svg { transition: transform var(--dur-base) var(--swift); }
 
 .ed-arrow.open svg { transform: rotate(90deg); }
+
+/* Read rows lead with the intent and append the file chip after it: an overlong name (URL-fetched
+   files run past 100 chars) must truncate instead of flexing the intent down to zero width */
+.act .f-ic { min-width: 0; max-width: 40%; }
+
+.act .f-ic > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* File name: underline on hover, click opens in the right sidebar (edit row -> git diff; read row -> file content) */
 .act .ed-name { cursor: pointer; }
@@ -732,17 +736,24 @@
   mask-image: none;
 }
 
-/* `out://` mid-call replies (items.tsx OutReply): the agent's prose rendered as its own block
-   after the terminal row, so folding the row or merging commands cannot hide it. UI font, not
-   the card's mono; .md-body supplies the markdown reading size. */
+/* `out://` mid-call replies (items.tsx OutReply): the agent's prose as its own card, drawn
+   in place of a reply `write`'s tool row (base parity: the TUI mounts the reply block, not
+   the card) and after a terminal row for eval/bash replies. Surfaces and radii mirror
+   .rchg so inline cards share one language; .md-body supplies the markdown reading size. */
 .out-reply {
-  margin-top: 6px; padding-left: 10px; border-left: 2px solid var(--line);
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
   font-family: var(--ui-font, var(--sans));
 }
 
 .out-reply-lbl { color: var(--faint); font-size: var(--ui-fs-sm); }
 
-.out-reply .md-body { margin-top: 4px; }
+.out-reply .md-body { margin-top: 6px; }
+
+.out-reply .md-body:first-of-type { margin-top: 4px; }
 
 /* Task row's expanded assignment card (.task-md, ToolRow.tsx TaskBody): code font size and a
    customized 9.5-line page (the generic cmd-card-cmd page is 4.5). The shared markdown
@@ -896,7 +907,7 @@
    `.wheel-owner` is the actual scrollport that owns the gesture. It stays addressable even
    when a transparent card ancestor would otherwise inherit pointer-events:none to it.
    Selector = union of INLINE_CARD_SELECTOR and SCROLL_OWNER_SELECTOR in MessagePage.tsx. */
-#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .ro-body, .approval-card, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text):not(.wheel-owner) {
+#stream.wheel-through :is(.ed-brief, .cmd-card, .bash-out, .think-body, .chg-body, .ro-body, .approval-card, .rchg, .md-code-block-frame, [data-streamdown="table-wrapper"], .sticky-user-wrap .user-msg-text):not(.wheel-owner) {
   pointer-events: none;
 }
 #stream.wheel-through .wheel-owner {

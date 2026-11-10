@@ -62,6 +62,9 @@
    which is usually untitled) shows no band at all. The ring's base color comes from
    box-shadow, so this layer only ever adds brightness. */
 .dock-ring {
+  /* Pre-JS fallback geometry only: MainColumn snaps the svg's viewport edges to the
+     device-pixel grid on mount/resize (inline styles override these), so the rect
+     stroke straddles device-integer lines and every edge rasterizes identically. */
   position: absolute;
   inset: 0.5px;
   width: calc(100% - 1px);
@@ -342,6 +345,28 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 /* Queued message card: ZCode's stacked second-level card recipe (ConversationQueuePanel) — relative z-0 +
    negative margin-bottom pulling up 28px + padding-bottom 28px keeping the content uncovered + top corners rounded only.
    the .dock below (z-20) covers its bottom edge, baring the upper half of the card; an empty queue makes the component return null so no card appears */
+/* Base UI-only notice strip (xd:// mount hints, tool-side warnings): one line above the
+   stacked cards, session-scoped and auto-expiring. Width follows the goal bar recipe. */
+#main .notice-strip {
+  width: calc(100% - 20px);
+  max-width: calc(var(--col-w) - 20px);
+}
+
+.notice-strip {
+  display: flex; align-items: center; gap: 8px;
+  margin: 8px auto 0;
+  padding: 6px 11px;
+  background: var(--surface);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  font-size: var(--ui-fs-sm);
+  color: var(--text);
+}
+
+.notice-strip .notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notice-strip.warning { color: var(--yellow); }
+.notice-strip.error { color: var(--err); }
+
 /* Goal bar: the topmost stacked bar above the input (App render order goal -> queue -> dock, shifting up as the queue grows).
    Stacking geometry follows the queue-card recipe (margin -28px pull-up + padding-bottom 28px floor + top corners rounded only,
    bottom edge covered by the next card); 10px narrower than the input on each side (20px total), no corner patch block toward the card below.
@@ -824,6 +849,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 }
 
 .wb-proj-item:hover,
+.wb-proj-item:focus-visible,
 .wb-proj-item.selected {
   background: var(--menu-hl);
 }
@@ -855,7 +881,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   user-select: none;
 }
 
-.wb-proj-action-item:hover {
+.wb-proj-action-item:hover, .wb-proj-action-item:focus-visible {
   background: var(--menu-hl);
 }
 
@@ -944,19 +970,32 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   overflow-wrap: break-word;
 }
 
-/* completion chips (@files / slash-command atomic nodes): small pills, token palette, per-theme rendering */
+/* completion chips (@files / slash-command / skill atomic nodes): icon + category
+   ink over a 13% tint. The ring is an inset shadow, not a border: a border adds
+   2px and pushes the chip past the 1.5 line box, growing the line. Ink is the
+   only themed value; per-theme contrast follows the token. */
 .chip {
-  display: inline-block;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border-radius: 6px;
-  padding: 0 5px;
+  padding: 0 6px;
   margin: 0 1px;
-  color: var(--text);
-  line-height: 1.45;
+  color: var(--chip-ink);
+  background: color-mix(in srgb, var(--chip-ink) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip-ink) 16%, transparent);
+  line-height: 1.5;
+  font-weight: 500;
   white-space: pre;
   vertical-align: baseline;
 }
+
+.chip-command { --chip-ink: var(--blue); }
+.chip-skill { --chip-ink: var(--purple); }
+.chip-file { --chip-ink: var(--dim); }
+
+.chip .chip-ic { flex: none; line-height: 1; }
+.chip .chip-ic svg { width: 12px; height: 12px; }
 
 /* Fade along the stream→composer boundary: a sticky ::after pinned to the scrollport's
    bottom edge dissolves incoming messages into the background (mirror of the top

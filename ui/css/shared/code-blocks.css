@@ -47,7 +47,7 @@
   transition: background var(--dur-snap), color var(--dur-snap), box-shadow var(--dur-snap);
 }
 
-.md-copy-btn:hover {
+.md-copy-btn:hover, .md-copy-btn:focus-visible {
   background: var(--tint-white-100);
   color: var(--text);
 }

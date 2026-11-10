@@ -15,7 +15,7 @@ export default function StartPage() {
       <span className="inline-flex items-center text-faint mb-3">
         <Icon name="panelRight" size={30} />
       </span>
-      <div className="text-[length:20px] font-semibold leading-[28px] text-text" /* style-token-ignore */>{t("right.openTab")}</div>
+      <div className="text-ui-xl font-semibold leading-[28px] text-text" /* style-token-ignore */>{t("right.openTab")}</div>
       <div className="text-ui-base leading-5 text-dim mt-1 mb-5">{t("right.startSub")}</div>
       <div className="rt-list">
         {["subagent", "btw", "gitdiff", "file", "terminal", "browser"].map((name) => {

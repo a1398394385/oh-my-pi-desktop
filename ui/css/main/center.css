@@ -15,7 +15,7 @@
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0; flex: 1; position: relative;
   overflow: hidden;
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
   border-radius: var(--r-card);
   /* Content column width axis, single source of truth for messages + composer
      (consumed as max-width: var(--col-w)). Percentages resolve at each
@@ -82,18 +82,14 @@ body:has(#right.collapsed) #center { margin-right: var(--shell-gap); }
 
 /* The TODO process card (#statusWrap: absolute + z-60 + shadow) overlays the message area when expanded, without squeezing the message/input content column width; the card sits outside the scroll container and does not scroll */
 .chat-head {
-  height: 43px; flex: none;
+  /* one header height shared by all three column top bars (left strip / center /
+     right .sp-head): 48px, elements centered in the row — no per-button offsets */
+  height: 48px; flex: none;
   display: flex; align-items: center; gap: 8px;
   padding: 0 16px;
   border-bottom: 1px solid var(--line-soft);
   transition: padding-left var(--dur-base) var(--swift);
   min-width: 0;
-}
-
-/* Match the macOS sidebar toggle's 27px center line without shortening the header. */
-html[data-platform="macos"] .chat-head .icon-btn {
-  position: relative;
-  top: -2px;
 }
 
 body:has(#sidebar.collapsed) .chat-head {
@@ -129,11 +125,12 @@ html[data-platform="windows"] body:has(#sidebar.collapsed) #sidebarToggle {
   top: calc(19px / var(--ui-zoom, 1));
 }
 /* macOS: same in-place toggle for the right panel. The fixed button shares the
-   sidebar toggle's 14px top inset and 27px center line. */
+   sidebar toggle's 19px top inset (26px button centered on the 48px header row:
+   shell-gap 8 + (48 - 26) / 2 = 19). */
 html[data-platform="macos"] body:has(#right.collapsed) #panelToggle {
   position: fixed;
   right: calc(var(--shell-gap) + 6px);
-  top: calc(var(--shell-gap) + 6px);
+  top: calc(var(--shell-gap) + 11px);
 }
 
 /* Header title sweep while the agent is running: colorless (a neutral sheen, no hue). Two
@@ -277,12 +274,9 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
   flex: none;
   height: var(--bottom-h, 260px); min-height: 0;
   display: flex; flex-direction: column;
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
   border-radius: var(--r-card);
   overflow: hidden;
-  /* Outside #main's inline zoom, so it carries the same factor itself (--ui-zoom is
-     written by applyZoom on documentElement). */
-  zoom: var(--ui-zoom, 1);
   /* Drawer: the card slides out of the center column's bottom edge. Height + gap animate
      together (the gap is this margin, not #center's), and closing keeps the card mounted
      for the exit leg — animationend in BottomTerminal unmounts it afterwards. */
@@ -348,5 +342,4 @@ body.resizing-v { user-select: none; cursor: row-resize; }
    Windows puts #panelToggle top-left and its window controls back in flow, so no offset. */
 html[data-platform="macos"] body:has(#right.collapsed) .chat-head .dock-toggle {
   margin-right: calc(32px - var(--shell-gap));
-  top: -2px;
 }

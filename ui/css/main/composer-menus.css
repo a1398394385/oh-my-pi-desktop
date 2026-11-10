@@ -44,6 +44,87 @@
 
 .menu.palette .mi .sub { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Slash-command browser: category tabs, an independently scrolling result list,
+   and a fixed keyboard footer. The container owns all filled-row clearance. */
+.menu.palette.slash {
+  height: 258px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-popover);
+}
+.menu.palette.slash.open { display: flex; flex-direction: column; }
+.slash-tabs {
+  display: flex;
+  flex: none;
+  gap: 24px;
+  min-height: 44px;
+  padding: 0 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.slash-tabs::-webkit-scrollbar { display: none; }
+.slash-tab {
+  position: relative;
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: var(--ui-fs-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--swift);
+}
+.slash-tab:hover { color: var(--text); }
+.slash-tab[aria-selected="true"] { color: var(--text); font-weight: 600; }
+.slash-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+.slash-list {
+  flex: 1;
+  min-height: 0;
+  padding: 0 8px 8px;
+  overflow-y: auto;
+}
+.menu.palette.slash .slash-list .mi { min-height: 40px; border-radius: var(--r-sm); }
+.menu.palette.slash .slash-list .mi-tx { flex: none; max-width: 38%; font-weight: 500; }
+.menu.palette.slash .slash-list .sub { flex: 1; min-width: 0; max-width: none; margin-left: 0; }
+.slash-ic { display: inline-flex; flex: none; width: 16px; color: var(--dim); }
+.slash-ic svg { display: block; }
+.slash-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 0 16px;
+  overflow-x: auto;
+  border-top: 1px solid var(--line-soft);
+  color: var(--faint);
+  font-size: var(--ui-fs-sm);
+  scrollbar-width: none;
+}
+.slash-footer::-webkit-scrollbar { display: none; }
+.slash-hint { display: inline-flex; flex: none; align-items: center; gap: 8px; white-space: nowrap; }
+.slash-hint kbd { font: inherit; color: var(--dim); }
+.slash-close { margin-left: auto; }
+
+@media (max-width: 640px) {
+  .menu.palette.slash { height: 234px; }
+  .slash-tabs { gap: 20px; padding: 0 12px; }
+  .slash-footer { gap: 12px; padding: 0 12px; }
+}
+
 /* Permission mode menu (single-line rows: icon + title, shrunk to 172px) */
 .menu.mode { min-width: min(172px, 100%); padding: 6px; }
 

@@ -63,12 +63,13 @@ const ICONS = {
   chevronLeft: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
   // Line-style double-down arrows (lucide chevrons-down): right-sidebar tab-overview icon, aligned with ZCodium ChevronsDownIcon
   chevronsDown: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></svg>',
-  // Line-style message fork (feather git-branch: vertical line + branch dots): the message-row
-  // fork button and the right-sidebar branch tab. Named to avoid "branch" — that name is taken
-  // by the FA layer's solid code-branch (used by the Git Diff tab), which would override a custom-layer same-name entry
-  fork: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
-  // Line-style copy (feather copy: two overlapping rectangles): turn-end output copy button, same family as fork with stroke-width=2
-  copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  // Line-style fork/split (tabler arrows-split-2): one line splitting into two arrows — the
+  // reply-row fork button and the right-sidebar branch tab, stroke-width=2 like its neighbours.
+  // Named "fork" on purpose: "branch" is taken by the FA layer's solid code-branch (Git Diff tab),
+  // and a custom-layer entry of the same name would not win.
+  fork: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 17h-5.397a5 5 0 0 1-4.096-2.133l-.514-.734A5 5 0 0 0 6.897 12H3"/><path d="M21 7h-5.395a5 5 0 0 0-4.098 2.135l-.51.73A5 5 0 0 1 6.9 12H3"/><path d="m18 10 3-3-3-3"/><path d="m18 20 3-3-3-3"/></svg>',
+  // Line-style copy (lucide copy: two overlapping rectangles): turn-end output copy button, same family as fork with stroke-width=2
+  copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
   // Line-style steer (feather corner-up-right: path bending into an up-right arrow): subagent
   // steer control on Agent Hub cards — same family as fork/copy (stroke-width=2)
   steer: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>',

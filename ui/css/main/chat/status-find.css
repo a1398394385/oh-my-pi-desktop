@@ -138,7 +138,7 @@
 :is([data-theme="light"], [data-theme-mode="light"]) .find-bar { box-shadow: 0 8px 24px var(--tint-black-180); }
 /* input = the .inp language: --bg base + --line-soft border + r8 + blue focus glow */
 .find-inp {
-  background: var(--bg); --hover-fill: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 8px;
+  background: var(--bg); --hover-fill: var(--card-hl); border: 1px solid var(--line-soft); border-radius: 8px;
   padding: 4px 9px; color: var(--text); font: inherit; font-size: var(--ui-fs-sm);
   width: 200px; outline: none; min-width: 0;
   transition: border-color var(--dur-snap) var(--swift), box-shadow var(--dur-snap) var(--swift);

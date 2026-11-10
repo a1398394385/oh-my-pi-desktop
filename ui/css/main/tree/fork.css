@@ -18,7 +18,7 @@
 }
 
 .fork-container {
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
   border: 1px dashed var(--tint-accent-400);
   border-radius: var(--r-md);
   padding: 8px 10px;

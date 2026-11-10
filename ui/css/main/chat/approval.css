@@ -65,7 +65,7 @@
 .approval-slider-track {
   display: flex; align-items: center; gap: 2px; min-width: 0;
   padding: 2px; border-radius: var(--r-lg);
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
 }
 
 .approval-seg {
@@ -124,8 +124,8 @@
 
 .approval-opt.has-input { cursor: text; }
 
-.approval-opt:focus-visible,
-.approval-confirm:focus-visible { outline: none; }
+.approval-opt:focus-visible:not(.chosen) { background: var(--hover-fill); }
+.approval-confirm:focus-visible { opacity: .8; background: var(--accent); }
 
 /* editable "submit" row embedded input: transparent borderless input like ZCodium's feedback row */
 .approval-inp {

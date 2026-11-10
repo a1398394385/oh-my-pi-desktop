@@ -3,8 +3,9 @@
 // card headers — chat-head top-right when the right panel is collapsed, sp-head
 // top-right when it is expanded (App.tsx / RightPanel.tsx gate both placement
 // and IS_WINDOWS). macOS keeps the system Overlay + traffic lights, no render.
-// Dragging and double-click maximize are handled by Tauri via the
-// data-tauri-drag-region on the host headers (capabilities/default.json).
+// Dragging is handled by Tauri via the data-tauri-drag-region on the host headers
+// (capabilities/default.json); double-click maximize is deliberately suppressed there
+// (lib/titlebar-drag.ts).
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 

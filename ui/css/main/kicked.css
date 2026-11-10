@@ -10,7 +10,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
 }
 
 .kicked-card {

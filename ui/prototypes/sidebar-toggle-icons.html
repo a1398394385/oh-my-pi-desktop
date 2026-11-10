@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>侧栏展开/收起图标 · 候选对照</title>
+<style>
+  :root {
+    color-scheme: dark;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --page: #1b1b1b;
+    --card: #202020;
+    --control: #292929;
+    --line: #3a3a3a;
+    --text: #e8e8e8;
+    --muted: #9a9a9a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); }
+  button { font: inherit; }
+  button:focus-visible { outline: 2px solid #75a7ff; outline-offset: 2px; }
+  .page { width: min(900px, calc(100% - 48px)); margin: 0 auto; padding: 56px 0 120px; }
+  header { margin-bottom: 40px; }
+  h1 { margin: 0 0 10px; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+  .intro { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+  .intro code { color: #cfcfcf; font-size: 12px; }
+
+  .row {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 28px;
+    align-items: center;
+    padding: 22px 0;
+    border-top: 1px solid var(--line);
+  }
+  .row:last-of-type { border-bottom: 1px solid var(--line); }
+  .name { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 600; }
+  .name b { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .note { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .tagline { display: inline-block; margin-top: 8px; padding: 1px 7px; border-radius: 999px; background: #2c3a2e; color: #9fd3a8; font-size: 11px; }
+
+  /* Real-scale mock: panel header with the toggle in its actual corner */
+  .demoband { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { width: 232px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); overflow: hidden; }
+  .panel-head { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 8px 0 12px; }
+  .panel-head .title { flex: 1; min-width: 0; color: #cfcfcf; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .panel-body { height: 46px; border-top: 1px solid #2e2e2e; background: repeating-linear-gradient(180deg, #242424 0 9px, #202020 9px 22px); }
+  .icon-btn { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #c9c9c9; cursor: pointer; }
+  .icon-btn:hover { background: #3a3a3a; color: #fff; }
+  .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .state { display: block; margin-top: 6px; color: #7d7d7d; font-size: 11px; text-align: center; }
+
+  /* Collapsed strip: how the toggle looks when it moves to the topbar */
+  .topbar { display: flex; align-items: center; gap: 8px; width: 232px; height: 38px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  .topbar .grow { flex: 1; }
+
+  /* Wall: same icons at 16 and 20 px, for weight comparison */
+  .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 14px; margin-top: 34px; }
+  .cell { display: grid; gap: 10px; justify-items: center; padding: 16px 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  .cell .sizes { display: flex; align-items: center; gap: 16px; }
+  .cell svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .cell .label { color: var(--muted); font-size: 11px; }
+  h2.section { margin: 44px 0 4px; font-size: 15px; font-weight: 600; }
+  p.section-note { margin: 0; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>侧栏展开 / 收起图标 · 候选对照</h1>
+    <p class="intro">
+      全部按真实尺寸渲染：16px 图标 / 26px 按钮 / 38px 面板头，描边 1.5 与仓库 <code>ui/lucide-icons.js</code> 一致。
+      每行左边两个是「左栏」（展开时按钮指向左=收起，收起后按钮指向右=展开），右边两个是「右栏」（方向相反）。
+      已采用 06（panel-left/right-close/open），此页留作对照存档。
+    </p>
+  </header>
+
+  <div id="rows"></div>
+
+  <h2 class="section">图标自重对照</h2>
+  <p class="section-note">同一批图形在 16px（实际使用尺寸）与 20px 下的视觉重量，用来判断谁在小尺寸下还看得清。</p>
+  <div class="wall" id="wall"></div>
+</div>
+
+<script>
+const P = {
+  chevronsLeft: '<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>',
+  chevronsRight: '<path d="m6 17 5-5-5-5"/><path d="m13 17 5-5-5-5"/>',
+  chevronLeft: '<path d="m15 18-6-6 6-6"/>',
+  chevronRight: '<path d="m9 18 6-6-6-6"/>',
+  arrowLeft: '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+  arrowRight: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+  // arrow pointing INTO a vertical line (collapse towards that edge)
+  toLineLeft: '<path d="M3 19V5"/><path d="m13 6-6 6 6 6"/><path d="M7 12h14"/>',
+  toLineRight: '<path d="M17 12H3"/><path d="m11 18 6-6-6-6"/><path d="M21 5v14"/>',
+  // arrow pulling OUT of a vertical line (expand away from that edge)
+  fromLineLeft: '<path d="m9 6-6 6 6 6"/><path d="M3 12h14"/><path d="M21 19V5"/>',
+  fromLineRight: '<path d="M3 5v14"/><path d="M21 12H7"/><path d="m15 18 6-6-6-6"/>',
+  panelLeftClose: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/>',
+  panelLeftOpen: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/>',
+  panelRightClose: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/>',
+  panelRightOpen: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m10 9-3 3 3 3"/>',
+};
+
+const svg = (d, size = 16) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+
+// collapse* icon is what the open panel shows; expand* is what the topbar shows once collapsed.
+const CANDIDATES = [
+  {
+    name: "现状 · 双人字",
+    icons: "chevronsLeft / chevronsRight",
+    note: "两边各两只箭头，最重；指向常被读成「翻页」而不是「收面板」。",
+    left: { collapse: P.chevronsLeft, expand: P.chevronsRight },
+    right: { collapse: P.chevronsRight, expand: P.chevronsLeft },
+  },
+  {
+    name: "单人字",
+    icons: "chevronLeft / chevronRight",
+    note: "最轻，读作「翻/展开」。缺点是通用性强，孤立刻度上不知指向面板。",
+    left: { collapse: P.chevronLeft, expand: P.chevronRight },
+    right: { collapse: P.chevronRight, expand: P.chevronLeft },
+  },
+  {
+    name: "箭头（长箭）",
+    icons: "arrowLeft / arrowRight",
+    note: "比单人字明确，指向「把这块移走」。仍是纯方向符号，无面板语义。",
+    left: { collapse: P.arrowLeft, expand: P.arrowRight },
+    right: { collapse: P.arrowRight, expand: P.arrowLeft },
+  },
+  {
+    name: "箭头撞线",
+    icons: "arrowLeftToLine / arrowRightToLine",
+    note: "箭头指向一条竖线=收起到边缘。语义最直白，三条线在 16px 下略密。",
+    left: { collapse: P.toLineLeft, expand: P.toLineRight },
+    right: { collapse: P.toLineRight, expand: P.toLineLeft },
+  },
+  {
+    name: "箭头离线",
+    icons: "arrowLeftFromLine / arrowRightFromLine",
+    note: "箭头从竖线弹出=展开。若收起态与展开态都用它，需要两套图标对。",
+    left: { collapse: P.fromLineRight, expand: P.fromLineLeft },
+    right: { collapse: P.fromLineLeft, expand: P.fromLineRight },
+  },
+  {
+    name: "面板 + 箭头",
+    icons: "panelLeftClose / panelLeftOpen",
+    note: "外框画出面板本身，箭头贴在分栏线上。VSCode 同源观感，语义零歧义；外框在 16px 下会吃掉一点箭头清晰度。",
+    left: { collapse: P.panelLeftClose, expand: P.panelLeftOpen,
+            collapseR: P.panelRightClose, expandR: P.panelRightOpen },
+    right: { collapse: P.panelRightClose, expand: P.panelRightOpen,
+             collapseR: P.panelLeftClose, expandR: P.panelLeftOpen },
+    perSide: true,
+  },
+];
+
+const rows = document.getElementById("rows");
+CANDIDATES.forEach((c, i) => {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `
+    <div>
+      <div class="name"><b>${String(i + 1).padStart(2, "0")}</b>${c.name}</div>
+      <p class="note">${c.note}</p>
+      <p class="note" style="color:#6f6f6f">${c.icons}</p>
+    </div>
+    <div class="demoband">
+      <div>
+        <div class="panel">
+          <div class="panel-head"><span class="title">会话</span><button class="icon-btn" tabindex="-1">${svg(c.left.collapse)}</button></div>
+          <div class="panel-body"></div>
+        </div>
+        <span class="state">左栏展开 → 收起</span>
+        <div class="topbar" style="margin-top:10px"><span class="grow"></span><button class="icon-btn" tabindex="-1">${svg(c.left.expand)}</button></div>
+        <span class="state">左栏收起 → 展开</span>
+      </div>
+      <div>
+        <div class="panel">
+          <div class="panel-head"><span class="title">文件</span><button class="icon-btn" tabindex="-1">${svg(c.right.collapse)}</button></div>
+          <div class="panel-body"></div>
+        </div>
+        <span class="state">右栏展开 → 收起</span>
+        <div class="topbar" style="margin-top:10px"><span class="grow"></span><button class="icon-btn" tabindex="-1">${svg(c.right.expand)}</button></div>
+        <span class="state">右栏收起 → 展开</span>
+      </div>
+    </div>`;
+  rows.appendChild(row);
+});
+
+// wall
+const WALL = [
+  ["双人字", P.chevronsLeft],
+  ["单人字", P.chevronLeft],
+  ["长箭", P.arrowLeft],
+  ["箭头撞线", P.toLineLeft],
+  ["面板 + 箭头", P.panelLeftClose],
+];
+const wall = document.getElementById("wall");
+WALL.forEach(([label, d]) => {
+  const cell = document.createElement("div");
+  cell.className = "cell";
+  cell.innerHTML = `<div class="sizes">${svg(d, 16)}${svg(d, 20)}</div><span class="label">${label}</span>`;
+  wall.appendChild(cell);
+});
+</script>
+</body>
+</html>

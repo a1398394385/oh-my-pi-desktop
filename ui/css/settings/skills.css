@@ -46,7 +46,7 @@
   width: 100%;
   height: 30px;
   padding: 0 10px 0 32px;
-  background: var(--bg); --hover-fill: var(--panel-2);
+  background: var(--bg); --hover-fill: var(--card-hl);
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text);

@@ -29,7 +29,9 @@
   background: transparent;
   display: flex; flex-direction: column;
   min-height: 0;
-  padding: 40px 0 var(--shell-gap);
+  /* 48px blank top strip: same height as the center/right header bars; carries no
+     bottom divider (the two card headers keep theirs) */
+  padding: 48px 0 var(--shell-gap);
   flex: none;
   overflow: hidden;
   opacity: 1;
@@ -43,10 +45,10 @@
               visibility var(--dur-base);
 }
 /* collapse toggle pinned to the sidebar's top-right corner (vertically centered
-   on the center topbar row, 6px inset like .sp-head) */
+   in the 48px top strip, 6px inset like .sp-head) */
 #sidebar > .side-collapse {
   position: absolute;
-  top: 19px;
+  top: 11px;
   right: 6px;
   flex: none;
 }
@@ -172,7 +174,9 @@ body:has(#sidebar.collapsed) #left-resizer {
   display: block;
 }
 .sec-label .sec-add:hover,
-.sec-label .sec-trash:hover { color: var(--text); background: var(--panel-3); }
+.sec-label .sec-trash:hover,
+.sec-label .sec-add:focus-visible,
+.sec-label .sec-trash:focus-visible { color: var(--text); background: var(--panel-3); }
 .sec-label .sec-trash.active {
   color: var(--err, var(--danger-fixed));
   background: var(--tint-danger-150);
@@ -185,8 +189,8 @@ body:has(#sidebar.collapsed) #left-resizer {
   padding: 3px 8px; border-radius: 5px; font-family: inherit;
   transition: background var(--dur-snap), color var(--dur-snap), border-color var(--dur-snap);
 }
-.proj .proj-rm-btn:hover,
-.task .task-del-btn:hover {
+.proj .proj-rm-btn:hover, .proj .proj-rm-btn:focus-visible,
+.task .task-del-btn:hover, .task .task-del-btn:focus-visible {
   background: var(--err, var(--danger-fixed));
   border-color: transparent;
   color: var(--white);
@@ -244,7 +248,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 /* Eject + archive are one action cluster: the row's 8px gap reads as two separate buttons. */
 .task .tarchive + .tarchive { margin-left: -4px; }
 .task:is(:hover, .ctx-open) .tm { display: none; }
-.task .tarchive:hover { color: var(--text); background: var(--panel-3); }
+.task .tarchive:hover, .task .tarchive:focus-visible { color: var(--text); background: var(--panel-3); }
 /* Running session: the host refuses both the archive (it evicts archived sessions from
    the pool) and the manual eject (no live teardown), so the actions render inert. */
 .task .tarchive:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -267,7 +271,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   white-space: nowrap;
   transition: filter var(--dur-snap);
 }
-.task .tarchive-confirm:hover {
+.task .tarchive-confirm:hover, .task .tarchive-confirm:focus-visible {
   filter: brightness(1.12);
 }
 .task .tarchive-confirm:disabled {
@@ -365,7 +369,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .task:is(:hover, .ctx-open) .tpin { opacity: 1; }
 .tpin.on { opacity: 1; color: var(--accent, var(--accent-fixed)); }
-.tpin:hover { color: var(--text); background: var(--panel-3); }
+.tpin:hover, .tpin:focus-visible:not(.on) { color: var(--text); background: var(--panel-3); }
 .proj {
   display: flex; align-items: center; gap: 8px;
   height: 34px; min-height: 34px; padding: 4px 4px 4px 10px; color: var(--dim);
@@ -456,6 +460,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   display: none; align-items: center; justify-content: center;
 }
 .proj:hover .pmore { display: inline-flex; }
+.proj .padd:focus-visible, .proj .pmore:focus-visible { background: var(--panel-3); }
 .proj .pmore > span {
   display: inline-flex;
   align-items: center;
@@ -480,7 +485,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   flex: none; border: 0; background: var(--panel-3); color: var(--dim);
   border-radius: 8px; padding: 6px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
 }
-.proj-add-pop .pa-btn:hover { background: var(--button-hover-dark); color: var(--text); }
+.proj-add-pop .pa-btn:hover, .proj-add-pop .pa-btn:focus-visible { background: var(--button-hover-dark); color: var(--text); }
 .proj .padd {
   flex: none; border: 0; background: none; color: var(--faint);
   line-height: 0; cursor: pointer;
@@ -512,7 +517,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   border: 0; background: none; display: block; width: 100%; text-align: left;
   color: var(--faint); font-size: var(--ui-fs-sm); padding: 4px 10px 4px 34px; cursor: pointer;
 }
-.more-link:hover { color: var(--text); }
+.more-link:hover, .more-link:focus-visible { color: var(--text); }
 .side-foot {
   flex: none;
   height: 52px;
@@ -640,14 +645,14 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .task:is(:hover, .ctx-open) .arch-act,
 .arch-row:hover .arch-act { display: inline-flex; align-items: center; }
-.arch-act:hover { color: var(--text); background: var(--panel-3); }
+.arch-act:hover, .arch-act:focus-visible { color: var(--text); background: var(--panel-3); }
 /* delete = permanently remove the session: danger visuals match .task-del-btn (incl. hover inverted white text; tokens have no inverted token) */
 .arch-act.arch-del {
   border-color: var(--tint-danger-350);
   background: var(--tint-danger-120);
   color: var(--err);
 }
-.arch-act.arch-del:hover {
+.arch-act.arch-del:hover, .arch-act.arch-del:focus-visible {
   background: var(--err);
   border-color: transparent;
   color: var(--white);

@@ -58,7 +58,7 @@
 /* Inline form bodies (provider wizard, shell rules) sit inside a list card: give them
    the same face + border the page-level editor windows use, so every create form
    looks like the same object. */
-.sem-body.form { background: var(--card); --hover-fill: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.sem-body.form { background: var(--card); --hover-fill: var(--card-hl); border: 1px solid var(--line); border-radius: var(--r-lg); }
 .sem-body.form .inp,
 .sem-body.form .mcp-form-input,
 .sem-body.form .mcp-form-textarea,

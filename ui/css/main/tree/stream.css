@@ -66,7 +66,7 @@
   box-shadow: 0 2px 8px var(--tint-black-250);
 }
 
-.node-jump-btn:hover {
+.node-jump-btn:hover, .node-jump-btn:focus-visible {
   background: var(--hover-fill);
   color: var(--accent);
   border-color: var(--accent);
@@ -85,7 +85,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
   border: 2px solid var(--line);
   display: flex;
   align-items: center;
@@ -228,7 +228,7 @@
 
 .node-detail-panel {
   padding: 10px 12px;
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
   border-top: 1px solid var(--line);
   animation: ed-drop .18s ease-out;
 }

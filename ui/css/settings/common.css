@@ -96,7 +96,10 @@
 #settings.hidden { display: none; }
 
 #setNav {
-  background: transparent; padding: 40px 10px 0;
+  /* 58px = #sidebar's 48px top strip + its nav container's 10px: the back button must land
+     exactly on the workspace sidebar's first nav row, so switching into settings does not
+     shift the top-left affordance. */
+  background: transparent; padding: 58px 10px 0;
   display: flex; flex-direction: column;
   /* same as #sidebar: navigation text not selectable; the tap-selection blue is noise */
   user-select: none;
@@ -113,7 +116,8 @@
 
 .set-back {
   display: flex; align-items: center; gap: 7px;
-  padding: 7px 10px; color: var(--dim); cursor: pointer;
+  /* same 34px row height as #sidebar .nav-item for the same corner position */
+  height: 34px; padding: 0 10px; color: var(--dim); cursor: pointer;
   border-radius: 10px; font-size: var(--ui-fs-base);
   border: 0; background: var(--base); --hover-fill: var(--panel-2); width: 100%; text-align: left; font: inherit;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
@@ -147,7 +151,7 @@
   width: 100%;
   height: 28px;
   padding: 0 24px 0 28px;
-  background: var(--bg); --hover-fill: var(--panel-2);
+  background: var(--bg); --hover-fill: var(--card-hl);
   border: 1px solid transparent;
   border-radius: 8px;
   color: var(--text);
@@ -318,7 +322,7 @@
 
 #setBody {
   overflow-y: auto; padding: 32px 40px 60px;
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
   border-radius: var(--r-card);
   margin: var(--shell-gap) 0 0;
   min-width: 0;
@@ -469,7 +473,7 @@
 /* number stepper = the .plus-btn language; tabular numerals don't jitter */
 .num-ctl {
   display: inline-flex; align-items: center; gap: 2px; flex: none;
-  background: var(--bg); --hover-fill: var(--panel-2); border: 1px solid var(--line-soft);
+  background: var(--bg); --hover-fill: var(--card-hl); border: 1px solid var(--line-soft);
   border-radius: 9px; padding: 2px;
 }
 
@@ -635,7 +639,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: var(--card); --hover-fill: var(--panel-2);
+  background: var(--card); --hover-fill: var(--card-hl);
   border-color: var(--line);
   box-shadow: none;
 }
