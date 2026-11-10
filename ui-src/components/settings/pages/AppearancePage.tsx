@@ -4,7 +4,7 @@
 // bindings per initSettings in ui/settings/index.js (themeSel/fontSel/num-ctl/tgLineNo/tgWrap).
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, send, toast } from "../../../store";
+import { useAppStore, send, toast, openProcessBlocksNow } from "../../../store";
 import type { AgentProcessStyle } from "../../../store/shapes";
 import { t as ti } from "../../../i18n";
 import Icon from "../../../Icon";
@@ -64,6 +64,7 @@ const PROCESS_STYLE_LABEL_KEYS: Record<AgentProcessStyle, string> = {
   standard: "settingsPage.appearance.processStyleStandard",
   detailed: "settingsPage.appearance.processStyleDetailed",
   expanded: "settingsPage.appearance.processStyleExpanded",
+  all: "settingsPage.appearance.processStyleAll",
 };
 
 // Font-size stepping (old stepFont: clamp -> save -> apply; uiPrefs written as a fresh object + bump)
@@ -150,6 +151,8 @@ export default function AppearancePage() {
     setProcessStyle(v);
     useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, agentProcessStyle: v } }));
     saveUiPrefs();
+    // The style is a layout intent: apply it to the rows already on screen, not just new ones
+    if (v === "all") openProcessBlocksNow();
   };
   // Font-size stepping (range keeps the old clamp in settings/index.js: UI 11-18, code 10-18)
   const stepUiFs = (d: number) => {

@@ -152,6 +152,12 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
 
   const type = def.type;
   const cred = def.credential === true;
+  // A base array setting with ui.editor === "json" (tools.restrictedFolders,
+  // contextFiles.extra, task.perCallModelAllow) is a JSON list, not a
+  // comma-separated one: a path or a file name may contain a comma, and the
+  // base's own panel edits those as JSON text (pi-tui settings-defs.ts maps
+  // an array with a JSON editor to a text field parsed as JSON).
+  const jsonArray = type === "array" && def.ui?.editor === "json";
   // Rows typed as a free number instead of the schema's preset list: `ui.options` only feeds
   // the submenu (the registry accepts any finite number), and these two want exact values.
   // task.maxRuntimeMs is additionally entered in minutes and stored in ms.
@@ -162,9 +168,11 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const fmt = (v: unknown): string =>
     type === "array"
-      ? Array.isArray(v)
-        ? v.join(", ")
-        : ""
+      ? jsonArray
+        ? JSON.stringify(Array.isArray(v) ? v : [], null, 2)
+        : Array.isArray(v)
+          ? v.join(", ")
+          : ""
       : type === "record"
         ? JSON.stringify(v ?? {}, null, 2)
         : v === undefined || v === null
@@ -182,6 +190,17 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
     if (type === "number") {
       const n = Number(text);
       if (Number.isFinite(n)) send({ type: "set_setting", key: k, value: inMinutes ? Math.round(n * 60_000) : n });
+    } else if (type === "array" && jsonArray) {
+      try {
+        const parsed: unknown = JSON.parse(text);
+        if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+          send({ type: "set_setting", key: k, value: parsed });
+        } else {
+          toast(t("settingsPage.schema.jsonInvalid"));
+        }
+      } catch {
+        toast(t("settingsPage.schema.jsonInvalid"));
+      }
     } else if (type === "array") {
       const arr = text.split(",").map((s) => s.trim()).filter(Boolean);
       send({ type: "set_setting", key: k, value: arr });
@@ -220,6 +239,8 @@ function SchemaRow({ k, def, value }: SchemaRowProps) {
         onPick={(v) => send({ type: "set_setting", key: k, value: v })}
       />
     );
+  } else if (type === "array" && jsonArray) {
+    ctl = <Textarea rows={3} className="w-[360px] max-w-full" ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // JSON list edited as text; same ref reused for input/textarea, only read at the activeElement comparison, narrowing is safe
   } else if (type === "record") {
     ctl = <Textarea rows={3} className="w-[360px] max-w-full" ref={inputRef as RefObject<HTMLTextAreaElement | null>} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} />; // same ref reused for input/textarea, only read at the activeElement comparison, narrowing is safe
   } else if (type === "number") {

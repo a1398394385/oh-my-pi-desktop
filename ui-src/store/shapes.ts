@@ -26,10 +26,13 @@ export type GitWriteFrame =
 export type TerminalFrame = TerminalCreatedFrame | TerminalDataFrame | TerminalExitFrame;
 
 /** Agent process display style: standard = today's folding, detailed = no read-only run
- * fold, expanded = no read-only run fold and no same-type event merging, concise = no
- * process rows at all while the turn runs (outputs only; the process stays behind the
- * reveal toggle on the working row) and standard folding once the turn ends. */
-export type AgentProcessStyle = "standard" | "detailed" | "expanded" | "concise";
+ * fold, expanded = no read-only run fold and no same-type event merging (labeled
+ * "complete": the structure is whole, the blocks still fold), all = expanded plus every
+ * process block laying out open by default (a finished thought folds back, tool cards stay
+ * open), concise = no process rows at all while the turn runs (outputs only; the process
+ * stays behind the reveal toggle on the working row) and standard folding once the turn
+ * ends. The `expanded` value keeps its name so existing prefs files stay valid. */
+export type AgentProcessStyle = "standard" | "detailed" | "expanded" | "all" | "concise";
 
 /** UI prefs (runtime shape: theme/motion + appearance fields + lang).
  * Persistence is file-first — omp-desktop.json's ui section is the source of

@@ -1,10 +1,12 @@
 // Agent process display style (ui.prefs.agentProcessStyle) drives both folding
 // levels in chat/items.tsx: "standard" folds a >=3 read-only run and merges
-// same-type events, "detailed" drops the read-only run fold, "expanded" drops
-// the same-type merges too. "concise" folds like standard (that shape is what the
-// live reveal shows) and adds renderItems' hideProcessFrom filter, which strips
-// the running turn's process rows down to the assistant outputs. Both renderItems
-// branches (top-level flow and the child container used by LoopGroup) must honour it.
+// same-type events, "detailed" drops the read-only run fold, "expanded" (labeled
+// "complete") drops the same-type merges too, and "all" ("fully expanded") lays
+// rows out like expanded while the store opens every process block by default.
+// "concise" folds like standard (that shape is what the live reveal shows) and
+// adds renderItems' hideProcessFrom filter, which strips the running turn's
+// process rows down to the assistant outputs. Both renderItems branches (top-level
+// flow and the child container used by LoopGroup) must honour it.
 // The dynamic imports are deliberate: the store module reads localStorage while
 // evaluating, so the happy-dom globals above must exist first (same shape as the
 // other UI smokes).
@@ -13,7 +15,7 @@ import { Window } from "happy-dom";
 import { describe, expect, test } from "bun:test";
 import type { ReactElement } from "react";
 import type { AgentProcessStyle } from "../ui-src/store/shapes";
-import type { ChatItem, RailEntry, ToolItem } from "../ui-src/types/session";
+import type { ChatItem, OpenSession, RailEntry, ToolItem } from "../ui-src/types/session";
 
 const win = new Window({ url: "http://localhost/?preview=1" });
 Object.assign(globalThis, {
@@ -29,6 +31,7 @@ const { useAppStore } = await import("../ui-src/store");
 const { renderItems } = await import("../ui-src/components/chat/items");
 const { default: ReadonlyGroup } = await import("../ui-src/components/chat/ReadonlyGroup");
 const { default: AssistantMsg } = await import("../ui-src/components/chat/AssistantMsg");
+const { applyEvent } = await import("../ui-src/store/session");
 
 const setStyle = (v: AgentProcessStyle) =>
   useAppStore.setState((s) => ({ uiPrefs: { ...s.uiPrefs, agentProcessStyle: v } }));
@@ -41,6 +44,18 @@ const rowProps = (el: ReactElement): RowProps => el.props as RowProps;
 const groupSubCount = (el: ReactElement): number => {
   const props = el.props as { subs: ChatItem[] };
   return props.subs.length;
+};
+
+// A tool row renders inside a Fragment (its `out://` reply card is a sibling), so rows have
+// to be collected from the children instead of the top-level element list.
+const flatten = (els: unknown, acc: ReactElement[] = []): ReactElement[] => {
+  if (!Array.isArray(els)) return acc;
+  for (const el of els as ReactElement[]) {
+    if (!el || typeof el !== "object") continue;
+    acc.push(el);
+    flatten((el.props as { children?: unknown })?.children, acc);
+  }
+  return acc;
 };
 
 const tool = (o: Partial<ToolItem> & Pick<ToolItem, "name" | "toolCallId">): ToolItem =>
@@ -57,10 +72,10 @@ const edits2: ToolItem[] = [1, 2].map((n) =>
   tool({ name: "edit", toolCallId: "e" + n, args: { path: "/a" + n + ".ts" } }));
 
 function scan(items: ToolItem[], pfx = "") {
-  const out = renderItems(items as ChatItem[], pfx, []);
-  const rows = out.filter((el) => rowProps(el).item);
+  const all = flatten(renderItems(items as ChatItem[], pfx, []));
+  const rows = all.filter((el) => rowProps(el).item);
   return {
-    readonlyBlocks: out.filter((el) => el.type === ReadonlyGroup).length,
+    readonlyBlocks: all.filter((el) => el.type === ReadonlyGroup).length,
     // a merged row carries `group` on its ToolItem; flat rows never do
     mergedGroups: rows.filter((el) => Array.isArray(rowProps(el).item?.group)).length,
     toolRows: rows.length,
@@ -88,6 +103,12 @@ describe("agent process display style", () => {
     expect(scan([...reads2, ...cmds2])).toEqual({ readonlyBlocks: 0, mergedGroups: 0, toolRows: 4 });
   });
 
+  test("all lays the rows out like expanded", () => {
+    setStyle("all");
+    expect(scan([...reads2, ...cmds2])).toEqual({ readonlyBlocks: 0, mergedGroups: 0, toolRows: 4 });
+    expect(scan([...reads2, ...edits2], "k")).toEqual({ readonlyBlocks: 0, mergedGroups: 0, toolRows: 4 });
+  });
+
   test("child container branch honours the same gates", () => {
     setStyle("standard");
     expect(scan(reads3, "k")).toEqual({ readonlyBlocks: 1, mergedGroups: 0, toolRows: 0 });
@@ -112,24 +133,12 @@ describe("agent process display style", () => {
       ...cmds2,
       { role: "assistant", text: "second" },
     ] as ChatItem[];
-    const flat = (out: ReactElement[]) => {
-      const acc: ReactElement[] = [];
-      const walk = (els: ReactElement[]) => {
-        for (const el of els) {
-          acc.push(el);
-          const kids = (el.props as { children?: unknown }).children;
-          if (Array.isArray(kids)) walk(kids as ReactElement[]);
-        }
-      };
-      walk(out);
-      return acc;
-    };
 
     // UserMsg carries `item` too, so count by role: only the two outputs survive
     const isToolRow = (el: ReactElement) => rowProps(el).item?.role === "tool";
 
     const entries: RailEntry[] = [];
-    const hidden = flat(renderItems(items, "", entries, undefined, { hideProcessFrom: 0 }));
+    const hidden = flatten(renderItems(items, "", entries, undefined, { hideProcessFrom: 0 }));
     expect(hidden.filter(isToolRow)).toHaveLength(0);
     expect(hidden.some((el) => el.type === ReadonlyGroup)).toBe(false);
     expect(hidden.filter((el) => el.type === AssistantMsg)).toHaveLength(2);
@@ -137,7 +146,7 @@ describe("agent process display style", () => {
     expect(entries.map((e) => e.role)).toEqual(["user", "assistant", "assistant"]);
 
     // reveal: no filter, the process rows (and their standard folds) come back
-    const shown = flat(renderItems(items, "", [], undefined, {}));
+    const shown = flatten(renderItems(items, "", [], undefined, {}));
     expect(shown.filter(isToolRow).length).toBeGreaterThan(0);
   });
 
@@ -179,5 +188,71 @@ describe("agent process display style", () => {
     expect(blockSizes([...reads3, thinkLive])).toEqual([4]);
     setPrefs({ showThinking: true });
     expect(blockSizes([...reads3, thinkLive])).toEqual([3]);
+  });
+});
+
+// The "all" style's open-by-default rule lives in the store's frame handlers: a thinking
+// block opens while it streams and folds back on completion, a tool card opens on the tool
+// frame and stays open after the terminal tool_update (Ctrl+O still folds it at the end).
+describe("all style opens process blocks", () => {
+  const SID = "style-all-1";
+  const P = "/tmp/style-all/session.jsonl";
+  const prefs = (p: { showThinking?: boolean; expandToolOutput?: boolean }) =>
+    useAppStore.setState((s) => ({ uiPrefs: { ...s.uiPrefs, ...p } }));
+  function seed(): void {
+    useAppStore.setState((st) => ({
+      activePath: P,
+      openSessions: new Map(st.openSessions).set(P, {
+        sessionId: SID,
+        path: P,
+        cwd: "/tmp",
+        items: [],
+        assistantDraft: "",
+        streaming: true,
+        subagents: new Map(),
+      } as unknown as OpenSession),
+    }));
+  }
+  const items = () => useAppStore.getState().openSessions.get(P)!.items;
+
+  test("a streaming thinking block opens with show-thinking off, then folds back", () => {
+    setStyle("all");
+    prefs({ showThinking: false });
+    seed();
+    applyEvent({ type: "event", sessionId: SID, kind: "thinking", phase: "start" } as never);
+    const started = items()[0];
+    if (started.role !== "thinking") throw new Error(`expected a thinking row, got ${started.role}`);
+    expect(started.expanded).toBe(true);
+    applyEvent({ type: "event", sessionId: SID, kind: "thinking", phase: "end", thinking: "done" } as never);
+    const ended = items()[0];
+    if (ended.role !== "thinking") throw new Error(`expected a thinking row, got ${ended.role}`);
+    expect(ended.expanded).toBe(false);
+  });
+
+  test("a tool card opens on birth and stays open after the terminal update", () => {
+    setStyle("all");
+    prefs({ expandToolOutput: false });
+    seed();
+    applyEvent({ type: "event", sessionId: SID, kind: "tool", name: "bash", toolCallId: "t1", args: { command: "ls" } } as never);
+    const born = items()[0];
+    if (born.role !== "tool") throw new Error(`expected a tool row, got ${born.role}`);
+    expect(born.cmdExpanded).toBe(true);
+    applyEvent({ type: "event", sessionId: SID, kind: "tool_update", name: "bash", toolCallId: "t1", output: "ok" } as never);
+    const settled = items()[0];
+    if (settled.role !== "tool") throw new Error(`expected a tool row, got ${settled.role}`);
+    expect(settled.cmdExpanded).toBe(true);
+
+    // Ctrl+O keeps its own rule: expand during the run, fold at the end
+    setStyle("standard");
+    prefs({ expandToolOutput: true });
+    seed();
+    applyEvent({ type: "event", sessionId: SID, kind: "tool", name: "bash", toolCallId: "t2", args: { command: "ls" } } as never);
+    const live = items()[0];
+    if (live.role !== "tool") throw new Error(`expected a tool row, got ${live.role}`);
+    expect(live.cmdExpanded).toBe(true);
+    applyEvent({ type: "event", sessionId: SID, kind: "tool_update", name: "bash", toolCallId: "t2", output: "ok" } as never);
+    const done = items()[0];
+    if (done.role !== "tool") throw new Error(`expected a tool row, got ${done.role}`);
+    expect(done.cmdExpanded).toBe(false);
   });
 });

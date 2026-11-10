@@ -84,16 +84,20 @@ try {
   // .mi textContent also carries the checkmark column, labels live in .mi-tt
   const labels = () => [...sel.querySelectorAll(".mi .mi-tt")].map((tt) => tt.textContent);
   const picked = () => sel.querySelector(".mi.on .mi-tt")?.textContent;
-  assert.deepEqual(labels(), ["简洁", "标准", "详细", "完全展开"], "四档标签");
+  assert.deepEqual(labels(), ["简洁", "标准", "详细", "完整", "完全展开"], "五档标签");
   assert.equal(picked(), "标准", "默认选中标准");
   assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "standard", "默认档位 standard");
   await click(sel); // close: the pick helper opens it again itself
 
-  await openAndPick("完全展开");
+  await openAndPick("完整");
   assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "expanded", "选择后 store 为 expanded");
   const last = prefsFrames().at(-1) as { prefs?: Record<string, unknown> } | undefined;
   assert.equal(last?.prefs?.agentProcessStyle, "expanded", "set_ui_prefs 帧携带 agentProcessStyle");
-  assert.equal(picked(), "完全展开", "选中态跟随选择");
+  assert.equal(picked(), "完整", "选中态跟随选择");
+
+  await openAndPick("完全展开");
+  assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "all", "完全展开档位可保存");
+  assert.equal(picked(), "完全展开", "选中态跟着完全展开");
 
   await openAndPick("简洁");
   assert.equal(useAppStore.getState().uiPrefs.agentProcessStyle, "concise", "简洁档位可保存");
@@ -106,7 +110,7 @@ try {
   assert.ok(!rowByTitle("隐藏工具活动"), "底座隐藏工具活动行已移除");
   assert.ok(rowByTitle("显示 Token 用量"), "同组其他设置仍渲染");
 
-  console.log("✓ 外观页四档显示风格下拉框：渲染/选择/set_ui_prefs 全链路正确，底座开关已下线");
+  console.log("✓ 外观页五档显示风格下拉框：渲染/选择/set_ui_prefs 全链路正确，底座开关已下线");
 } finally {
   await act(async () => { root.unmount(); });
   win.happyDOM.close();

@@ -120,6 +120,9 @@ function computeConditions(): Record<string, boolean> {
       c[name] = false;
     }
   };
+  // Settings whose row hides when a project-level config set them (base settings-ui.ts
+  // whenSettings(... provenance(s) !== "project")).
+  const byId = new Map(orderedSettings().map((s) => [s.id, s]));
   safe("macOS", () => process.platform === "darwin");
   safe("hasImageProtocol", () => HAS_IMAGE_PROTOCOL);
   safe("advisorEnabled", () => g("advisor.enabled") === true);
@@ -132,6 +135,10 @@ function computeConditions(): Record<string, boolean> {
   safe("planModeEnabled", () => g("plan.enabled"));
   safe("planAutosaveEnabled", () => g("plan.enabled") && g("plan.autosave"));
   safe("unexpectedStopSmart", () => g("features.unexpectedStopDetection") === "smart");
+  safe("restrictedFoldersNotProject", () => byId.get("tools.restrictedFolders")?.provenance(H.settings) !== "project");
+  safe("perCallModelAllowNotProject", () => byId.get("task.perCallModelAllow")?.provenance(H.settings) !== "project");
+  safe("contextFilesExtraNotProject", () => byId.get("contextFiles.extra")?.provenance(H.settings) !== "project");
+  safe("composerPredictionsEnabled", () => g("composer.predictions") === true);
   return c;
 }
 

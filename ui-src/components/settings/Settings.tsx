@@ -16,6 +16,7 @@ import { buildKeyToPageMap, HIDDEN_KEYS } from "./placement";
 import { LoginBanner, LoginPrompt } from "./common";
 import WindowControls from "../WindowControls";
 import { IS_WINDOWS, modDown } from "../../platform";
+import { noMaximizeOnDoubleClick } from "../../lib/titlebar-drag";
 
 // Settings pages are lazy chunks: 27 static page imports dragged every settings
 // surface and its dependency subtree (SchemaRows' locale dictionaries, the
@@ -132,7 +133,7 @@ for (const sec of NAV_SECTIONS) {
 
 // How long the landed search row keeps its tint. Must stay >= the .search-flash animation
 // duration in ui/css/settings/common.css (kept in sync there by SEARCH_FLASH_MS in the comment).
-const SEARCH_FLASH_MS = 2600;
+export const SEARCH_FLASH_MS = 2600;
 
 // Settings-schema dictionaries (~91KB zh / ~17KB en) load per language on
 // first use so neither ships in the startup closure; the loaded value is
@@ -195,6 +196,8 @@ export function useAllSettingsItems() {
       { key: "app.notifyDesktop", label: t("settingsPage.alerts.desktopTitle"), description: t("settingsPage.alerts.desktopDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
       { key: "app.notifySound", label: t("settingsPage.alerts.soundTitle"), description: t("settingsPage.alerts.soundDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
       { key: "app.notifyPermission", label: t("settingsPage.alerts.permTitle"), description: t("settingsPage.alerts.permGrantedDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
+      { key: "app.autoArchive", label: t("settingsPage.general.archiveAutoTitle"), description: t("settingsPage.general.archiveAutoDesc"), pageId: "pg-general", pageTitle: t("settingsPage.nav.general") },
+      { key: "app.autoArchiveRetention", label: t("settingsPage.general.archiveRetentionTitle"), description: t("settingsPage.general.archiveRetentionDesc"), pageId: "pg-general", pageTitle: t("settingsPage.nav.general") },
     );
     return items;
   }, [schema, t, settings]);
@@ -353,7 +356,7 @@ export default function Settings() {
       {/* OMP login-in-progress banner + paste-code dialog: mounted at the shell root so page switches or logging in on any settings page don't interrupt it (old version mounted globally on document.body) */}
       <LoginBanner />
       <LoginPrompt />
-      <nav id="setNav" data-tauri-drag-region>
+      <nav id="setNav" data-tauri-drag-region {...noMaximizeOnDoubleClick}>
         <div id="setNavResizer" title={t("settingsPage.shell.dragResize")}></div>
         <button type="button" className="set-back" id="setBack" onClick={closeSettings}>
           <Icon name="back" size={14} />

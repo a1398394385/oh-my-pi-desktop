@@ -56,9 +56,10 @@ try {
   };
   assert.ok(folded("standard"), "标准：>=3 只读行合并");
   assert.ok(!folded("detailed"), "详细：平铺不合并");
-  assert.ok(!folded("expanded"), "完全展开：平铺不合并");
+  assert.ok(!folded("expanded"), "完整：平铺不合并");
+  assert.ok(!folded("all"), "完全展开：平铺不合并");
 
-  console.log("✓ 设置对接：Loop 摘要（耗时常显+用量门控）、色盲根属性、三档显示风格折叠正确");
+  console.log("✓ 设置对接：Loop 摘要（耗时常显+用量门控）、色盲根属性、各档显示风格折叠正确");
 } finally {
   win.happyDOM.close();
   process.exit(0); // imported store modules keep timers alive; assertions are done

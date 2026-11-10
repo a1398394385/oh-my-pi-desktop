@@ -22,6 +22,7 @@ export {
   evictOpenSessions,
   isJunkPlaceholder,
   toolExpandKey,
+  openProcessBlocksNow,
   sealRunItems,
   dropQueueMsg,
   editQueueMsg,
@@ -33,6 +34,7 @@ export {
 } from "./store/session";
 
 import type { DiskProject, DiskSessionRow, TodoPhase, QueuedMessage } from "./types/frames";
+import type { AvailableProject } from "./store/projects";
 import type { ChatItem } from "./types/session";
 
 // Compatibility aliases: old local type names → the single source in types/ (zero changes to external import paths)
@@ -64,7 +66,7 @@ export const setWelcomeProject = (cwd?: string): void => useAppStore.getState().
 export const initNewSessionModel = (force = false): void => useAppStore.getState().initNewSessionModel(force);
 export const pickModelId = (id: string, role?: string): void => useAppStore.getState().pickModelId(id, role);
 export const pickThinkingLevel = (lv: string): void => useAppStore.getState().pickThinkingLevel(lv);
-export type AvailableProject = { cwd: string; remote?: boolean; remoteLabel?: string; sessions: DiskSessionRow[]; isDefault?: boolean };
+export type { AvailableProject } from "./store/projects";
 export const getAvailableProjects = (): AvailableProject[] =>
   useAppStore.getState().getAvailableProjects();
 export const saveUnseen = (): void => useAppStore.getState().saveUnseen();
