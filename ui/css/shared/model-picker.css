@@ -4,6 +4,9 @@
    page scroll container, or the open menu rides its trigger out of view ("escapes upward"). */
 .menu.model {
   min-width: 200px; max-height: 320px; overflow-y: auto;
+  /* Same gutter rule as #input: a long provider list scrolling in must not reflow the rows
+     (badges/ellipsis shift sideways when the bar takes width). */
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   border-radius: 8px; padding: 4px;
 }
@@ -85,6 +88,9 @@
   bottom: auto;
   width: max-content;
   min-width: 128px; max-height: 320px; overflow-y: auto;
+  /* max-content width: without a reserved gutter the panel grows 9px once it scrolls, which
+     also flips the side it opens on. Stable gutter keeps the measured width constant. */
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   z-index: 501;
 }

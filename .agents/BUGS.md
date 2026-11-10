@@ -124,6 +124,7 @@
 | BUG-130 | 统计页 ACP「状态返回」列永远为空——`projectView` 每请求清空 `#lastStatusTokens`，而拉取与压缩天然跨请求 | 2026-11-09 |
 | BUG-131 | ACP 压缩一轮之后 `context_status` 永远返回空清单——ACP 的 journal 取 `getEntries()`（全文件，含废弃兄弟分支），`annotateView` 的 64 条对齐窗口跨不过分支跳空，此后所有块退化成伪 id | 2026-11-09 |
 | BUG-132 | 套娃子代理（孙代）在 Agent Hub 永不出现——宿主只订 root 的 `eventBus`，孙代帧发在 `subagentEventBus` 上；磁盘回放也只扫一层且把 parent 硬编码成 Main | 2026-11-10 |
+| BUG-133 | 输入框、模型菜单、二级供应商菜单在滚动条出现时横向跳动——自定义 `::-webkit-scrollbar` 让滚动条占 9px 布局宽度 | 2026-11-10 |
 ---
 
 ## 详情
@@ -1934,3 +1935,16 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **教训**：底座把「会话事件」和「可观测事件」拆成两条 bus 后，注释里的「整棵树共用一个 bus」就不能再靠印象沿用——**订阅点必须和 registry 订阅同一个 bus**，而两者分处不同文件时最容易漂移。另一条：产物目录的层级结构就是父子关系的唯一持久化证据，回放逻辑不能假设扁平。
 
+### BUG-133: 输入框 / 模型菜单 / 二级供应商菜单在滚动条出现时横向跳动——自定义 `::-webkit-scrollbar` 让滚动条占 9px 布局宽度
+
+**日期**：2026-11-10
+
+**现象**：输入框内容变长开始滚动、模型菜单（`#modelMenu`）或二级供应商菜单（`.menu.flyout`）第一次出现滚动条时，三者内容整体横向挪一下；二级菜单还会因为宽度变化换边。
+
+**根因**：`ui/css/global/scrollbars.css` 自定义了 `*::-webkit-scrollbar { width: 9px }`，WebKit 一旦自定义滚动条就不再走 overlay 模式，滚动条改为**占布局宽度**。这三个容器原本都是 `overflow-y: auto` 且没有预留槽位，滚动条出现的那一帧内容宽度减少 9px（缩放 1.25 下为 11.25 物理像素），文字换行点、行内徽章、`max-content` 的 flyout 宽度随之变化。
+
+**修复**：`#input.inp-ce`（`ui/css/main/composer.css`）、`.menu.model` 与 `.menu.flyout`（`ui/css/shared/model-picker.css`）加 `scrollbar-gutter: stable`，与 `.aued` / `.al-page` 同一先例，未要求时也预留槽位。
+
+**验证**：真机 dev 实例（WKWebView，dpr 1.25）Web Inspector 实测：探针 div 溢出前后 `clientWidth` 差 9（`classicBarCost=9`，证明滚动条占位）；`#input` 强制 `maxHeight:40px` 溢出后 `scrollbar-gutter:auto` 时 `clientWidth=681`、`stable` 时恒为 `690`（修复前正是 690→681 的跳动）。`CSS.supports('scrollbar-gutter','stable')` 为 true，`ui/dist` 构建产物含 5 处该声明。
+
+**教训**：全站统一自定义滚动条等于全站改用经典滚动条——任何 `overflow: auto` 且宽度会被内容改变影响的可滚容器，都必须自己预留 gutter；`scrollbar-gutter` 只对经典滚动条生效，所以这条在 overlay 环境测不出来，只能在真机 / WebView2 上复现。

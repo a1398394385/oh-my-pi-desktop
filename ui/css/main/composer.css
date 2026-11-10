@@ -906,6 +906,9 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
    the textarea's pre-wrap + break-word; overflow-y added explicitly (divs get no UA default scrolling) */
 #input.inp-ce {
   overflow-y: auto;
+  /* Custom ::-webkit-scrollbar makes the bar take layout width (no overlay), so text would
+     reflow sideways the moment a long draft starts scrolling. Reserve the slot up front. */
+  scrollbar-gutter: stable;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   cursor: text;
