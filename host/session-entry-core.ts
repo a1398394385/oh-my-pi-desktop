@@ -23,6 +23,7 @@ import {
 } from "./state.ts";
 import { USER_INTERRUPT_LABEL, isUserQueuedMessage, toRestoredQueuedMessage } from "./bootstrap.ts";
 import { translateEvent } from "./translate.ts";
+import { settleRunChanges } from "./run-changes.ts";
 import { createDeltaCoalescer } from "./delta-coalesce.ts";
 import { pushContext, maybePushSessionStats, pushSessionStats } from "./session-snapshot.ts";
 import { createSubagentView } from "./subagent-view.ts";
@@ -38,6 +39,9 @@ import { maybeRefreshSessionTitle, syncBranchTitle } from "./session-titles.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
 import { getExtensionUISelectOptionLabel, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
+import { createSessionModes } from "./mode-control.ts";
+import { cancelPrediction, requestPrediction } from "./prediction.ts";
+import { rerenderAssistantMessage } from "./assistant-text.ts";
 
 // Structural minimum for a socket attachEntry accepts: the primary server and
 // the LAN remote server both satisfy it, and so do fan-out adapters (entryBus).
@@ -162,7 +166,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     if (ev.type === "message_end" || ev.type === "tool_execution_end") {
       for (const w of entry.uiSockets) maybePushSessionStats(w, sessionId, entry);
     }
-    if (ev.type === "agent_start") entry.goal.onAgentStart();
+    if (ev.type === "agent_start") { entry.goal.onAgentStart(); cancelPrediction(sessionId); }
     if (ev.type === "message_start" && ev.message?.role === "user" && !ev.message?.synthetic) {
       entry.goal.onUserMessage();
       // Injection confirmation for a consumed queued/steer message: the
@@ -218,6 +222,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       }
       // Goal final assessment: completion wind-down / no-progress suppression / scheduling the re-run (aligned with the TUI's #handleGoalSessionEvent)
       void entry.goal.onAgentEnd(ev.messages ?? []);
+      requestPrediction(entry, sessionId);
       // (18.5) The old wrap-up race fallback (queuedTexts/consumedTexts diff
       // + re-send of swallowed messages) is gone: the base now restores
       // undelivered queued messages itself on abort/wind-down
@@ -240,6 +245,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
         });
       }
       maybeRefreshSessionTitle(entry);
+      void settleRunChanges(entry, sessionId);
       // Our own title write (title_change + branchTitle) lands in the file outside
       // the poll cursor: re-anchor from 0 so the next pass rescans instead of
       // reading a stale offset (see session-poll.ts).
@@ -319,6 +325,10 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
         "ask",
       );
     },
+    // Extension text renderers + claimed link schemes (extensionRenderers.assistantText):
+    // re-draws go through host/assistant-text.ts, and clicks always reach the link_activate RPC.
+    rerenderMessage: (timestamp: number) => rerenderAssistantMessage(entry, sessionId, timestamp),
+    getLinkClicksAvailable: () => true,
     // (18.5) Rich ask dialog: the ask tool with a questions array surfaces
     // here instead of per-question select() rounds. The frame reuses the
     // approval channel (options are the submit/cancel actions; the questions
@@ -421,6 +431,9 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       compact: async () => {
         await entry.session.compact();
       },
+      // ctx.sessionModes: runner.initialize assigns this unconditionally, so extensions would
+      // see undefined without it.
+      sessionModes: createSessionModes(entry, sessionId),
     },
     undefined, // Command context actions: the desktop wires no extension command surface; keep the runner's default no-op
     uiCtx,

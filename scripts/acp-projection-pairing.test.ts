@@ -87,12 +87,16 @@ describe("splitBlocks manifest labels", () => {
 				call("c-read", "read", { path: "packages/demo.ts:80-130", i: "读取示例文件" }),
 				call("c-eval", "eval", { code: "1 + 1", i: "计算校验结果" }),
 				call("c-blank", "bash", { command: "pwd", i: "   " }),
+				call("c-eval-title", "eval", { code: "1 + 1", title: "计算校验结果" }),
+				call("c-checkpoint", "checkpoint", { goal: "保存阶段成果" }),
 				call("c-fallback", "read", { path: "packages/demo.ts" }),
 			]),
 			result("r-bash", "c-bash", "55 tests passed"),
 			result("r-read", "c-read", "const value = 1;", "read"),
 			result("r-eval", "c-eval", "2", "eval"),
 			result("r-blank", "c-blank", "/tmp"),
+			result("r-eval-title", "c-eval-title", "2", "eval"),
+			result("r-checkpoint", "c-checkpoint", "checkpoint created", "checkpoint"),
 			result("r-fallback", "c-fallback", "fallback output", "read"),
 		];
 		const blocks = splitBlocks(source, countTokens);
@@ -100,6 +104,10 @@ describe("splitBlocks manifest labels", () => {
 		expect(blocks.find((b) => b.id === "r-read")!.intent).toBe("read: 读取示例文件");
 		expect(blocks.find((b) => b.id === "r-eval")!.intent).toBe("eval: 计算校验结果");
 		expect(blocks.find((b) => b.id === "r-blank")!.intent).toBe('bash: {"command":"pwd","i":" "}');
+		// eval/checkpoint carry their intent in `title`/`goal` (function-form intent: the
+		// harness injects no `i`), so the label must read those instead of the args JSON.
+		expect(blocks.find((b) => b.id === "r-eval-title")!.intent).toBe("eval: 计算校验结果");
+		expect(blocks.find((b) => b.id === "r-checkpoint")!.intent).toBe("checkpoint: 保存阶段成果");
 		expect(blocks.find((b) => b.id === "r-fallback")!.intent).toBe('read: {"path":"packages/demo.ts"}');
 	});
 });

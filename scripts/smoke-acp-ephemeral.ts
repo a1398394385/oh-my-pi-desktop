@@ -334,24 +334,25 @@ function ephemeralText(fx: Fixture): string {
 	console.log("ok: E ephemeral byte-stable for unchanged state, across instances; instruction line constant");
 }
 
-// --- M: L1 milestone cadence (§7 v10.4) — once per crossed sub-line, never standing --------
+// --- M: tier milestone cadence (§7 v10.4) — once per crossed sub-line, never standing --------
 
 {
 	const pM = { l1: 1_000, l2: 2_000, l3: 3_000, ...NO_TAIL, milestoneSteps: 10 } as const;
-	// Pure ladder: 10 equal sub-lines between L1 and L2, strict at both ends.
+	// Pure ladder: 10 equal sub-lines between L1 and L3, strict at both ends.
 	assert.equal(milestoneFor(1_000, pM), 0);
 	assert.equal(milestoneFor(1_001, pM), 1);
-	assert.equal(milestoneFor(1_100, pM), 1);
-	assert.equal(milestoneFor(1_101, pM), 2);
-	assert.equal(milestoneFor(1_950, pM), 10);
-	assert.equal(milestoneFor(2_001, pM), 0, "past L2 the standing tier owns the wire");
+	assert.equal(milestoneFor(1_199, pM), 1);
+	assert.equal(milestoneFor(1_201, pM), 2);
+	assert.equal(milestoneFor(2_000, pM), 5);
+	assert.equal(milestoneFor(2_950, pM), 10);
+	assert.equal(milestoneFor(3_001, pM), 10, "past L3 the ultimatum line stays crossed; the armed-force machine owns the wire");
 
 	// milestoneSteps is configurable: 4 sub-lines over the same span, and 0
 	// silences the whole segment; the rendered row denominator follows suit.
 	const p4 = { ...pM, milestoneSteps: 4 };
-	assert.equal(milestoneFor(1_500, p4), 2);
-	assert.equal(milestoneFor(2_001, p4), 0);
-	assert.equal(milestoneFor(1_500, { ...p4, milestoneSteps: 0 }), 0, "steps 0 = L1 segment silent");
+	assert.equal(milestoneFor(1_500, p4), 1);
+	assert.equal(milestoneFor(3_001, p4), 4, "saturation follows the configured step count");
+	assert.equal(milestoneFor(1_500, { ...p4, milestoneSteps: 0 }), 0, "steps 0 = segment silent");
 	const fx4 = makeFixture({ ...p4, target: 10_000 }, [30, 30, 30, 30, 30]);
 	fx4.state.projectView(fx4.view);
 	assert.equal(fx4.state.roundStatus!.tier, "L1");
@@ -398,8 +399,8 @@ function ephemeralText(fx: Fixture): string {
 	assert.equal(delivered(fx), null, "no repeat injection at an unchanged milestone");
 
 	// Jump several sub-lines in one request: exactly one injection, no backfill.
-	// (+3x86 = 1290 -> line 3; line 2 skipped in between)
-	grow(fx, 3);
+	// (+5x86 = 1462 -> line 3 over a 200-token span; line 2 skipped in between)
+	grow(fx, 5);
 	fx.state.projectView(fx.view);
 	const jumped = delivered(fx);
 	assert.ok(jumped !== null && jumped > first + 1, `a multi-line jump delivers one milestone, skipping lines (got ${jumped})`);
@@ -418,7 +419,25 @@ function ephemeralText(fx: Fixture): string {
 	fx.state.projectView(fx.view);
 	const again = delivered(fx);
 	assert.ok(again !== null && again < jumped, `reset re-warns from a low line (got ${again})`);
-	console.log(`ok: M L1 milestones — lines ${first}/${jumped}/${again} fire once each, skips never backfill, reset on drop`);
+
+	// L2 and L3 no longer stand per request either: each tier's line fires once
+	// and then stays silent. Climb one block at a time and count what lands.
+	let l2Hits = 0;
+	let l3Hits = 0;
+	for (let i = 0; i < 80; i++) {
+		grow(fx, 1);
+		fx.state.projectView(fx.view);
+		const tail = textOf(fx.state.lastProjected.at(-1)!);
+		if (/milestone=/.test(tail) && /prioritize compression/.test(tail)) l2Hits++;
+		if (/milestone=/.test(tail) && /Final notice \(L3\)/.test(tail)) l3Hits++;
+		if (fx.state.roundStatus!.tier === "L3" && l3Hits > 0) break;
+	}
+	assert.equal(fx.state.roundStatus!.tier, "L3", "the climb reached L3");
+	assert.ok(l2Hits >= 1, `crossing into L2 delivers its line (got ${l2Hits})`);
+	assert.equal(l3Hits, 1, `the ultimatum rides the L2→L3 crossing exactly once (got ${l3Hits})`);
+	fx.state.projectView(fx.view);
+	assert.equal(delivered(fx), null, "L3 stays silent afterwards; the armed-force machine owns the wire");
+	console.log(`ok: M tier milestones — lines ${first}/${jumped}/${again} fire once each, skips never backfill, reset on drop; L2 hit ${l2Hits}×, L3 ultimatum ${l3Hits}×, then silent`);
 }
 
 // --- F: end-to-end — real manifest drives a full compress round (T3 scenario, no supply) --
@@ -480,8 +499,8 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	const { session } = await createAgentSession({
 		cwd: cwdE2E,
 		settings,
-		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
-		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		// This fixture keeps the base chain off (isolated pin), so the advisor must be
+		// opted back in explicitly or it loses compaction maintenance.
 		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,

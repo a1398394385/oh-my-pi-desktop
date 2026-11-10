@@ -72,7 +72,7 @@
 
 **时序与快照**:压缩范围 = 当轮清单(模型可见的集合,即最近一次 context_status 返回),不是执行时刻候选集;清单返回后新到块不在清单内,天然豁免。快照一致性由此保证,不依赖执行时刻状态。
 
-**与底座预处理管道的关系**(v9 补遗实证):prune 分两层——**stale prune**(supersedeReads / dropUseless,独立设置默认 true,每轮跑)在 compaction.enabled 门控**之前**执行,ACP 会话关闭 compaction.enabled 后**照常运行**;**overflow prune**(pruneToolOutputs)在门控**之后**,随 compaction.enabled=false 一并关闭,其溢出恢复职能由 ACP 保险线/降级路径接管。ACP 块 token 计数用 prune 后的值(stale prune 为常态路径)。prune 决定块内内容的多少,ACP 决定块的存亡,两者正交。
+**与底座预处理管道的关系**(v9 补遗实证,2026-11-09 修订):prune 分两层——**stale prune**(supersedeReads / dropUseless,独立设置默认 true,每轮跑)在 compaction.enabled 门控**之前**执行;**overflow prune**(pruneToolOutputs)在门控**之后**,只在 compaction.enabled=true 时运行。ACP 会话不再关闭 compaction.enabled(见 §12「会话装配」),两层 prune 均照常运行:ACP 块 token 计数用 prune 后的值。prune 决定块内内容的多少,ACP 决定块的存亡,两者正交。
 
 ## 5. 档位、三级压缩与降级
 
@@ -85,9 +85,9 @@
 | 档 | 触发(活跃区) | ephemeral 文案 |
 |---|---|---|
 | 无档 | ≤ 150K 且非待强力 | **零注入**(压缩时机完全归模型:工具描述引导,经 context_status 自取清单) |
-| L1 激活档 | > 150K | **里程碑注入(v10.4)**:L1→L2 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = L1 段静默),跨过一条新线注入一次(跳线不补发;降回 ≤L1 重置重计),文案 = 状态行(带 `milestone=k/N` 标记)+ 建议压缩 + 指向 context_status |
-| L2 加压档 | > 250K | 一行状态行:加压提示 + target 约束 + 指向 context_status |
-| L3 截断档 | > 350K | 一行状态行:最后通牒:「下一轮必须成功压缩,否则宿主将强制压缩」+ 指向 context_status |
+| L1 激活档 | > 150K | **里程碑注入(v10.4)**:L1→L3 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = 该段静默),跨过一条新线注入一次(跳线不补发;降回 ≤L1 重置重计),文案 = 状态行(带 `milestone=k/N` 标记)+ 该档指令 + 指向 context_status |
+| L2 加压档 | > 250K | 同里程碑机制:跨线时注入一次 L2 文案(加压提示 + target 约束 + 指向 context_status),不再每请求常驻 |
+| L3 截断档 | > 350K | 同里程碑机制:跨线时注入一次 L3 通牒(「下一轮必须成功压缩,否则宿主将强制压缩」);强制链条由 `#ultimatumAt` 在到达 L3 的首个请求上锚定,不依赖每轮文案 |
 
 (命名约定:档位用「激活/加压/截断」,压缩方式用「普通/强力/强制」,两者不同名以防混淆。)
 
@@ -130,6 +130,7 @@
 - 边界前的 acpSummary 随底座边界一并隐藏;底座摘要输入基于边界前原始消息全文(投影不改存储,原文均在);
 - 此后由 OMP 默认链路按 methodOrder(remote/snapcompact/handoff/shake/soft)接管,含其溢出恢复/输出截断恢复/进度守卫/失败封顶;
 - 判定无需额外标记:重建时检测到 compaction entry 即降级。
+- **运行中降级次序**:底座自动压缩按 reason 分流——`threshold`/`idle` 由投影扩展的守卫取消(否则 journal 增长必致底座折叠冲掉 ACP 结构);`overflow`/`incomplete` 是底座的最后手段,守卫先让 ACP 降级再放行,使折叠记录落在已退出的会话上,而不是背后仍有一个活的 ACP 区。手动 `/compact` 不取消(操作者显式要求走底座链路)。
 
 ## 6. 工具契约
 
@@ -187,8 +188,8 @@
 ## 7. ephemeral 状态提示契约
 
 - **位置**:请求消息序列末尾追加一条 user 角色消息,文本以 `[compress-hint]` 开头;**不落历史**。
-- **分层注入(v10,pull 替代 push)**:无档(活跃区 ≤L1 且非待强力)**零注入**——历史前缀完全稳定,压缩时机归模型(工具描述引导);L1/L2/L3 与待强力注入**一行精简状态行**:档位 + 本次允许的压缩方式 + 活跃区/投影总量 tokens + 指令文案(L1 建议、L2 加压+target、L3 最后通牒;待强力统一加注「下次压缩为强力压缩」)+ 指向 context_status 取清单。**不含清单本身**——当轮候选清单(短号、降序、8K 截尾豁免、多轮收敛)移至 context_status 返回(§6)。
-- **L1 里程碑节奏(v10.4)**:L1 段(>L1 且 ≤L2、非待强力、非强制请求)不再每请求注入——L1→L2 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = L1 段静默;`host/acp-plan.ts` `milestoneFor`),活跃区首次跨过一条新线才注入一次(状态行末尾带 `milestone=k/N` 标记,文案复用 L1 建议 + context_status 指针);单请求跨多条线只发最高那条、**不补发**;降回 ≤L1(或进入待强力/L2+ 常驻态)即重置,再爬升从第一条线重新提醒。L2/L3 与待强力保持每请求常驻。游标仅存内存:宿主重启后最多重发一次最高已跨线,自愈无害。
+- **分层注入(v10,pull 替代 push)**:无档(活跃区 ≤L1 且非待强力)**零注入**——历史前缀完全稳定,压缩时机归模型(工具描述引导);L1/L2/L3 按里程碑注入**一行精简状态行**:档位 + 本次允许的压缩方式 + 活跃区/投影总量 tokens + 该档指令文案(L1 建议、L2 加压+target、L3 最后通牒)+ 指向 context_status 取清单。**不含清单本身**——当轮候选清单(短号、降序、8K 截尾豁免、多轮收敛)移至 context_status 返回(§6)。
+- **档位里程碑节奏(v10.4)**:L1..L3 段(>L1 且 ≤L3、非待强力、非强制请求)不每请求注入——L1→L3 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = 该段静默;`host/acp-plan.ts` `milestoneFor`),活跃区首次跨过一条新线才注入一次(状态行末尾带 `milestone=k/N` 标记,文案取当前档位指令 + context_status 指针);单请求跨多条线只发最高那条、**不补发**;降回 ≤L1(或进入待强力/强制请求)即重置,再爬升从第一条线重新提醒。跨线后不再重复——沉默到下一档位提示或 L3 强制链条接管(`#ultimatumAt` 在到达 L3 的首个请求上锚定,`onTurnEnd` 当轮未成功即 arm force)。待强力与强制请求保持每请求常驻。游标仅存内存:宿主重启后最多重发一次最高已跨线,自愈无害。
 - **缓存安全**:零注入期持久前缀(tools/system/压缩区/活跃区)逐字节稳定;注入期档位不变时状态行逐字节稳定,最大化末尾局部缓存复用。
 
 ## 8. token 计数
@@ -216,7 +217,7 @@
 
 | 点 | 位置(omp-desktop host 层) | 改动 |
 |---|---|---|
-| 会话装配 | `host/session-lifecycle.ts` ACP 注入段(acp.enabled 开关先例已存在)+ `createAgentSession({ settings: Settings.isolated({ "compaction.enabled": false }) })` | ACP 会话注册 extension + customTools,并 **per-session 关闭底座自动压缩**(底座 shouldCompact 判 stored journal 口径,ACP 投影不影响之——不关则 journal 增长必致底座压缩误触发、冲掉 ACP 结构;= v8「strategy off」语义的 host 实现);降级时恢复该会话压缩能力(Settings 为活对象,后续写入可达) |
+| 会话装配 | `host/session-lifecycle.ts` ACP 注入段(acp.enabled 开关先例已存在)+ `createAgentSession({ extensions })` | ACP 会话注册 extension + customTools,并由投影扩展**取消本会话的底座自动压缩**(threshold/idle;overflow/incomplete 先降级再放行)。底座 shouldCompact 判 stored journal 口径,ACP 投影不影响之——不拦则 journal 增长必致底座折叠冲掉 ACP 结构。**不再 pin `compaction.enabled`**:settings 是树状读穿,子代理是父 settings 的派生 overlay(`createSubagentSettings`),pin 会连带关闭每个 `task` 子代理的底座压缩,而子代理完全没有 ACP 面(2026-11-09 实测) |
 | 档位判定 | host ACP 状态机 | 活跃区三档;**不**使用底座 `compactionContextTokens` 的 stored 地板 |
 | 保险线 | 同上 | 投影后总量 vs 窗口 − 15% reserve |
 | 投影 + ephemeral | context 事件 extension(`host/acp-context.ts` 现有 transformContext 同一接缝) | 块过滤重组 + 压缩块渲染为 user 文本段 + `[compress-hint]` 末尾追加(§4/§7) |
@@ -225,7 +226,7 @@
 | 强制调用 | 三级触发:`AgentSession.setForcedToolChoice("compress_context")`(公开 API,已验证:强制下一次模型调用指定工具、[forced,"none"] 序列调完即止;工具须在 active 集——customTools 注入天然满足;模型不支持时抛错 = 降级出口) | meta.forced=true,按强力语义;失败即 §5.3 降级 |
 | 持久 entry | `SessionManager.appendCustomEntry` | customType="acpSummary"(§9) |
 | 计数 | `@oh-my-pi/pi-agent-core` 导出 `Tokenizer`(18.8.6 验证) | 档位判定/清单/校验/保险线统一实例(§8) |
-| 兜底 | 降级路径 | ACP 注入物移除 + 恢复 compaction.enabled = 底座默认链路 methodOrder 接管(§5.3) |
+| 兜底 | 降级路径 | ACP 注入物停用 + 守卫解除(settings 从未被关闭)= 底座默认链路 methodOrder 接管(§5.3) |
 
 ## 11. 参数表(SSOT,实现以本表为准)
 
@@ -241,7 +242,7 @@
 | 尾部保护区 | 默认 min(最近 2 turn, 最近 20K token),可配置,可为 0;倒序按组累计,先触发的限制生效。组 = 一条 assistant 消息及其全部 result 块(user 块自成一组并闭合 turn),切点只落组边界,不拆 tool_use/result 对 | v11(原 max 语义超长单轮会整轮入保护区,压缩失效) |
 | 用户消息保护下限 | 默认 0(关闭),`acp.tailUserMessages` 可配置;开启后走法必须回溯到最近 N 条真实用户输入,可越过上面两条上限 | 只计 role=user 且非 synthetic 的消息(developer/synthetic 注入同样拆成 user 块,计入会让下限提前满足);设置页「尾部保护区(用户消息)」 |
 | 当轮清单截断 | context_status 返回内:短号按块大小降序;渲染超 8K token 截尾部(小块豁免,下轮重进) | v10 清单从 ephemeral 移入 context_status 返回;短号见 §3 |
-| L1 里程碑子线(v10.4) | 默认 10 条;`acp.milestoneSteps` 可配置,0 = L1 段静默(`milestoneSteps`) | 跨线注入一次、跳线不补、降回重置(§7);L2/L3/待强力不受影响 |
+| 档位里程碑子线(v10.4) | 默认 10 条;`acp.milestoneSteps` 可配置,0 = L1..L3 段静默(`milestoneSteps`) | 跨线注入一次、跳线不补、降回重置(§7);L2/L3 同样适用,待强力与强制请求不受影响 |
 
 ## 12. 验收矩阵
 

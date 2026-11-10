@@ -97,8 +97,8 @@ async function build(cwd: string, sessionManager: SessionManager, extra: Record<
 	const { session } = await createAgentSession({
 		cwd,
 		settings,
-		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
-		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		// This fixture keeps the base chain off (isolated pin), so the advisor must be
+		// opted back in explicitly or it loses compaction maintenance.
 		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry: new ModelRegistry(authStorage, join(cwd, "models.yml")),

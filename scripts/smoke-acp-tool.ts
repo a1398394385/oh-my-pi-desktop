@@ -13,9 +13,9 @@
 //      byte-identical across compressions (T1 projection output compared)
 //   E  end-to-end mock-model session — real createAgentSession assembly
 //      (compress_context via customTools, projection behind the context event,
-//      base compaction pinned off per session), acpSummary on disk through
+//      base-compaction guard on the session), acpSummary on disk through
 //      appendCustomEntry, projection live on the next request, tool_result
-//      stats, rebuild parity (T2), and the §5.3 degrade write-back demo.
+//      stats, rebuild parity (T2), and the §5.3 degrade exit.
 //
 // All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
@@ -50,7 +50,6 @@ const { createAgentSession, SessionManager, Settings, AgentRegistry } = await im
 const { AuthStorage } = await import("@oh-my-pi/pi-coding-agent/session/auth-storage");
 const { ModelRegistry } = await import("@oh-my-pi/pi-coding-agent/config/model-registry");
 const { createMockModel, registerMockApi } = await import("@oh-my-pi/pi-ai/providers/mock");
-const { cfgCompactionEnabled } = await import("@oh-my-pi/pi-coding-agent/session/context-settings");
 registerMockApi();
 
 // Real tokenizer (spec §8): native encoding, not the byte-estimate fallback.
@@ -387,10 +386,10 @@ const mock = createMockModel({
 	},
 });
 const sessionManager = SessionManager.create(cwdE2E);
-// Spec §10 assembly: per-session base auto-compaction OFF via a live isolated
-// settings object — the §5.3 degrade path writes compaction.enabled back on it.
-const settings = Settings.isolated({ "compaction.enabled": false });
-assert.equal(cfgCompactionEnabled.get(settings), false, "base compaction pinned off for the ACP session");
+// Spec §10 assembly: the base chain stays enabled — the projection extension's
+// guard cancels its automatic runs on this session (2026-11-09: a settings pin
+// leaked into `task` children, so the cancel moved into the extension).
+const settings = Settings.isolated({});
 const e2eParams: Partial<AcpParams> = { l1: 50, l2: 120, l3: 200, minCompress: 0, target: 10_000, tailTurns: 0, tailTokens: 0 };
 const state = createAcpRuntime({
 	model: mock,
@@ -408,9 +407,6 @@ const modelRegistry = new ModelRegistry(authStorage, join(cwdE2E, "models.yml"))
 const { session } = await createAgentSession({
 	cwd: cwdE2E,
 	settings,
-	// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
-	// so the advisor must be opted back in explicitly or it loses compaction maintenance.
-	advisorCompactionEnabled: true,
 	model: mock,
 	// Mirrors host/session-lifecycle.ts: ACP sessions carry the proactive-
 	// compression guidance via appendSystemPrompt (verbatim append).
@@ -521,14 +517,12 @@ assert.deepEqual(rebuilt.zone.map((z) => z.id), state.zone.map((z) => z.id));
 assert.deepEqual([...rebuilt.compressedBlockIds].sort(), [...state.compressed].sort());
 console.log("ok: E rebuild parity — runtime zone/compressed set matches the journal");
 
-// §5.3 degrade demo: write compaction.enabled back on the live session settings
-// object — the session's compaction policy getter resolves settings every turn
-// (session-maintenance #compactionSettings), so the base chain resumes immediately.
-cfgCompactionEnabled.override(settings, true);
-assert.equal(cfgCompactionEnabled.get(settings), true);
-const sessionSettings = session.settings; // the same live object handed to createAgentSession
-assert.ok(sessionSettings === settings || cfgCompactionEnabled.get(sessionSettings) === true);
-console.log("ok: E degrade demo — compaction.enabled write-back takes effect on the session settings");
+// §5.3 degrade: ACP exits this session for good; the base chain needs no
+// write-back (it was never disabled — the guard only cancelled its automatic
+// runs, and stops cancelling once degraded). Idempotent.
+state.degrade("smoke demo");
+assert.equal(state.degraded, true);
+console.log("ok: E degrade — ACP exits the session, base compaction guard releases");
 
 await reopened.close(); // release the OS lock sidecar so the dir cleanup sticks
 // The SDK journals a session_exit line at process exit (after this cleanup

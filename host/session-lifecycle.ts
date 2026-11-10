@@ -26,8 +26,6 @@ import { GoalController, type GoalSession } from "./goal.ts";
 import { acpParamsFromConfig } from "./acp-plan.ts";
 import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension, ACP_CONTEXT_BUDGET_PROMPT } from "./acp-assembly.ts";
 import { createAcpStatusTool } from "./acp-status-tool.ts";
-import { rebuildAcpState } from "./acp-persist.ts";
-import { cfgCompactionEnabled } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { createSessionContextTools } from "./session-context.ts";
 import { createAutomationTools } from "./automations-tool.ts";
 import { entriesToTranscript, sumRunDurationMs } from "./translate-history.ts";
@@ -47,7 +45,7 @@ import { readPluginsEnabled, readHooksEnabled } from "./plugin-assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
 import { markSeen, reportKeepaliveState } from "./keepalive-host.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
-import { computerDefaultAppliesFor, pushComputerMode, setComputerMode } from "./computer-mode.ts";
+import { pushComputerMode, restoreComputerMode, setComputerMode } from "./computer-mode.ts";
 import { pushAdvisorMode, readAdvisorDefaultEnabled } from "./advisor-mode.ts";
 import { pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { bgJobsPayload } from "./async-jobs.ts";
@@ -111,6 +109,9 @@ export async function createSessionCore(
     subagent?: boolean;
     subagentInit?: { systemPrompt: string[]; tools: string[] };
     askTimeoutSec?: number;
+    // Automation run stamp: its own computer flag decides the opt-in default
+    // (the desktop switch never applies to unattended runs).
+    automation?: { computer?: boolean };
   },
 ) {
   // Master switch on the experimental features page (omp-desktop.json's
@@ -120,25 +121,24 @@ export async function createSessionCore(
   const acpEnabled = readAcpEnabled();
   // ACP dual-zone compaction assembly (spec §10): with the master switch on the
   // session gets the compress_context tool, the dual-zone request projection
-  // (T1 projectContext behind the context event), and the base auto-compaction
-  // pinned OFF per session — the base shouldCompact judges the stored journal,
-  // which the ACP projection never influences, so leaving it on would let base
-  // compaction fold the journal out from under ACP. The settings child stays a
-  // live object (hoisted here): the §5.3 degrade path writes compaction.enabled
-  // back to true on it (the session's compaction getter resolves the settings
-  // every turn).
+  // (T1 projectContext behind the context event), and a guard extension that
+  // cancels automatic base compactions — the base shouldCompact judges the
+  // stored journal, which the ACP projection never influences, so leaving them
+  // running would let base compaction fold the journal out from under ACP
+  // (spec §5.3). The guard is per session on purpose: `compaction.enabled` is a
+  // settings-tree read, so pinning it here also reached every `task` subagent of
+  // this session, which ACP does not cover (assembly rationale in
+  // host/acp-assembly.ts).
   // async.widgets stays ON: the desktop draws job widgets now (async-jobs.ts
-  // caption/widget passthrough + the 1.5s live refresh). out.enabled ON: the base
-  // gates out:// replies to TUI transcripts unless set; the desktop draws them
-  // now (translate.ts + ToolRow).
+  // caption/widget passthrough + the 1.5s live refresh). out.enabled is NOT pinned
+  // here: the host pins the default on its own settings layer (profile.ts), so the
+  // user's global value wins and this overlay carries per-session overrides only.
   const sessionSettings = H.settings.overlay({
     "computer.enabled": false,
-    "out.enabled": true,
     // Automation runs carry their task's ask deadline (seconds) as a per-session
     // override; the base ask tool resolves it per session, and the host's
     // permission-approval gate reads the same value back for non-automation runs.
     ...(opts?.askTimeoutSec !== undefined ? { "ask.timeout": opts.askTimeoutSec } : {}),
-    ...(acpEnabled ? { "compaction.enabled": false } : {}),
   });
   // Session holder for the T7 force channel: setForcedToolChoice needs the
   // live session, which only exists after createAgentSession below.
@@ -150,7 +150,8 @@ export async function createSessionCore(
     ? createAcpRuntime({
         model: acpModel,
         sink: sessionManager,
-        getEntries: () => sessionManager.getEntries(),
+        // Branch-scoped: a full-journal feed blinds annotateView past ACP_ALIGN_WINDOW (BUG-131).
+        getEntries: () => sessionManager.getBranch(),
         params: acpParamsFromConfig(readAcpRaw().acp, (acpModel as { contextWindow?: number } | null | undefined)?.contextWindow),
         // Level-3 force channel (spec §5.2/§10): the named form where the face
         // supports it (openai-completions faces narrow tools internally = form
@@ -160,22 +161,13 @@ export async function createSessionCore(
           if (!s) throw new Error("session not created yet");
           s.setForcedToolChoice("compress_context");
         },
-        // §5.3 degrade: restore the base compaction chain on the live settings
-        // child — the OMP methodOrder takes over from the next turn on.
-        onDegrade: () => cfgCompactionEnabled.override(sessionSettings, true),
       })
     : null;
   // Restart rebuild (spec §9/T2+T7): adopt the persisted zone/compressed set;
-  // a journal containing a base compaction entry degrades immediately (the
-  // overlay write-back above re-enables the base chain for this session).
-  if (acpRuntime) {
-    const rebuilt = rebuildAcpState(sessionManager.getEntries());
-    if (rebuilt.degraded) acpRuntime.degrade("restart rebuild found a base compaction entry (spec §5.3/§9.1)");
-    else {
-      acpRuntime.zone = rebuilt.zone;
-      for (const id of rebuilt.compressedBlockIds) acpRuntime.compressed.add(id);
-    }
-  }
+  // a journal containing a base compaction entry degrades immediately (the base
+  // chain already owns that journal, and the compaction guard stops cancelling
+  // once ACP is degraded).
+  acpRuntime?.resyncToBranch(sessionManager.getBranch()); // branch-scoped: summaries on abandoned sibling branches must not resurface
   // ACP manifest + ephemeral supply (T4): the projection extension re-derives
   // the round status (tier + candidate manifest) on every request and appends
   // the [compress-hint] ephemeral when a tier is active (host/acp-runtime.ts).
@@ -207,19 +199,11 @@ export async function createSessionCore(
     // Per-session settings child with computer use pinned OFF: the settings-page
     // computer.enabled switch is the master gate (checked at /computer dispatch
     // in rpc/prompt.ts) and a session opts in via /computer on — the config
-    // value never auto-enables a desktop session. ACP sessions additionally
-    // pin compaction.enabled OFF here (see the assembly comment above); other
-    // runtime overrides (/extended-context, /browser headless, model-role pins)
-    // stay in this child instead of leaking host-wide; config-layer reads still
-    // fall through to H.settings live (Settings.overlay forwards parent changes
-    // to children).
-    settings: sessionSettings, // hoisted so the ACP §5.3 degrade path can write compaction.enabled back on it
-    // The advisor's compaction gate is the same `compaction.enabled` + non-empty
-    // `methodOrder` pair the primary's is, read off the same settings object — so the
-    // ACP pin above (which exists only to keep the base chain out of ACP's way) silently
-    // kills the advisor's compaction and promotion too. Its stale-tool-result eviction
-    // is ungated and survives; everything after it does not. Opt the advisor back in.
-    advisorCompactionEnabled: true,
+    // value never auto-enables a desktop session. Other runtime overrides
+    // (/extended-context, /browser headless, model-role pins) stay in this child
+    // instead of leaking host-wide; config-layer reads still fall through to
+    // H.settings live (Settings.overlay forwards parent changes to children).
+    settings: sessionSettings,
     model: initialModel ?? H.modelOverride,
     // Reopened child transcript: replay its persisted spawn contract (see opts.subagentInit).
     ...(opts?.subagentInit ? { systemPrompt: opts.subagentInit.systemPrompt, toolNames: opts.subagentInit.tools, restrictToolNames: true } : {}),
@@ -387,6 +371,9 @@ export async function createSessionCore(
   // Fire-and-forget MCP mount: pooling boundaries only (create / first load /
   // switch-back after eviction) — never blocks the session's critical path
   void mountMcpForSession(sessionId, entry);
+  // Computer opt-in: every rebuild lands on a pinned-off overlay, so restore the
+  // recorded choice or the spawn default here (one funnel for spawn and load).
+  await restoreComputerMode(sessionId, sessionManager.getSessionFile(), entry, opts?.automation);
   return { sessionId, entry, eventBus: result.eventBus };
 }
 
@@ -404,11 +391,17 @@ export async function ensureSessionLoaded(sessionPath: string): Promise<{ sessio
   }
   const manager = await SessionManager.open(sessionPath);
   const entries = manager.getEntries();
-  const transcript = entriesToTranscript(entries, sessionPath);
+  // The journal is a tree, not a list: edit-resend / in-tree navigation leave
+  // abandoned sibling branches in the same file, so the chat and the active
+  // timer follow the current root→leaf path (same source as navigate_tree).
+  // getEntries() would replay every branch side by side — two bubbles for the
+  // same re-asked prompt, plus the abandoned turn's run in the duration.
+  const branch = manager.getBranch();
+  const transcript = entriesToTranscript(branch, sessionPath);
   const peek = await SessionManager.peekSessionInit(sessionPath);
   const { sessionId, entry, eventBus } = await createSessionCore(peek?.cwd ?? defaultCwd, manager, transcript, undefined);
-  entry.mentionScanIndex = entries.length;
-  entry.activeMs = sumRunDurationMs(entries);
+  entry.mentionScanIndex = entries.length; // Cursor covers the whole file: abandoned-branch mentions must not re-send
+  entry.activeMs = sumRunDurationMs(branch);
   attachEntryCore(sessionId, entry, eventBus);
   eachUiWs((w) => attachEntryUi(w, sessionId, entry, eventBus));
   return { sessionId, entry };
@@ -433,7 +426,8 @@ export async function spawnSession(
     SessionManager.create(workDir),
     [],
     targetModel,
-    { askTimeoutSec: opts?.askTimeoutSec },
+    // automation stamped at construction: the computer default depends on it
+    { askTimeoutSec: opts?.askTimeoutSec, automation: opts?.automation },
   );
   // Scheduler-spawned session: stamps the pool entry (session_list marker) and
   // flags session_created as background so the UI registers the slot without
@@ -461,14 +455,6 @@ export async function spawnSession(
   } catch (err) {
     safeStderr(`[host] kimi auto-thinking gate failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
   }
-  // Computer-use opt-in at spawn: user sessions follow the desktop "default on" switch;
-  // automation runs follow the automation's own flag (never the desktop default). Applied
-  // here only — loading a session from disk keeps whatever state it was left in.
-  if (computerDefaultAppliesFor(opts?.automation)) {
-    void setComputerMode(ws, sessionId, entry, true).catch((err) => {
-      safeStderr(`[host] computer mode default-enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
-    });
-  }
   if (opts?.automation) {
     // The scheduler passes a broadcast adapter as ws (its send fans out over
     // every connected UI). Attaching it would double-send once a real UI also
@@ -480,7 +466,7 @@ export async function spawnSession(
     attachEntry(ws, sessionId, entry, eventBus);
   }
   ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { automation: opts?.automation })));
-  pushComputerMode(ws, sessionId, entry); // fresh overlay is always off; the explicit frame keeps the button honest after plan-approve session swaps
+  pushComputerMode(ws, sessionId, entry); // overlay may already be lit (opt-in restored in createSessionCore); the explicit frame keeps the button honest after plan-approve session swaps
   // Advisor default-on at spawn: the base seeds a fresh session from the global
   // advisor.enabled gate, so this switch only closes it when off (never for automation).
   if (!opts?.automation && !readAdvisorDefaultEnabled() && entry.session.isAdvisorEnabled()) {
@@ -608,7 +594,10 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   }
   const manager = await SessionManager.open(sessionPath);
   const entries = manager.getEntries();
-  const transcript = entriesToTranscript(entries, sessionPath);
+  // Same tree-not-list rule as ensureSessionLoaded: only the current root→leaf
+  // path feeds the transcript, the active timer and the plan-mode restore.
+  const branch = manager.getBranch();
+  const transcript = entriesToTranscript(branch, sessionPath);
   // The session's original cwd: getEntries() excludes the session header, so
   // read it via peekSessionInit (same source as open's internals; it returns
   // null when the directory is unreachable — fall back to HOME)
@@ -632,10 +621,10 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   }
   // Historical mentions are already in the transcript: align the fileMention read-back cursor to the tail of all entries, avoiding a re-send on the first read-back
   entry.mentionScanIndex = entries.length;
-  // Active-duration seed for a past session: the in-memory timer only covers time since this open; seed the backlog by summing per-turn spans from the disk entries
-  entry.activeMs = sumRunDurationMs(entries);
+  // Active-duration seed for a past session: the in-memory timer only covers time since this open; seed the backlog by summing per-turn spans from the active branch
+  entry.activeMs = sumRunDurationMs(branch);
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
-  await pushSessionSnapshot(ws, sessionId, entry, { mode: "rebuild", sessionPath, entries });
+  await pushSessionSnapshot(ws, sessionId, entry, { mode: "rebuild", sessionPath, entries: branch });
   safeStderr(hostI18n.t("errors.lifecycle.sessionLoaded", { sessionId: sessionId.slice(0, 8), cwd: entry.cwd, entries: transcript.length }));
 }

@@ -49,7 +49,6 @@ import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import { AcpRuntimeState, createCompressContextTool, createAcpProjectionExtension } from "../host/acp-runtime.ts";
 import type { AcpParams } from "../host/acp-plan.ts";
 import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
-import { rebuildAcpState } from "../host/acp-persist.ts";
 
 assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
@@ -360,8 +359,8 @@ async function makeE2ESession(cwd: string, opts: E2EOpts) {
 	const { session } = await createAgentSession({
 		cwd,
 		settings,
-		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
-		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		// This fixture keeps the base chain off (isolated pin), so the advisor must be
+		// opted back in explicitly or it loses compaction maintenance.
 		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,
@@ -636,14 +635,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		onDegrade: () => cfgCompactionEnabled.override(settingsA, true),
 	});
 	// The exact assembly lines from host/session-lifecycle.ts.
-	{
-		const rebuilt = rebuildAcpState(healthy.getEntries());
-		if (rebuilt.degraded) stateA.degrade("restart rebuild found a base compaction entry (spec §5.3/§9.1)");
-		else {
-			stateA.zone = rebuilt.zone;
-			for (const id of rebuilt.compressedBlockIds) stateA.compressed.add(id);
-		}
-	}
+	stateA.resyncToBranch(healthy.getBranch());
 	assert.equal(stateA.degraded, false);
 	assert.equal(stateA.zone.length, 1, "zone adopted from the journal");
 	assert.ok(stateA.compressed.has(u0), "compressed set adopted");
@@ -665,14 +657,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		params: FIXTURE_PARAMS,
 		onDegrade: () => cfgCompactionEnabled.override(settingsB, true),
 	});
-	{
-		const rebuilt = rebuildAcpState(degraded.getEntries());
-		if (rebuilt.degraded) stateB.degrade("restart rebuild found a base compaction entry (spec §5.3/§9.1)");
-		else {
-			stateB.zone = rebuilt.zone;
-			for (const id of rebuilt.compressedBlockIds) stateB.compressed.add(id);
-		}
-	}
+	stateB.resyncToBranch(degraded.getBranch());
 	assert.equal(stateB.degraded, true, "a journal containing a base compaction entry degrades at restart");
 	assert.equal(stateB.zone.length, 0, "ACP state does not advance");
 	assert.equal(cfgCompactionEnabled.get(settingsB), true, "base compaction chain restored for the degraded session");

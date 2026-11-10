@@ -3,7 +3,9 @@
 // Relocated from the message dispatch in main.ts (third cut).
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
-import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry } from "../bootstrap.ts";
+import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
+import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry, lookupSetting } from "../bootstrap.ts";
+import { repoGroups } from "../repo-roots.ts";
 import { H, sessions, findPooledSession, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus, broadcastSessionUnloaded } from "../state.ts";
 import type { PoolEntry } from "../state.ts";
 import type { SessionListFrame } from "../wire/frames-session.ts";
@@ -21,12 +23,14 @@ import {
   createSessionCore,
   attachEntry,
 } from "../session-lifecycle.ts";
+import type { AcpRuntimeState } from "../acp-runtime.ts";
 import { bgJobsPayload } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
 import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../session-titles.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
+import { clearSessionComputerChoice } from "../computer-mode.ts";
 import { visibleQueued } from "../queue.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
@@ -185,7 +189,16 @@ export async function buildSessionListPayload() {
     gitProjects: H.desktopProjects.allProjects.filter((p) =>
       fs.existsSync(`${p.replace(/[/\\]+$/, "")}/.git`),
     ),
+    // One-row-per-repository mode (setting on): which registered dirs are the same
+    // repository and every checkout of it. Omitted when the mode is off, so the UI
+    // renders the flat list unchanged.
+    ...(repoMode() ? { repoGroups: await repoGroups(H.desktopProjects.allProjects) } : {}),
   } satisfies SessionListFrame;
+}
+
+/** session.worktreeScope === "repo": merge every checkout of a repository into one row. */
+function repoMode(): boolean {
+  return lookupSetting("session.worktreeScope")?.get(H.settings) === "repo";
 }
 
 /**
@@ -326,6 +339,15 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   async load_session(ws, msg) {
     await handleLoadSession(ws, msg.path);
   },
+  async link_activate(_ws, msg) {
+    // A click on a link whose scheme an extension claimed (registerLinkScheme): hand it to the
+    // base runner, which dispatches `link_activate` to the owning extension. Unknown schemes and
+    // unknown sessions are ignored — the UI sends every non-web scheme here.
+    const entry = sessions.get(String(msg.sessionId ?? ""));
+    const url = typeof msg.url === "string" ? msg.url : "";
+    if (!entry || !url) return;
+    await entry.session.extensionRunner?.emitLinkActivate(url);
+  },
   mark_seen(ws, msg) {
     // Notified when the frontend switches to a session (activateSession/
     // openSessionByPath): seen = stop cache keepalive probing. Switching
@@ -434,7 +456,13 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // Remove from the project list (sessions stay in history; the "recent" view still shows them)
     const cwd = String(msg.cwd ?? "").trim();
     if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
-    if (!H.desktopProjects.removedProjects.includes(cwd)) H.desktopProjects.removedProjects.push(cwd);
+    // Merged repository row: removing it hides every checkout at once (`cwds` carries the
+    // row's worktree paths), otherwise the row reappears on the next frame from the
+    // siblings that were never removed.
+    const extra = Array.isArray(msg.cwds) ? msg.cwds.filter((c: unknown): c is string => typeof c === "string") : [];
+    for (const p of [cwd, ...extra]) {
+      if (!H.desktopProjects.removedProjects.includes(p)) H.desktopProjects.removedProjects.push(p);
+    }
     await saveDesktopProjects();
     await refreshAllSessionLists(ws);
   },
@@ -493,6 +521,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // (unopened history session, never moved in this host's lifetime).
     let recordsDirty = false;
     for (const q of knownPaths.size > 0 ? knownPaths : [p]) {
+      // The per-session computer opt-in rides on omp-desktop.json keyed by this
+      // same path; a rebuilt session at that path must not inherit a stale choice.
+      clearSessionComputerChoice(q);
       const pi = H.desktopProjects.pinnedSessions.indexOf(q);
       if (pi >= 0) {
         H.desktopProjects.pinnedSessions.splice(pi, 1);
@@ -712,7 +743,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     }
     try {
       await entry.session.compact();
-      entry.transcript = entriesToTranscript(entry.manager.getEntries(), entry.path);
+      // Branch-scoped: compact rewrites the active path, abandoned sibling
+      // branches must not resurface in the chat
+      entry.transcript = entriesToTranscript(entry.manager.getBranch(), entry.path);
       // The rebuilt history already folded the fileMention paths onto their user rows: align the cursor to avoid re-sending them on later read-backs
       entry.mentionScanIndex = entry.manager.getEntries().length;
       // Cross-channel: the other attached UI still holds the pre-compaction transcript;
@@ -756,7 +789,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // Create an independent AgentSession instance for the new session and add it to the sessions pool
       const newManager = await SessionManager.open(newSessionFile);
       const newEntries = newManager.getEntries();
-      const newTranscript = entriesToTranscript(newEntries, newSessionFile);
+      // Forked file may still carry siblings; the new session starts on its own
+      // active path only
+      const newTranscript = entriesToTranscript(newManager.getBranch(), newSessionFile);
       const peek = await SessionManager.peekSessionInit(newSessionFile);
       const workCwd = peek?.cwd ?? entry.cwd;
       const { sessionId: newSessionId, entry: newEntry, eventBus: newBus } = await createSessionCore(
@@ -766,9 +801,16 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         entry.session.model,
       );
       newEntry.mentionScanIndex = newEntries.length;
-      newEntry.activeMs = sumRunDurationMs(newEntries);
+      newEntry.activeMs = sumRunDurationMs(newManager.getBranch());
       attachEntry(ws, newSessionId, newEntry, newBus);
       sessions.set(newSessionId, newEntry);
+
+      // Fork titles carry the source title ("Fork of <title>") so the copy is identifiable in
+      // the sidebar, the CLI list and the branch family. Source "user" pins it: the auto title
+      // refresh skips user-named sessions (session-titles.ts), which is what a fork marker wants.
+      // A source that was never named stays unnamed and keeps letting the model title it.
+      const parentTitle = (entry.title ?? entry.manager.getSessionName() ?? "").trim();
+      if (parentTitle) await newManager.setSessionName(`Fork of ${parentTitle}`, "user");
 
       // Extract the selected text (only user messages need it to backfill the composer; after forking an assistant reply the composer stays blank awaiting the question)
       const selectedText = isUser
@@ -909,6 +951,12 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // still in there); the active transcript only wants the root→leaf path
       // — same scope as the base's renderInitialMessages
       entry.transcript = entriesToTranscript(entry.manager.getBranch(), entry.path);
+      // The dual-zone state was derived from the pre-move branch: re-derive it
+      // from the new root→leaf path so a fork back before a compression node
+      // restores the uncompressed context instead of the stale summary.
+      // (PoolEntry.acpRuntime is a structural read-type; the live object is
+      // always the full runtime.)
+      (entry.acpRuntime as AcpRuntimeState | undefined)?.resyncToBranch(entry.manager.getBranch());
       ws.send(JSON.stringify({ type: "messages", sessionId: msg.sessionId, messages: entry.transcript }));
       // Mirror the branch's own title into the header: the sidebar, the CLI and
       // the window title all read the header, so a branch switch must move it.
@@ -920,13 +968,18 @@ export const sessionHandlers: Record<string, RpcHandler> = {
           entry.pollKnownSize = 0; // Our own write: rescan instead of trusting the old offset (session-poll.ts)
         }
       }
+      // Only a user request may refill the composer (re-ask). The base also
+      // returns the content of a non-skill custom_message target, but that row
+      // is an injected system message (goal continuation, advisor note, ...):
+      // its text must never land in the draft.
+      const backfill = isUserRequestEntry(entry.manager.getEntry(entryId));
       ws.send(
         JSON.stringify({
           type: "session_navigated",
           sessionId: msg.sessionId,
           ok: true,
-          editorText: result.editorText ?? null,
-          editorImages: result.editorImages ?? null,
+          editorText: backfill ? (result.editorText ?? null) : null,
+          editorImages: backfill ? (result.editorImages ?? null) : null,
         }),
       );
     } catch (err) {
@@ -975,6 +1028,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       }
       // Same rebuild scope as navigate_tree: only the root→leaf path is active
       entry.transcript = entriesToTranscript(entry.manager.getBranch(), entry.path);
+      // Same leaf move as navigate_tree: re-derive the dual-zone state from the
+      // new root→leaf path (a rewind past a compression restores the blocks).
+      (entry.acpRuntime as AcpRuntimeState | undefined)?.resyncToBranch(entry.manager.getBranch());
       // entryBus, not navigate_tree's requester-only ws.send: the rewind must
       // drop the abandoned tail on every attached channel, and the user_message
       // echo below then lands the new bubble on all of them (a sender-drawn
@@ -1072,7 +1128,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       // Fresh manager on the new file, then a pooled session like branch_session
       const newManager = await SessionManager.open(newSessionFile);
       const newEntries = newManager.getEntries();
-      const newTranscript = entriesToTranscript(newEntries, newSessionFile);
+      const newTranscript = entriesToTranscript(newManager.getBranch(), newSessionFile);
       const newPeek = await SessionManager.peekSessionInit(newSessionFile);
       const workCwd = newPeek?.cwd ?? entry.cwd;
       const { sessionId: newSessionId, entry: newEntry, eventBus: newBus } = await createSessionCore(
@@ -1082,9 +1138,12 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         entry.session.model,
       );
       newEntry.mentionScanIndex = newEntries.length;
-      newEntry.activeMs = sumRunDurationMs(newEntries);
+      newEntry.activeMs = sumRunDurationMs(newManager.getBranch());
       attachEntry(ws, newSessionId, newEntry, newBus);
       sessions.set(newSessionId, newEntry);
+      // Same fork marker as branch_session, so both fork paths read alike in the sidebar.
+      const parentTitle = (entry.title ?? entry.manager.getSessionName() ?? "").trim();
+      if (parentTitle) await newManager.setSessionName(`Fork of ${parentTitle}`, "user");
       ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: newTranscript }));
       ws.send(
         JSON.stringify({

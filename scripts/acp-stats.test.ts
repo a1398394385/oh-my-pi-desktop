@@ -7,6 +7,10 @@
 import { describe, expect, test } from "bun:test";
 import type { Usage } from "@oh-my-pi/pi-catalog/types";
 import { parseAcpStatsJournal } from "../host/acp-stats.ts";
+import { AcpRuntimeState } from "../host/acp-runtime.ts";
+import type { AcpSummaryData } from "../host/acp-persist.ts";
+import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import { priceUsage, type UsagePricer } from "../host/catalog-cost.ts";
 
 type Line = Record<string, unknown>;
@@ -148,6 +152,38 @@ describe("parseAcpStatsJournal", () => {
     const rows = parseAcpStatsJournal(journal(free, summary("s-5", { tokensBefore: 10, tokensAfter: 4 })), atListRate);
     // 100 input + 10 output tokens at 1e-3 each.
     expect(rows[0].extraCost).toBeCloseTo(0.11, 10);
+  });
+});
+
+describe("runtime telemetry recording", () => {
+  // The pull and the compress it feeds never share a request: the model sees the
+  // tool result, then answers with compress_context. A per-request reset of the
+  // count left every journal's statusTokens null (2026-11-09).
+  test("statusTokens survives the request boundary between pull and compress", async () => {
+    const entries: SessionEntry[] = [];
+    const view: AgentMessage[] = [];
+    for (const id of ["e0", "e1", "e2"]) {
+      const message = { role: "user", content: "x".repeat(100), timestamp: 1 } as never as AgentMessage;
+      entries.push({ type: "message", id, message } as never as SessionEntry);
+      view.push(message);
+    }
+    const writes: AcpSummaryData[] = [];
+    const state = new AcpRuntimeState({
+      countTokens: (t: string) => t.length,
+      countMessages: () => 0,
+      sink: { appendCustomEntry: (_type: string, data: AcpSummaryData) => (writes.push(data), "s1") },
+      getEntries: () => entries,
+      params: { minCompress: 0 },
+    });
+    state.projectView(view);
+    const pulled = state.status();
+    if (!pulled.ok) throw new Error(pulled.error);
+    state.projectView(view); // next request: the compress call arrives here
+
+    const out = await state.compress({ summary: "s" });
+    expect(out.ok).toBe(true);
+    expect(writes).toHaveLength(1);
+    expect(writes[0].meta.statusTokens).toBe(pulled.text.length);
   });
 });
 

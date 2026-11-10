@@ -270,8 +270,10 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
 // @ candidates: absolute-path / home-dir prefixes go through readdir prefix
 // listing (matching the TUI autocomplete's directory completion); everything
 // else goes through fuzzyFind whole-repo fuzzy search; any error silently
-// returns empty (the popup shows no match)
-async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean }>> {
+// returns empty (the popup shows no match).
+// Directories carry `empty`: Tab accepts a leaf directory but drills into a
+// non-empty one, so the composer decides from this flag instead of guessing.
+async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean; empty?: boolean }>> {
   if (query.startsWith("/") || query.startsWith("~")) {
     try {
       const expanded = query.startsWith("~") ? os.homedir() + query.slice(1) : query;
@@ -280,20 +282,39 @@ async function listFileMatches(root: string, query: string): Promise<Array<{ pat
       const dirents = await readdir(searchDir, { withFileTypes: true });
       const prefix = base.toLowerCase();
       const dirPart = query.endsWith("/") ? query : query.slice(0, query.length - path.basename(query).length);
-      return dirents
+      const rows = dirents
         .filter((d) => d.name !== ".git" && d.name.toLowerCase().startsWith(prefix))
-        .map((d) => ({ path: dirPart + d.name, dir: d.isDirectory() }))
-        .sort((a, b) => Number(b.dir) - Number(a.dir) || a.path.localeCompare(b.path))
+        .map((d) => ({ d, p: dirPart + d.name }))
+        .sort((a, b) => Number(b.d.isDirectory()) - Number(a.d.isDirectory()) || a.p.localeCompare(b.p))
         .slice(0, 100);
+      return await Promise.all(
+        rows.map(async ({ d, p }) =>
+          d.isDirectory() ? { path: p, dir: true, empty: await dirIsEmpty(path.join(searchDir, d.name)) } : { path: p, dir: false },
+        ),
+      );
     } catch {
       return [];
     }
   }
   try {
     const r = await fuzzyFind({ query, path: root, maxResults: 100, hidden: true, gitignore: true, cache: true });
-    return r.matches.map((m) => ({ path: m.path, dir: m.isDirectory }));
+    return await Promise.all(
+      r.matches.map(async (m) =>
+        m.isDirectory ? { path: m.path, dir: true, empty: await dirIsEmpty(path.join(root, m.path)) } : { path: m.path, dir: false },
+      ),
+    );
   } catch {
     return [];
+  }
+}
+
+// Leaf-directory probe for the @ popup. Unreadable directories count as
+// non-empty, so Tab keeps drilling instead of silently turning into a pick.
+async function dirIsEmpty(abs: string): Promise<boolean> {
+  try {
+    return (await readdir(abs)).length === 0;
+  } catch {
+    return false;
   }
 }
 
@@ -468,7 +489,9 @@ async function dispatchSlashInput(
         .then(async () => {
           const entries = entry.manager.getEntries();
           if (entriesSig(entries) !== baseline) {
-            entry.transcript = entriesToTranscript(entries, entry.path);
+            // Branch-scoped rebuild: a background compact/handoff rewrites the
+            // active path; abandoned siblings stay out of the chat
+            entry.transcript = entriesToTranscript(entry.manager.getBranch(), entry.path);
             entry.mentionScanIndex = entries.length; // Align the read-back cursor, avoiding re-sending historical mentions
             ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
             pushContext(ws, sessionId, entry);

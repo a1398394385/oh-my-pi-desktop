@@ -62,7 +62,7 @@ import {
 	type CountMessages,
 	type CountSignatureTokens,
 } from "./acp-projection.ts";
-import { appendAcpSummary, type AcpSummarySink } from "./acp-persist.ts";
+import { appendAcpSummary, rebuildAcpState, type AcpSummarySink } from "./acp-persist.ts";
 import { ACP_VIEW_PSEUDO_PREFIX, AcpRefBook, annotateView } from "./acp-refs.ts";
 import { renderEphemeralMessage, renderMilestoneMessage, renderStatusText, renderSyntheticStatusPair } from "./acp-status-tool.ts";
 import { safeStderr } from "./stderr.ts";
@@ -118,7 +118,12 @@ export interface AcpRuntimeDeps {
 	 * degrades (form ③).
 	 */
 	forceCompressTool?: () => void;
-	/** Degrade side effect (spec §5.3/§10): restore the base compaction chain on the session's settings overlay. */
+	/**
+	 * Degrade side effect (spec §5.3/§10): fired once when ACP exits this
+	 * session, after the projection and tools have already stopped. The host
+	 * needs no settings write-back (the base chain was never disabled); smokes
+	 * and future surfaces observe the reason here.
+	 */
 	onDegrade?: (reason: string) => void;
 }
 
@@ -189,13 +194,14 @@ export class AcpRuntimeState {
 	/** Monotonic request counter: one projectView call = one request (context event). */
 	#requestSeq = 0;
 	/**
-	 * Highest L1 milestone delivered (spec §7 v10.4): the L1 segment injects
-	 * once per crossed sub-line, never standing. Reset to 0 whenever the zone
-	 * leaves the milestone mode (none / L2+ / pending-strong / forced), so a
-	 * later climb re-warns from the first line. In-memory only: a host restart
-	 * re-fires the highest crossed line once — harmless, self-healing.
+	 * Highest delivered milestone, packed as rank×1000 + line (spec §7 v10.4):
+	 * the L1..L3 segment injects once per crossed sub-line, never standing. The
+	 * rank term carries the L2→L3 crossing, where the line index saturates — the
+	 * ultimatum must still land once. Reset to 0 whenever the zone leaves the
+	 * milestone mode (none / pending-strong / forced) or drops back a tier.
+	 * In-memory only: a host restart re-fires once — harmless, self-healing.
 	 */
-	#milestoneDelivered = 0;
+	#delivered = 0;
 	/** Request seq whose ephemeral carried the L3 ultimatum (spec §5.2 round attribution). */
 	#ultimatumAt = 0;
 	/** Request seq whose projection was over the guard line (spec §5.3). */
@@ -347,9 +353,6 @@ export class AcpRuntimeState {
 	 */
 	projectView(view: readonly AgentMessage[]): AgentMessage[] {
 		if (this.degraded) return [...view];
-		// Every request re-derives the round manifest, so a context_status count left
-		// over from an earlier turn no longer describes what a compression consumes.
-		this.#lastStatusTokens = null;
 		this.#syncRefs();
 		const source = annotateView(view, this.#deps.getEntries());
 		this.lastSource = source;
@@ -385,24 +388,31 @@ export class AcpRuntimeState {
 		out.push(pair[0], pair[1]);
 	}
 	if (rs && (rs.tier !== "none" || rs.pendingStrong)) {
-		// §7 v10.4: the L1 segment (no pending-strong, not a forced/pinned
-		// request) injects once per crossed milestone line instead of standing;
-		// everything else keeps the per-request ephemeral and resets the
-		// milestone cursor so a later L1 climb re-warns from the first line.
-		if (rs.tier === "L1" && !rs.pendingStrong && !forcedNow) {
-			const milestone = milestoneFor(rs.activeTokens, this.params);
-			if (milestone > this.#milestoneDelivered) {
-				this.#milestoneDelivered = milestone;
+		// §7 v10.4: the tier segment (L1..L3) injects once per crossed milestone
+		// line instead of standing, so a long L2/L3 stay cannot wear the hint out
+		// by repeating it every request. The cursor rides two axes because the
+		// line index saturates at L3: crossing into L3 must still deliver the
+		// ultimatum once. Pending-strong and forced requests keep the per-request
+		// ephemeral and reset the cursor so a later climb re-warns from the first
+		// line.
+		if (rs.tier !== "none" && !rs.pendingStrong && !forcedNow) {
+			const rank = rs.tier === "L1" ? 1 : rs.tier === "L2" ? 2 : 3;
+			const key = rank * 1_000 + milestoneFor(rs.activeTokens, this.params); // steps < 1000 keeps the pack unambiguous
+			// Only a tier drop resets: an in-tier dip (prune shrink) must not
+			// re-announce a lower line it already passed.
+			if (rank < Math.floor(this.#delivered / 1_000)) this.#delivered = 0;
+			if (key % 1_000 > 0 && key > this.#delivered) {
+				this.#delivered = key;
 				this.#hintCount++;
-				out.push(renderMilestoneMessage(rs, milestone, this.params));
+				out.push(renderMilestoneMessage(rs, rs.tier, key % 1_000, this.params));
 			}
 		} else {
-			this.#milestoneDelivered = 0;
+			this.#delivered = 0;
 			this.#hintCount++;
 			out.push(renderEphemeralMessage(rs, this.params, forcedNow));
 		}
 	} else if (rs) {
-		this.#milestoneDelivered = 0;
+		this.#delivered = 0;
 	}
 		this.lastProjected = out;
 		// Calibrate against the PREVIOUS request's report first: the provider's
@@ -524,8 +534,9 @@ export class AcpRuntimeState {
 	/**
 	 * Permanently exit ACP for this session (spec §5.3): projection off
 	 * (messages pass through verbatim), ephemeral stopped, compress rejected
-	 * at the entry, and the assembly hook restores the base compaction chain
-	 * on the session settings overlay. Idempotent.
+	 * at the entry, and the assembly hook observes the exit. The base chain is
+	 * already live — the projection guard only cancelled its automatic runs and
+	 * stops cancelling once this flag is set. Idempotent.
 	 */
 	degrade(reason: string, err?: unknown): void {
 		if (this.degraded) return;
@@ -537,6 +548,23 @@ export class AcpRuntimeState {
 		} catch (hookErr) {
 			safeStderr("[ACP] degrade hook failed", hookErr);
 		}
+	}
+
+	/**
+	 * Re-derive the zone from the branch a leaf move landed on (navigate_tree /
+	 * edit_resend, spec §9): summaries written on abandoned sibling branches
+	 * must not resurface, and a rewind past a base compaction restores the
+	 * uncompressed context instead of the stale summary.
+	 */
+	resyncToBranch(entries: readonly SessionEntry[]): void {
+		const rebuilt = rebuildAcpState(entries);
+		if (rebuilt.degraded) {
+			this.degrade("branch resync found a base compaction entry (spec §5.3/§9.1)");
+			return;
+		}
+		this.zone = rebuilt.zone;
+		this.compressed.clear();
+		for (const id of rebuilt.compressedBlockIds) this.compressed.add(id);
 	}
 
 	/**
@@ -654,6 +682,8 @@ export class AcpRuntimeState {
 			}
 		}
 		// Stats telemetry: the compress this manifest feeds records what the pull cost.
+		// Survives the next projectView — the pull and the compress it feeds are always
+		// separate requests (the model needs the tool result before it can compress).
 		this.#lastStatusTokens = this.#deps.countTokens(text);
 		return { ok: true, text };
 	}

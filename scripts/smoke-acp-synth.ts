@@ -175,10 +175,15 @@ function zoneBlock(summaryTokens: number, folded: string[]): AcpSummaryData {
 	};
 }
 
-/** The synthetic pair tail of a projection: [assistant tool_use, tool_result, ephemeral]. */
-function pairTail(out: readonly AgentMessage[]): [AgentMessage, AgentMessage, AgentMessage] {
-	const tail = out.slice(-3) as [AgentMessage, AgentMessage, AgentMessage];
-	const [a, r, e] = tail;
+/** The synthetic pair at the projection tail: [assistant tool_use, tool_result].
+ *  A trailing `[compress-hint]` ephemeral (this request's tier line, if any) is
+ *  stripped first — since v10.4 the tier segment injects only on a crossed
+ *  milestone, so an L3 stay does not re-append it every request. */
+function pairTail(out: readonly AgentMessage[]): [AgentMessage, AgentMessage] {
+	const last = out.at(-1)!;
+	const hinted = last.role === "user" && textOf(last).startsWith("[compress-hint]");
+	const tail = (hinted ? out.slice(-3, -1) : out.slice(-2)) as [AgentMessage, AgentMessage];
+	const [a, r] = tail;
 	assert.equal((a as { role: string }).role, "assistant", "pair tail: assistant tool_use first");
 	const call = (a as { content: Array<{ type: string; id?: string; name?: string }> }).content.find((c) => c.type === "toolCall");
 	assert.ok(call, "the synthetic assistant carries a toolCall block");
@@ -187,8 +192,6 @@ function pairTail(out: readonly AgentMessage[]): [AgentMessage, AgentMessage, Ag
 	assert.equal((r as { role: string; toolCallId?: string }).role, "toolResult");
 	assert.equal((r as { role: string; toolCallId?: string }).toolCallId, ACP_SYNTHETIC_STATUS_CALL_ID);
 	assert.ok(textOf(r as { content: unknown }).startsWith("[context-status]"), "the synthetic result carries the [context-status] marker");
-	assert.equal((e as { role: string }).role, "user");
-	assert.ok(textOf(e as { content: unknown }).startsWith("[compress-hint]"), "the ephemeral line follows the pair");
 	return tail;
 }
 
@@ -218,6 +221,9 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const out2 = fx.state.projectView(fx.view);
 	const [a2, r2] = pairTail(out2);
 	assert.equal(JSON.stringify([a2, r2]), JSON.stringify([a1, r1]), "unchanged round state => byte-identical synthetic pair");
+	// v10.4: the tier line is milestone-gated, so the L3 stay does not repeat
+	// the ultimatum — the synthetic pair is the projection tail.
+	assert.equal(out2.at(-1)!.role, "toolResult", "no standing ultimatum on an unchanged L3 round");
 
 	// Armed force: the unanswered ultimatum pins the next request; the pair still rides it.
 	fx.state.onTurnEnd();
@@ -305,7 +311,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	// the injection condition simply persists.
 	const fx = makeSynthFixture(FIXTURE_PARAMS, 12, 100_000);
 	const before = fx.state.projectView(fx.view);
-	const reportBefore = textOf(before.at(-2) as { content: unknown });
+	const reportBefore = textOf(pairTail(before)[1]);
 	const fresh = {
 		role: "user",
 		content: blockText(99, 400),
@@ -314,7 +320,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	fx.entries.push({ type: "message", id: "e99", message: fresh });
 	fx.view.push(fresh);
 	const after = fx.state.projectView(fx.view);
-	const reportAfter = textOf(after.at(-2) as { content: unknown });
+	const reportAfter = textOf(pairTail(after)[1]);
 	assert.notEqual(reportAfter, reportBefore, "a settled new block replaces the snapshot");
 	assert.ok(reportAfter.split("\n").some((l) => /^b13 \| (4|3)\d\d \| /.test(l)), "the new block's line is in the fresh snapshot");
 	console.log("ok: D-manifest-change — a settled block swaps in a new snapshot");
@@ -424,8 +430,8 @@ function bulkTurn(label: string): string {
 	const { session } = await createAgentSession({
 		cwd,
 		settings,
-		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
-		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		// This fixture keeps the base chain off (isolated pin), so the advisor must be
+		// opted back in explicitly or it loses compaction maintenance.
 		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,

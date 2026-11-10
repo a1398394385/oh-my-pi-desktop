@@ -77,16 +77,23 @@ export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams, f
 }
 
 /**
- * The L1 milestone message (§7 v10.4): the L1 segment no longer injects on
- * every request — the standing line fires once per crossed sub-line instead.
- * Same 3-line deterministic shape as the standing ephemeral, with the
- * milestone marker appended to the status row (the `tier=L1 compress=…`
- * prefix stays intact for downstream matchers); never carries the manifest.
+ * The tier milestone message (§7 v10.4): L1..L3 no longer inject on every
+ * request — each tier's standing line fires once per crossed sub-line instead.
+ * Same 3-line deterministic shape as the standing ephemeral, with the milestone
+ * marker appended to the status row (the `tier=… compress=…` prefix stays
+ * intact for downstream matchers); never carries the manifest. `rs.tier` is
+ * always L1/L2/L3 here — the silent tier and forced requests take the standing
+ * path.
  */
-export function renderMilestoneMessage(rs: AcpRoundStatusFields, milestone: number, p: AcpParams): UserMessage {
+export function renderMilestoneMessage(
+	rs: AcpRoundStatusFields,
+	tier: "L1" | "L2" | "L3",
+	milestone: number,
+	p: AcpParams,
+): UserMessage {
 	const text = [
 		`${statusRow(rs, "[compress-hint]")} milestone=${milestone}/${p.milestoneSteps}`,
-		TIER_INSTRUCTIONS.L1(p, false),
+		TIER_INSTRUCTIONS[tier](p, false),
 		statusPointer(false),
 	].join("\n");
 	return { role: "user", content: text, synthetic: true, timestamp: 0 };

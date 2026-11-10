@@ -37,7 +37,7 @@ export interface AcpParams {
 	 * split into user blocks but are not user requests.
 	 */
 	tailUserMessages: number;
-	/** L1 milestone sub-lines between L1 and L2 (spec §7 v10.4); 0 silences the L1 segment. */
+	/** Milestone sub-lines between L1 and L3 (spec §7 v10.4); 0 silences the whole segment. */
 	milestoneSteps: number;
 }
 
@@ -64,16 +64,18 @@ export function computeTier(activeTokens: number, p: AcpParams = ACP_DEFAULT_PAR
 }
 
 /**
- * Milestone index (1..steps) of an L1-segment active zone: the k-th line sits
- * at l1 + k·(l2−l1)/steps and fires once, when the zone first crosses it
- * (skipped lines are never backfilled). 0 at or below L1 and past L2 (both
- * ends have their own injection semantics: none = silent, L2+ = standing).
- * steps = 0 keeps the whole L1 segment silent; an l1==l2 config makes the
- * segment unreachable, so the denominator is never zero here.
+ * Milestone index (1..steps) of the L1..L3 active zone: the k-th line sits at
+ * l1 + k·(l3−l1)/steps and fires once, when the zone first crosses it (skipped
+ * lines are never backfilled). 0 at or below L1 (silent tier). Past L3 the
+ * index saturates at `steps`: the ultimatum line stays crossed, so the L3 text
+ * is delivered once and the armed-force machine owns the rest (a per-request
+ * ultimatum would be noise the model learns to ignore). steps = 0 keeps the
+ * whole segment silent; an l3<=l1 config makes it unreachable.
  */
 export function milestoneFor(activeTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): number {
-	if (activeTokens <= p.l1 || activeTokens > p.l2 || p.milestoneSteps <= 0) return 0;
-	return Math.min(p.milestoneSteps, Math.ceil(((activeTokens - p.l1) * p.milestoneSteps) / (p.l2 - p.l1)));
+	if (activeTokens <= p.l1 || p.milestoneSteps <= 0 || p.l3 <= p.l1) return 0;
+	if (activeTokens > p.l3) return p.milestoneSteps;
+	return Math.min(p.milestoneSteps, Math.ceil(((activeTokens - p.l1) * p.milestoneSteps) / (p.l3 - p.l1)));
 }
 
 /** The §5.2 two-dimensional decision table as the single implementation. */

@@ -232,8 +232,12 @@ export function splitBlocks(
 				else if (c.type === "toolCall") {
 					const input = JSON.stringify(c.arguments);
 					callTokens.set(c.id, count(`${c.name} ${input}`, "c"));
-					const intent = typeof c.arguments.i === "string" && c.arguments.i.trim() ? c.arguments.i : input;
-					callIntents.set(c.id, truncIntent(`${c.name}: ${intent}`));
+					// Tools whose `intent` is a function (eval: `title`, checkpoint: `goal`) get no
+					// injected `i` (agent-loop's resolveIntentMode omits it), so read their own field.
+					const own = [c.arguments.i, c.arguments.title, c.arguments.goal].find(
+						(v): v is string => typeof v === "string" && v.trim() !== "",
+					);
+					callIntents.set(c.id, truncIntent(`${c.name}: ${own ?? input}`));
 				}
 			}
 			if (thinking || signature) {

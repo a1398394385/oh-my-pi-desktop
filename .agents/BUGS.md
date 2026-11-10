@@ -118,6 +118,11 @@
 | BUG-124 | 会话复制按钮只复制最后一段——一轮回复被拆成多个 assistant 条目，item.text 只是尾段 | 2026-10-30 |
 | BUG-125 | 重开会话模型被静默换成默认模型——启动期目录缓存缺动态发现模型，hasUI=true 时底座不报错直接回落 | 2026-11-04 |
 | BUG-126 | 新会话发消息后立刻 Esc，会话变成死的——abort 抢在 prompt RPC 的 await 之间，回执先到（UI 已收敛），prompt 才 dispatch，此后无 turn 事件、宿主 isStreaming 恒真、归档/逐出被拒 | 2026-11-04 |
+| BUG-127 | 在 ACP 压缩前节点分叉，上下文不回压缩前——同文件 leaf 移动后 zone/compressed 沿用压缩时的状态，投影继续滤块渲染摘要；加载路径 rebuild 用全文件 entries 也会让弃用分支上的摘要复活 | 2026-11-09 |
+| BUG-128 | 重开会话出现两条同样的提问——加载路径按全文件回放 journal，废弃分支整段重现，且弃用分支时长/plan 模式一并泄漏 | 2026-11-09 |
+| BUG-129 | ACP 会话里的 subagent 完全没有自动压缩——`compaction.enabled` pin 经 settings 树读穿到子代理，而 ACP 面根本不进子会话 | 2026-11-09 |
+| BUG-130 | 统计页 ACP「状态返回」列永远为空——`projectView` 每请求清空 `#lastStatusTokens`，而拉取与压缩天然跨请求 | 2026-11-09 |
+| BUG-131 | ACP 压缩一轮之后 `context_status` 永远返回空清单——ACP 的 journal 取 `getEntries()`（全文件，含废弃兄弟分支），`annotateView` 的 64 条对齐窗口跨不过分支跳空，此后所有块退化成伪 id | 2026-11-09 |
 ---
 
 ## 详情
@@ -1586,6 +1591,8 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **教训**：「结论」的位置不能用位置学（末尾）猜，要用协议信号（stopReason）。turn 与 run 是两层生命周期：turn 边界 = 交付边界，run 边界 = 会话轮次；折叠策略必须对齐交付边界而非会话轮次。已知残余：DeepSeek DSML nudge、paused-turn 强制续跑等「模型说完了但 harness 强行续」的 stop 文本也会被提出（罕见，内容上通常也是有效输出）。
 
+**补充（占优规则，session 01a1aaef 报障）**：stop 判据存在一类残余——模型把完整结论写在 toolUse 消息里（写完 1388 字根因报告，同一条消息里又追加自查 toolCall，之后只有 95 字确认尾巴），协议上无 turn 边界信号。本地量化（974 session）：stop 前最后一条 toolUse 文本「≥400 字且长于所有已提出文本」的 21 处中 20 处为 600+ 字真结论（抽查 5/5 是表格化报告/根因分析）；叙述 98% <300 字，≥400 字的 16 处叙述后面都跟着更长的正式报告（被占优条件拒绝）。修复：两条 seal 各加一步——kept 中最后一条未提出 assistant 若 ≥400 字且严格长于所有已提出文本长度，一并按流序提出。实测误提 0 处、修复 20/21。测试扩至 8 例。
+
 ### BUG-108: 会话滚动位置记忆被切换瞬间的自动滚动覆盖——回到会话先落在错误位置，之后不再回到底部
 
 **现象**：在会话 A 滚动到底部 → 切到会话 B → 切回 A，先看到 A 的另一处位置再跳到「最新」；再次切走切回，就停在那处错误位置，不再回到底部。
@@ -1833,3 +1840,79 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：宿主探针（`smokeEnv()` 起真宿主，`create_session` → `prompt` → 立刻 `abort_session`）——修复前帧序为 `session_aborted` 之后仍出现 `turn_start`（与线上死会话同形），修复后为 `prompt_dropped`、无 `turn_start`、`pool_sessions.busy` 全程 0；abort 延迟 6s（turn 已开跑）路径不变，仍正常 `turn_end` 收尾、busy 归 0。UI 侧用真实 dev 宿主 + 注入 `prompt_dropped` 帧验证：气泡撤回、输入框回填「已取消，消息已放回输入框」、`streaming` 收敛。`scripts/prompt-dropped.test.ts`（3 例，短路处理器时第 1 例转红）；`bun run check` 全绿。
 
 **教训**：`abort_session` 的语义是「停掉现有的一轮」，不是「作废用户刚发出的意图」——所有跨 await 的 RPC 都该问一句：await 期间用户可能改变主意，恢复执行时谁来判断这份意图还成立？并且当底座的丢弃钩子存在（`setPromptDropped`）时，宿主不接就等于把「用户取消」翻译成「消息静默消失」。
+
+### BUG-127: 在 ACP 压缩前的节点分叉，上下文不回压缩前（摘要与滤块沿用压缩时状态）
+
+**日期**：2026-11-09
+
+**现象**：会话 01a1b24c 发生一次 ACP 压缩后，从树视图把分支点选回压缩之前的节点（navigate_tree / edit_resend 同文件移动 leaf）：模型上下文没有恢复成「压缩前的完整历史」，而是继续呈现压缩摘要 + 滤掉已压缩块，等于分叉会话凭空丢失一大段原文。
+
+**根因**：ACP 双区状态（`zone` 摘要列表 + `compressed` 块集）只在会话创建时从 journal 重建一次，且两个来源都感知不了分支：①运行时 `navigateTree` 只移动底座 leaf，宿主的 `AcpRuntimeState` 原样保留，投影扩展继续把 `compressed` 里的块滤掉并在顶部渲染摘要——即使底座 view 已是 root→新leaf 的完整消息；②加载路径 `rebuildAcpState(getEntries())` 扫的是全文件（弃用分支的条目仍在），挂在被弃分支上的 acpSummary 会复活进 zone。正确语义：压缩锚点是否在**当前 root→leaf 路径**上。
+
+**修复**：①`AcpRuntimeState.resyncToBranch(branch)`（acp-runtime.ts）：用活动分支重算 zone/compressed（目标分支含 base compaction entry 则按 §5.3 degrade）；`navigate_tree` 与 `edit_resend` 成功移动 leaf 后调用（rpc/session.ts，类型导入登记依赖边 `rpc/session.ts→acp-runtime.ts`）；②加载重建改 `rebuildAcpState(sessionManager.getBranch())`（session-lifecycle.ts，净零行改动——域预算顶格 2200）。
+
+**验证**：`scripts/acp-branch-resync.test.ts`（2 例：全量 rebuild 含摘要在路径上时成立 / 回退路径 rebuild 丢弃摘要；投影级 m1 原文恢复、旧摘要消失——修复前第一断言转红复现）；`smoke-acp-persist.ts`、`smoke-acp-tool.ts` 全过（rebuild parity 含真实 SessionManager）；`bun run check` 全绿；宿主 `host:build` 通过。
+
+**回补（2026-11-09，编辑重发报错 `acpRuntime?.resyncToBranch is not a function`）**：上述修复的调用点（`rpc/session.ts` 两处，`as AcpRuntimeState` 的类型断言）落了，但 `AcpRuntimeState.resyncToBranch` 的方法体没落——`?.` 只挡 null 不挡缺失方法，运行时直接 TypeError；单测当时只手工重演 zone/compressed 赋值、没调方法，所以没抓到。回补：方法真正实现在 `host/acp-runtime.ts`（`rebuildAcpState(entries)` → 覆盖 zone / 清空并重填 compressed / 含 base compaction 则 degrade）；`session-lifecycle.ts` 与 `smoke-acp-forced.ts` 的两份内联重建改为调用该方法（单一实现）；单测第二例改为 `state.resyncToBranch([m1, m2])`，API 缺失即转红。
+
+**教训**：journal 是树不是列表——任何「扫描 journal 推导会话状态」的代码都要先问 active leaf 在哪（`getEntries()` 跨分支，`getBranch()` 才是 LLM 上下文的真实来源）；leaf 会移动的会话里，会话级缓存状态必须在每次 leaf 移动点重算，否则旧分支的状态会泄漏到新分支。另一条：调用方靠 `as` 断言点方法时，方法体缺失编译不报错，测试必须调到那个方法本身，否则「修复已验证」是假的。
+
+### BUG-128: 重开会话出现两条同样的提问——加载路径按全文件回放 journal，废弃分支整段重现
+
+**日期**：2026-11-09
+
+**现象**：会话 01a1b24c 重新打开后，聊天里出现两条文本完全相同的用户消息：第一条后面是可展开的「已工作 27 分 11 秒」折叠过程，第二条后面是「62 分 41 秒」。两条其实是同一次编辑重发前后的两个分支。
+
+**根因**：journal 是树。03:46:51 的编辑重发把新 user 消息挂在 03:01:32 的 `session_exit` 上（底座把 leaf 移回该消息父节点），03:19:10 那条 user 及其 27 分钟过程成为弃用兄弟分支，306 个条目仍留在同一文件里。`handleLoadSession` / `ensureSessionLoaded` 用 `entriesToTranscript(manager.getEntries())` 全量回放 → 两条分支并排渲染；而 `navigate_tree` / `edit_resend` 用 `getBranch()` 只渲染 root→leaf，两条路径语义不一致。同一缺陷的另外三处：`compact_session` 的重建、后台命令（compact/handoff）完成后的重建、fork/branch_session 新会话的初始 transcript；`sumRunDurationMs(entries)` 把弃用分支时长并进「已工作」，`reconcilePlanMode` 也会读到弃用分支的 `mode_change`。
+
+**修复**：所有「渲染 / 计时 / 会话状态」入口统一改用 `manager.getBranch()`——`session-lifecycle.ts`（handleLoadSession 与 ensureSessionLoaded 的 transcript、activeMs、plan 帧 entries）、`rpc/session.ts`（compact_session、branch_session、新窗口 fork）、`rpc/prompt.ts`（后台命令完成后的重建）。`mentionScanIndex` 仍取 `getEntries().length`：回读游标必须覆盖全文件，否则弃用分支上的历史 mention 会被重发。
+
+**验证**：真实会话文件（1192 行，leaf `b6a08f9d`）经 `SessionManager.open`（/tmp 副本）实测——`getEntries()` 1191 条 / `getBranch()` 885 条，`entriesToTranscript` 输出里该提问出现次数 2 → 1。`scripts/acp-branch-resync.test.ts`、`scripts/translate-history-branch-title.test.ts`、`scripts/translate-history-attachments.test.ts` 全过；`bun run check` 全绿。
+
+**教训**：BUG-127 已写「journal 是树不是列表」，本条是同一教训在渲染层的一半——不只压缩状态，任何从 journal 派生的 UI 数据（transcript、活跃时长、plan 模式、标题）都要先问 active leaf 在哪。判据：`getEntries()` 只该用于「必须覆盖全文件」的游标类用途（mentionScanIndex、外部写入检测）；一旦它喂给「展示给用户」或「推导当前状态」的代码，就是嫌疑。
+
+### BUG-129: ACP 会话里的 subagent 完全没有自动压缩（pin 经 settings 树读穿）
+
+**日期**：2026-11-09
+
+**现象**：ACP 开启的会话里派一个长跑 `task` 子代理，子代理撑到 provider 报上下文溢出才停——它既没有 ACP 的 `compress_context`，底座压缩也一次都没跑过（`/compact` 之外没有任何自动边界）。
+
+**根因**：三层都不进子会话，外加一层**误伤**。①ACP 装配只在 `host/session-lifecycle.ts` 的 `createSessionCore` 里，`task` 子代理由底座 `task/executor.ts` 另建 `AgentSession`；②`compress_context` / `context_status` 走父会话 `customTools`，子会话的 `customTools` 只来自 spawn 时的 `tools` 参数（`task/index.ts:1937` → `createEvalCustomTools`），无继承点；③`ACP_CONTEXT_BUDGET_PROMPT` 只挂在 owner 的 `appendSystemPrompt`；投影扩展虽被 `bindExtension` 重绑进子会话，但 owner 判定使其原样放行。④真正的操作是 pin：`sessionSettings` 上写 `"compaction.enabled": false`，而子代理 settings 是父 settings 的派生 overlay（`task/executor.ts` `createSubagentSettings`），读值是读穿父级的——pin 顺延到每个子代理，同时关掉 base 自动压缩与溢出恢复压缩（`session-maintenance.ts` 两处都先判 `enabled`）。
+
+**修复**：取消 settings pin，把互斥下沉到**会话级事件**。`createAcpProjectionExtension` 增加 `auto_compaction_start` / `auto_compaction_end` / `session_before_compact` 三个 handler：owner 会话的 `threshold` / `idle` 自动压缩返回 `{ cancel: true }`；`overflow` / `incomplete` 是底座最后手段，先 `state.degrade()` 再放行，让折叠落在已退出的会话上；手动 `/compact` 不拦（操作者显式要求走底座）。`session_before_compact` 不带 reason，所以用 `auto_compaction_start` 置一次性 flag、`auto_compaction_end` 与 hook 消费处清零，避免 flag 泄到手动压缩。`onDegrade` 失去写回职责，改为纯观测钩子。
+
+**验证**：`scripts/acp-compaction-guard.test.ts`（7 例：threshold/idle 取消、overflow/incomplete 先降级后放行、子会话不干预、flag 不泄漏、end 清理）；临时 e2e 脚本（真 `AgentSession` + mock 模型，阈值调极小）——自动压缩后 journal 无 `compaction` entry 且未降级，随后 `session.compact()` 照常落一条 `compaction` entry；继承关系实测（`Settings.isolated(true)` → owner overlay 无 pin → `createSubagentSettings` 得 `compaction.enabled = true`）；`smoke-acp-tool.ts` 全过；`bun run check` 全绿、`host:build` 通过。
+
+**教训**：settings 是树不是单例——「按会话临时改一个全局开关」在派生 overlay 的子代理上就是全局副作用；互斥类需求优先落在会话级事件（`session_before_compact` + 一次性 flag），别去改配置值。另一条：ACP 这类只装配在宿主入口的特性，覆盖范围必须显式回答「子代理算不算」；不回答就等于默认「子代理什么保障都没有」。
+
+### BUG-130: 统计页 ACP「状态返回」列永远为空——`projectView` 每请求清空状态计数，而拉取与压缩天然跨请求
+
+**日期**：2026-11-09
+
+**现象**：设置 → 统计 → ACP 页，「状态返回」整列全是 `–`（未知），跨会话、跨模型无一例外；相邻的「摘要」「提醒次数」列有值。真实 journal 佐证：`~/.omp/agent/sessions` 下所有含 `acpSummary` 的会话均无 `meta.statusTokens`，而同批 `meta.summaryTokens` / `meta.hints` 齐全。
+
+**根因**：`AcpRuntimeState.status()` 把返回文本的 token 数记到 `#lastStatusTokens`，本意是让喂给本次压缩的那次拉取计入遥测；但 `projectView()` 在**每个请求开头**都把它清成 `null`。而 `context_status` 与 `compress_context` 必然分属两个请求——模型必须先拿到工具结果（`projectView` 已跑过一轮）才能在下一次请求里发压缩调用。于是写入压缩 meta 时该值恒为 `null`，`acp-stats.ts` 的 `telemetry()` 转成 `null`，UI 落到 `unknown()` 显示 `–`。`hints` 没被这么清，所以只有这一列空。单测/冒烟没抓到：它们在同一段里 `projectView → status → compress`，压根没跨请求。
+
+**修复**：删掉 `projectView` 里的 `#lastStatusTokens = null`（`host/acp-runtime.ts`），保留成功压缩后归零的那一处；在 `status()` 赋值点补一行注释说明为何不能按请求清（拉取与它喂的压缩必跨请求）。
+
+**验证**：`scripts/acp-stats.test.ts` 新增「runtime telemetry recording」一例，串成 `projectView → status() → projectView → compress()`；修复前 `meta.statusTokens` 为 `undefined`（红），修复后等于拉取文本长度（绿）。`acp-drift` / `acp-compaction-guard` / `acp-projection-pairing` / `acp-branch-resync` 各例全过。
+
+**教训**：注释写下的因果要先自证——原注释「每次请求都会重算 manifest，所以上一轮的计数不再描述这次压缩」听起来成立，却与「模型必须看见工具结果才能压缩」这一硬时序矛盾，等于把该字段清成了常量 `null`；凡是「每请求重置的瞬时量 + 跨请求消费」，先问一句消费点还能不能看到它。另一条：遥测/统计字段的测试必须复刻真实请求边界（一次 `projectView` = 一个请求），否则测的是不存在的调用序列。
+
+**遗留**：已落盘的历史 journal 没有该字段，那一列对旧行仍显示 `–`；只有本次修复后（需重启宿主）产生的压缩才有值。
+
+### BUG-131: ACP 压缩过一轮后 `context_status` 永远返回空清单（journal 喂了全文件，视图对齐被分支跳空打瞎）
+
+**日期**：2026-11-09
+
+**现象**：会话 `01a1b24c` 在 2026-11-09 晚间的长跑里，`context_status` 连续四次返回「dashboard 无任何 bN 行」：`tier=L1 active=216K~241K activeBlocks=460~498`，但清单列表为空。模型据此判断「没有可压缩块」，用户三次要求「先压缩」都压不动。同一次会话早些时候（同一进程内）清单是正常的 314 行，还成功压过 303 块、212 块。
+
+**根因**：`host/session-lifecycle.ts` 给 ACP 注入的 journal 是 `sessionManager.getEntries()`（**全文件**，含废弃兄弟分支），而请求视图 `view` 是当前 root→leaf。`host/acp-refs.ts` 的 `annotateView` 用「顺序贪婪指纹匹配 + 前向 `ACP_ALIGN_WINDOW = 64` 条窗口」把 view 消息映射回 entry id；一旦当前分支的下一条消息在 journal 里距游标超过 64 条（编辑重发/分叉留下的废弃段），匹配失败、游标不前进，**其后每条 view 消息都退化成 `view:<n>` 伪 id**。伪 id 永远不是压缩候选（`#refreshRoundStatus` 显式排除），于是 active zone 全原地不动、manifest 恒空。压缩本身无关，只是压缩掉的真块恰好都在跳空点之前。
+
+**修复**：`host/session-lifecycle.ts` 的 ACP 注入改为 `sessionManager.getBranch()`（与 `resyncToBranch(sessionManager.getBranch())` 同源）。一行 + 一行注释。
+
+**验证**：用真实会话文件（2340 条 entry / 当前分支 795 条 message）重放 `AcpRuntimeState`——journal 取全文件时 `activeBlocks=507` 且 **pseudo=507（100%）**、manifest 0 行、`tier=L1 active≈226K`，与线上四次空清单的仪表盘数值一致（221K/460 块）；journal 取分支时 `pseudo=0`、manifest 378 行。回归测试 `scripts/acp-branch-resync.test.ts` 新增「a full-journal feed blinds view alignment and empties the manifest (BUG-131)」：分支 journal → 清单 8 行；全文件 journal（中间夹 80 条废弃条目）→ 只剩共享前缀 2 行。`scripts/acp-*.test.ts` 与 `bun run check` 全绿。
+
+**教训**：BUG-127/128 的判据「`getEntries()` 只该用于必须覆盖全文件的游标类用途」这次漏在 ACP 注入点——它既不展示也不计时，看着像内部推断，实际是「推导当前状态」。另一条更强的：**任何带「前向窗口」的启发式对齐都必须在数据源作用域上自洽**；journal 与 view 的作用域不一致时，失败是静默的（伪 id 是合法值），只在长途分叉后才暴露，而且表现为「工具正常但清单为空」这种最像正常结果的形态。
+
+**遗留**：已落盘的历史会话在重启宿主后即恢复（journal 每次从 branch 重建）；本次修复需重启宿主生效。

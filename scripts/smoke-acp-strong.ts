@@ -566,8 +566,8 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 	const { session } = await createAgentSession({
 		cwd: cwdH,
 		settings,
-		// Mirrors host/session-lifecycle.ts: ACP pins compaction.enabled off for the primary,
-		// so the advisor must be opted back in explicitly or it loses compaction maintenance.
+		// This fixture keeps the base chain off (isolated pin), so the advisor must be
+		// opted back in explicitly or it loses compaction maintenance.
 		advisorCompactionEnabled: true,
 		model: mock,
 		modelRegistry,
