@@ -121,12 +121,14 @@ export function isBashMode(text: string): boolean {
   return text.startsWith("!");
 }
 
-/** Insertion text after accepting a file candidate: quote paths with spaces;
-    directories get no trailing space (to allow chained expansion) */
+/** Insertion text after accepting a file candidate: quote paths with spaces; a
+    drilled directory keeps a trailing slash (inside the quotes) so the host's
+    prefix listing lists its children instead of re-listing the directory, and
+    gets no trailing space */
 export function insertFile(value: string, dir: boolean, quoted: boolean): string {
   const needsQuote = quoted || value.includes(" ");
-  const body = needsQuote ? `"${value}"` : value;
-  return "@" + body + (dir ? "" : " ");
+  const body = dir ? value + "/" : value;
+  return "@" + (needsQuote ? `"${body}"` : body) + (dir ? "" : " ");
 }
 
 /** Insertion text after accepting a command/skill candidate: command name +

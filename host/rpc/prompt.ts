@@ -274,7 +274,7 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
 // returns empty (the popup shows no match).
 // Directories carry `empty`: Tab accepts a leaf directory but drills into a
 // non-empty one, so the composer decides from this flag instead of guessing.
-async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean; empty?: boolean }>> {
+export async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean; empty?: boolean }>> {
   if (query.startsWith("/") || query.startsWith("~")) {
     try {
       const expanded = query.startsWith("~") ? os.homedir() + query.slice(1) : query;
@@ -283,14 +283,18 @@ async function listFileMatches(root: string, query: string): Promise<Array<{ pat
       const dirents = await readdir(searchDir, { withFileTypes: true });
       const prefix = base.toLowerCase();
       const dirPart = query.endsWith("/") ? query : query.slice(0, query.length - path.basename(query).length);
-      const rows = dirents
-        .filter((d) => d.name !== ".git" && d.name.toLowerCase().startsWith(prefix))
-        .map((d) => ({ d, p: dirPart + d.name }))
-        .sort((a, b) => Number(b.d.isDirectory()) - Number(a.d.isDirectory()) || a.p.localeCompare(b.p))
+      const rows = (
+        await Promise.all(
+          dirents
+            .filter((d) => d.name !== ".git" && d.name.toLowerCase().startsWith(prefix))
+            .map(async (d) => ({ d, p: dirPart + d.name, dir: await resolvesToDirectory(path.join(searchDir, d.name)) })),
+        )
+      )
+        .sort((a, b) => Number(b.dir) - Number(a.dir) || a.p.localeCompare(b.p))
         .slice(0, 100);
       return await Promise.all(
-        rows.map(async ({ d, p }) =>
-          d.isDirectory() ? { path: p, dir: true, empty: await dirIsEmpty(path.join(searchDir, d.name)) } : { path: p, dir: false },
+        rows.map(async ({ d, p, dir }) =>
+          dir ? { path: p, dir: true, empty: await dirIsEmpty(path.join(searchDir, d.name)) } : { path: p, dir: false },
         ),
       );
     } catch {
@@ -300,12 +304,24 @@ async function listFileMatches(root: string, query: string): Promise<Array<{ pat
   try {
     const r = await fuzzyFind({ query, path: root, maxResults: 100, hidden: true, gitignore: true, cache: true });
     return await Promise.all(
-      r.matches.map(async (m) =>
-        m.isDirectory ? { path: m.path, dir: true, empty: await dirIsEmpty(path.join(root, m.path)) } : { path: m.path, dir: false },
-      ),
+      r.matches.map(async (m) => {
+        const abs = path.join(root, m.path);
+        return (await resolvesToDirectory(abs)) ? { path: m.path, dir: true, empty: await dirIsEmpty(abs) } : { path: m.path, dir: false };
+      }),
     );
   } catch {
     return [];
+  }
+}
+
+// dirent.isDirectory() is false for symlinks -- and repos under ~ are usually
+// links into another volume -- so a stat decides instead (a broken link stays a
+// file, keeping the pick path that appends the trailing space)
+async function resolvesToDirectory(abs: string): Promise<boolean> {
+  try {
+    return (await stat(abs)).isDirectory();
+  } catch {
+    return false;
   }
 }
 

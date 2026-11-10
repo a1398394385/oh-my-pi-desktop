@@ -525,11 +525,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // insertFile); command/skill -> ChipNode (insertCommand; a skill entry's name
   // is "skill:<name>", so the chip text is "/skill:<name> " which the host
   // dispatches). One exception: Tab on a directory that has children drills in
-  // instead, as a plain-text replacement with the caret parked at the token tail
-  // (no trailing space) so triggerFn recomputes the trigger after the update and
-  // chains into that directory's contents (after a chip the anchor is an element
-  // node, text-level typeahead can no longer trigger, so directory chaining must
-  // go through plain text) ----
+  // instead, as a plain-text replacement ending in a trailing slash with the
+  // caret parked at the token tail (no trailing space) so triggerFn recomputes
+  // the trigger after the update and the host lists that directory's contents
+  // (after a chip the anchor is an element node, text-level typeahead can no
+  // longer trigger, so directory chaining must go through plain text) ----
   const onSelectOption = useCallback((option: PalOption, node: TextNode | null, closeMenu: () => void) => {
     // A null node with a live trigger is the empty-query corner: Lexical's
     // $splitNodeContainingQuery returns undefined when startOffset equals the
@@ -552,14 +552,18 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       }
       // Directories drill in only on Tab with children below; the drill stays a
       // plain-text replacement (a chip would block the next trigger, so the
-      // directory chaining must run through text). Enter always picks, and so
+      // directory chaining must run through text) and ends with the trailing
+      // slash the host needs to list the children. Enter always picks, and so
       // does Tab on a leaf directory — a picked directory gets the trailing
       // space, otherwise the next typed character would extend its path.
       const drill = it.dir && pickKeyRef.current === "Tab" && it.empty !== true;
       if (drill) {
         const next = insertFile(it.path, true, trig.quoted);
         node.setTextContent(next);
-        node.select(next.length, next.length);
+        // A quoted drill keeps the caret before the closing quote so the
+        // unclosed-quote trigger branch still resolves the path
+        const at = trig.quoted ? next.length - 1 : next.length;
+        node.select(at, at);
       } else {
         const chip = $createChipNode(insertFile(it.path, false, trig.quoted));
         node.replace(chip);
