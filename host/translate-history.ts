@@ -5,7 +5,7 @@ import { hostI18n } from "./i18n/host.ts";
 import { collectFiles, isDevicePath, outReplyArgs, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
 import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
 import { PHASE_TEXT, isJunkPlaceholderText, errorTextOf, stripDcpTags } from "./translate.ts";
-import { BRANCH_TITLE_CUSTOM_TYPE } from "./session-titles.ts";
+import { BRANCH_TITLE_CUSTOM_TYPE } from "./titles.ts";
 import { deliveryMarkerOf, deliveryMarkersForSession, type DeliveryMarker } from "./automations/delivery.ts";
 import { advisorHistoryRow } from "./translate-advisor.ts";
 import { readRunChanges } from "./run-changes.ts";

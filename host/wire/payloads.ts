@@ -132,11 +132,15 @@ export type SettingsPayload = SettingsSnapshot & {
   // permission-mode menu offers the "smart approval" row. Experimental page
   // switch; independent of the gate above. Unset falls back to it.
   autoReviewOfferMode?: boolean;
-  // omp-desktop.json sessionTitles.refresh (host/session-titles.ts): regenerate
-  // the title after every settled turn (tiny-model call per turn; user-pinned
-  // titles are never overwritten). Experimental page switch.
+  // omp-desktop.json sessionTitles.refresh (host/titles.ts):
+  // judge-gated title refresh — every refreshPrompts operator prompts the
+  // title-drift judge checks the title and only a stale one is regenerated
+  // (user-pinned titles are never overwritten). Settings-page switch.
   sessionTitleRefresh?: boolean;
-  // omp-desktop.json sessionTitles.branchTitles (host/session-titles.ts): journal
+  // Accepted refreshPrompts values (the dropdown rows) and the current pick.
+  sessionTitleRefreshPrompts?: number;
+  sessionTitleRefreshOptions?: number[];
+  // omp-desktop.json sessionTitles.branchTitles (host/titles.ts): journal
   // each title as a branchTitle custom entry on the active branch and mirror the
   // branch's own title into the header on branch switch. Experimental page switch.
   branchTitles?: boolean;

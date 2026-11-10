@@ -130,6 +130,13 @@ export async function createSessionCore(
   // user's global value wins and this overlay carries per-session overrides only.
   const sessionSettings = H.settings.overlay({
     "computer.enabled": false,
+    // Title refresh is desktop-owned (titles.ts: judge-gated, branch
+    // aware) — pin the base's two auto-refresh paths off so they never race
+    // ours; the user's global values stay untouched (the CLI keeps its own).
+    // First naming (autoTitle) is NOT pinned: it runs once, forks the reply
+    // for a card title, and feeds our journal.
+    "title.refreshOnReplan": false,
+    "title.refreshAfterPrompts": 0,
     // Automation runs carry their task's ask deadline (seconds) as a per-session
     // override; the base ask tool resolves it per session, and the host's
     // permission-approval gate reads the same value back for non-automation runs.

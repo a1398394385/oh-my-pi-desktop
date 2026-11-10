@@ -13,7 +13,7 @@ import { readUiConfig } from "./ui-config.ts";
 import { readExternalBrowserEnabled } from "./browser-config.ts";
 import { readKimiAutoThinking } from "./kimi-thinking.ts";
 import { isAutoReviewEnabled, isSmartModeOffered } from "./auto-review.ts";
-import { readBranchTitles, readSessionTitleRefresh } from "./session-titles.ts";
+import { TITLE_REFRESH_PROMPTS_OPTIONS, readBranchTitles, readSessionTitleRefresh, readSessionTitleRefreshPrompts } from "./titles.ts";
 import { AUTO_ARCHIVE_RETENTION_DAYS, readAutoArchiveConfig } from "./auto-archive.ts";
 import { kimiCuInstalled } from "./mcp-builtin.ts";
 import { readComputerDefaultEnabled, readComputerProvider } from "./computer-mode.ts";
@@ -75,9 +75,12 @@ export function settingsFrame() {
     // autoReview.offerSmartMode: whether the permission-mode menu shows the
     // "smart approval" row (the page switch); the gate above stays independent.
     autoReviewOfferMode: isSmartModeOffered(),
-    // omp-desktop.json sessionTitles.refresh: regenerate the title after every
-    // settled turn (one tiny-model call per turn; user-renamed sessions stay pinned)
+    // omp-desktop.json sessionTitles.refresh: judge-gated title refresh —
+    // every refreshPrompts operator prompts the title-drift judge checks the
+    // title and only a stale one is regenerated (user-renamed sessions stay pinned)
     sessionTitleRefresh: readSessionTitleRefresh(),
+    sessionTitleRefreshPrompts: readSessionTitleRefreshPrompts(),
+    sessionTitleRefreshOptions: [...TITLE_REFRESH_PROMPTS_OPTIONS],
     // omp-desktop.json sessionTitles.branchTitles: journal titles per branch and
     // mirror the active branch's title into the header on branch switch
     branchTitles: readBranchTitles(),

@@ -29,7 +29,7 @@ import { writeHooksEnabled, writePluginsEnabled } from "../plugin-assets.ts";
 import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config.ts";
 import { writeAutoReviewEnabled, writeSmartModeOffered } from "../auto-review.ts";
 import { writeKimiAutoThinking } from "../kimi-thinking.ts";
-import { writeBranchTitles, writeSessionTitleRefresh } from "../session-titles.ts";
+import { TITLE_REFRESH_PROMPTS_OPTIONS, writeBranchTitles, writeSessionTitleRefresh, writeSessionTitleRefreshPrompts } from "../titles.ts";
 import { AUTO_ARCHIVE_RETENTION_DAYS, readAutoArchiveConfig, writeAutoArchiveConfig } from "../auto-archive.ts";
 import { triggerAutoArchiveSweep } from "../auto-archive-sweep.ts";
 import { setPlanMode } from "../plan.ts";
@@ -279,10 +279,15 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     pushSettings();
   },
   async set_session_title_refresh(ws, msg) {
-    // Experimental page switch: writes sessionTitles.refresh in omp-desktop.json —
-    // the agent_end hook reads it live, so it applies to the next turn of every
-    // open session. Each regeneration is one tiny-model call per turn.
-    writeSessionTitleRefresh(msg.enabled === true);
+    // Settings-page rows: `enabled` writes sessionTitles.refresh (general page
+    // switch — the agent_end hook reads it live, so it applies to the next turn
+    // of every open session), `prompts` writes sessionTitles.refreshPrompts (the
+    // "check every N turns" dropdown). Each staleness check is one judge call;
+    // only a stale title adds a tiny-model generation.
+    if (typeof msg.enabled === "boolean") writeSessionTitleRefresh(msg.enabled);
+    if (typeof msg.prompts === "number" && (TITLE_REFRESH_PROMPTS_OPTIONS as readonly number[]).includes(msg.prompts)) {
+      writeSessionTitleRefreshPrompts(msg.prompts);
+    }
     pushSettings();
   },
   async set_branch_titles(ws, msg) {

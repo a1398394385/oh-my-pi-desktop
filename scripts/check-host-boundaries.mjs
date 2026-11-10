@@ -56,6 +56,12 @@ const ALLOWED_EDGES = new Set([
   // decision lives in the base Tokenizer, so both the factory and the runtime's
   // model rebind need the same derivation, not a second provider table.
   "acp-assembly.ts→acp-projection.ts",
+  // ADR-0009: the extension delegates base compaction takeover to one module;
+  // it reuses the runtime snapshot, branch-id alignment, base rendering and
+  // persisted summary shapes instead of growing a second ACP state model.
+  "acp-assembly.ts→acp-base-takeover.ts", "acp-base-takeover.ts→acp-runtime.ts",
+  "acp-base-takeover.ts→acp-refs.ts", "acp-base-takeover.ts→acp-projection.ts",
+  "acp-base-takeover.ts→acp-persist.ts", "acp-base-takeover.ts→stderr.ts",
   // ACP v10 (pull mode + short refs): the bN registry + view alignment live in
   // acp-refs (journal-replayed, pure over projection/persist shapes); the
   // context_status tool surface + the status/ephemeral renders live in
@@ -215,12 +221,6 @@ const ALLOWED_EDGES = new Set([
   // translate-history reads the customType to decide which record feeds the
   // rename phase row (title_change is header-global and ambiguous once a
   // session carries branch titles).
-  "session-titles.ts→desktop-json.ts",
-  "session-lifecycle.ts→session-titles.ts", "rpc/settings.ts→session-titles.ts", "frames.ts→session-titles.ts",
-  "rpc/session.ts→session-titles.ts", "translate-history.ts→session-titles.ts",
-  // Auto-archive of stale sessions (omp-desktop.json autoArchive section):
-  // auto-archive.ts is a pure leaf over desktop-json (the retention window and
-  // the selection rule), projected into the settings frame and written by
   "titles.ts→desktop-json.ts",
   "session-lifecycle.ts→titles.ts", "rpc/settings.ts→titles.ts", "frames.ts→titles.ts",
   // Judge-gated refresh (sessionTitles.refreshPrompts): titles asks the
@@ -229,6 +229,12 @@ const ALLOWED_EDGES = new Set([
   // toward the next staleness check.
   "titles.ts→bootstrap.ts", "titles.ts→state.ts", "rpc/prompt.ts→titles.ts",
   "rpc/session.ts→titles.ts", "translate-history.ts→titles.ts",
+  // Auto-archive of stale sessions (omp-desktop.json autoArchive section):
+  // auto-archive.ts is a pure leaf over desktop-json (the retention window and
+  // the selection rule), projected into the settings frame and written by
+  // rpc/settings; auto-archive-sweep.ts owns the hourly scan — it lists the
+  // sessions, archives the stale ones into the project list and refreshes the
+  // sidebar lists.
   "auto-archive.ts→desktop-json.ts",
   "frames.ts→auto-archive.ts", "rpc/settings.ts→auto-archive.ts",
   "auto-archive-sweep.ts→auto-archive.ts", "auto-archive-sweep.ts→bootstrap.ts",
@@ -589,7 +595,7 @@ const ALLOWED_EDGES = new Set([
   "session-entry-core.ts→queue.ts", "session-entry-core.ts→plan-approve.ts",
   "session-entry-core.ts→auto-review.ts", "session-entry-core.ts→keepalive-host.ts",
   "session-entry-core.ts→capabilities.ts", "session-entry-core.ts→voice.ts",
-  "session-entry-core.ts→async-jobs.ts", "session-entry-core.ts→session-titles.ts",
+  "session-entry-core.ts→async-jobs.ts", "session-entry-core.ts→titles.ts",
   "session-entry-core.ts→i18n/host.ts", "session-entry-core.ts→stderr.ts",
   // The approval uiCtx resolves this session's permission-approval deadline
   // (ask.timeout, or the automation run's own value) off entry.session.settings.

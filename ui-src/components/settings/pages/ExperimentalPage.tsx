@@ -105,8 +105,6 @@ export default function ExperimentalPage() {
   const ctxEnabled = ctxKnown && !!hostSettings?.sessionContextEnabled;
   const arKnown = typeof hostSettings?.autoReviewOfferMode === "boolean";
   const arEnabled = arKnown && !!hostSettings?.autoReviewOfferMode;
-  const trKnown = typeof hostSettings?.sessionTitleRefresh === "boolean";
-  const trEnabled = trKnown && !!hostSettings?.sessionTitleRefresh;
   const btKnown = typeof hostSettings?.branchTitles === "boolean";
   const btEnabled = btKnown && !!hostSettings?.branchTitles;
   const kaKnown = typeof hostSettings?.keepaliveEnabled === "boolean";
@@ -322,13 +320,6 @@ export default function ExperimentalPage() {
             <span>{t("settingsPage.exp.autoReviewDesc")}</span>
           </div>
           <Toggle on={arEnabled} disabled={!arKnown} onChange={() => send({ type: "set_auto_review", offer: !arEnabled })} />
-        </div>
-        <div className="srow">
-          <div className="srow-tx">
-            <b className="srow-hd">{t("settingsPage.exp.titleRefreshTitle")}</b>
-            <span>{t("settingsPage.exp.titleRefreshDesc")}</span>
-          </div>
-          <Toggle on={trEnabled} disabled={!trKnown} onChange={() => send({ type: "set_session_title_refresh", enabled: !trEnabled })} />
         </div>
         <div className="srow">
           <div className="srow-tx">

@@ -28,7 +28,7 @@ import { bgJobsPayload } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
-import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../session-titles.ts";
+import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../titles.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
 import { clearSessionComputerChoice } from "../computer-mode.ts";
 import { visibleQueued } from "../queue.ts";
@@ -807,7 +807,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
 
       // Fork titles carry the source title ("Fork of <title>") so the copy is identifiable in
       // the sidebar, the CLI list and the branch family. Source "user" pins it: the auto title
-      // refresh skips user-named sessions (session-titles.ts), which is what a fork marker wants.
+      // refresh skips user-named sessions (titles.ts), which is what a fork marker wants.
       // A source that was never named stays unnamed and keeps letting the model title it.
       const parentTitle = (entry.title ?? entry.manager.getSessionName() ?? "").trim();
       if (parentTitle) await newManager.setSessionName(`Fork of ${parentTitle}`, "user");

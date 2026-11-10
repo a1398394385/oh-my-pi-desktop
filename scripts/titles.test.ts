@@ -2,7 +2,7 @@
 // every gate (switch off, own user title, inherited user title before the fork,
 // branch moved mid-generation, empty context, superseded call) must skip or drop
 // the LLM write, and removing any gate turns the corresponding test red.
-// Run: OMP_PROFILE=omp-desktop-test bun test scripts/session-titles.test.ts
+// Run: OMP_PROFILE=omp-desktop-test bun test scripts/titles.test.ts
 import { mock, afterEach, describe, expect, test } from "bun:test";
 import type { PoolEntry } from "../host/state.ts";
 
@@ -10,15 +10,28 @@ import type { PoolEntry } from "../host/state.ts";
 // section is unreachable; mock the module the unit under test reads.
 let switchOn = false;
 let branchOn = false;
+let every = 1;
+// Staleness verdict the mocked classifier hands back; undefined = no judge
+// answered. Default "stale" so the write-path tests match the pre-judge flow.
+let judgeVerdict: boolean | undefined = true;
+let judgeCalls = 0;
 mock.module("../host/desktop-json.ts", () => ({
 	readDesktopSection: (section: string) =>
-		section === "sessionTitles" ? { refresh: switchOn, branchTitles: branchOn } : {},
+		section === "sessionTitles" ? { refresh: switchOn, refreshPrompts: every, branchTitles: branchOn } : {},
 	// Same-process suites also load host/auto-review.ts, which imports this
 	// writer; an incomplete module mock would strip it and crash the other file.
 	writeDesktopSection: () => {},
 }));
+// The real classifier would call the judge chain (network); the unit under
+// test only needs its verdict and call count.
+mock.module("@oh-my-pi/pi-coding-agent/session/title-drift-classifier", () => ({
+	classifyTitleDrift: async () => {
+		judgeCalls++;
+		return judgeVerdict;
+	},
+}));
 
-const { maybeRefreshSessionTitle, syncBranchTitle } = await import("../host/session-titles.ts");
+const { maybeRefreshSessionTitle, noteTitlePrompt, syncBranchTitle } = await import("../host/titles.ts");
 
 const userMsg = (text: string) => ({
 	role: "user",
@@ -134,6 +147,7 @@ function makeEntry(opts: {
 			leafId = `appended-${appended.length}`;
 			return leafId;
 		},
+	getSessionId: () => "s-test",
 	};
 
 	const entry = {
@@ -155,6 +169,9 @@ const settle = async () => {
 afterEach(() => {
 	switchOn = false;
 	branchOn = false;
+	every = 1;
+	judgeVerdict = true;
+	judgeCalls = 0;
 });
 
 describe("maybeRefreshSessionTitle", () => {
@@ -168,14 +185,17 @@ describe("maybeRefreshSessionTitle", () => {
 	test("branch titles off: user-pinned header still gates generation", async () => {
 		switchOn = true;
 		const ctx = makeEntry({ generate: "New title", title: "Old", titleSource: "user" });
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.generateTitle.calls).toBe(0);
+		expect(judgeCalls).toBe(0);
 	});
 
 	test("branch titles off: writes header with auto source and journals nothing", async () => {
 		switchOn = true;
 		const ctx = makeEntry({ generate: "Fresh title", title: "Old auto title", titleSource: "auto" });
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.writes).toEqual([["Fresh title", "auto"]]);
@@ -186,6 +206,7 @@ describe("maybeRefreshSessionTitle", () => {
 		switchOn = true;
 		branchOn = true;
 		const ctx = makeEntry({ generate: "Fresh title", title: "Old auto title", titleSource: "auto" });
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.appended).toEqual([{ customType: "branchTitle", data: { title: "Fresh title", source: "auto" } }]);
@@ -201,9 +222,11 @@ describe("maybeRefreshSessionTitle", () => {
 			titleSource: "user",
 			branch: [textEntry("u1", null), titleBranchEntry("t1", "u1", "Mine", "user"), textEntry("a1", "t1")],
 		});
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.generateTitle.calls).toBe(0);
+		expect(judgeCalls).toBe(0);
 	});
 
 	test("branch titles on: a title inherited from before the fork does not freeze", async () => {
@@ -222,6 +245,7 @@ describe("maybeRefreshSessionTitle", () => {
 			],
 			siblings: { a1: 1 },
 		});
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.generateTitle.calls).toBe(1);
@@ -236,6 +260,7 @@ describe("maybeRefreshSessionTitle", () => {
 			branch: [textEntry("u1", null), textEntry("a1", "u1")],
 			leafAfterGenerate: "other-branch-leaf",
 		});
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.generateTitle.calls).toBe(1);
@@ -251,6 +276,7 @@ describe("maybeRefreshSessionTitle", () => {
 			title: "Same title",
 			branch: [textEntry("u1", null), titleBranchEntry("t1", "u1", "Same title", "auto")],
 		});
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.generateTitle.calls).toBe(1);
@@ -261,9 +287,13 @@ describe("maybeRefreshSessionTitle", () => {
 	test("superseded call is aborted and never writes", async () => {
 		switchOn = true;
 		let release!: (v: string) => void;
-		const ctx = makeEntry({ generate: () => new Promise<string>(r => (release = r)) });
+		const ctx = makeEntry({ generate: () => new Promise<string>(r => (release = r)), title: "Old" });
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
+		// Both chains reach generateTitle only after the judge await resolves.
+		await settle();
 		expect(ctx.generateTitle.calls).toBe(2);
 		release("Fresh title");
 		await settle();
@@ -274,10 +304,12 @@ describe("maybeRefreshSessionTitle", () => {
 
 	test("empty context skips generation", async () => {
 		switchOn = true;
-		const ctx = makeEntry({ generate: "New title", messages: [] });
+		const ctx = makeEntry({ generate: "New title", messages: [], title: "Old" });
+		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
 		await settle();
 		expect(ctx.generateTitle.calls).toBe(0);
+		expect(judgeCalls).toBe(1);
 	});
 
 	test("generation failure warns and never throws", async () => {
@@ -285,8 +317,9 @@ describe("maybeRefreshSessionTitle", () => {
 		const warns: unknown[][] = [];
 		const origWarn = console.warn;
 		console.warn = (...args: unknown[]) => warns.push(args);
-		const ctx = makeEntry({ generate: () => Promise.reject(new Error("boom")) });
+		const ctx = makeEntry({ generate: () => Promise.reject(new Error("boom")), title: "Old" });
 		try {
+			noteTitlePrompt(ctx.entry);
 			expect(() => maybeRefreshSessionTitle(ctx.entry)).not.toThrow();
 			await settle();
 		} finally {
@@ -294,6 +327,73 @@ describe("maybeRefreshSessionTitle", () => {
 		}
 		expect(ctx.generateTitle.calls).toBe(1);
 		expect(warns.length).toBe(1);
+	});
+
+	test("prompts below the interval skip the check entirely", async () => {
+		switchOn = true;
+		every = 3;
+		const ctx = makeEntry({ generate: "New title", title: "Old" });
+		noteTitlePrompt(ctx.entry);
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry);
+		await settle();
+		expect(judgeCalls).toBe(0);
+		expect(ctx.generateTitle.calls).toBe(0);
+	});
+
+	test("a check consumes the count whatever its verdict", async () => {
+		switchOn = true;
+		every = 3;
+		judgeVerdict = false;
+		const ctx = makeEntry({ generate: "New title", title: "Old" });
+		noteTitlePrompt(ctx.entry);
+		noteTitlePrompt(ctx.entry);
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry);
+		await settle();
+		expect(judgeCalls).toBe(1);
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry); // 1 prompt since the check: no re-check
+		await settle();
+		expect(judgeCalls).toBe(1);
+		noteTitlePrompt(ctx.entry);
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry); // 3 prompts again: re-check
+		await settle();
+		expect(judgeCalls).toBe(2);
+	});
+
+	test("fitting title skips generation", async () => {
+		switchOn = true;
+		judgeVerdict = false;
+		const ctx = makeEntry({ generate: "New title", title: "Still fits" });
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry);
+		await settle();
+		expect(judgeCalls).toBe(1);
+		expect(ctx.generateTitle.calls).toBe(0);
+		expect(ctx.writes).toEqual([]);
+	});
+
+	test("judge unanswered keeps the title", async () => {
+		switchOn = true;
+		judgeVerdict = undefined;
+		const ctx = makeEntry({ generate: "New title", title: "Old" });
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry);
+		await settle();
+		expect(judgeCalls).toBe(1);
+		expect(ctx.generateTitle.calls).toBe(0);
+	});
+
+	test("untitled session skips the check (naming stays with the base)", async () => {
+		switchOn = true;
+		const ctx = makeEntry({ generate: "New title" });
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry);
+		await settle();
+		expect(judgeCalls).toBe(0);
+		expect(ctx.generateTitle.calls).toBe(0);
 	});
 });
 

@@ -35,7 +35,7 @@ import { markTurnWrapped } from "./keepalive-host.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { handleVoiceEvent } from "./voice.ts";
 import { createBgJobsRefresh } from "./async-jobs.ts";
-import { maybeRefreshSessionTitle, syncBranchTitle } from "./session-titles.ts";
+import { maybeRefreshSessionTitle, syncBranchTitle } from "./titles.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
 import { getExtensionUISelectOptionLabel, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";

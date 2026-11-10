@@ -1,25 +1,32 @@
 // Continuous session-title refresh + per-branch title entries.
 //
 // Two independent switches live in omp-desktop.json's sessionTitles section:
-//   refresh      — regenerate the title after every settled turn (deepseek-harness
-//                  "regenerate per user message" behavior). The base only titles
-//                  untitled sessions once, so this is desktop-only.
+//   refresh — every refreshPrompts operator prompts, the base's title-drift
+//             judge decides staleness and only a stale title is regenerated.
+//             The desktop owns this path; createSessionCore pins the base's
+//             replan/drift refreshes off per session (first naming stays).
 //   branchTitles — journal each title as a `branchTitle` custom entry on the
-//                  active branch and mirror the branch's own title into the header
-//                  on branch switch, so A/B forks keep distinct titles.
+//             active branch and mirror the branch's own title into the header
+//             on branch switch, so A/B forks keep distinct titles.
 //
 // Branch titles rewrite the header with source "user": the base refuses
 // `setSessionName(auto)` once `titleSource` is "user", and repeated branch
-// switches must keep landing. "Who really authored this title" therefore lives in
-// the entry's own `source` field — header `titleSource` is only an unlock flag and
-// no desktop gate may read it while branchTitles is on.
-//
-// The journal is the source of truth for display: entries are appended with
-// appendCustomEntry (public, persists, advances the leaf like any other entry), so
-// a title written on branch A is simply the last branchTitle on A's root→leaf path
-// and never leaks into B.
+// switches must keep landing. "Who really authored this title" therefore lives
+// in the entry's own `source` field — header `titleSource` is only an unlock
+// flag and no desktop gate may read it while branchTitles is on. The journal
+// is the source of truth for display: a title written on branch A is simply
+// the last branchTitle on A's root→leaf path and never leaks into B.
 import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
-import { buildReplanTitleContext } from "@oh-my-pi/pi-coding-agent/session/messages";
+import { buildReplanTitleContext, buildTitleDriftTurns } from "@oh-my-pi/pi-coding-agent/session/messages";
+import { classifyTitleDrift } from "@oh-my-pi/pi-coding-agent/session/title-drift-classifier";
+import { resolveJudge, sharedJudgmentCache } from "./bootstrap.ts";
+import { H } from "./state.ts";
+
+/** Accepted sessionTitles.refreshPrompts values (the settings-page dropdown's rows). */
+export const TITLE_REFRESH_PROMPTS_OPTIONS = [1, 3, 5, 10] as const;
+
+/** Mirrors the base's TITLE_DRIFT_JUDGE_TIMEOUT_MS (not exported by the package). */
+const TITLE_DRIFT_JUDGE_TIMEOUT_MS = 15_000;
 
 /** customType identifying per-branch titles in the session journal. */
 export const BRANCH_TITLE_CUSTOM_TYPE = "branchTitle";
@@ -30,8 +37,8 @@ export interface BranchTitleData {
 	source: "auto" | "user";
 }
 
-// Structural slice of the base SessionManager / PoolEntry; importing the full
-// types would add session-titles.ts→state.ts boundaries for a few fields.
+// Structural slice of the base SessionManager / AgentSession; importing the full
+// types would pull the whole state.ts surface for a few fields.
 type BranchTitleEntry = {
 	id: string;
 	parentId: string | null;
@@ -47,6 +54,7 @@ type TitleEntry = {
 		messages: Parameters<typeof buildReplanTitleContext>[0];
 		generateTitle: (text: string, extra: undefined, signal: AbortSignal) => Promise<string | null | undefined>;
 		titleGenerationSignal: AbortSignal;
+		settings: Parameters<typeof resolveJudge>[0]["settings"];
 	};
 	manager: {
 		titleSource: string | undefined;
@@ -55,11 +63,12 @@ type TitleEntry = {
 		getBranch(): BranchTitleEntry[];
 		getTree(): TreeStub[];
 		getLeafId(): string | null;
+		getSessionId(): string;
 		appendCustomEntry(customType: string, data?: unknown): string;
 	};
 };
 
-/** Whether per-turn title refresh is enabled (sessionTitles.refresh, off by default). */
+/** Whether judge-gated title refresh is enabled (sessionTitles.refresh, off by default). */
 export function readSessionTitleRefresh(): boolean {
 	return readDesktopSection("sessionTitles").refresh === true;
 }
@@ -67,6 +76,17 @@ export function readSessionTitleRefresh(): boolean {
 /** Write sessionTitles.refresh back (merge-write preserves the section's other fields). */
 export function writeSessionTitleRefresh(enabled: boolean): void {
 	writeDesktopSection("sessionTitles", { ...readDesktopSection("sessionTitles"), refresh: enabled });
+}
+
+/** Operator prompts between two staleness checks (sessionTitles.refreshPrompts, default 1). */
+export function readSessionTitleRefreshPrompts(): number {
+	const n = readDesktopSection("sessionTitles").refreshPrompts;
+	return typeof n === "number" && (TITLE_REFRESH_PROMPTS_OPTIONS as readonly number[]).includes(n) ? n : 1;
+}
+
+/** Write sessionTitles.refreshPrompts back (merge-write preserves the section's other fields). */
+export function writeSessionTitleRefreshPrompts(prompts: number): void {
+	writeDesktopSection("sessionTitles", { ...readDesktopSection("sessionTitles"), refreshPrompts: prompts });
 }
 
 /** Whether per-branch title entries and header mirroring are enabled (sessionTitles.branchTitles, off by default). */
@@ -159,33 +179,63 @@ function hasOwnUserTitle(manager: TitleEntry["manager"]): boolean {
 // aborts the older call so its result cannot land on a branch the user left.
 const inFlight = new WeakMap<object, AbortController>();
 
+// Operator prompts since the last staleness check (in-memory like the base's
+// #titleDrift; a restart simply resumes counting at 0).
+const driftPrompts = new WeakMap<object, number>();
+
+/** Count one operator prompt toward the next staleness check (rpc/prompt.ts calls this on submit). */
+export function noteTitlePrompt(entry: TitleEntry): void {
+	if (!readSessionTitleRefresh()) return;
+	driftPrompts.set(entry, (driftPrompts.get(entry) ?? 0) + 1);
+}
+
 /**
- * Maybe regenerate the session title after a terminal agent_end. Fire-and-forget:
- * must never throw into the turn-end path. The base's own first-title generation
- * may still be in flight; both writes use the same header field, so last write
- * wins and nothing gets pinned — acceptable.
+ * Maybe refresh the session title after a terminal agent_end. Fire-and-forget:
+ * must never throw into the turn-end path. Mirrors the base's
+ * `title.refreshAfterPrompts` flow with branch awareness added: every
+ * refreshPrompts operator prompts the title-drift judge decides staleness,
+ * and only a stale one is regenerated. A check consumes the count whatever its
+ * verdict; prompts sent while it runs count toward the next one. The base's
+ * first-title generation may still be in flight — last write wins, nothing
+ * gets pinned.
  */
 export function maybeRefreshSessionTitle(entry: TitleEntry): void {
 	try {
 		if (!readSessionTitleRefresh()) return;
+		if ((driftPrompts.get(entry) ?? 0) < readSessionTitleRefreshPrompts()) return;
+		driftPrompts.set(entry, 0);
 		const perBranch = readBranchTitles();
 		// With branch titles off this keeps the original base gate; with it on the
 		// header is tagged "user" by us, so that gate would silence every refresh.
 		if (!perBranch && entry.manager.titleSource === "user") return;
 		if (perBranch && hasOwnUserTitle(entry.manager)) return;
-		const context = buildReplanTitleContext(entry.session.messages);
-		if (!context) return;
+		const current = entry.manager.getSessionName();
+		// No title yet: naming stays with the base's autoTitle (fork + card).
+		if (!current) return;
 		const leafId = entry.manager.getLeafId();
 		inFlight.get(entry)?.abort();
 		const controller = new AbortController();
 		inFlight.set(entry, controller);
 		void (async () => {
 			try {
-				const title = await entry.session.generateTitle(
-					context,
-					undefined,
-					AbortSignal.any([entry.session.titleGenerationSignal, controller.signal]),
-				);
+				const signal = AbortSignal.any([
+					entry.session.titleGenerationSignal,
+					controller.signal,
+					AbortSignal.timeout(TITLE_DRIFT_JUDGE_TIMEOUT_MS),
+				]);
+				const judge = resolveJudge({
+					settings: entry.session.settings,
+					registry: H.modelRegistry,
+					sessionId: entry.manager.getSessionId(),
+					purpose: "title-drift",
+					cache: sharedJudgmentCache(),
+				});
+				// undefined (no judge answered) counts as fitting — same as the base.
+				const drifted = await classifyTitleDrift(judge, current, buildTitleDriftTurns(entry.session.messages), signal);
+				if (!drifted) return;
+				const context = buildReplanTitleContext(entry.session.messages);
+				if (!context) return;
+				const title = await entry.session.generateTitle(context, undefined, signal);
 				if (!title) return;
 				// Branch moved while the model was thinking: the title belongs to the
 				// branch the user left, and a late write would land on the wrong one.
@@ -198,12 +248,12 @@ export function maybeRefreshSessionTitle(entry: TitleEntry): void {
 				}
 			} catch (err) {
 				// Abort is the ordinary path for a superseded call, not a failure.
-				if (!controller.signal.aborted) console.warn("[session-titles] title refresh failed:", err);
+				if (!controller.signal.aborted) console.warn("[titles] title refresh failed:", err);
 			} finally {
 				if (inFlight.get(entry) === controller) inFlight.delete(entry);
 			}
 		})();
 	} catch (err) {
-		console.warn("[session-titles] title refresh gate failed:", err);
+		console.warn("[titles] title refresh gate failed:", err);
 	}
 }

@@ -347,6 +347,13 @@ export default function GeneralPage() {
   const retentionDays = hs?.autoArchiveRetentionDays ?? 14;
   const retentionOptions = hs?.autoArchiveRetentionOptions?.length ? hs.autoArchiveRetentionOptions : [7, 14, 30, 90];
   const retentionLabel = t("settingsPage.general.archiveRetentionDays", { days: retentionDays });
+  // Session-title refresh (host/titles.ts): judge-gated staleness
+  // checks every N operator prompts; both fields arrive in the host settings frame.
+  const titleRefreshKnown = typeof hs?.sessionTitleRefresh === "boolean";
+  const titleRefreshEnabled = titleRefreshKnown && !!hs?.sessionTitleRefresh;
+  const titleRefreshPrompts = hs?.sessionTitleRefreshPrompts ?? 1;
+  const titleRefreshOptions = hs?.sessionTitleRefreshOptions?.length ? hs.sessionTitleRefreshOptions : [1, 3, 5, 10];
+  const titleRefreshLabel = t("settingsPage.general.titleRefreshEveryN", { n: titleRefreshPrompts });
   // Refill after the host settings reply (never disturb focused inputs; the fill guard of the old applyHostSettings)
   useEffect(() => {
     const e2: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" };
@@ -587,6 +594,36 @@ export default function GeneralPage() {
             <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>{t("common.save")}</button>
           </div>
         </div>
+      </div>
+      <div className="set-group-tt">{t("settingsPage.general.groupTitleRefresh")}</div>
+      <div className="set-card">
+        <Srow
+          title={t("settingsPage.general.titleRefreshTitle")}
+          desc={t("settingsPage.general.titleRefreshDesc")}
+          dataKey="app.titleRefresh"
+        >
+          <Toggle
+            on={titleRefreshEnabled}
+            disabled={!titleRefreshKnown}
+            onChange={() => send({ type: "set_session_title_refresh", enabled: !titleRefreshEnabled })}
+          />
+        </Srow>
+        <Srow
+          title={t("settingsPage.general.titleRefreshEveryTitle")}
+          desc={t("settingsPage.general.titleRefreshEveryDesc")}
+          dataKey="app.titleRefreshEvery"
+        >
+          <Sel
+            label={titleRefreshLabel}
+            value={String(titleRefreshPrompts)}
+            options={titleRefreshOptions.map((n) => ({
+              v: String(n),
+              label: t("settingsPage.general.titleRefreshEveryN", { n }),
+              ck: n === titleRefreshPrompts ? "✓" : "",
+            }))}
+            onPick={(v) => send({ type: "set_session_title_refresh", prompts: Number(v) })}
+          />
+        </Srow>
       </div>
       <div className="set-group-tt">{t("settingsPage.general.groupArchive")}</div>
       <div className="set-card">

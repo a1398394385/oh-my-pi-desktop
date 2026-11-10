@@ -550,7 +550,7 @@
       "id": "set_session_title_refresh",
       "kind": "settings",
       "risk": "write",
-      "note": "实验页开关：写入 omp-desktop.json 的 sessionTitles.refresh（默认关）。开启后每个回合结束用 tiny 模型重生成会话标题；用户手动改名的会话永不覆盖"
+      "note": "通用页开关：enabled 写 omp-desktop.json 的 sessionTitles.refresh（默认关），prompts 写 sessionTitles.refreshPrompts（检查间隔，1/3/5/10 轮，默认 1）。开启后每 N 轮由底座 title-drift judge 判断标题是否过时，仅过时时重生成；用户手动改名的会话永不覆盖"
     },
     {
       "id": "set_branch_titles",
