@@ -221,9 +221,14 @@ const ALLOWED_EDGES = new Set([
   // Auto-archive of stale sessions (omp-desktop.json autoArchive section):
   // auto-archive.ts is a pure leaf over desktop-json (the retention window and
   // the selection rule), projected into the settings frame and written by
-  // rpc/settings; auto-archive-sweep.ts owns the hourly scan — it lists the
-  // sessions, archives the stale ones into the project list and refreshes the
-  // sidebar lists.
+  "titles.ts→desktop-json.ts",
+  "session-lifecycle.ts→titles.ts", "rpc/settings.ts→titles.ts", "frames.ts→titles.ts",
+  // Judge-gated refresh (sessionTitles.refreshPrompts): titles asks the
+  // base's title-drift judge through the bootstrap re-export + H.modelRegistry
+  // (judge role-chain resolution), and rpc/prompt counts every operator prompt
+  // toward the next staleness check.
+  "titles.ts→bootstrap.ts", "titles.ts→state.ts", "rpc/prompt.ts→titles.ts",
+  "rpc/session.ts→titles.ts", "translate-history.ts→titles.ts",
   "auto-archive.ts→desktop-json.ts",
   "frames.ts→auto-archive.ts", "rpc/settings.ts→auto-archive.ts",
   "auto-archive-sweep.ts→auto-archive.ts", "auto-archive-sweep.ts→bootstrap.ts",

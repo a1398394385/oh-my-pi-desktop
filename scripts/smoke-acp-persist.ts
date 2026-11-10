@@ -129,23 +129,24 @@ assert.equal(ctx.messages.length, 6, "base context counts only the journaled mes
 assert.ok(!JSON.stringify(ctx.messages).includes("covered work"), "summary text must not leak into base context");
 console.log("ok: buildSessionContext ignores acpSummary — no LLM context, no message count");
 
-// --- acceptance 10 (second half): base compaction entry degrades rebuild ---------
-const degradedSession = SessionManager.create(cwd);
-const d1 = degradedSession.appendMessage({ role: "user", content: "start" } as never);
-degradedSession.appendMessage({ role: "assistant", content: [{ type: "text", text: "working" }], usage } as never);
-appendAcpSummary(degradedSession, summaryDraft(9, [d1], [], 0, "normal"));
-// Base compaction entries only ever appear through the §5.3 degrade path; use
-// the official appendCompaction channel to journal one.
-degradedSession.appendCompaction("omp default chain took over", undefined, d1, 4096);
-const degradedFile = degradedSession.getSessionFile()!;
-assert.ok(degradedFile.startsWith(getAgentDir()), `degraded session file must stay in the profile agentDir, got ${degradedFile}`);
+// --- acceptance: a plain compaction entry rebuilds as the ACP base ---------
+const baselineSession = SessionManager.create(cwd);
+const d1 = baselineSession.appendMessage({ role: "user", content: "start" } as never);
+baselineSession.appendMessage({ role: "assistant", content: [{ type: "text", text: "working" }], usage } as never);
+appendAcpSummary(baselineSession, summaryDraft(9, [d1], [], 0, "normal"));
+baselineSession.appendCompaction("omp default chain took over", undefined, d1, 4096);
+const baselineFile = baselineSession.getSessionFile()!;
+assert.ok(baselineFile.startsWith(getAgentDir()), `baseline session file must stay in the profile agentDir, got ${baselineFile}`);
 
-const reopened2 = await SessionManager.open(degradedFile, undefined, undefined, { suppressBreadcrumb: true });
+const reopened2 = await SessionManager.open(baselineFile, undefined, undefined, { suppressBreadcrumb: true });
 const state2 = rebuildAcpState(reopened2.getEntries());
-assert.equal(state2.degraded, true, "base compaction entry ⇒ degraded, ACP state does not advance");
-assert.equal(state2.zone.length, 0);
+assert.equal(state2.degraded, false);
+assert.equal(state2.zone.length, 1);
+assert.equal(state2.zone[0].meta.method, "base");
+assert.equal(state2.zone[0].summary, "omp default chain took over");
+assert.equal(state2.alignFrom, d1);
 assert.equal(state2.compressedBlockIds.size, 0);
-console.log("ok: session containing a base compaction entry rebuilds into degraded mode");
+console.log("ok: plain base compaction rebuilds as the baseline without degrading");
 
 // --- malformed payload fails loudly ----------------------------------------------
 assert.throws(
@@ -158,6 +159,6 @@ console.log("ok: malformed acpSummary entry rejected loudly");
 // plus its .lock.os sidecar behind (T3 cleanup fix). Directory names may start
 // with "-", which is harmless for joined paths.
 rmSync(dirname(sessionFile), { recursive: true, force: true });
-rmSync(dirname(degradedFile), { recursive: true, force: true });
-assert.ok(!existsSync(dirname(sessionFile)) && !existsSync(dirname(degradedFile)), "session dirs fully removed");
+rmSync(dirname(baselineFile), { recursive: true, force: true });
+assert.ok(!existsSync(dirname(sessionFile)) && !existsSync(dirname(baselineFile)), "session dirs fully removed");
 console.log("\nALL ACP T2 PERSIST SMOKE CHECKS PASSED");

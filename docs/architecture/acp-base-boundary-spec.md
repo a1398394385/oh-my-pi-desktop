@@ -1,7 +1,7 @@
 # ACP × 底座压缩：写侧接管 + 读侧认边界 Spec
 
-**Status**: 待独立全量复审（v3.5，2026-11-10）· 未实施
-**审阅记录**: v2 一轮独立审阅 NOT READY（7 项已闭环）→ v3 一轮 NOT READY（8 项阻断已按反例修订）→ v3.1 一轮独立审阅 NOT READY（5 项阻断已按反例修订）→ v3.2 设计问答发现保留尾部重复风险（已修订）→ v3.3 一轮独立审阅 NOT READY（4 项合同缺口已按反例修订）→ v3.4 一轮独立审阅 NOT READY（3 项阻断已按反例修订）→ **待独立全量复审**
+**Status**: READY（v3.6，2026-11-10）· 已实施
+**审阅记录**: v2 一轮独立审阅 NOT READY（7 项已闭环）→ v3 一轮 NOT READY（8 项阻断已按反例修订）→ v3.1 一轮独立审阅 NOT READY（5 项阻断已按反例修订）→ v3.2 设计问答发现保留尾部重复风险（已修订）→ v3.3 一轮独立审阅 NOT READY（4 项合同缺口已按反例修订）→ v3.4 一轮独立审阅 NOT READY（3 项阻断已按反例修订）→ v3.5 全量复审 NOT READY（4 项阻断已按反例修订）→ **v3.6 独立复审 READY**
 **决策 SSOT**: `.agents/notes/0009-acp-base-compaction-baseline.md`
 **取代**: 本文件 v1/v2（只做读侧建模，底座仍自己总结）；同时取代 BUG-129 的「cancel 守卫」行为
 
@@ -26,8 +26,8 @@
 | 事件 | 必须发生的状态转移 |
 |---|---|
 | 同分支普通追加 | R/C/Z/X/T 不变；V 只在完整 id 前缀匹配时增量续接 |
-| ACP normal | 追加 acpSummary；Z 追加、X 并入；R/C 不变 |
-| ACP strong | Z 由存活 strong 替换、X 并入全部覆盖；吞基线时 `supersedesBase` 稳定继承，T 取该代 `createdAt` |
+| ACP normal | 追加 acpSummary；Z 追加、X 并入，新块 T 取自身 `createdAt`；R/C 不变 |
+| ACP strong | Z 由存活 strong 替换、X 并入全部覆盖，新块 T 取该代 `createdAt`；吞基线时 `supersedesBase` 稳定继承 |
 | base 接管或让路落盘 | 都追加 compaction；重同步后 C 更新，旧 Z/X/T 按 R1/R4 重建；V 因追加区含边界而失效 |
 | reset | R 更新、C 清空、Z/X/T 清空；V 失效 |
 | 切分支、回退、重启 | 从目标当前分支重算 R/C/Z/X/T；V 失效，不继承旧分支缓存 |
@@ -95,9 +95,9 @@
 | `event.signal.aborted`，或 ACP 25s 期限触发 | 用户取消或接管超时；先确认模型请求已中止 |
 | handler 30s 超时 | 外层只停止等待；不能替代 ACP 的主动取消 |
 | W4 不达标 | 见上 |
-| 模型调用失败 | 让底座自己试一次，比整轮失败好 |
+| 模型调用失败，或返回的 `summary.trim()` 为空 | 让路；空摘要会抹掉整个压缩前缀，不能因 W4 候选很小而落盘 |
 
-让路 = handler 返回 `undefined`（不带 `compaction`、不带 `cancel`）。
+让路 = handler 返回 `undefined`（不带 `compaction`、不带 `cancel`）。所有护栏都在返回接管结果前检查。
 
 ### W6 与 ACP 日常压缩的关系
 
@@ -145,7 +145,7 @@ BUG-129 落地的 guard 语义（threshold/idle 取消、overflow/incomplete 先
 
 | 当前分支状态 | `from` |
 |---|---|
-| 最新 reset 后有 compaction | 该 compaction 的 `boundaryEntryId`（`firstKeptEntryId`；原生回放例外仍先走 R5）；即使基线已被 strong 吞并，也仍从这里对齐 |
+| 当前 reset 时代存在 compaction（包括从未 reset） | 该 compaction 的 `boundaryEntryId`（`firstKeptEntryId`；原生回放例外仍先走 R5）；即使基线已被 strong 吞并，也仍从这里对齐 |
 | 有 reset、之后无 compaction | 最新 reset entry id |
 | 既无 reset 也无 compaction | 分支开头（省略 `from`） |
 
@@ -156,6 +156,7 @@ BUG-129 落地的 guard 语义（threshold/idle 取消、overflow/incomplete 先
 - 非 degraded 时丢弃 source 中 `role === "compactionSummary"` 的消息（改由基线块渲染）。
 - 基线块渲染体：`{ role:"user", content: "[acp-base]\n<summary>", synthetic:true, timestamp: rewriteAt }`，并带 `historyRewriteAt = rewriteAt`。
   - `historyRewriteAt` 是崩溃保护必需项：底座靠被丢弃的那条 summary 消息上的同名字段让保留尾部的 bound-thinking 签名失效（`transform-messages.ts` 按 `latestRewriteAt` 剥离）；漏掉会让失效签名被重放。
+- 所有 acpSummary 渲染体（normal 与 strong）都携带 `historyRewriteAt = meta.createdAt`；base 后的 normal 也会再次改写前缀，不能只给吞基线的 strong 设置。`transformMessages` 取各用户消息的最新重写时间，因此 C→normal 后保留尾部中旧 bound-thinking 同样会失效。
 - 顺序：zone 按 journal 顺序（基线最前）→ 其后按 source 顺序。
 
 ### R4 L3 可吞基线
@@ -183,6 +184,8 @@ strong 压缩时：
 
 本 Spec 接管后新产生的 entry 无 `method`、无 `preserveData` → 不会误判。
 
+degraded 也是当前分支、当前 reset 时代的派生状态，不是进程内永久锁：每次 `resyncToBranch` 都从目标分支重算；reset 或回退使上述边界离开当前时代后必须清除 degraded。运行态与重启不得一个恢复、一个保持降级。
+
 ### R6 事件与重建
 
 - `session_compact` → `resyncToBranch`（下一请求生效）。
@@ -202,7 +205,7 @@ strong 压缩时：
 - **接管产生的压缩在 ACP 统计中完全不可见**（不写 acpSummary）；且它之前的 acpSummary 行仍按 `compressedTokens × requestsAfter` 计 `savedTokens`（`acp-stats.ts:198-202`、`acp-gain.ts`），收益持续高估。UI 的 ACP 统计页（`ui-src/components/settings/stats/routes/AcpRoute.tsx`）沿用同一口径。
 - **base 的投机压缩失效**：`session_before_compact` 存在 handler 后，底座的投机压缩与阈值延迟被关闭（`session-maintenance.ts:2261,2354,2589`）。
 - 跨重启 `bN` 编号可能与压缩当轮不同（只影响跨重启的 `keep` 引用）。
-- 原生回放 / 旧 snapcompact 会话永久停在 degraded（互斥态）。
+- 原生回放 / 旧 snapcompact 只在包含该边界的当前分支时代内 degraded；reset 或回退到健康分支后恢复（互斥态不再跨时代粘滞）。
 
 ## 4. 验收矩阵
 
@@ -219,7 +222,7 @@ strong 压缩时：
 | 9 | 分支回退到边界之前 | 无基线；旧 acpSummary 恢复；不 degraded | 新单测 |
 | 10 | 两次 base 压缩 | 只取最新一条 | 新单测 |
 | 11 | `/clear`：分别构造 `[compaction, reset_boundary, m11]` 与 `[A(acpSummary), reset_boundary, m11…m80]` | 最新 reset 后无 compaction 时无基线；旧 A 不进 zone，`compressedBlockIds` 为空，投影只含 reset 后消息；`annotateView` 从 reset id 起扫，m11…m80 均保留真实 journal id，不退化成 `view:`。前后都无 compaction 时，reset id 变化仍触发重建；旧 A 不得复活 | 新单测 |
-| 12 | 原生回放三形态（anthropic payload / openaiRemoteCompaction / snapcompact） | 各自 degraded，投影原样透传 | 新单测 |
+| 12 | 原生回放三形态（anthropic payload / openaiRemoteCompaction / snapcompact），随后 reset 或回退到边界前并重启 | 各自在原分支时代 degraded、投影原样透传；离开该时代后运行态与重启都恢复非 degraded，不得保留进程内永久锁 | 新单测 |
 | 13 | strong 吞基线 | `meta.supersedesBase === base id`；重建后 zone 无 base；新摘要正文含基线 summary；`historyRewriteAt === strong.meta.createdAt`，而非基线时间 | 新单测 + `smoke-acp-strong.ts` |
 | 14 | 吞基线后回退 | 回退到该 strong 之前 → 基线复活 | 新单测 |
 | 15 | 投影输出 | 无 `compactionSummary`；首块 `[acp-base]` 无数字；`timestamp` / `historyRewriteAt` 均为等于 `Date.parse(entry.timestamp)` 的有限毫秒数；用带 `thinking.prefixBinding` 的模型实际跑 `transformMessages`，确认边界前保留尾部的旧 bound-thinking 被剥离；`assertToolPairing` 通过 | 新单测 + `acp-projection-pairing.test.ts` |
@@ -234,6 +237,8 @@ strong 压缩时：
 | 24 | 文件 `[m1,m2,m3,m4,A(acpSummary 覆盖 m1,m2),m5]` 上接管 | ① `firstKept=m4` 时，模型新增输入只有 m3，`previousSummary` 承接 A，m4/m5 不得进入摘要；C 追加在 m5 后，投影为 `[C,m4,m5]`，A 不单独渲染且 m4/m5 各只出现一次。② `firstKept=m3` 时，新增压缩前缀为空，C 只承接 A，投影为 `[C,m3,m4,m5]`；不得要求跳过 m4 来构造非连续保留区 | 新单测 + 新 smoke |
 | 25 | 请求前 `projectView` 后，同分支追加正常 assistant 回复，再触发 post-turn threshold；另在追加后手动 `/compact` | leaf 已推进但缓存 entry id 序列仍是当前分支前缀：runtime 续接追加消息并推进快照，不得仅因 leaf 不同让路；新增回复必须按 `firstKeptEntryId` 进入压缩前缀或连续保留尾部（最新回复通常属于保留尾部），不得丢失或重复，并计入 W4 的对应部分。追加区含 compaction/reset 或缓存不是前缀时仍让路 | 新单测 + 新 smoke |
 | 26 | A 的 `compressedIds` 覆盖 `{m1,m4}`，底座 `firstKept=m3` | A 与保留尾部 `{m3,m4,m5}` 在 m4 交叉：handler 让路，不返回 compaction，不调用 ACP 摘要写入；不得吞并 A 后让 m4 原文与摘要同时出现 | 新单测 |
+| 27 | `completeSimple` 正常返回空字符串或纯空白，其他检查均通过 | 返回前让路，不落盘空 compaction，不调用底座接管结果；随后由原路径总结 | 新单测 |
+| 28 | 基线 C 时间 1000 → 保留 assistant 时间 2000 且带有效 bound-thinking → normal N 时间 5000 | N 渲染体 `historyRewriteAt=5000`；运行与重启一致；实际跑 `transformMessages`，确认该签名按 N 的重写时间失效 | 新单测 + `acp-projection-pairing.test.ts` |
 
 ## 5. 不做的事
 
@@ -258,7 +263,7 @@ strong 压缩时：
 - 取代 BUG-129 的 cancel 守卫：guard 由「取消」改为「接管」，`degrade()` 不再由 guard 触发。
 - `host/acp-runtime.ts` 的 strong 分支（`zone = [written]`）**不变**，因为基线此时已被吞并进新摘要（R4）。
 
-## 8. 审阅反例闭环（v3.1–v3.5）
+## 8. 审阅反例闭环（v3.1–v3.6）
 
 | # | 反例 | 修法落点 |
 |---|---|---|
@@ -285,5 +290,9 @@ strong 压缩时：
 | 21 | reset 后无基线时从全分支对齐，64 窗口外新消息变伪 id | R2 增加 compaction / reset / 普通分支三类起点；验收 #11 扩展到 m80 |
 | 22 | strong 永久继承基线 `historyRewriteAt`，新生成签名不会被后续强压失效 | §1.1 与 R4 分离稳定基线身份和最近重写时间；验收 #13/#23 检查运行、重启与回退 |
 | 23 | 旧 Q1 假设 ACP 投影小就不会触发 base threshold | Q1 改为已确认不主动 compact，并记录存储估值与 provider 用量两种触发输入 |
+| 24 | 模型成功返回空白摘要，W4 因候选很小通过并落盘 | W5 在返回前拒绝 `summary.trim()` 为空；验收 #27 |
+| 25 | 无 reset、有 compaction 不命中 R2 任何一行 | R2 首行改为当前 reset 时代存在 compaction，包含从未 reset |
+| 26 | base 后 normal 再改写前缀，但重写时间停在基线 | §1.1/R3 规定所有 acpSummary 使用自身 `createdAt`；验收 #28 |
+| 27 | 原生边界 degraded 在 reset/回退后与重启结果不一致 | R5/R9 将 degraded 限定为当前分支时代派生状态；验收 #12 |
 
-未覆盖（本轮未验证，实施前需实测）：threshold 自动与 overflow/incomplete 三条入口对 `result.compaction` 的尊重是否一致；`parseSummary` 对新字段的容忍度；接管后半段与 BUGS.md / `acp-compaction-spec.md` §5.3 的措辞一致性。
+实施验证（2026-11-10）：58 项相关单测、11 个 ACP 冒烟中 10 个通过；真实 DeepSeek manual `session.compact()` 已验证接管摘要、保留尾部去重与压缩后追问。`smoke-acp-ephemeral.ts` 在未触及的 tokenizer rebind 断言失败（两种计数均为 1601），`acp-stats.test.ts` 另有既有定价偏差。未覆盖：真实 threshold 自动、overflow 与 incomplete 入口；字段持久化、重启与回退已由 smoke 覆盖。

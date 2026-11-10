@@ -97,7 +97,8 @@ export interface AcpCompactionBlock {
 	meta: {
 		createdAt: number;
 		depth: number;
-		method: "normal" | "strong";
+		/** "base" marks the synthesized block of a base compaction boundary (never persisted as acpSummary). */
+		method: "normal" | "strong" | "base";
 		/** Ids of superseded compaction blocks; those drop out of the rendered zone. */
 		supersedes?: string[];
 	};
@@ -272,6 +273,9 @@ export function splitBlocks(
  * the default keeps raw ids for pure-function callers.
  */
 export function renderCompactionBlock(b: AcpCompactionBlock, refOf?: (id: string) => string): string {
+	// Base boundaries render a fixed marker: the compaction entry id, time and
+	// block count are base bookkeeping, not summary content the model can use.
+	if (b.meta.method === "base") return `[acp-base]\n${b.summary}`;
 	const ref = refOf ?? ((id: string) => id);
 	return (
 		`[acp-summary id=${ref(b.id)} time=${new Date(b.meta.createdAt).toISOString()} ` +
@@ -301,19 +305,19 @@ export function assertToolPairing(messages: readonly AgentMessage[], exemptUseId
 }
 
 /**
- * Project a source view into the request message sequence (spec §4.1-4.3):
- * compression zone first (unsuperseded blocks, original order), then the active
- * zone filtered to `keptBlockIds`. Messages are copied on change, never mutated.
- * `refOf` rides into the zone render for short-ref labels (spec §3 v10).
+ * Shared active-zone filtering for the request projection and the takeover
+ * input: one implementation so a manifest id and the messages the model sees
+ * can never disagree. Ids are preserved on every output (the caller needs the
+ * journal mapping). `compactionSummary` messages are dropped unconditionally:
+ * non-degraded callers render the base boundary as a zone block instead, and
+ * degraded callers never reach this function.
  */
-export function projectContext(
+function filterActiveSource(
 	source: readonly AcpSourceMessage[],
 	keptBlockIds: ReadonlySet<string>,
-	compactionBlocks: readonly AcpCompactionBlock[],
 	countTokens: CountTokens,
-	refOf?: (id: string) => string,
 	onPairingGap?: (err: Error) => void,
-): AgentMessage[] {
+): AcpSourceMessage[] {
 	const blocks = splitBlocks(source, countTokens);
 	// toolCallId -> owning pair block; a tool_use body rides with its result.
 	const pairByCallId = new Map<string, string>();
@@ -323,22 +327,10 @@ export function projectContext(
 	for (const { message } of source)
 		if (message.role === "assistant")
 			for (const c of message.content) if (c.type === "toolCall" && !pairByCallId.has(c.id)) unfinishedUseIds.add(c.id);
-	const superseded = new Set<string>();
-	for (const b of compactionBlocks) for (const s of b.meta.supersedes ?? []) superseded.add(s);
 
-	const out: AgentMessage[] = [];
-	for (const b of compactionBlocks) {
-		if (superseded.has(b.id)) continue;
-		const rendered: UserMessage = {
-			role: "user",
-			content: renderCompactionBlock(b, refOf),
-			synthetic: true,
-			timestamp: b.meta.createdAt,
-		};
-		out.push(rendered);
-	}
-
+	const out: AcpSourceMessage[] = [];
 	for (const { id, message } of source) {
+		if (message.role === "compactionSummary") continue;
 		if (message.role === "assistant") {
 			const filtered = message.content.filter((c) => {
 				if (c.type === "toolCall") {
@@ -354,17 +346,17 @@ export function projectContext(
 			// Every block compressed away -> the whole assistant message drops (spec §4.2).
 			if (filtered.length === 0) continue;
 			const projected: AssistantMessage = { ...message, content: filtered };
-			out.push(projected);
+			out.push({ id, message: projected });
 		} else if (message.role === "toolResult") {
 			if (!keptBlockIds.has(id)) continue;
 			const kept: ToolResultMessage = { ...message };
-			out.push(kept);
+			out.push({ id, message: kept });
 		} else if (message.role === "user" || message.role === "developer") {
 			if (!keptBlockIds.has(id)) continue;
-			out.push(message);
+			out.push({ id, message });
 		}
 		// Custom agent messages pass through untouched (not compression candidates).
-		else out.push(message);
+		else out.push({ id, message });
 	}
 
 	// Pairing gaps inherited from the source view (aborted-turn dangling calls,
@@ -373,9 +365,62 @@ export function projectContext(
 	// pair-granular (see pairByCallId above), so any gap reported here points
 	// at the source view or a manifest-validation hole, not at removal.
 	try {
-		assertToolPairing(out, unfinishedUseIds);
+		assertToolPairing(
+			out.map((s) => s.message),
+			unfinishedUseIds,
+		);
 	} catch (err) {
 		onPairingGap?.(err instanceof Error ? err : new Error(String(err)));
 	}
+	return out;
+}
+
+/**
+ * Active-zone messages only (the takeover input): the request projection without
+ * the rendered zone, with source ids preserved so the caller can cut at a real
+ * journal entry id.
+ */
+export function projectActiveMessages(
+	source: readonly AcpSourceMessage[],
+	keptBlockIds: ReadonlySet<string>,
+	countTokens: CountTokens,
+): AcpSourceMessage[] {
+	return filterActiveSource(source, keptBlockIds, countTokens);
+}
+
+/**
+ * Project a source view into the request message sequence (spec §4.1-4.3):
+ * compression zone first (unsuperseded blocks, original order), then the active
+ * zone filtered to `keptBlockIds`. Messages are copied on change, never mutated.
+ * `refOf` rides into the zone render for short-ref labels (spec §3 v10).
+ */
+export function projectContext(
+	source: readonly AcpSourceMessage[],
+	keptBlockIds: ReadonlySet<string>,
+	compactionBlocks: readonly AcpCompactionBlock[],
+	countTokens: CountTokens,
+	refOf?: (id: string) => string,
+	onPairingGap?: (err: Error) => void,
+): AgentMessage[] {
+	const superseded = new Set<string>();
+	for (const b of compactionBlocks) for (const s of b.meta.supersedes ?? []) superseded.add(s);
+
+	const out: AgentMessage[] = [];
+	for (const b of compactionBlocks) {
+		if (superseded.has(b.id)) continue;
+		const rendered: UserMessage = {
+			role: "user",
+			content: renderCompactionBlock(b, refOf),
+			synthetic: true,
+			timestamp: b.meta.createdAt,
+			// Every zone block rewrites the prefix it covers; the base model
+			// strips bound-thinking signatures older than this time after a
+			// crash, and a base boundary must invalidate the same tail a strong
+			// summary does.
+			historyRewriteAt: b.meta.createdAt,
+		};
+		out.push(rendered);
+	}
+	for (const { message } of filterActiveSource(source, keptBlockIds, countTokens, onPairingGap)) out.push(message);
 	return out;
 }

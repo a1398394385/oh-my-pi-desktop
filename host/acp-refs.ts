@@ -43,9 +43,21 @@ function isContextStatusResult(m: { toolName?: string; details?: unknown }): boo
  * namespace). In-order greedy fingerprint match: view messages derive from
  * journal entries in order, with base-synthetic messages interleaved (they
  * consume no journal slot); the window only guards pathological drift.
+ *
+ * `from` narrows the scan to the current branch's alignment origin: a message
+ * id starts at that message (inclusive), any other entry id (a reset boundary)
+ * starts after it. Retained tails sit before their compaction entry in the
+ * journal while appearing after the zone in the view, and a post-reset branch
+ * can exceed the 64-entry window from the branch head — both would misalign
+ * the scan if it always started at index 0 (spec R2).
  */
-export function annotateView(view: readonly AgentMessage[], entries: readonly SessionEntry[]): Array<{ id: string; message: AgentMessage }> {
-	const journal = entries.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message");
+export function annotateView(view: readonly AgentMessage[], entries: readonly SessionEntry[], from?: string): Array<{ id: string; message: AgentMessage }> {
+	let scan = entries;
+	if (from !== undefined) {
+		const at = entries.findIndex((e) => e.id === from);
+		if (at >= 0) scan = entries[at].type === "message" ? entries.slice(at) : entries.slice(at + 1);
+	}
+	const journal = scan.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message");
 	const fps = journal.map((e) => messageFingerprint(e.message));
 	let ptr = 0;
 	const ids = view.map((m) => {

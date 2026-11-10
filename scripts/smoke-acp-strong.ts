@@ -26,6 +26,10 @@
 //   H  end-to-end mock-model session: the same compress_context tool and
 //      schema drives both compressions (model-agnostic); annotation reaches
 //      the wire; post-strong projection shows exactly one zone render
+//   I  base boundary swallow on a real journal (acceptance 13/21/23):
+//      base -> S1 -> S2 keeps supersedesBase/own rewrite time, the merged body
+//      stays under the extended budget, reopen rebuilds the same zone, and
+//      rewinding one generation at a time restores S1 then the base itself
 //
 // All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
@@ -662,6 +666,190 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 		// Windows lock window; the temp dir is disposable
 	}
 	console.log("ok: H e2e — same tool+schema drove normal then strong; annotation on the wire; single zone render; clean journal");
+}
+
+// --- I: base boundary swallow (acceptance 13/21/23) ---------------------------------------
+
+/** historyRewriteAt of a rendered zone block (base or strong render body). */
+function rewriteAtOf(m: AgentMessage): number | undefined {
+	if (typeof m !== "object" || m === null || !("historyRewriteAt" in m)) return undefined;
+	return typeof m.historyRewriteAt === "number" ? m.historyRewriteAt : undefined;
+}
+
+const cwdI = mkdtempSync(join(tmpdir(), "acp-t6-base-"));
+{
+	const baseText = tokenText(500, "base boundary summary of the retired parser investigation. ");
+	const summarySeed = "later investigation notes about the parser and the failing test. ";
+	const sessionManager = SessionManager.create(cwdI);
+	const userIds: string[] = [];
+	const view: AgentMessage[] = [];
+	const appendUser = (i: number) => {
+		const message = { role: "user", content: blockText(i, 500), timestamp: 1_700_000_300_000 + i } as never as AgentMessage;
+		userIds.push(sessionManager.appendMessage(message as never));
+		view.push(message);
+	};
+	for (let i = 0; i < 4; i++) appendUser(i);
+	// Base boundary already on the branch: u0/u1 folded, u2 keeps the tail.
+	const baseEntryId = sessionManager.appendCompaction(baseText, undefined, userIds[2], 4096, { tokensAfter: 1_000 });
+	await Bun.sleep(5); // keep the entry timestamp strictly older than the summary writes below
+
+	const params = {
+		l1: 400,
+		l2: 800,
+		l3: 900,
+		minCompress: 0,
+		target: 1_000_000,
+		tailTurns: 0,
+		tailTokens: 0,
+	} as Partial<AcpParams>;
+	const makeState = (manager: typeof sessionManager) =>
+		new AcpRuntimeState({
+			countTokens,
+			sink: manager,
+			getEntries: () => manager.getEntries(),
+			getBranch: () => manager.getBranch(),
+			contextWindow: 1_000,
+			params,
+		});
+	const summaryEntries = () =>
+		sessionManager
+			.getEntries()
+			.filter((e): e is Extract<SessionEntry, { type: "custom" }> => e.type === "custom" && e.customType === "acpSummary");
+
+	const state = makeState(sessionManager);
+	state.resyncToBranch();
+	assert.equal(state.degraded, false, "a base compaction entry is modeled, not degraded");
+	assert.deepEqual(state.zone.map((z) => z.id), [baseEntryId], "the zone root is the synthesized base block");
+	const baseCreatedAt = state.zone[0].meta.createdAt;
+	const baseEntry = sessionManager.getBranch().find((e) => e.id === baseEntryId)!;
+	assert.equal(state.zone[0].meta.method, "base");
+	assert.equal(baseCreatedAt, Date.parse(baseEntry.timestamp), "base time is the ISO entry timestamp in ms");
+	assert.ok(state.compressed.has(userIds[0]) && state.compressed.has(userIds[1]), "the boundary folds its prefix");
+	assert.ok(!state.compressed.has(userIds[2]), "the boundary entry itself is retained");
+
+	// Post-restart request view: the retained tail only (the base summary message
+	// is dropped by the projection and rendered as the zone root).
+	view.splice(0, 2);
+	state.projectView(view);
+	assert.equal(state.roundStatus!.method, "strong", "active over l3 forces the strong round");
+	const s1Out = accepted(await state.compress({ keep: [], summary: tokenText(180, summarySeed) }));
+	await Bun.sleep(5);
+	const [s1Entry] = summaryEntries();
+	const s1 = s1Entry.data as AcpSummaryData;
+	assert.equal(s1.meta.method, "strong");
+	assert.equal(s1.meta.supersedesBase, baseEntryId, "S1 names the base boundary it swallowed");
+	assert.deepEqual(s1.meta.supersedes, [], "the base entry is not an acpSummary supersede target");
+	assert.ok(s1.summary.startsWith(baseText), "the base summary is concatenated into the new body");
+	const plainBudget = Math.min(
+		Math.floor(s1Out.compressed.tokens / state.params.summaryDivisor),
+		state.params.summaryBudgetMax,
+	);
+	assert.ok(
+		countTokens(s1.summary) > plainBudget,
+		"without the base-render allowance the merged body would be over budget (acceptance 21)",
+	);
+	assert.ok(s1.meta.createdAt > baseCreatedAt, "S1's rewrite time is its own write time, not the base time");
+	assert.deepEqual([...s1.meta.compressedIds].sort(), [...userIds].sort(), "S1 inherits base coverage plus its folds");
+
+	// The surviving strong render is what invalidates the tail's signatures.
+	state.projectView(view);
+	assert.equal(rewriteAtOf(state.lastProjected[0]), s1.meta.createdAt, "runtime render uses S1's rewrite time");
+
+	// Second generation: new turns arrive while the strong render is over the
+	// zone line and active is past L1 -> riding strong again.
+	appendUser(4);
+	appendUser(5);
+	state.projectView(view);
+	assert.equal(state.roundStatus!.method, "strong", "over-line zone + active > L1 rides strong");
+	accepted(await state.compress({ keep: [], summary: tokenText(150, summarySeed) }));
+	await Bun.sleep(5);
+	const [, s2Entry] = summaryEntries();
+	const s2 = s2Entry.data as AcpSummaryData;
+	assert.equal(s2.meta.supersedesBase, baseEntryId, "supersedesBase travels down the strong chain");
+	assert.deepEqual(s2.meta.supersedes, [s1Entry.id]);
+	assert.ok(s2.meta.createdAt > s1.meta.createdAt, "S2 owns a newer rewrite time");
+	assert.ok(s2.summary.includes(baseText), "the swallowed base body survives the second generation");
+	assert.deepEqual([...s2.meta.compressedIds].sort(), [...userIds].sort(), "S2 inherits the whole chain");
+
+	// User-only journals stay in memory until an assistant turn materializes the
+	// file (the base lazy gate); this one writes the whole body, customs included.
+	sessionManager.appendMessage({
+		role: "assistant",
+		content: [{ type: "text", text: "working" }],
+		usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+	} as never);
+
+	// Real JSONL: one base boundary, two strong generations, no methods on the
+	// base entry, and reopen derives the same single-block zone.
+	const sessionFile = sessionManager.getSessionFile()!;
+	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
+	const sessionDir = dirname(sessionFile);
+	process.on("exit", () => {
+		rmSync(sessionDir, { recursive: true, force: true });
+		// Windows can still hold the throwaway cwd when a session handle outlives
+		// the test; the temp dir is disposable.
+		try {
+			rmSync(cwdI, { recursive: true, force: true });
+		} catch {
+			// Windows lock window; the temp dir is disposable
+		}
+	});
+	const raw = await Bun.file(sessionFile).text();
+	assert.equal(raw.split('"customType":"acpSummary"').length - 1, 2, "two strong generations on disk");
+	assert.equal(raw.split('"type":"compaction"').length - 1, 1, "one base boundary on disk");
+	assert.ok(raw.includes(`"supersedesBase":"${baseEntryId}"`), "supersedesBase is persisted");
+	await sessionManager.close();
+
+	const reopened = await SessionManager.open(sessionFile, undefined, undefined, { suppressBreadcrumb: true });
+	const rebuilt = rebuildAcpState(reopened.getBranch());
+	assert.equal(rebuilt.degraded, false);
+	assert.deepEqual(rebuilt.zone.map((z) => z.id), [s2Entry.id], "reopen keeps only the newest strong block live");
+	assert.equal(rebuilt.zone[0].meta.supersedesBase, baseEntryId);
+	assert.equal(rebuilt.zone[0].meta.createdAt, s2.meta.createdAt, "restart keeps S2's own rewrite time");
+	assert.deepEqual([...rebuilt.compressedBlockIds].sort(), [...userIds].sort());
+
+	const restarted = makeState(reopened);
+	restarted.resyncToBranch();
+	restarted.projectView(view);
+	const restartedWire = JSON.stringify(restarted.lastProjected);
+	assert.ok(!restartedWire.includes("[acp-base]"), "the swallowed base does not revive after reopen");
+	assert.equal(rewriteAtOf(restarted.lastProjected[0]), s2.meta.createdAt);
+
+	// Rewind one generation: S1 comes back with its own time, not the base's.
+	reopened.branch(s1Entry.id);
+	const atS1 = makeState(reopened);
+	atS1.resyncToBranch();
+	assert.deepEqual(atS1.zone.map((z) => z.id), [s1Entry.id], "rewinding past S2 restores S1");
+	assert.equal(atS1.zone[0].meta.supersedesBase, baseEntryId);
+	assert.equal(atS1.zone[0].meta.createdAt, s1.meta.createdAt, "S1 keeps its own rewrite time after the rewind");
+	atS1.projectView(view.slice(0, 2));
+	assert.equal(rewriteAtOf(atS1.lastProjected[0]), s1.meta.createdAt);
+	assert.ok(!JSON.stringify(atS1.lastProjected).includes("[acp-base]"), "S1 still swallows the base");
+
+	// Rewind past S1: the base block itself revives with its boundary time.
+	reopened.branch(baseEntryId);
+	const atBase = makeState(reopened);
+	atBase.resyncToBranch();
+	assert.deepEqual(atBase.zone.map((z) => z.id), [baseEntryId], "rewinding past S1 revives the base block");
+	assert.equal(atBase.zone[0].meta.method, "base");
+	assert.equal(atBase.zone[0].meta.createdAt, baseCreatedAt, "the base block restores its boundary timestamp");
+	atBase.projectView(view.slice(0, 2));
+	const baseWire = JSON.stringify(atBase.lastProjected);
+	assert.equal(rewriteAtOf(atBase.lastProjected[0]), baseCreatedAt, "the revived base render uses the boundary time");
+	assert.equal(baseWire.split("[acp-base]").length - 1, 1, "exactly one base render after the rewind");
+	const retainedWire = JSON.stringify(atBase.lastProjected.filter((m) => m.role === "user" && m.synthetic !== true));
+	assert.equal(retainedWire.split("journal block 2:").length - 1, 1, "retained tail renders once beside the base");
+	assert.ok(!baseWire.includes("journal block 0:"), "the folded prefix does not resurface");
+
+	await reopened.close();
+	rmSync(sessionDir, { recursive: true, force: true });
+	assert.ok(!existsSync(sessionDir), "session dir fully removed (incl. lock files)");
+	try {
+		rmSync(cwdI, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
+	console.log("ok: I base swallow — supersedesBase/own time across generations; reopen and rewind restore S2/S1/base");
 }
 
 console.log("\nALL ACP T6 STRONG COMPRESSION SMOKE CHECKS PASSED");

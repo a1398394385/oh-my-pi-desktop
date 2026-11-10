@@ -61,7 +61,7 @@
 
 发送前经 transformContext 投影生成请求消息;持久历史不改写。**acpSummary 是 SDK custom entry(customType="acpSummary",经 `SessionManager.appendCustomEntry` 写入),不进 LLM 上下文**(SDK 官方语义:`buildSessionContext` 忽略 custom entry;接口文档明确「persist extension state across reloads, scan entries for customType to reconstruct」);host 投影层直接把压缩块渲染成 user 角色文本段进入输出。
 
-1. **压缩区渲染**:只渲染未被 supersede 的压缩块,按原序各渲染为:元数据头(压缩时间/depth/被压块数/method) + 整体摘要。索引清单不渲染(v12 随 recall 一并移除;持久层仍保完整 index 作记账)。
+1. **压缩区渲染**:只渲染未被 supersede 的压缩块,按原序各渲染为:元数据头(压缩时间/depth/被压块数/method) + 整体摘要。索引清单不渲染(v12 随 recall 一并移除;持久层仍保完整 index 作记账)。当前分支最新 reset 后如有底座 compaction,先合成 `[acp-base]` 基线根块;所有基线与 acpSummary 渲染体都带 `historyRewriteAt=createdAt`,原始 `compactionSummary` 不再重复进入投影。
 2. **活跃区重组**(按保留集过滤):
    - assistant 消息 M 含 tool_use U1..Un:保留的 tool 对 → 其 tool_use block 留在 M';被压的 → 从 M' 摘除,其 result 同步摘除。
    - thinking/text 块按保留集同样过滤。
@@ -125,12 +125,9 @@
 
 **总量保险线**:判定量 = **投影后总量**(ACP 投影是协议行为而非 on-wire 作弊,不使用底座 `compactionContextTokens` 的 stored 地板)。投影总量 > 窗口 − 15% reserve(复用底座 effectiveReserveTokens)→ 直接触发三级强制压缩;强制后仍超,或强制本身失败 → 降级。
 
-**降级**:会话持久历史中出现底座 compaction 记录(firstKeptEntryId 边界)→ 本会话 ACP 永久退出:
-- compress_context / context_status 不再注册;ephemeral 停止注入;投影关闭(消息原样发送,走底座自己的 transform);
-- 边界前的 acpSummary 随底座边界一并隐藏;底座摘要输入基于边界前原始消息全文(投影不改存储,原文均在);
-- 此后由 OMP 默认链路按 methodOrder(remote/snapcompact/handoff/shake/soft)接管,含其溢出恢复/输出截断恢复/进度守卫/失败封顶;
-- 判定无需额外标记:重建时检测到 compaction entry 即降级。
-- **运行中降级次序**:底座自动压缩按 reason 分流——`threshold`/`idle` 由投影扩展的守卫取消(否则 journal 增长必致底座折叠冲掉 ACP 结构);`overflow`/`incomplete` 是底座的最后手段,守卫先让 ACP 降级再放行,使折叠记录落在已退出的会话上,而不是背后仍有一个活的 ACP 区。手动 `/compact` 不取消(操作者显式要求走底座链路)。
+**底座边界与降级**:当前分支最新 reset 后的最新 compaction 记录会重建为 ACP 基线根块,不再导致永久互斥。ACP 在 `session_before_compact` 用自己的活跃投影生成摘要并交回底座落盘;threshold/idle/overflow/incomplete/手动 `/compact` 均走同一接管路径,失败则让路给底座原总结链,不再 cancel 或预先 degrade。
+
+只有当前时代的原生回放、snapcompact 图像归档或无法定位的边界会降级:compress_context / context_status 拒绝,ephemeral 停止,投影原样透传。reset、回退或切分支离开该边界后重同步必须恢复;运行态与重启使用同一 `rebuildAcpState(branch)` 推导。
 
 ## 6. 工具契约
 
@@ -205,19 +202,19 @@
 - 压缩块 = SDK custom entry(customType="acpSummary"),session JSONL 持久化(**纯持久层:`appendCustomEntry` 官方通道,`buildSessionContext` 忽略之;运行时经 host 投影渲染,不进底座消息转换与计数**),`data` 字段:
   - `summary: string`、`shortSummary?: string`
   - `index: [{ id, tokens, intent }]`(完整索引;强力压缩块继承全集,不受渲染截断影响)
-  - `meta: { createdAt, depth, method: "normal" | "strong", forced?: boolean, keepIds, compressedIds, supersedes: string[], tokensBefore, tokensAfter }`
+  - `meta: { createdAt, depth, method: "normal" | "strong", forced?: boolean, keepIds, compressedIds, supersedes: string[], supersedesBase?: string, tokensBefore, tokensAfter }`
   - `meta` 遥测附加字段(用量统计 ACP 分栏,缺失表示旧 journal,UI 显示未知):`summaryTokens?`(本块渲染体 token 数,写入前用 `nextRef()` 预测 bN 计数)、`statusTokens?`(喂给本次压缩的 context_status 返回 token 数)、`hints?`(上次成功压缩/会话开始以来的 `[compress-hint]` 注入次数,宿主内存计数,成功压缩后归零)
-- **重建**(host 启动会话时扫描 entries 按 customType 过滤):
-  1. 检测到任何底座 compaction entry → 降级模式(§5.3),ACP 状态不推进;
-  2. 否则:压缩区 = 未被任何 acpSummary.meta.supersedes 覆盖的 acpSummary,按序;
-  3. 消息块:出现在任一未 supersede 压缩块的 compressedIds 中 → 已压缩;其余 → 活跃。(强力压缩块经 §6 继承规则持有全量 compressedIds,重建无需递归展开 supersedes 链。)
-- strategy=acp 会话自身不产生底座 compaction 记录;唯一来源是降级路径(§5.3)。
+- **重建**(只对 `getBranch()` 的当前分支推导):
+  1. 最新 reset 是时代边界:其前 acpSummary 与覆盖集合不进 live 状态;最新 reset 后的最新 compaction 合成 `[acp-base]` 根块,原生回放/图像归档/坏边界才降级;
+  2. 压缩区 = 未被吞的基线(若有) + 边界后未被 supersede 的 acpSummary;strong 经 `supersedesBase` 稳定吞并基线并继承其 compressedIds,摘要正文拼接基线内容;
+  3. 消息块只按最终 live zone 的 compressedIds 判定已压缩;对齐从基线 boundaryEntryId、最新 reset id 或分支开头开始,保证保留尾部与 reset 后 64 窗口外消息仍获真实 id。
+- ACP 接管底座压缩时只落 compaction entry,不同时写 acpSummary;基线根块不落盘,重启仍由当前分支重建。
 
 ## 10. 实施集成点(omp-desktop host 层)
 
 | 点 | 位置(omp-desktop host 层) | 改动 |
 |---|---|---|
-| 会话装配 | `host/session-lifecycle.ts` ACP 注入段(acp.enabled 开关先例已存在)+ `createAgentSession({ extensions })` | ACP 会话注册 extension + customTools,并由投影扩展**取消本会话的底座自动压缩**(threshold/idle;overflow/incomplete 先降级再放行)。底座 shouldCompact 判 stored journal 口径,ACP 投影不影响之——不拦则 journal 增长必致底座折叠冲掉 ACP 结构。**不再 pin `compaction.enabled`**:settings 是树状读穿,子代理是父 settings 的派生 overlay(`createSubagentSettings`),pin 会连带关闭每个 `task` 子代理的底座压缩,而子代理完全没有 ACP 面(2026-11-09 实测) |
+| 会话装配 | `host/session-lifecycle.ts` ACP 注入段 + `createAgentSession({ extensions })` | ACP 会话注册 extension + customTools;owner 的 `session_before_compact` 由 ACP 投影接管总结,失败才让路底座。子代理没有 ACP 面,owner 判定保证其仍走底座压缩;不 pin `compaction.enabled` |
 | 档位判定 | host ACP 状态机 | 活跃区三档;**不**使用底座 `compactionContextTokens` 的 stored 地板 |
 | 保险线 | 同上 | 投影后总量 vs 窗口 − 15% reserve |
 | 投影 + ephemeral | context 事件 extension(`host/acp-context.ts` 现有 transformContext 同一接缝) | 块过滤重组 + 压缩块渲染为 user 文本段 + `[compress-hint]` 末尾追加(§4/§7) |
@@ -226,7 +223,7 @@
 | 强制调用 | 三级触发:`AgentSession.setForcedToolChoice("compress_context")`(公开 API,已验证:强制下一次模型调用指定工具、[forced,"none"] 序列调完即止;工具须在 active 集——customTools 注入天然满足;模型不支持时抛错 = 降级出口) | meta.forced=true,按强力语义;失败即 §5.3 降级 |
 | 持久 entry | `SessionManager.appendCustomEntry` | customType="acpSummary"(§9) |
 | 计数 | `@oh-my-pi/pi-agent-core` 导出 `Tokenizer`(18.8.6 验证) | 档位判定/清单/校验/保险线统一实例(§8) |
-| 兜底 | 降级路径 | ACP 注入物停用 + 守卫解除(settings 从未被关闭)= 底座默认链路 methodOrder 接管(§5.3) |
+| 兜底 | 降级或接管失败 | ACP 注入物停用/返回 undefined(settings 从未被关闭),底座默认链路 methodOrder 接管(§5.3) |
 
 ## 11. 参数表(SSOT,实现以本表为准)
 
@@ -256,7 +253,7 @@
 | 6 | 强力压缩:压缩区超 35% 进待强力,ephemeral 加注;活跃区>L1 时下一次 compress 按强力语义(S1{a}+S2{b}→M 新压 c → M.compressedIds/index 含 a,b,c;重建后 a,b,c 已压缩、压缩区单块、depth+1;多层强力同样成立;纯重置空被压集可提交);活跃区≤L1 时 compress 不搭车;活跃区>L3 时的 compress 直接按强力语义 | 集成 + 重建测试 |
 | 7 | 投影总量>保险线:三级强制;仍超或失败→降级,OMP methodOrder 接管 | 集成测试 |
 | 9 | 压缩动作前后,tools/system/未被 supersede 压缩块的渲染前缀逐字节一致;活跃区缓存失效为预期 | 前缀字节对比 + usage 断言 |
-| 10 | 重启后重建:压缩区(未 supersede)/活跃集正确;含底座 compaction 记录的会话重建即降级 | 持久化测试 |
+| 10 | 重启后按当前分支重建基线/压缩区/活跃集;原生边界仅在当前时代降级,reset/回退后恢复 | 持久化测试 |
 | 11 | keep 不继承:上轮 keep 块本轮未列即被压 | 集成测试 |
 | 12 | 清单(context_status 返回)后新到块不进当轮清单、不被压 | 时序测试 |
 | 13 | 同批两个 compress_context:host 互斥锁串行;第一个成功 → 清单已消费 → 第二个在锁内重校验被拒(含 keep=[] 场景);第一个校验失败 → 清单未消费,修正重试可成功;compress 永不被投机执行(未声明 ToolSpeculationPolicy) | 并发测试 |

@@ -14,10 +14,10 @@
 // — named where the face supports it; the openai-completions transport turns
 // that same push into required+single-tool where it does not, so both spec
 // forms ride one channel; a throw = neither form = degrade), the total-volume
-// guard line (projected total vs window − effectiveReserveTokens), and the
-// permanent degrade (projection off, ephemeral stopped, compress rejected at
-// the entry — customTools cannot be unregistered after session creation — and
-// the base compaction chain restored through the assembly hook).
+// guard line (projected total vs window − effectiveReserveTokens), and
+// degraded passthrough (ephemeral stopped, compress rejected at the entry —
+// customTools cannot be unregistered after session creation). Boundary-derived
+// degradation is recomputed on branch resync and can therefore recover.
 //
 // v10 (pull mode + short refs): the manifest leaves the ephemeral for the
 // context_status tool — the no-tier range injects nothing at all and active tiers
@@ -53,6 +53,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import {
 	assertToolPairing,
 	projectContext,
+	projectActiveMessages,
 	renderCompactionBlock,
 	signatureTokensOf,
 	splitBlocks,
@@ -62,7 +63,7 @@ import {
 	type CountMessages,
 	type CountSignatureTokens,
 } from "./acp-projection.ts";
-import { appendAcpSummary, rebuildAcpState, type AcpSummarySink } from "./acp-persist.ts";
+import { appendAcpSummary, branchCompactionFingerprint, rebuildAcpState, type AcpSummaryData, type AcpSummarySink } from "./acp-persist.ts";
 import { ACP_VIEW_PSEUDO_PREFIX, AcpRefBook, annotateView } from "./acp-refs.ts";
 import { renderEphemeralMessage, renderMilestoneMessage, renderStatusText, renderSyntheticStatusPair } from "./acp-status-tool.ts";
 import { safeStderr } from "./stderr.ts";
@@ -82,7 +83,7 @@ import {
 // layer (factory/tool/extension) to acp-assembly.ts (T11 split, pure
 // refactor); the moved symbols are re-exported here so existing importers —
 // session-lifecycle aside, the unmodifiable smoke scripts — keep resolving.
-import { planCompression } from "./acp-compress.ts";
+import { planCompression, type CompressOutcome, type CompressRejection } from "./acp-compress.ts";
 
 export {
 	createAcpRuntime,
@@ -104,8 +105,10 @@ export interface AcpRuntimeDeps {
 	countMessages?: CountMessages;
 	/** Journal write channel for compaction blocks (SessionManager, spec §9). */
 	sink: AcpSummarySink;
-	/** Journal read for entry-id alignment (SessionManager.getEntries). */
+	/** Journal read for refs and provider calibration. */
 	getEntries: () => readonly SessionEntry[];
+	/** Current branch only; defaults to the already branch-scoped test fixture feed. */
+	getBranch?: () => readonly SessionEntry[];
 	/** Session model context window (spec §11 zone line = window × 35%; §5.3 guard line = window − reserve); 0/unknown = neither line. */
 	contextWindow?: number;
 	params?: Partial<AcpParams>;
@@ -169,7 +172,7 @@ export class AcpRuntimeState {
 	manifest: AcpManifest | null = null;
 	/** Latest round status (tier + manifest) driving the ephemeral; null until the first auto-generated projection. */
 	roundStatus: AcpRoundStatus | null = null;
-	/** §5.3 permanent degrade: projection off, ephemeral stopped, compress rejected, base chain restored. */
+	/** Projection disabled; branch resync re-derives whether a boundary-era degrade can resume. */
 	degraded = false;
 	/** Why the session degraded (observability; empty while active). */
 	degradeReason = "";
@@ -178,6 +181,13 @@ export class AcpRuntimeState {
 	lastBlocks: AcpBlockInfo[] = [];
 	/** Latest projected request (test/assembly observability). */
 	lastProjected: AgentMessage[] = [];
+	/** Full branch-id prefix captured with lastSource; valid only until a boundary or branch move. */
+	#snapshotEntryIds: string[] = [];
+	#snapshotValid = false;
+	#resetId: string | null = null;
+	#compactionId: string | null = null;
+	#alignFrom: string | undefined;
+	#baseSummary: string | undefined;
 	#deps: AcpRuntimeDeps;
 	/** Per-session compress mutex: a promise chain (the exclusive tool channel is unavailable, spec §6). */
 	#lock: Promise<unknown> = Promise.resolve();
@@ -243,7 +253,7 @@ export class AcpRuntimeState {
 		this.#zoneLimitTokens = Math.floor(contextWindow * ACP_ZONE_LIMIT_RATIO);
 		// Reuse the base reserve math verbatim (max(15%, default floor)) so the
 		// guard line matches what the base's own overflow paths would assume.
-		this.#guardLineTokens = contextWindow > 0 ? contextWindow - effectiveReserveTokens(contextWindow, {}) : 0;
+		this.#guardLineTokens = contextWindow > 0 ? contextWindow - effectiveReserveTokens(contextWindow, {} as never) : 0;
 	}
 
 	/** Serialize executions; validation failures inside the lock do not break the chain. */
@@ -340,6 +350,78 @@ export class AcpRuntimeState {
 		return ids;
 	}
 
+	#branch(): readonly SessionEntry[] {
+		return this.#deps.getBranch?.() ?? this.#deps.getEntries();
+	}
+
+	#ensureBranchCurrent(branch: readonly SessionEntry[]): void {
+		const current = branchCompactionFingerprint(branch);
+		if (current.resetId !== this.#resetId || current.compactionId !== this.#compactionId) this.resyncToBranch(branch);
+	}
+
+	#invalidateSnapshot(): void {
+		this.#snapshotValid = false;
+		this.#snapshotEntryIds = [];
+		this.lastSource = [];
+		this.lastBlocks = [];
+		this.lastProjected = [];
+	}
+
+	/**
+	 * Active projection with real journal ids for base-compaction takeover. A
+	 * same-branch append extends the captured view; any boundary or non-prefix
+	 * move invalidates it instead of summarizing a stale branch.
+	 */
+	activeZoneMessages(branchEntries: readonly SessionEntry[]): AcpSourceMessage[] | null {
+		this.#ensureBranchCurrent(branchEntries);
+		if (this.degraded || !this.#snapshotValid) return null;
+		const ids = branchEntries.map((entry) => entry.id);
+		for (let i = 0; i < this.#snapshotEntryIds.length; i++) {
+			if (this.#snapshotEntryIds[i] !== ids[i]) return null;
+		}
+		if (this.#snapshotEntryIds.length > ids.length) return null;
+		const appended = branchEntries.slice(this.#snapshotEntryIds.length);
+		if (appended.some((entry) => entry.type === "compaction" || entry.type === "reset_boundary")) return null;
+		const appendedSources: AcpSourceMessage[] = [];
+		let sourceChanged = false;
+		for (const entry of appended) {
+			if (entry.type !== "message") continue;
+			const source = annotateView([entry.message], [entry])[0];
+			if (source.id.startsWith(ACP_VIEW_PSEUDO_PREFIX)) return null;
+			// The in-flight user message is view-only at projection time and lands
+			// in the journal before post-turn compaction. Re-identify a matching
+			// trailing pseudo message instead of appending a duplicate.
+			let reidentified = false;
+			for (let i = this.lastSource.length - 1; i >= 0 && this.lastSource[i].id.startsWith(ACP_VIEW_PSEUDO_PREFIX); i--) {
+				if (annotateView([this.lastSource[i].message], [entry])[0].id !== entry.id) continue;
+				this.lastSource[i] = source;
+				sourceChanged = true;
+				reidentified = true;
+				break;
+			}
+			if (!reidentified) appendedSources.push(source);
+		}
+		if (sourceChanged || appendedSources.length > 0) {
+			this.lastSource.push(...appendedSources);
+			this.lastBlocks = splitBlocks(
+				this.lastSource,
+				this.#deps.countTokens,
+				this.#tokenMemo,
+				this.#deps.countImage,
+				this.#deps.countSignatureTokens,
+			);
+		}
+		this.#snapshotEntryIds = ids;
+		const dropped = this.#refs.droppedStatusResults;
+		const kept = new Set(this.lastBlocks.filter((b) => !this.compressed.has(b.id) && !dropped.has(b.id)).map((b) => b.id));
+		return projectActiveMessages(this.lastSource, kept, this.#deps.countTokens);
+	}
+
+	zoneRenderText(): string {
+		this.#syncRefs();
+		return this.zone.map((block) => renderCompactionBlock(block, (id) => this.#refs.label(id))).join("\n\n");
+	}
+
 	/**
 	 * Project a request view (spec §4): compression zone first, then the active
 	 * zone filtered to non-compressed blocks, then — when the round delivers
@@ -352,9 +434,11 @@ export class AcpRuntimeState {
 	 * Degraded sessions pass the original view through verbatim (spec §5.3).
 	 */
 	projectView(view: readonly AgentMessage[]): AgentMessage[] {
+		const branch = this.#branch();
+		this.#ensureBranchCurrent(branch);
 		if (this.degraded) return [...view];
 		this.#syncRefs();
-		const source = annotateView(view, this.#deps.getEntries());
+		const source = annotateView(view, branch, this.#alignFrom);
 		this.lastSource = source;
 		this.lastBlocks = splitBlocks(
 			source,
@@ -363,6 +447,8 @@ export class AcpRuntimeState {
 			this.#deps.countImage,
 			this.#deps.countSignatureTokens,
 		);
+		this.#snapshotEntryIds = branch.map((entry) => entry.id);
+		this.#snapshotValid = true;
 		// Retired context_status pairs leave the projection pair-wise: dropping the
 		// result block id from `kept` removes both the toolResult message and
 		// its tool_use body (the pair filter keys on the result id, spec §6 v10).
@@ -532,11 +618,8 @@ export class AcpRuntimeState {
 	}
 
 	/**
-	 * Permanently exit ACP for this session (spec §5.3): projection off
-	 * (messages pass through verbatim), ephemeral stopped, compress rejected
-	 * at the entry, and the assembly hook observes the exit. The base chain is
-	 * already live — the projection guard only cancelled its automatic runs and
-	 * stops cancelling once this flag is set. Idempotent.
+	 * Stop projecting the current state: messages pass through, ephemerals stop,
+	 * and compress rejects. Branch resync can clear boundary-derived degradation.
 	 */
 	degrade(reason: string, err?: unknown): void {
 		if (this.degraded) return;
@@ -551,20 +634,25 @@ export class AcpRuntimeState {
 	}
 
 	/**
-	 * Re-derive the zone from the branch a leaf move landed on (navigate_tree /
-	 * edit_resend, spec §9): summaries written on abandoned sibling branches
-	 * must not resurface, and a rewind past a base compaction restores the
-	 * uncompressed context instead of the stale summary.
+	 * Re-derive the baseline and zone from the target branch. Summaries on
+	 * abandoned siblings stay hidden, and reset/rewind can restore an earlier era.
 	 */
-	resyncToBranch(entries: readonly SessionEntry[]): void {
+	resyncToBranch(entries: readonly SessionEntry[] = this.#branch()): void {
 		const rebuilt = rebuildAcpState(entries);
-		if (rebuilt.degraded) {
-			this.degrade("branch resync found a base compaction entry (spec §5.3/§9.1)");
-			return;
-		}
+		this.#resetId = rebuilt.resetId;
+		this.#compactionId = rebuilt.compactionId;
+		this.#alignFrom = rebuilt.alignFrom;
+		this.#baseSummary = rebuilt.baseSummary;
+		this.#invalidateSnapshot();
 		this.zone = rebuilt.zone;
 		this.compressed.clear();
 		for (const id of rebuilt.compressedBlockIds) this.compressed.add(id);
+		if (rebuilt.degraded) {
+			this.degrade(rebuilt.degradedReason ?? "current branch has an unsupported compaction boundary");
+		} else {
+			this.degraded = false;
+			this.degradeReason = "";
+		}
 	}
 
 	/**
@@ -639,6 +727,16 @@ export class AcpRuntimeState {
 			}
 			return n + t;
 		}, 0);
+	}
+
+	/** Current same-counter estimate for the takeover result and W4 candidate check. */
+	projectedTokenEstimate(): number {
+		const active = this.activeBlocks().reduce((n, b) => n + b.tokens, 0);
+		return Math.round(active * this.#ratio) + this.#zoneTokens();
+	}
+
+	countProjectedMessages(messages: readonly AgentMessage[]): number | undefined {
+		return this.#deps.countMessages?.(messages);
 	}
 
 	/**
@@ -730,6 +828,7 @@ export class AcpRuntimeState {
 				protectedIds: this.protectedZone(active),
 				compressed: this.compressed,
 				zone: this.zone,
+				baseSummary: this.#baseSummary,
 				zoneTokens: zoneTokensBefore,
 				zoneLimitTokens: this.#zoneLimitTokens,
 				forcedExecution: this.#forcedExecution,
@@ -741,7 +840,7 @@ export class AcpRuntimeState {
 			},
 			input,
 		);
-		if (r.reject) return r.reject;
+		if ("reject" in r) return r.reject;
 		const plan = r.plan;
 		// Stats telemetry rides the persisted meta. summaryTokens must be counted
 		// before the write (the journal id does not exist yet): nextRef() predicts

@@ -9,6 +9,8 @@
 // from main.ts (second split cut).
 import path from "node:path";
 import fs from "node:fs";
+import type { AgentSession } from "@oh-my-pi/pi-coding-agent";
+import { computeNonMessageTokens } from "@oh-my-pi/pi-tui/status-line/context-usage";
 import { createAgentSession, AgentRegistry, SessionManager } from "./bootstrap.ts";
 import {
   H,
@@ -119,16 +121,9 @@ export async function createSessionCore(
   // ACP tool surface and the context view rewrite; it cannot hot-toggle
   // after session creation, so switch changes take effect on new sessions
   const acpEnabled = readAcpEnabled();
-  // ACP dual-zone compaction assembly (spec §10): with the master switch on the
-  // session gets the compress_context tool, the dual-zone request projection
-  // (T1 projectContext behind the context event), and a guard extension that
-  // cancels automatic base compactions — the base shouldCompact judges the
-  // stored journal, which the ACP projection never influences, so leaving them
-  // running would let base compaction fold the journal out from under ACP
-  // (spec §5.3). The guard is per session on purpose: `compaction.enabled` is a
-  // settings-tree read, so pinning it here also reached every `task` subagent of
-  // this session, which ACP does not cover (assembly rationale in
-  // host/acp-assembly.ts).
+  // ACP assembly adds compression tools, request projection and ADR-0009 base
+  // takeover. Failures yield to base; per-owner wiring excludes task subagents.
+  // Restart rebuild adopts the branch-derived baseline, zone and compressed set.
   // async.widgets stays ON: the desktop draws job widgets now (async-jobs.ts
   // caption/widget passthrough + the 1.5s live refresh). out.enabled is NOT pinned
   // here: the host pins the default on its own settings layer (profile.ts), so the
@@ -140,9 +135,8 @@ export async function createSessionCore(
     // permission-approval gate reads the same value back for non-automation runs.
     ...(opts?.askTimeoutSec !== undefined ? { "ask.timeout": opts.askTimeoutSec } : {}),
   });
-  // Session holder for the T7 force channel: setForcedToolChoice needs the
-  // live session, which only exists after createAgentSession below.
-  const acpSession: { session?: { setForcedToolChoice(toolName: string): void } } = {};
+  // The live session exists only after createAgentSession below.
+  const acpSession: { session?: AgentSession } = {};
   // Same model object feeds the runtime's zone axis and the param conversion
   // below (percent tier lines derive from this window).
   const acpModel = initialModel ?? H.modelOverride;
@@ -150,8 +144,9 @@ export async function createSessionCore(
     ? createAcpRuntime({
         model: acpModel,
         sink: sessionManager,
-        // Branch-scoped: a full-journal feed blinds annotateView past ACP_ALIGN_WINDOW (BUG-131).
+        // Branch-scoped: sibling branches must not affect alignment or baseline rebuilds.
         getEntries: () => sessionManager.getBranch(),
+        getBranch: () => sessionManager.getBranch(),
         params: acpParamsFromConfig(readAcpRaw().acp, (acpModel as { contextWindow?: number } | null | undefined)?.contextWindow),
         // Level-3 force channel (spec §5.2/§10): the named form where the face
         // supports it (openai-completions faces narrow tools internally = form
@@ -163,10 +158,7 @@ export async function createSessionCore(
         },
       })
     : null;
-  // Restart rebuild (spec §9/T2+T7): adopt the persisted zone/compressed set;
-  // a journal containing a base compaction entry degrades immediately (the base
-  // chain already owns that journal, and the compaction guard stops cancelling
-  // once ACP is degraded).
+  // Native boundaries degrade only while they remain in the current branch era.
   acpRuntime?.resyncToBranch(sessionManager.getBranch()); // branch-scoped: summaries on abandoned sibling branches must not resurface
   // ACP manifest + ephemeral supply (T4): the projection extension re-derives
   // the round status (tier + candidate manifest) on every request and appends
@@ -242,7 +234,15 @@ export async function createSessionCore(
           })),
     ] as never, // ACP compress_context + context_status (host/acp-runtime.ts · acp-status-tool.ts) + read_session_context + automations_list/automations_manage; omptype/ArkType schemas are brand-incompatible with the package's TSchema type, identical at runtime
     extensions: [
-      ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime, () => sessionManager.getSessionId())] : []), // context event view projection: compression zone + filtered active zone, see host/acp-runtime.ts
+      ...(acpRuntime ? [createAcpProjectionExtension(acpRuntime, () => sessionManager.getSessionId(), {
+        settings: sessionSettings,
+        getModel: () => acpSession.session?.model ?? acpModel, getApiKey: (model) => H.modelRegistry.resolver(model),
+        getNonMessageTokens: () => {
+          const session = acpSession.session;
+          if (!session) throw new Error("session not created yet");
+          return computeNonMessageTokens(session, session.agent.tokenizer, session.settings.revision);
+        },
+      })] : []), // ACP projection + base compaction takeover; owner-only, see host/acp-assembly.ts
       ...(keepaliveOn ? [createKeepaliveExtension({
         // Same kaHolder entry as isWanted: reports that fire before the entry
         // exists (extension injection happens inside createAgentSession) are

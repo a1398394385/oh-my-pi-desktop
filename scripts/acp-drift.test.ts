@@ -122,4 +122,78 @@ describe("ACP ratio calibration", () => {
 		fx.state.projectView(fx.view);
 		expect(statusText(fx.state)).toMatch(/tokens active=300\b/);
 	});
+
+	test("a base block in the zone counts once and leaves the clamp intact", () => {
+		// [m1,m2,m3, compaction(firstKept=m3)]: the base renders inside the zone,
+		// while m3 stays the only active block (acceptance 16).
+		const entries: SessionEntry[] = [];
+		const view: AgentMessage[] = [];
+		for (const id of ["m1", "m2", "m3"]) {
+			const message = { role: "user", content: "x".repeat(100), timestamp: 1 } as never as AgentMessage;
+			entries.push({ type: "message", id, message } as never as SessionEntry);
+			if (id === "m3") view.push(message);
+		}
+		entries.push({
+			type: "compaction",
+			id: "c1",
+			parentId: null,
+			timestamp: "1970-01-01T00:00:01.000Z",
+			firstKeptEntryId: "m3",
+			summary: "base",
+			tokensBefore: 300,
+			tokensAfter: 4,
+		} as never as SessionEntry);
+		const state = new AcpRuntimeState({
+			countTokens,
+			countMessages,
+			sink: { appendCustomEntry: () => "s1" },
+			getEntries: () => entries,
+			getBranch: () => entries,
+			params: { minCompress: 0, tailTurns: 0, tailTokens: 0, tailUserMessages: 0 },
+			contextWindow: 1000,
+		});
+		state.projectView(view);
+		expect(state.degraded).toBe(false);
+
+		// Billed 450 message tokens against a local 100+zone basis: clamped to 1.6,
+		// not the 4.5x the report implies, and the zone is never double counted.
+		entries.push({
+			type: "message",
+			id: "a1",
+			message: {
+				role: "assistant",
+				content: [],
+				api: "openai-completions",
+				provider: "opencode-go",
+				model: "deepseek-v4.1-flash",
+				timestamp: 2,
+				contextSnapshot: { promptTokens: 850, nonMessageTokens: 400 },
+			},
+		} as never as SessionEntry);
+		state.projectView(view);
+		const rs = state.roundStatus;
+		if (!rs) throw new Error("round status missing");
+		expect(statusText(state)).toMatch(/tokens active=160\b/);
+		expect(rs.zoneTokens).toBeGreaterThan(0);
+		expect(rs.projectedTokens).toBe(rs.activeTokens + rs.zoneTokens);
+		expect(state.degraded).toBe(false);
+
+		// The floor holds too: a report far below the local basis lands on 0.7.
+		entries.push({
+			type: "message",
+			id: "a2",
+			message: {
+				role: "assistant",
+				content: [],
+				api: "openai-completions",
+				provider: "opencode-go",
+				model: "deepseek-v4.1-flash",
+				timestamp: 3,
+				contextSnapshot: { promptTokens: 450, nonMessageTokens: 400 },
+			},
+		} as never as SessionEntry);
+		state.projectView(view);
+		expect(statusText(state)).toMatch(/tokens active=70\b/);
+		expect(state.degraded).toBe(false);
+	});
 });

@@ -1,7 +1,7 @@
 # ADR-0009: ACP 接管底座压缩的总结，并把压缩边界作为 zone 根块
 
-**Status**: Proposed(2026-11-09)
-**Decider**: 待用户确认（agent 起草，用户提出方向并逐轮收敛）
+**Status**: Accepted(2026-11-10)
+**Decider**: 用户（确认方向、Q1/Q2 并授权实施）
 **Informed by**: `docs/architecture/acp-compaction-spec.md`（§5.3 互斥契约）、BUG-129（pin → 会话级守卫）、底座 `@oh-my-pi/pi-coding-agent` 18.16.0 源码
 
 ## Context(背景)
@@ -27,13 +27,13 @@
 
 1. **写侧接管**：`session_before_compact`（仅 owner 会话）由「返回 `{cancel:true}`」改为「返回 `{compaction: {summary, firstKeptEntryId, tokensBefore}}`」。输入 = ACP 投影活跃区中位于 `preparation.firstKeptEntryId` **之前的压缩前缀**，zone 摘要渲染后作 `previousSummary`；从切点开始的连续保留尾部不得进入摘要正文。**不使用** `preparation.messagesToSummarize`。投影快照记录完整 branch entry id 序列：当前分支以缓存序列为前缀时，由 runtime 用真实 journal id 和既有拆分/计数规则增量续接新增消息，正常回复推进 leaf 不构成失效；非前缀、追加区含 compaction/reset 或新增消息无法对齐时让路。待吞 zone 的 `compressedIds` 经 `sourceId` 映射后若与保留尾部相交，也整体让路，不裁剪旧摘要。
 2. **压后复核是同量纲的启发式**：目标线取 recovery band（`floor(threshold × 0.8)`），估算量 = 候选基线渲染 + `firstKeptEntryId` 起实际保留的原始消息 + 非消息开销，使用同一消息计数器且旧 zone 不重复计数；**不得使用压前 `projectedTokens`**。阈值走 per-model 解析（`resolveModelCompactionSettings`）。不达标即**让路**（不返回 compaction），避免「压完仍超阈值 → 下一轮立刻再触发」的抖动；即使通过，底座下一轮仍可能再触发，由护栏兜底。
-3. **边界由底座定，ACP 不自报**：`firstKeptEntryId` 直接沿用 `preparation.firstKeptEntryId`（底座基于 branch 算出，必然存在且与下次切分同源）。底座落盘时不校验该 id，自报错 id 会让视图保留区整段消失（`session-manager.ts:3684-3712` 无校验）。护栏即让路：该 id 为空或不在 `getBranch()` 内、投影缓存缺失或不是当前分支前缀、追加区含边界、活跃消息无法对齐切点、待吞 zone 与保留尾部交叉覆盖、压缩前缀与可承接 zone 均为空、`event.signal.aborted`、ACP 25s 期限、W4 不达标、模型失败——任一命中都不返回 `compaction`。模型调用把 `event.signal` 与 25s 期限合成后传给 `completeSimple`，到期先确认请求中止再让路；外层 handler 30s 超时只停止等待，不承担取消。落盘坏边界比不压缩更糟。
+3. **边界由底座定，ACP 不自报**：`firstKeptEntryId` 直接沿用 `preparation.firstKeptEntryId`（底座基于 branch 算出，必然存在且与下次切分同源）。底座落盘时不校验该 id，自报错 id 会让视图保留区整段消失（`session-manager.ts:3684-3712` 无校验）。护栏即让路：该 id 为空或不在 `getBranch()` 内、投影缓存缺失或不是当前分支前缀、追加区含边界、活跃消息无法对齐切点、待吞 zone 与保留尾部交叉覆盖、压缩前缀与可承接 zone 均为空、`event.signal.aborted`、ACP 25s 期限、W4 不达标、模型失败或 `summary.trim()` 为空——任一命中都不返回 `compaction`。模型调用把 `event.signal` 与 25s 期限合成后传给 `completeSimple`，到期先确认请求中止再让路；外层 handler 30s 超时只停止等待，不承担取消。落盘坏边界比不压缩更糟。
 4. **一次压缩一条记录**：接管路径只写 compaction entry，**不再同时写 `acpSummary`**（否则同一压缩两条记录）。
 5. **读侧基线块**：`baselineBlock(branch)` 取**最新 `reset_boundary` 之后**的最新 compaction entry → 合成 `method:"base"` 的 zone 根块。最新 reset 同时是 zone 时代边界：reset 前的 acpSummary 一律退出 zone，`compressedBlockIds` 只从 reset 后最终 live zone 重建。`compressedIds` = 边界条目之前（边界来自 `firstKeptEntryId`）或含它（来自 `providerReplayThroughEntryId`）；`index = []`（header 只显示 `[acp-base]`，不显示块数）。entry 的 ISO `timestamp` 先经 `Date.parse` 转成毫秒 `rewriteAt`，再用于 `meta.createdAt`、渲染体 `timestamp` 和 `historyRewriteAt`。
 6. **基线可被 L3 吞并**：strong 压缩写新字段 `meta.supersedesBase = 基线块 id`（不能用 `supersedes` 数组：它的三个消费点只匹配 acpSummary 内部 id，compaction entry id 会被静默忽略）、并入其 `compressedIds`、摘要正文拼接基线 summary（拼接部分不参与 `÷divisor` 折算，摘要上限至少扩到拼接下限，否则 `summary-over-budget` 会让吞并永远无法落地）。后续 strong 吞掉携带该字段的旧摘要时，`supersedesBase` 作为稳定基线身份逐代原样继承；`historyRewriteAt` 则表示当前存活 strong 最近一次改写前缀的时间，直接吞或间接吞基线时都取新 `written.meta.createdAt`，运行、重启与回退均从该代持久化记录重建，不继承基线或上一代时间。重建侧靠 `supersedesBase` 判定「该边界已被吞」→ 不再合成基线。运行时 `zone = [written]` 不变，因此运行时与重启同构；只有回退到首个携带该字段的 strong 之前，基线才复活。
-7. **投影**：非 degraded 时丢弃 `role:"compactionSummary"` 消息，改由基线块渲染成 `[acp-base]\n<summary>`，并带数值型 `historyRewriteAt = Date.parse(entry.timestamp)`（漏掉它或混入 ISO 字符串都会让保留尾部的 bound-thinking 失效签名被重放）。基线被直接或间接吞并后，新 acpSummary 渲染体的 `historyRewriteAt` 改为该代 `meta.createdAt`；`supersedesBase` 只负责定位基线身份，不负责提供重写时间。
-8. **对齐起点由当前分支状态决定**，扫描源 = `getBranch()`：reset 后有 compaction 时从该 compaction 的 `boundaryEntryId` 起扫（基线被吞也一样）；只有 reset 时从最新 reset id 起扫；两者都无则从分支开头起扫。保留尾部在视图里、但在 journal 中位于 compaction entry 之前，起错点会让整段退化成伪 id；reset 后从全分支起扫会让 64 条窗口外的新消息无法匹配。每请求以 `(最新 reset id, 最新 compaction id)` 为重建指纹，任一变化都重建 zone 与覆盖集合；只扫当前分支尾部，不能用包含兄弟分支的 `getEntries()`。
-9. **原生回放与归档例外**：判定只看 `CompactionEntry` —— `getAnthropicCompactionPayload(preserveData)`、`preserveData.openaiRemoteCompaction`、`method === "snapcompact"` 且 `preserveData.snapcompact` 任一命中即 `degraded`。接管产生的新 entry 无 `method`/`preserveData`，不会误判。
+7. **投影**：非 degraded 时丢弃 `role:"compactionSummary"` 消息，改由基线块渲染成 `[acp-base]\n<summary>`，并带数值型 `historyRewriteAt = Date.parse(entry.timestamp)`（漏掉它或混入 ISO 字符串都会让保留尾部的 bound-thinking 失效签名被重放）。所有 acpSummary（normal 与 strong）渲染体都携带 `historyRewriteAt = meta.createdAt`；`supersedesBase` 只负责定位基线身份，不负责提供重写时间。
+8. **对齐起点由当前分支状态决定**，扫描源 = `getBranch()`：当前 reset 时代有 compaction（包括从未 reset）时从该 compaction 的 `boundaryEntryId` 起扫（基线被吞也一样）；只有 reset 时从最新 reset id 起扫；两者都无则从分支开头起扫。保留尾部在视图里、但在 journal 中位于 compaction entry 之前，起错点会让整段退化成伪 id；reset 后从全分支起扫会让 64 条窗口外的新消息无法匹配。每请求以 `(最新 reset id, 最新 compaction id)` 为重建指纹，任一变化都重建 zone 与覆盖集合；只扫当前分支尾部，不能用包含兄弟分支的 `getEntries()`。
+9. **原生回放与归档例外**：判定只看 `CompactionEntry` —— `getAnthropicCompactionPayload(preserveData)`、`preserveData.openaiRemoteCompaction`、`method === "snapcompact"` 且 `preserveData.snapcompact` 任一命中即 `degraded`。接管产生的新 entry 无 `method`/`preserveData`，不会误判。degraded 是当前分支时代的派生状态；reset 或回退离开该边界后，重同步必须清除，不得与重启结果分叉。
 10. **guard 由「取消」改为「接管」**：threshold/idle/overflow/incomplete/手动 `/compact` 都走接管；接管失败才让路。`degrade()` 不再由 guard 触发，改由读侧兜底（原生回放、边界定位失败）。
 11. **单事实源与已确认选项**：R/C/Z/X/T 仅由当前分支重建，请求快照 V 只是可失效缓存；普通追加、ACP normal/strong、base 落盘、reset、切分支/回退/重启统一按 Spec §1.1 转移。用户已于 2026-11-10 确认：ACP 不主动调用 `session.compact()`，接管摘要使用当前对话模型、不新增配置。底座 threshold 同时使用存储上下文估值与 provider 用量，ACP 投影小并不代表 base 永不触发。
 
@@ -51,10 +51,10 @@
 - 接管路径不写 `acpSummary` → `acp-stats` / `acp-gain` 看不到这次压缩；边界前旧行的 `savedTokens` 仍会虚高。
 - 钩子内同步调 LLM（可能数十秒），期间 UI 依赖既有「压缩中」态；取消由 `event.signal` 与 ACP 25s 期限合成，外层 30s 只作最后护栏。
 - 双路径常驻：接管失败必须能干净让路，底座原总结路径不能删。
-- `degrade` 仍覆盖原生回放 / snapcompact 旧历史，那些会话保持互斥态。
+- `degrade` 仍覆盖原生回放 / snapcompact 旧历史，但仅限包含该边界的当前分支时代；reset 或回退后必须恢复。
 
 **风险/不确定性**：
-- 沿用底座 `preparation.firstKeptEntryId` 后，接管结果在 threshold 自动、overflow/incomplete 与手动入口是否都被一致采用，以及下一次 `prepareCompaction` 能否按该边界正确切分，未实测（[INFERENCE]）。W5 只能拒绝坏 id，不能替代真机对账。
+- manual `session.compact()` 已验证采用接管结果并按 `preparation.firstKeptEntryId` 切分；threshold 自动与 overflow/incomplete 入口尚未用真实模型对账。W5 只能拒绝坏 id，不能替代这些入口的真机验证。
 - W4 的阈值复核与底座实际触发条件若不一致（例如 reserve 口径差异），仍可能出现「压完立刻再触发」。需要真机对账一次。
 - 接管让底座的 `preparation`（原文、保留尾部预算）白白算了一遍——成本是常数级，但存在。
 - 基线块把边界前历史计入 `zoneTokens`，长会话的 zone 占比上升，可能更早触发 ACP 的保险线/强制压缩。
@@ -85,6 +85,8 @@ v3.3：设计问答发现「总结整个活跃区 + 底座保留连续后缀」�
 v3.4：v3.3 独立审阅再发现 4 项合同缺口；本版以 branch 前缀校验和增量续接支持正常 leaf 推进，旧 zone 与保留尾部交叉覆盖时整体让路，W4 改算候选基线与实际保留结果，并以 reset+compaction 双 id 触发重建、清除 reset 前 zone 和覆盖集合。仍待独立复审，未实施。
 
 v3.5：新增单一状态模型、事件转移与五条硬不变量；修复 reset 后无 compaction 的对齐起点，将 strong 的稳定基线身份与最近重写时间分离，并由用户确认 Q1 不主动 compact、Q2 使用当前对话模型。待独立全量复审，未实施。
+
+v3.6：全量复审发现 4 项组合缺口；本版拒绝空白摘要，闭合无 reset 的 compaction 对齐，给 normal/strong 摘要统一写入自身重写时间，并把 degraded 改为可随 reset/回退恢复的分支派生状态。同一独立 reviewer 复审结论 READY。2026-11-10 经用户授权实施；相关单测与 manual takeover、strong 跨代、重启/回退 smoke 已验证，真实模型及自动/overflow/incomplete 入口仍待对账。
 
 ## Related(关联)
 

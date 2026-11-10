@@ -6,6 +6,11 @@ import { type } from "@oh-my-pi/omptype";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import { base64ImageSize, type ImageSize } from "@oh-my-pi/pi-agent-core/image-tokens";
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import type {
+	SessionBeforeCompactEvent,
+	SessionBeforeCompactResult,
+} from "@oh-my-pi/pi-coding-agent/extensibility/shared-events";
+import { takeoverBaseCompaction, type AcpBaseTakeoverDeps } from "./acp-base-takeover.ts";
 import { BlobStore, resolveImageDataSync } from "@oh-my-pi/pi-coding-agent/session/blob-store";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import { getBlobsDir } from "@oh-my-pi/pi-utils";
@@ -32,6 +37,7 @@ export function createAcpRuntime(opts: {
 	model: unknown;
 	sink: AcpSummarySink;
 	getEntries: () => readonly SessionEntry[];
+	getBranch?: () => readonly SessionEntry[];
 	params?: Partial<AcpParams>;
 	/** Level-3 force channel (spec §5.2/§10): arms tool_choice on the live session. */
 	forceCompressTool?: () => void;
@@ -61,6 +67,7 @@ export function createAcpRuntime(opts: {
 		},
 		sink: opts.sink,
 		getEntries: opts.getEntries,
+		getBranch: opts.getBranch,
 		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.
 		contextWindow: (opts.model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0,
 		params: opts.params,
@@ -108,19 +115,11 @@ type AcpExtensionCtx = { sessionManager: { getSessionId(): string } };
 
 /**
  * Request projection extension: hooks the context event and replaces the view
- * with the dual-zone projection, and keeps the base compaction chain off this
- * session's journal (automatic threshold/idle runs are cancelled) while leaving
- * real overflow/incomplete recoveries through after degrading ACP first. A
- * projection failure must never blow up the request — the original view passes
- * through (same stance the retired nudge prototype's transform took).
- *
- * Why the cancellation lives here instead of a settings pin: `compaction.enabled`
- * is a settings-tree read, and a subagent session is a derived overlay of the
- * parent's settings (task/executor.ts createSubagentSettings), so pinning it off
- * on the ACP session's settings also disabled base compaction inside every
- * `task` subagent of that session — which ACP does not cover at all (no tools,
- * no projection). Base compaction and ACP must only exclude each other on the
- * same journal, i.e. per session until base folds it (spec §5.3).
+ * with the dual-zone projection, and takes over base compaction summarization
+ * for the owning session. A projection failure must never blow up the request
+ * — the original view passes through (same stance the retired nudge
+ * prototype's transform took). Takeover failures likewise return undefined so
+ * the base chain remains the recovery path.
  *
  * Owner-only. This factory is registered as an inline extension, and the SDK
  * deliberately rebinds inline factories into child sessions (sdk.ts preparedExtensions
@@ -137,7 +136,11 @@ type AcpExtensionCtx = { sessionManager: { getSessionId(): string } };
  * fork/switch (session-manager.ts #sessionId), and both sides must move together or a
  * switched owner would stop recognizing itself.
  */
-export function createAcpProjectionExtension(state: AcpRuntimeState, ownerSessionId: () => string) {
+export function createAcpProjectionExtension(
+	state: AcpRuntimeState,
+	ownerSessionId: () => string,
+	base?: Omit<AcpBaseTakeoverDeps, "state">,
+) {
 	return (pi: {
 		on(
 			event: "context",
@@ -145,33 +148,32 @@ export function createAcpProjectionExtension(state: AcpRuntimeState, ownerSessio
 		): void;
 		on(event: "auto_compaction_start", handler: (ev: { reason: string }, ctx: AcpExtensionCtx) => void): void;
 		on(event: "auto_compaction_end", handler: () => void): void;
+		on(event: "session_compact", handler: (ev: unknown, ctx: AcpExtensionCtx) => void): void;
 		on(
 			event: "session_before_compact",
-			handler: (ev: unknown, ctx: AcpExtensionCtx) => { cancel: true } | undefined,
+			handler: (
+				ev: SessionBeforeCompactEvent,
+				ctx: AcpExtensionCtx,
+			) => Promise<SessionBeforeCompactResult | undefined> | SessionBeforeCompactResult | undefined,
 		): void;
 	}): void => {
 		const isOwner = (ctx: AcpExtensionCtx): boolean =>
 			ctx.sessionManager.getSessionId() === ownerSessionId();
-		// Set by the auto_compaction_start of THIS session's run (the event carries
-		// the reason; session_before_compact does not), so a manual /compact — which
-		// is the operator asking for the base chain — is never cancelled.
-		let cancelAutomatic = false;
-		pi.on("auto_compaction_start", (ev, ctx) => {
-			if (!isOwner(ctx)) return;
-			cancelAutomatic = ev.reason === "threshold" || ev.reason === "idle";
-			// Overflow/incomplete recovery is the base chain's last resort: ACP exits
-			// first so the fold it commits cannot land behind a live ACP zone
-			// (spec §5.3). Without this ordering the request would keep failing while
-			// the projection still claimed the context fit.
-			if (!cancelAutomatic) state.degrade(`base ${ev.reason} compaction taking over (spec §5.3)`);
+		let ownerCompacting = false;
+		pi.on("auto_compaction_start", (_ev, ctx) => {
+			if (isOwner(ctx)) ownerCompacting = true;
 		});
 		pi.on("auto_compaction_end", () => {
-			cancelAutomatic = false;
+			if (!ownerCompacting) return;
+			ownerCompacting = false;
+			state.resyncToBranch();
 		});
-		pi.on("session_before_compact", (_ev, ctx) => {
-			if (!cancelAutomatic || !isOwner(ctx)) return undefined;
-			cancelAutomatic = false;
-			return { cancel: true };
+		pi.on("session_compact", (_ev, ctx) => {
+			if (isOwner(ctx)) state.resyncToBranch();
+		});
+		pi.on("session_before_compact", (ev, ctx) => {
+			if (!base || !isOwner(ctx)) return undefined;
+			return takeoverBaseCompaction(ev, { ...base, state });
 		});
 		pi.on("context", (ev, ctx) => {
 			if (!isOwner(ctx)) {

@@ -10,7 +10,7 @@
 // mutex, plans here, then applies the side effects (journal write, zone
 // update, manifest consumption) in lock — the mutex and validation-order
 // semantics are unchanged (spec §6).
-import type { AcpBlockInfo, AcpIndexLine } from "./acp-projection.ts";
+import { type AcpBlockInfo, type AcpIndexLine } from "./acp-projection.ts";
 import type { AcpSummaryData } from "./acp-persist.ts";
 import { type AcpParams, computeRoundPlan, computeSummaryBudget, computeTier } from "./acp-plan.ts";
 
@@ -71,6 +71,8 @@ export interface CompressSnapshot {
 	compressed: ReadonlySet<string>;
 	/** Live compaction zone (the strong-reset merge source). */
 	zone: readonly AcpSummaryData[];
+	/** Current base summary even after a prior strong removed its block from the zone. */
+	baseSummary?: string;
 	/** Rendered token total of the live zone (memoized by the runtime). */
 	zoneTokens: number;
 	/** Zone budget line (§11): window × 35%, 0 = no limit. */
@@ -221,9 +223,20 @@ export function planCompression(
 	const method: "normal" | "strong" = forced
 		? "strong"
 		: computeRoundPlan(activeTokensBefore, p, { tokens: zoneTokens, limitTokens: snapshot.zoneLimitTokens }).method;
-	const mergedOldSummaryTokens = method === "strong" ? zoneTokens : 0;
-	const budget = computeSummaryBudget(compressedTokens, mergedOldSummaryTokens, p);
-	const summaryTokens = countTokens(summary);
+	// A strong reset may swallow the synthesized base boundary: its summary body
+	// is concatenated (content must not be lost), and the part it adds to the
+	// request is charged to the budget unstretched — otherwise the boundary
+	// alone could exceed summaryBudgetMax and permanently block L3 (spec R4).
+	const baseBlocks = method === "strong" ? snapshot.zone.filter((z) => z.meta.method === "base") : [];
+	const directBaseSummary = baseBlocks.length > 0 ? baseBlocks.map((z) => z.summary).join("\n\n") : undefined;
+	const baseSummary =
+		directBaseSummary ??
+		(method === "strong" && snapshot.zone.some((z) => z.meta.supersedesBase !== undefined) ? snapshot.baseSummary : undefined);
+	const baseRenderTokens = baseSummary === undefined ? 0 : countTokens(`[acp-base]\n${baseSummary}`);
+	const mergedOldSummaryTokens = method === "strong" ? Math.max(0, zoneTokens - baseRenderTokens) : 0;
+	const mergedSummary = baseSummary === undefined ? summary : `${baseSummary}\n\n${summary}`;
+	const budget = baseRenderTokens + computeSummaryBudget(compressedTokens, mergedOldSummaryTokens, p);
+	const summaryTokens = countTokens(mergedSummary);
 	if (summaryTokens > budget) {
 		return {
 			reject: {
@@ -232,7 +245,9 @@ export function planCompression(
 				error:
 					compressedIds.length === 0 && method !== "strong"
 						? `keep covers the entire manifest — nothing would be compressed, so the summary budget is 0 (${summaryTokens} > ${budget}); unkeep some candidate blocks.`
-						: `summary is ${summaryTokens} tokens, over the budget ${budget} = min((compressed ${compressedTokens} + merged old summaries ${mergedOldSummaryTokens}) / ${p.summaryDivisor}, ${p.summaryBudgetMax}); shorten it.`,
+						: `summary is ${summaryTokens} tokens, over the budget ${budget} = ` +
+							`${baseRenderTokens > 0 ? `${baseRenderTokens} (base render) + ` : ""}` +
+							`min((compressed ${compressedTokens} + merged old summaries ${mergedOldSummaryTokens}) / ${p.summaryDivisor}, ${p.summaryBudgetMax}); shorten it.`,
 			},
 		};
 	}
@@ -255,7 +270,15 @@ export function planCompression(
 	// the zone renders as a single block and rebuild never walks supersedes
 	// chains (§9). depth counts strong generations (normal blocks sit at 0).
 	const activeTokensAfter = Math.max(0, Math.round((activeBlocks - compressedTokens) * snapshot.ratio));
-	const supersedes = method === "strong" ? snapshot.zone.map((z) => z.id) : [];
+	// supersedes stays an acpSummary-only list: the base boundary is not an
+	// acpSummary and is identified by its own stable field (spec R4).
+	const supersedes = method === "strong" ? snapshot.zone.filter((z) => z.meta.method !== "base").map((z) => z.id) : [];
+	// Direct swallow sets the boundary's entry id; a later strong inherits it
+	// from the summary it replaces (the field travels down the whole chain).
+	const supersedesBase =
+		method === "strong"
+			? (baseBlocks[0]?.id ?? snapshot.zone.find((z) => z.meta.supersedesBase !== undefined)?.meta.supersedesBase)
+			: undefined;
 	const inheritedIds = new Set<string>();
 	const index: AcpIndexLine[] = [];
 	if (method === "strong") {
@@ -274,7 +297,7 @@ export function planCompression(
 		index.push({ id, tokens: b.tokens, intent: b.intent });
 	}
 	const payload = {
-		summary,
+		summary: mergedSummary,
 		index,
 		meta: {
 			createdAt: Date.now(),
@@ -284,6 +307,7 @@ export function planCompression(
 			keepIds: keep,
 			compressedIds: [...inheritedIds, ...compressedIds],
 			supersedes,
+			...(supersedesBase ? { supersedesBase } : {}),
 			tokensBefore: activeTokensBefore,
 			tokensAfter: activeTokensAfter,
 		} as AcpSummaryData["meta"],

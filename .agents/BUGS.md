@@ -1881,7 +1881,9 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **修复**：取消 settings pin，把互斥下沉到**会话级事件**。`createAcpProjectionExtension` 增加 `auto_compaction_start` / `auto_compaction_end` / `session_before_compact` 三个 handler：owner 会话的 `threshold` / `idle` 自动压缩返回 `{ cancel: true }`；`overflow` / `incomplete` 是底座最后手段，先 `state.degrade()` 再放行，让折叠落在已退出的会话上；手动 `/compact` 不拦（操作者显式要求走底座）。`session_before_compact` 不带 reason，所以用 `auto_compaction_start` 置一次性 flag、`auto_compaction_end` 与 hook 消费处清零，避免 flag 泄到手动压缩。`onDegrade` 失去写回职责，改为纯观测钩子。
 
-**验证**：`scripts/acp-compaction-guard.test.ts`（7 例：threshold/idle 取消、overflow/incomplete 先降级后放行、子会话不干预、flag 不泄漏、end 清理）；临时 e2e 脚本（真 `AgentSession` + mock 模型，阈值调极小）——自动压缩后 journal 无 `compaction` entry 且未降级，随后 `session.compact()` 照常落一条 `compaction` entry；继承关系实测（`Settings.isolated(true)` → owner overlay 无 pin → `createSubagentSettings` 得 `compaction.enabled = true`）；`smoke-acp-tool.ts` 全过；`bun run check` 全绿、`host:build` 通过。
+**后续取代（2026-11-10，ADR-0009 v3.6）**：上述 cancel/degrade 守卫已取消。owner 的 `session_before_compact` 改为由 ACP 投影生成并返回 `compaction`；threshold/idle/overflow/incomplete/手动压缩都先尝试接管，失败才让路底座。base compaction 重建为可吞并的 `[acp-base]` 基线，原生边界按分支时代降级且可恢复。子代理仍由 owner 判定排除，settings pin 不恢复。
+
+**验证（下列为取代前历史记录）**：`scripts/acp-compaction-guard.test.ts`（7 例：threshold/idle 取消、overflow/incomplete 先降级后放行、子会话不干预、flag 不泄漏、end 清理）；临时 e2e 脚本（真 `AgentSession` + mock 模型，阈值调极小）——自动压缩后 journal 无 `compaction` entry 且未降级，随后 `session.compact()` 照常落一条 `compaction` entry；继承关系实测（`Settings.isolated(true)` → owner overlay 无 pin → `createSubagentSettings` 得 `compaction.enabled = true`）；`smoke-acp-tool.ts` 全过；`bun run check` 全绿、`host:build` 通过。
 
 **教训**：settings 是树不是单例——「按会话临时改一个全局开关」在派生 overlay 的子代理上就是全局副作用；互斥类需求优先落在会话级事件（`session_before_compact` + 一次性 flag），别去改配置值。另一条：ACP 这类只装配在宿主入口的特性，覆盖范围必须显式回答「子代理算不算」；不回答就等于默认「子代理什么保障都没有」。
 
@@ -1916,3 +1918,4 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **教训**：BUG-127/128 的判据「`getEntries()` 只该用于必须覆盖全文件的游标类用途」这次漏在 ACP 注入点——它既不展示也不计时，看着像内部推断，实际是「推导当前状态」。另一条更强的：**任何带「前向窗口」的启发式对齐都必须在数据源作用域上自洽**；journal 与 view 的作用域不一致时，失败是静默的（伪 id 是合法值），只在长途分叉后才暴露，而且表现为「工具正常但清单为空」这种最像正常结果的形态。
 
 **遗留**：已落盘的历史会话在重启宿主后即恢复（journal 每次从 branch 重建）；本次修复需重启宿主生效。
+

@@ -21,9 +21,10 @@
 //      the settings child, disk JSONL untouched
 //   F  end-to-end API error on the forced request => degrade (error turns emit
 //      turn_end with no tool call; the retry may succeed afterwards)
-//   G  restart rebuild wiring (acceptance 10 half): journal with a base
-//      compaction entry degrades at assembly time (state not adopted, base
-//      chain restored); journal without one adopts zone/compressed
+//   G  restart rebuild wiring (acceptance 10 half): a base compaction entry
+//      becomes the zone root at assembly time (base baseline, no degrade, base
+//      chain left pinned); a provider-native boundary degrades only inside its
+//      branch era and recovers once the branch leaves it
 //
 // Mock-model note (D/E/F): the mock's api is "mock", for which
 // buildNamedToolChoice returns nothing — setForcedToolChoice would throw. The
@@ -74,7 +75,7 @@ function rejected(r: CompressOutcome | CompressRejection): CompressRejection {
 }
 
 /** Text of a message regardless of content shape (string or block array). */
-function textOf(m: { content: unknown }): string {
+function textOf(m: { content?: unknown }): string {
 	if (typeof m.content === "string") return m.content;
 	if (!Array.isArray(m.content)) return "";
 	return m.content.map((c: unknown) => (typeof c === "object" && c !== null && "text" in c ? String((c as { text: string }).text) : "")).join("");
@@ -642,34 +643,77 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	assert.equal(cfgCompactionEnabled.get(settingsA), false, "no degrade: compaction stays pinned off");
 	await healthy.close();
 
-	// Journal with a base compaction entry: degraded at assembly, nothing
-	// adopted, and the base chain restored on the settings child.
-	const degraded = SessionManager.create(join(cwd, "b"));
-	const d0 = degraded.appendMessage({ role: "user", content: blockText(0, 300) } as never);
-	degraded.appendMessage({ role: "assistant", content: [{ type: "text", text: "working" }], usage } as never);
-	degraded.appendCompaction("omp default chain took over", undefined, d0, 4096);
+	// Journal with a base compaction entry: modeled as the zone root, not
+	// degraded — a plain base boundary is the current baseline (spec R1).
+	const based = SessionManager.create(join(cwd, "b"));
+	const b0 = based.appendMessage({ role: "user", content: blockText(0, 300) } as never);
+	based.appendMessage({ role: "assistant", content: [{ type: "text", text: "working" }], usage } as never);
+	const baseEntryId = based.appendCompaction("base boundary summary", undefined, b0, 4096);
 	const settingsB = Settings.isolated({}).overlay({ "compaction.enabled": false });
 	const stateB = new AcpRuntimeState({
 		countTokens,
-		sink: degraded,
-		getEntries: () => degraded.getEntries(),
+		sink: based,
+		getEntries: () => based.getEntries(),
 		contextWindow: 100_000,
 		params: FIXTURE_PARAMS,
 		onDegrade: () => cfgCompactionEnabled.override(settingsB, true),
 	});
-	stateB.resyncToBranch(degraded.getBranch());
-	assert.equal(stateB.degraded, true, "a journal containing a base compaction entry degrades at restart");
-	assert.equal(stateB.zone.length, 0, "ACP state does not advance");
-	assert.equal(cfgCompactionEnabled.get(settingsB), true, "base compaction chain restored for the degraded session");
-	const passthrough = stateB.projectView([{ role: "user", content: "plain", timestamp: 0 } as never as AgentMessage]);
-	assert.equal(passthrough.length, 1, "degraded-from-restart sessions project verbatim");
-	assert.ok(!stateB.roundStatus, "no round status after restart degrade");
-	await degraded.close();
+	stateB.resyncToBranch(based.getBranch());
+	assert.equal(stateB.degraded, false, "a base compaction entry is the baseline at restart, not a degrade");
+	assert.deepEqual(stateB.zone.map((z) => z.id), [baseEntryId], "the base block becomes the zone root");
+	assert.equal(stateB.zone[0].meta.method, "base");
+	const basedProjection = stateB.projectView(
+		based
+			.getBranch()
+			.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
+			.map((e) => e.message),
+	);
+	assert.match(textOf(basedProjection[0]), /^\[acp-base\]/, "the restart projection renders the base block first");
+	assert.equal(JSON.stringify(basedProjection).split("[acp-base]").length - 1, 1, "exactly one base render");
+	assert.equal(cfgCompactionEnabled.get(settingsB), false, "no degrade: the base chain stays as configured");
+	await based.close();
+
+	// Journal with a provider-native boundary: degraded only inside that branch
+	// era; leaving the era (rewind) must clear it and re-adopt the branch.
+	const native = SessionManager.create(join(cwd, "c"));
+	const n0 = native.appendMessage({ role: "user", content: blockText(0, 300) } as never);
+	native.appendMessage({ role: "assistant", content: [{ type: "text", text: "working" }], usage } as never);
+	native.appendCompaction("provider replay", undefined, "", 4096, {
+		preserveData: { openaiRemoteCompaction: { usedTokens: 1 } },
+	});
+	const settingsC = Settings.isolated({}).overlay({ "compaction.enabled": false });
+	let degradeCalls = 0;
+	const stateC = new AcpRuntimeState({
+		countTokens,
+		sink: native,
+		getEntries: () => native.getEntries(),
+		contextWindow: 100_000,
+		params: FIXTURE_PARAMS,
+		onDegrade: () => {
+			degradeCalls++;
+			cfgCompactionEnabled.override(settingsC, true);
+		},
+	});
+	stateC.resyncToBranch(native.getBranch());
+	assert.equal(stateC.degraded, true, "a provider-native boundary still degrades inside its era");
+	assert.match(stateC.degradeReason, /native/i);
+	assert.equal(cfgCompactionEnabled.get(settingsC), true, "base compaction chain restored for the degraded era");
+	const passthrough = stateC.projectView([{ role: "user", content: "plain", timestamp: 0 } as never as AgentMessage]);
+	assert.equal(passthrough.length, 1, "degraded sessions project verbatim");
+	assert.ok(!stateC.roundStatus, "no round status while the native boundary is current");
+	// Rewind to the message before the boundary: the era ends, degradation is
+	// re-derived as false, and the branch is adopted again.
+	native.branch(n0);
+	stateC.resyncToBranch(native.getBranch());
+	assert.equal(stateC.degraded, false, "degrade is derived per branch era and recovers on rewind");
+	assert.equal(stateC.degradeReason, "");
+	assert.equal(degradeCalls, 1, "recovery does not re-fire the degrade hook");
+	await native.close();
 	// SessionManager.create(cwd) materializes the cwd-derived mapping dir under
 	// the profile's agent/sessions root even for throwaway /tmp cwds — remove
 	// the real session dirs, not just the /tmp side (the old cleanup only
 	// unlinked `${cwd}/a.jsonl`, which never existed: files live in the profile).
-	for (const manager of [healthy, degraded]) {
+	for (const manager of [healthy, based, native]) {
 		const dir = dirname(manager.getSessionFile()!);
 		rmSync(dir, { recursive: true, force: true });
 		assert.ok(!existsSync(dir), "profile-side session dir fully removed");
@@ -682,7 +726,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: G rebuild wiring — compaction entry degrades at assembly (state frozen, base chain restored); healthy journal adopted");
+	console.log("ok: G rebuild wiring — base entry becomes the baseline (no degrade); native boundary degrades per era and recovers on rewind");
 }
 
 // Leak guard: every section above must have removed its profile-side session
