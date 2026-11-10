@@ -156,7 +156,12 @@ export const filesHandlers: Record<string, RpcHandler> = {
       return;
     }
     const stat = fs.statSync(p, { throwIfNoEntry: false });
-    if (!stat?.isFile()) throw new Error(hostI18n.t("errors.file.notAFile", { path: p }));
+    // A missing path (a deleted file, e.g. from a run-changes card) answers on the frame channel
+    // like the size/binary rejections: a thrown error leaves the file page waiting forever.
+    if (!stat?.isFile()) {
+      ws.send(JSON.stringify({ type: "file_content", path: p, error: hostI18n.t("errors.file.notAFile", { path: p }) }));
+      return;
+    }
     if (stat.size > 2_000_000) {
       ws.send(JSON.stringify({ type: "file_content", path: p, error: hostI18n.t("errors.file.tooLarge", { size: (stat.size / 1e6).toFixed(1) }) }));
       return;
@@ -217,6 +222,17 @@ export const filesHandlers: Record<string, RpcHandler> = {
     }
     const buf = await fs.promises.readFile(p);
     ws.send(JSON.stringify({ type: "image_content", path: p, mime: MIME[ext], data: buf.toString("base64") }));
+  },
+  async copy_file(ws, msg) {
+    // "Save as": the renderer only picks a destination; the source is always an existing local file
+    const from = String(msg.from ?? "");
+    const to = String(msg.to ?? "");
+    if (!from || !to) throw new Error(hostI18n.t("errors.param.missingPath"));
+    if (!fs.statSync(from, { throwIfNoEntry: false })?.isFile())
+      throw new Error(hostI18n.t("errors.file.notAFile", { path: from }));
+    if (!path.isAbsolute(to)) throw new Error(hostI18n.t("errors.param.missingPath"));
+    await fs.promises.copyFile(from, to);
+    ws.send(JSON.stringify({ type: "file_copied", path: to }));
   },
   async list_dir(ws, msg) {
     // Single-level file tree listing: directories first, alphabetical; hides .git/.DS_Store

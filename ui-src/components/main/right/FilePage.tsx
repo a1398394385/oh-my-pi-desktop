@@ -6,6 +6,7 @@ import { flushSync, createPortal } from "react-dom";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import { IS_WINDOWS } from "../../../platform";
 import { useAppStore, setBump, send, pathBase, toast } from "../../../store";
 import { placeMenu } from "../../../shell";
 import { fileTypeIcon } from "../../../../ui/icons";
@@ -16,6 +17,7 @@ import type { EditorInfo } from "../../../types/frames";
 import type { FileViewState } from "../../../types/session";
 import { IMAGE_EXTS } from "../../chat/util";
 import MdSurface from "../../chat/MdSurface";
+import { SUCCESS_FLASH_MS } from "../sidebar/util";
 
 const FILE_VIEW_MAX_LINES = 800; // display window for over-long whole files: start at the request range's first line when present, otherwise from the top
 
@@ -157,7 +159,7 @@ export default function FilePage() {
           title={navOpen ? t("right.collapseFileNav") : t("right.expandFileNav")}
           onClick={() => (imageView ? setNavPeek((v) => !v) : setNavCollapsed((v) => !v))}
         >
-          <Icon name={navOpen ? "collapseRight" : "collapseLeft"} size={15} />
+          <Icon name={navOpen ? "panelRightClose" : "panelRightOpen"} size={15} />
         </button>
       </div>
       <div className={`fp-panes${navDragging ? " dragging" : ""}`}>
@@ -207,33 +209,44 @@ function FvEmpty() {
   );
 }
 
-// More menu on the project row / the back-to-tree row: open the target in one of the installed
-// editors/terminals/file managers (discovered on the host, real app icons), or copy its absolute
-// / relative path. Relative paths are taken against the session project root, so the row's own
-// dir yields ".". Fallback glyphs cover entries whose icon could not be resolved.
-const FALLBACK_ICON: Record<EditorInfo["kind"], string> = {
+// More menu on the project row / the back-to-tree row: open the target in an app that handles this
+// file type (host asks Launch Services on macOS, so the list depends on the path), or copy its
+// absolute / relative path. Relative paths are taken against the session project root, so the row's
+// own dir yields ".". Fallback glyphs cover entries whose icon could not be resolved.
+const FALLBACK_ICON: Record<NonNullable<EditorInfo["kind"]>, string> = {
   fileManager: "folderOpen",
   editor: "code",
   terminal: "term",
 };
 
-function FileMoreMenu({ target, root, mdView }: { target: string; root: string; mdView?: { preview: boolean; previewable: boolean; onPick: (v: boolean) => void } }) {
+/** Open-with popover for one path: the Launch Services app list plus path / markdown actions.
+ *  Portalled to body (row containers crop with overflow:hidden) and anchored to `anchor`, so any
+ *  card that owns a trigger button can reuse it. */
+export function OpenWithMenu({ target, root, mdView, file, open, onClose, anchor }: {
+  target: string;
+  root: string;
+  mdView?: { preview: boolean; previewable: boolean; onPick: (v: boolean) => void };
+  /** An opened file (not a directory): adds reveal + save-as */
+  file?: boolean;
+  open: boolean;
+  onClose: () => void;
+  anchor: { current: HTMLElement | null };
+}) {
   const { t } = useTranslation();
-  const editors = useAppStore((s) => s.editors);
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const openApps = useAppStore((s) => s.openApps);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  // Discovered once per host run; the first menu in the right panel triggers the fetch
+  // Path whose copy is currently flashing; also holds the menu open until the flash ends.
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  // Associations are per file type and can change outside the app, so every open re-queries;
+  // a reply for another path means this menu is still waiting
   useEffect(() => {
-    if (editors === null) send({ type: "list_editors" });
-  }, [editors]);
-  // The menu portals to body (fixed + placeMenu): the row containers crop with overflow:hidden,
-  // so an absolutely positioned menu would be clipped. Measured placement, right edge on the
-  // trigger, viewport-clamped (same recipe as the automations .auto-sel-menu).
+    if (open) send({ type: "list_open_apps", path: target });
+  }, [open, target]);
+  // Measured placement, right edge on the trigger, viewport-clamped (same recipe as the
+  // automations .auto-sel-menu).
   useLayoutEffect(() => {
     const menu = menuRef.current;
-    const btn = btnRef.current;
+    const btn = anchor.current;
     if (!open || !menu || !btn) return;
     placeMenu(menu, 0, 0); // measure at the origin: zoom is applied first, coordinates divided back after
     const mr = menu.getBoundingClientRect();
@@ -241,122 +254,186 @@ function FileMoreMenu({ target, root, mdView }: { target: string; root: string; 
     const left = Math.max(8, Math.min(br.right - mr.width, window.innerWidth - mr.width - 8));
     const top = Math.max(8, Math.min(br.bottom + 4, window.innerHeight - mr.height - 8));
     placeMenu(menu, left, top);
-  }, [open, editors]);
+  }, [open, openApps, anchor]);
   useEffect(() => {
     if (!open) return undefined;
     const close = (e: MouseEvent) => {
-      const t = e.target as Node | null;
-      if (wrapRef.current?.contains(t) || menuRef.current?.contains(t)) return;
-      setOpen(false);
+      const node = e.target as Node | null;
+      if (anchor.current?.contains(node) || menuRef.current?.contains(node)) return;
+      onClose();
     };
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
-  }, [open]);
+  }, [open, onClose, anchor]);
 
   const openIn = (editorId: string) => {
-    setOpen(false);
+    onClose();
     send({ type: "open_with", editorId, path: target });
   };
   const copyPath = (text: string) => {
-    setOpen(false);
+    // The icon swap needs the menu to stay open, so the close waits out the flash window.
     navigator.clipboard
       .writeText(text)
-      .then(() => toast(t("right.pathCopied")))
+      .then(() => {
+        setCopiedPath(text);
+        window.setTimeout(() => {
+          setCopiedPath(null);
+          onClose();
+        }, SUCCESS_FLASH_MS);
+      })
       .catch(() => toast(t("right.copyFailed")));
+  };
+  // The native save panel belongs to the Tauri shell; the host only performs the copy
+  const savePanel = window.__TAURI__?.dialog?.save;
+  const saveCopy = async () => {
+    if (!savePanel) return;
+    onClose();
+    try {
+      const dest = await savePanel({ defaultPath: target });
+      if (dest) send({ type: "copy_file", from: target, to: dest });
+    } catch (err) {
+      toast(String(err), true);
+    }
   };
   // Normalize Windows backslashes so the prefix strip works on every platform
   const abs = target.replace(/\\/g, "/").replace(/\/+$/, "");
   const rel = root.replace(/\\/g, "/").replace(/\/+$/, "");
   const relPath = !rel || abs === rel ? "." : abs.startsWith(rel + "/") ? abs.slice(rel.length + 1) : abs;
 
-  return (
-    <div className="fv-more-wrap" ref={wrapRef}>
-      <button
-        type="button"
-        className="icon-btn"
-        ref={btnRef}
-        title={t("right.more")}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-      >
-        <Icon name="dots" size={15} />
+  if (!open) return null;
+  return createPortal(
+    <div className="menu open fv-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+      <div className="mh">{t("right.openWithTitle")}</div>
+      {openApps === null || openApps.path !== target ? (
+        <div className="mi empty">{t("common.loading")}</div>
+      ) : openApps.apps.length === 0 ? (
+        <div className="mi empty">{t("right.noOpenApps")}</div>
+      ) : (
+        openApps.apps.map((app) => (
+          <button type="button" key={app.id} className="mi" onClick={() => openIn(app.id)}>
+            <span className="mi-ic">
+              {app.iconDataUrl ? (
+                <img src={app.iconDataUrl} alt="" />
+              ) : (
+                <Icon name={app.kind ? FALLBACK_ICON[app.kind] : "code"} size={14} />
+              )}
+            </span>
+            {app.name}
+          </button>
+        ))
+      )}
+      <div className="sep" />
+      {file && (
+        <button type="button" className="mi" onClick={() => openIn("finder")}>
+          <span className="mi-ic">
+            <Icon name="folderOpen" size={14} />
+          </span>
+          {IS_WINDOWS ? t("right.revealInFinder") : t("right.openInFinder")}
+        </button>
+      )}
+      {file && savePanel && (
+        <button type="button" className="mi" onClick={saveCopy}>
+          <span className="mi-ic">
+            <Icon name="download" size={14} />
+          </span>
+          {t("right.saveAs")}
+        </button>
+      )}
+      <button type="button" className="mi" onClick={() => copyPath(target)}>
+        <span className="mi-ic">
+          <Icon name={copiedPath === target ? "check" : "copy"} size={14} />
+        </span>
+        {copiedPath === target ? t("common.copied") : t("right.copyAbsPath")}
       </button>
-      {open &&
-        createPortal(
-          <div className="menu open fv-menu" ref={menuRef} onClick={(e) => e.stopPropagation()}>
-            {mdView && (
-              <>
-                <div className="mh">{t("right.mdGroup")}</div>
-                <button
-                  type="button"
-                  className="mi"
-                  disabled={!mdView.previewable}
-                  title={mdView.previewable ? undefined : t("right.mdTooLarge")}
-                  onClick={() => {
-                    setOpen(false);
-                    mdView.onPick(true);
-                  }}
-                >
-                  <span className="mi-ic">
-                    <Icon name="eye" size={14} />
-                  </span>
-                  {t("right.mdPreview")}
-                  <span className="fv-ck">{mdView.preview ? <Icon name="check" size={13} /> : null}</span>
-                </button>
-                <button
-                  type="button"
-                  className="mi"
-                  onClick={() => {
-                    setOpen(false);
-                    mdView.onPick(false);
-                  }}
-                >
-                  <span className="mi-ic">
-                    <Icon name="file" size={14} />
-                  </span>
-                  {t("right.mdSource")}
-                  <span className="fv-ck">{mdView.preview ? null : <Icon name="check" size={13} />}</span>
-                </button>
-                <div className="sep" />
-              </>
-            )}
-            <div className="mh">{t("right.openWithTitle")}</div>
-            {editors === null ? (
-              <div className="mi empty">{t("common.loading")}</div>
-            ) : editors.length === 0 ? (
-              <div className="mi empty">{t("right.noOpenApps")}</div>
-            ) : (
-              editors.map((editor) => (
-                <button type="button" key={editor.id} className="mi" onClick={() => openIn(editor.id)}>
-                  <span className="mi-ic">
-                    {editor.iconDataUrl ? (
-                      <img src={editor.iconDataUrl} alt="" />
-                    ) : (
-                      <Icon name={FALLBACK_ICON[editor.kind]} size={14} />
-                    )}
-                  </span>
-                  {editor.name}
-                </button>
-              ))
-            )}
-            <div className="sep" />
-            <button type="button" className="mi" onClick={() => copyPath(target)}>
-              <span className="mi-ic">
-                <Icon name="copy" size={14} />
-              </span>
-              {t("right.copyAbsPath")}
-            </button>
-            <button type="button" className="mi" onClick={() => copyPath(relPath)}>
-              <span className="mi-ic">
-                <Icon name="copy" size={14} />
-              </span>
-              {t("right.copyRelPath")}
-            </button>
-          </div>,
-          document.body,
-        )}
+      <button type="button" className="mi" onClick={() => copyPath(relPath)}>
+        <span className="mi-ic">
+          <Icon name={copiedPath === relPath ? "check" : "copy"} size={14} />
+        </span>
+        {copiedPath === relPath ? t("common.copied") : t("right.copyRelPath")}
+      </button>
+      {mdView && (
+        <>
+          <div className="sep" />
+          <div className="mh">{t("right.mdGroup")}</div>
+          <button
+            type="button"
+            className="mi"
+            disabled={!mdView.previewable}
+            title={mdView.previewable ? undefined : t("right.mdTooLarge")}
+            onClick={() => {
+              onClose();
+              mdView.onPick(true);
+            }}
+          >
+            <span className="mi-ic">
+              <Icon name="eye" size={14} />
+            </span>
+            {t("right.mdPreview")}
+            <span className="fv-ck">{mdView.preview ? <Icon name="check" size={13} /> : null}</span>
+          </button>
+          <button
+            type="button"
+            className="mi"
+            onClick={() => {
+              onClose();
+              mdView.onPick(false);
+            }}
+          >
+            <span className="mi-ic">
+              <Icon name="file" size={14} />
+            </span>
+            {t("right.mdSource")}
+            <span className="fv-ck">{mdView.preview ? null : <Icon name="check" size={13} />}</span>
+          </button>
+        </>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+function FileMoreMenu({ target, root, mdView, file, trigger = "dots" }: {
+  target: string;
+  root: string;
+  mdView?: { preview: boolean; previewable: boolean; onPick: (v: boolean) => void };
+  /** File page only (an opened file, not the tree root directory): adds reveal + save-as */
+  file?: boolean;
+  /** "open" = the combined "Open" pill in the title bar, "dots" = the file-tree root row glyph */
+  trigger?: "dots" | "open";
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  return (
+    <div className="fv-more-wrap">
+      {trigger === "open" ? (
+        <button
+          type="button"
+          className="fv-open-btn"
+          ref={btnRef}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
+        >
+          {t("right.open")}
+          <Icon name="chevronDown" size={12} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="icon-btn"
+          ref={btnRef}
+          title={t("right.more")}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
+        >
+          <Icon name="dots" size={15} />
+        </button>
+      )}
+      <OpenWithMenu target={target} root={root} mdView={mdView} file={file} open={open} onClose={() => setOpen(false)} anchor={btnRef} />
     </div>
   );
 }
@@ -576,34 +653,23 @@ export function openImageFileView(full: string) {
   send({ type: "read_image", path: full });
 }
 
-// File actions shown in the page title bar (reveal in the file manager + the more menu).
-// They sit in the title bar instead of a detail header row, so the detail itself carries no title.
+// File actions shown in the page title bar: one "Open" pill that reveals the whole menu (open-with
+// list, reveal in the file manager, save-as, path copy, markdown mode). It sits in the title bar
+// instead of a detail header row, so the detail itself carries no title.
 function FileTabActions() {
-  const { t } = useTranslation();
   const fv = useAppStore((s) => s.fileView);
   const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
-  const editors = useAppStore((st) => st.editors);
-  const fileManager = editors?.find((e) => e.kind === "fileManager");
   if (!fv) return null;
   const isMd = MD_VIEW_RE.test(fv.path);
   const previewable = isMd && (fv.text ?? "").length <= MD_PREVIEW_MAX_CHARS;
   return (
-    <>
-      <button
-        type="button"
-        className="icon-btn"
-        disabled={!fileManager}
-        title={t("right.revealInFinder")}
-        onClick={() => fileManager && send({ type: "open_with", editorId: fileManager.id, path: fv.path })}
-      >
-        <Icon name="externalOpen" size={15} />
-      </button>
-      <FileMoreMenu
-        target={fv.path}
-        root={cwd || ""}
-        mdView={isMd ? { preview: fv.mdPreview ?? isMd, previewable, onPick: (v) => setBump({ fileView: { ...fv, mdPreview: v } }) } : undefined}
-      />
-    </>
+    <FileMoreMenu
+      target={fv.path}
+      root={cwd || ""}
+      trigger="open"
+      file
+      mdView={isMd ? { preview: fv.mdPreview ?? isMd, previewable, onPick: (v) => setBump({ fileView: { ...fv, mdPreview: v } }) } : undefined}
+    />
   );
 }
 
@@ -669,7 +735,7 @@ function FvDetail() {
             <div className="text-ui-xs text-faint mt-2">{t("right.errorParen", { error: fv.error })}</div>
           )}
           {isMd && mdPreview && previewable ? (
-            <div className="pt-1 pb-3 max-w-[900px]">
+            <div className="pt-1 pb-3 px-[5px] max-w-[900px]">
               <MdSurface text={fv.text ?? ""} />
             </div>
           ) : (
