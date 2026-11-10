@@ -4,12 +4,13 @@
 // ui/tool-labels.js. Clicking a row expands/collapses the inline diff (ed-brief); the body
 // prefers this call's own diff (ownDiffOf, arrives with tool_update) and only falls back to
 // the git diff fetched from the host on demand (response re-renders via briefDiffCache).
-import { memo } from "react";
+import { memo, useLayoutEffect, useRef } from "react";
 import type { ToolItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { bumpGroupExpand, useGroupExpandVersion, rdExpand, chgExpand } from "../../store/groupExpand";
 export { rdExpand, chgExpand };
 import Icon from "../../Icon";
+import LightweightDiff from "../diff/LightweightDiff";
 import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub, ownDiffOf } from "./parts";
 import { splitPath } from "./util";
 import { t } from "../../i18n";
@@ -41,9 +42,62 @@ function expandDiff(item: ToolItem, path: string, apply: (fn: (it: ToolItem) => 
   requestDiff(item, path);
 }
 
+// Live body of a `write` call whose arguments still stream: plain text, appended line by
+// line. The container scrolls itself so rows already on screen stay put and new lines enter
+// from the bottom (the old fixed 12-row window replaced the whole body each frame, which read
+// as one block changing rather than printing). Highlighting a growing buffer every frame is
+// the O(n^2) trap behind BUG-007; the call's own diff renders (highlighted) once it settles.
+const STREAM_TAIL_LINES = 200; // DOM cap: keep the newest lines only
+
+// Scroll a growing body's inner list to its tail after each render; the list is the scroll
+// container, so the newest line is what the user sees.
+function useTailScroll(ref: React.RefObject<HTMLDivElement | null>, key: string | undefined) {
+  useLayoutEffect(() => {
+    const el = ref.current?.querySelector(".ldiff");
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [ref, key]);
+}
+
+function StreamBody({ text }: { text: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const all = text.split("\n");
+  const lines = all.length > STREAM_TAIL_LINES ? all.slice(-STREAM_TAIL_LINES) : all;
+  useTailScroll(box, text);
+  return (
+    <div className="ed-brief" ref={box}>
+      <div className="ldiff">
+        <div className="ldiff-scroll">
+          {lines.map((ln, i) => (
+            <div className="ldiff-row" key={i}>
+              <code className="ldiff-code">{ln || " "}</code>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Live diff of an `edit` call while its arguments still stream (host tool_preview): the
+// patch prints line by line with the settled rows' own rendering. No language: the diff is
+// recomputed per frame, and highlighting it per frame is the BUG-007 cost.
+function StreamDiff({ preview }: { preview: NonNullable<ToolItem["streamDiff"]> }) {
+  const box = useRef<HTMLDivElement>(null);
+  useTailScroll(box, preview.diff);
+  return (
+    <div className="ed-brief" ref={box}>
+      {preview.diff ? (
+        <LightweightDiff diff={preview.diff} />
+      ) : (
+        <div className="text-faint text-ui-base py-[12px] px-[10px]">{preview.error}</div>
+      )}
+    </div>
+  );
+}
+
 // Edit row: pencil + "Edit/Write" label + file chip (clickable to open the right-panel diff) + line-count changes + expand arrow
 // Scalar props are captured mutation snapshots (T2; see ToolRow) — the body reads item.*
-export default memo(function EditRow({ item }: { item: ToolItem; files?: string[]; added?: number; removed?: number; running?: boolean; diffContent?: string }) {
+export default memo(function EditRow({ item, streamText, streamDiff }: { item: ToolItem; files?: string[]; added?: number; removed?: number; running?: boolean; diffContent?: string; streamText?: string; streamDiff?: ToolItem["streamDiff"] }) {
   const path = filesOf(item)[0] || "";
   const [closing, close, liftRef] = useLift();
   const open = item.diffExpanded && !closing;
@@ -67,6 +121,9 @@ export default memo(function EditRow({ item }: { item: ToolItem; files?: string[
           <Icon name="chevronRight" />
         </span>
       </div>
+      {/* Live body while the call's args still stream; the settled call renders its own diff below */}
+      {streamText && !item.diffExpanded && <StreamBody text={streamText} />}
+      {!streamText && streamDiff && !item.diffExpanded && <StreamDiff preview={streamDiff} />}
       {/* Body stays mounted while closing (gated on diffExpanded alone) so useLift can animate its height before the commit unmounts it */}
       {item.diffExpanded && path && <EditBrief item={item} path={path} liftRef={liftRef} />}
     </>

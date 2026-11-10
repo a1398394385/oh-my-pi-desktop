@@ -81,7 +81,7 @@ export function AdvisorInline({ notes }: { notes: AdvisorNote[] }) {
  */
 export default function AdvisorCard({ notes }: { notes: AdvisorNote[] }) {
   const style = useAppStore((st) => st.uiPrefs.agentProcessStyle);
-  const autoOpen = style === "detailed" || style === "expanded";
+  const autoOpen = style === "detailed" || style === "expanded" || style === "all";
   const [open, setOpen] = useState(autoOpen);
   useEffect(() => setOpen(autoOpen), [autoOpen]);
   const counts = SEV_ORDER.map((s) => [s, notes.filter((n) => (n.severity ?? "concern") === s).length] as const).filter(

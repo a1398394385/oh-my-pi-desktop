@@ -45,6 +45,7 @@
     "smoke:provider-order-ui": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-model-page-order.tsx",
     "smoke:model-meta": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-model-meta-editor.tsx",
     "smoke:model-meta-save": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-provider-model-save.ts",
+    "smoke:write-stream": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-write-stream.ts",
     "check:encoding": "node scripts/check-encoding.mjs",
     "check:version": "bun scripts/sync-version.ts --check",
     "version:set": "bun scripts/sync-version.ts",

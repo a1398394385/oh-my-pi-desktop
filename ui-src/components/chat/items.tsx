@@ -15,6 +15,8 @@ import { railToolText } from "../../shell";
 import UserMsg from "./UserMsg";
 import AssistantMsg from "./AssistantMsg";
 import TurnActs from "./TurnActs";
+import RunChanges from "./RunChanges";
+import OutReply from "./OutReply";
 import ThinkingRow from "./ThinkingRow";
 import ToolRow from "./ToolRow";
 import MdSurface from "./MdSurface";
@@ -82,34 +84,39 @@ function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): Reac
   if (item.role === "tool") {
     railEntries.push({ key, role: "tool", text: railToolText(item) });
     // `out://` replies read as the agent talking to the user, mid-turn. They render as their
-    // own block after the row (never inside the tool card): a folded compact row or a merged
-    // terminal group would otherwise swallow the only copy the user ever sees. Items carrying
-    // replies also stay out of the command group below for the same reason.
+    // own block (never inside the tool card): a folded compact row or a merged terminal group
+    // would otherwise swallow the only copy the user ever sees. Items carrying replies also
+    // stay out of the command group below for the same reason.
+    // A `write` to out:// takes that further and replaces its row (base parity: the reply
+    // component is what mounts in the TUI, not the tool card); its body streams in first
+    // (item.streamText) and the settled reply array wins once the call ends.
     const replies = item.replies;
+    const replyWrite = isOutReplyWrite(item);
+    const cardTexts = replyWrite ? (replies?.length ? replies : item.streamText ? [item.streamText] : undefined) : replies;
+    // Empty reply (refused write, or before the body streams in): keep the tool row so the
+    // call and its error stay visible instead of leaving a hole.
+    const hideRow = replyWrite && !!cardTexts?.length;
     return (
       <Fragment key={key}>
         {/* The extra scalars are mutation snapshots (T2): tool_update mutates the item in
             place (same object reference), so memo compares these captured values instead —
             only rows whose own data changed re-render on a delta flush */}
-        <ToolRow
-          item={item}
-          output={item.output}
-          running={!!item.running}
-          files={item.files}
-          added={item.added}
-          removed={item.removed}
-          todo={item.todo}
-          details={item.details}
-          diffContent={item.diffContent}
-        />
-        {replies?.length ? (
-          <div className="out-reply" key={key + "-out"}>
-            <div className="out-reply-lbl">{t("chat.toolReplies")}</div>
-            {replies.map((reply, i) => (
-              <MdSurface className="md-body md-surface" text={reply} key={i} />
-            ))}
-          </div>
-        ) : null}
+        {hideRow ? null : (
+          <ToolRow
+            item={item}
+            output={item.output}
+            running={!!item.running}
+            files={item.files}
+            added={item.added}
+            removed={item.removed}
+            todo={item.todo}
+            details={item.details}
+            diffContent={item.diffContent}
+            streamText={item.streamText}
+            streamDiff={item.streamDiff}
+          />
+        )}
+        {cardTexts?.length ? <OutReply texts={cardTexts} key={key + "-out"} /> : null}
       </Fragment>
     );
   }
@@ -256,11 +263,20 @@ function advisorNodes(item: AdvisorItem, key: string, inline: boolean): ReactEle
 //   standard — a run of >=3 read-only tool events folds into one block
 //   detailed — no read-only run fold (rows lay out flat), same-type groups stay
 //   expanded — no read-only run fold and no same-type merging at all
+//   all      — same layout as expanded; the store additionally opens every process block
+//              by default (see AgentProcessStyle)
 //   concise  — folds like standard; the live turn hides its process rows entirely
 //              (MessagePage's hideProcessFrom), so this only shapes the reveal
-function processStyle(): "standard" | "detailed" | "expanded" {
+function processStyle(): "standard" | "detailed" | "expanded" | "all" {
   const v = useAppStore.getState().uiPrefs.agentProcessStyle;
-  return v === "detailed" || v === "expanded" ? v : "standard";
+  return v === "detailed" || v === "expanded" || v === "all" ? v : "standard";
+}
+
+// Level-3 same-type merging is skipped by the two flattest styles; `expanded` and `all`
+// share it, so every check goes through here instead of comparing the style inline.
+function mergesSameType(): boolean {
+  const v = processStyle();
+  return v === "standard" || v === "detailed";
 }
 
 // A running row whose "expand while running" switch is on (Ctrl+T / Ctrl+O) stays out of
@@ -269,7 +285,10 @@ function processStyle(): "standard" | "detailed" | "expanded" {
 function liveOpen(item: ChatItem): boolean {
   const p = useAppStore.getState().uiPrefs;
   if (item.role === "thinking") return !!item.streaming && p.showThinking;
-  return item.role === "tool" && !!item.running && p.expandToolOutput;
+  // A streaming write body stays its own row: folded into a "Changes" group it would be
+  // invisible until the user expands the group.
+  // A streamed edit diff is its own row for the same reason as a write body.
+  return item.role === "tool" && !!item.running && (p.expandToolOutput || !!item.streamText || !!item.streamDiff);
 }
 
 // Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
@@ -288,7 +307,7 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
   while (j < items.length) {
     const it = items[j];
     if (liveOpen(it)) break; // the running row renders standalone outside the block
-    if (isReadonlyEvent(it)) {
+    if (isReadonlyEvent(it) && !hasOutReply(it)) {
       run.push(it);
       roCount++;
       j++;
@@ -306,9 +325,14 @@ function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next:
 // hideProcessFrom: index of the live turn's user row; everything after it that is not an
 // assistant output is dropped (the concise style's live view). Folding is untouched, so
 // the same rows lay out in standard shape once the reveal toggle disables the filter.
-/** A terminal row that carries `out://` replies renders on its own (see the tool branch above). */
+/** A `write` whose target is the reply channel: it renders as an OutReply card, not a tool row. */
+function isOutReplyWrite(item: ChatItem): boolean {
+  return item.role === "tool" && item.name === "write" && String(item.args?.path ?? "").startsWith("out://");
+}
+
+/** A row that carries `out://` replies renders on its own (see the tool branch above). */
 function hasOutReply(item: ChatItem): boolean {
-  return item.role === "tool" && !!item.replies?.length;
+  return item.role === "tool" && (!!item.replies?.length || isOutReplyWrite(item));
 }
 
 export function renderItems(
@@ -345,9 +369,9 @@ export function renderItems(
           continue;
         }
       }
-      // The "expanded" style skips the level-3 merge blocks entirely (they consume the
-      // following same-type events, so gating only the group push would swallow rows)
-      const mergeSameType = processStyle() !== "expanded";
+      // The "expanded"/"all" styles skip the level-3 merge blocks entirely (they consume
+      // the following same-type events, so gating only the group push would swallow rows)
+      const mergeSameType = mergesSameType();
       if (mergeSameType && isEditEvent(item)) {
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && !liveOpen(items[i + 1]) && isEditEvent(items[i + 1])) subs.push(items[++i]);
@@ -368,12 +392,12 @@ export function renderItems(
           continue;
         }
       }
-      if (mergeSameType && isDeviceEvent(item)) {
+      if (mergeSameType && isDeviceEvent(item) && !hasOutReply(item)) {
         const dev = deviceNameOf(item.args?.path);
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length) {
           const nx = items[i + 1];
-          if (liveOpen(nx) || !isDeviceEvent(nx) || deviceNameOf(nx.args?.path) !== dev) break;
+          if (liveOpen(nx) || !isDeviceEvent(nx) || hasOutReply(nx) || deviceNameOf(nx.args?.path) !== dev) break;
           subs.push(nx);
           i++;
         }
@@ -441,10 +465,17 @@ export function renderItems(
       pendingSteers.push({ item, key });
       continue;
     }
-    // Concise live view: this turn keeps its user row and assistant outputs only. The
-    // check sits before the fold scans so a run straddling the boundary is never merged
-    // into a block that then gets dropped.
-    if (opts?.hideProcessFrom !== undefined && i > opts.hideProcessFrom && item.role !== "assistant" && item.role !== "user") {
+    // Concise live view: this turn keeps its user row, assistant outputs and mid-run
+    // reply cards (an `out://` write's text is output, not process noise). The check sits
+    // before the fold scans so a run straddling the boundary is never merged into a block
+    // that then gets dropped.
+    if (
+      opts?.hideProcessFrom !== undefined &&
+      i > opts.hideProcessFrom &&
+      item.role !== "assistant" &&
+      item.role !== "user" &&
+      !hasOutReply(item)
+    ) {
       if (item.role === "advisor") {
         if (currentTurn) currentTurn.advice.push(...item.notes);
         else initialAdvice.push(...item.notes);
@@ -517,7 +548,7 @@ export function renderItems(
       }
     }
 
-    const mergeSameType = processStyle() !== "expanded";
+    const mergeSameType = mergesSameType();
     if (mergeSameType && isEditEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && !liveOpen(items[i + 1]) && isEditEvent(items[i + 1])) subs.push(items[++i]);
@@ -536,12 +567,12 @@ export function renderItems(
         node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (mergeSameType && !node && isDeviceEvent(item)) {
+    if (mergeSameType && !node && isDeviceEvent(item) && !hasOutReply(item)) {
       const dev = deviceNameOf(item.args?.path);
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length) {
         const nx = items[i + 1];
-        if (liveOpen(nx) || !isDeviceEvent(nx) || deviceNameOf(nx.args?.path) !== dev) break;
+        if (liveOpen(nx) || !isDeviceEvent(nx) || hasOutReply(nx) || deviceNameOf(nx.args?.path) !== dev) break;
         subs.push(nx);
         i++;
       }
@@ -553,7 +584,7 @@ export function renderItems(
     }
     if (mergeSameType && !node && isCmdEvent(item) && !hasOutReply(item)) {
       const subs: ChatItem[] = [item];
-      while (i + 1 < items.length && !liveOpen(items[i + 1]) && isCmdEvent(items[i + 1])) subs.push(items[++i]);
+      while (i + 1 < items.length && !liveOpen(items[i + 1]) && isCmdEvent(items[i + 1]) && !hasOutReply(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
         const groupItem: ChatItem = { role: "tool", name: "cmd", text: t("chat.labelTerminal"), group: subs };
         railEntries.push({ key, role: "tool", text: railToolText(groupItem) });
@@ -574,6 +605,14 @@ export function renderItems(
     }
 
     if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
+      // Files this run changed: the card sits between the output and the acts row
+      // (flowNodes render before actsNode)
+      const changes = item.changes;
+      if (changes?.length) {
+        const chgNode = <RunChanges entryId={item.entryId} changes={changes} key={key + "-chg"} />;
+        if (currentTurn) currentTurn.flowNodes.push(chgNode);
+        else initialNodes.push(chgNode);
+      }
       const actsNode = (
         <TurnActs
           item={item}

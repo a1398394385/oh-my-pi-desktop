@@ -1,0 +1,119 @@
+/* Run file-change card (RunChanges.tsx): one collapsible card at a run's tail, between the
+   output and the fork/copy acts. Surfaces and radii mirror .adv-card; every color is a token
+   so both themes follow. Column width is inherited from .turn-flow (no cap here). */
+
+.rchg {
+  margin: 16px 0;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.rchg-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.rchg-head:hover { background: var(--surface); }
+.rchg-ic { flex: none; display: inline-flex; color: var(--faint); }
+.rchg-title { font-size: var(--ui-fs-md); color: var(--dim); }
+.rchg-sum { display: inline-flex; gap: 6px; font-family: var(--mono); font-size: var(--code-fs); }
+.rchg-sum .add { color: var(--green-soft); }
+.rchg-sum .del { color: var(--red); }
+.rchg-chev {
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--faint);
+  transition: transform var(--dur-base) var(--swift);
+}
+.rchg.open .rchg-chev { transform: rotate(180deg); }
+
+/* Long change lists scroll inside the card: like every inline card it owns its wheel
+   (MessagePage INLINE_CARD_SELECTOR / .wheel-through in messages.css). */
+.rchg-body {
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--rchg-row);
+  border-top: 1px solid var(--line);
+}
+
+/* One changed file. The body carries no padding, so the row plate spans the full card width and
+   the first/last rows touch the header rule and the card bottom — the hover fill must read as one
+   band, not an inset block. Rows are separated by the hover plate alone: no rules between them. */
+.rchg-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+}
+.rchg-row:hover { background-color: var(--rchg-hl); }
+.rchg-row.reverted .rchg-name,
+.rchg-row.reverted .rchg-dir,
+.rchg-row.reverted .rchg-counts { color: var(--faint); }
+
+.rchg-file { flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px; }
+.rchg-fic { flex: none; display: inline-flex; }
+.rchg-name {
+  flex: none;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ui-fs-md);
+  color: var(--text);
+}
+.rchg-dir {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ui-fs-md);
+  color: var(--faint);
+}
+.rchg-counts { flex: none; display: inline-flex; gap: 6px; font-family: var(--mono); font-size: var(--code-fs); }
+.rchg-counts .add { color: var(--green-soft); }
+.rchg-counts .del { color: var(--red); }
+
+.rchg-btns { flex: none; display: inline-flex; gap: 4px; }
+/* Pills carry the header's own surface, so they read as buttons on the darker list plate */
+.rchg-btn {
+  border: 1px solid var(--line);
+  background: var(--rchg-btn);
+  padding: 2px 9px;
+  border-radius: var(--r-sm);
+  font-size: var(--ui-fs-md);
+  color: var(--dim);
+  cursor: pointer;
+}
+.rchg-btn:hover:not(:disabled) { background: var(--rchg-btn-hl); color: var(--text); }
+.rchg-btn:disabled { color: var(--faint); cursor: default; }
+
+/* Open + its chevron share one pill; the chevron opens the same popover as the file page */
+.rchg-open {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--rchg-btn);
+  overflow: hidden;
+}
+.rchg-open .rchg-btn { border: 0; border-radius: 0; background: transparent; }
+.rchg-open .rchg-btn:hover:not(:disabled) { background: var(--rchg-btn-hl); }
+.rchg-open-chev { padding: 0 5px; border-left: 1px solid var(--line); display: inline-flex; align-items: center; }
+
+.rchg-tag {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--ui-fs-xs);
+  color: var(--faint);
+}

@@ -2,12 +2,13 @@
 // translator and the on-disk replay share only the small helpers in translate-tool.ts and
 // a few exports from translate.ts, and keeping them together kept tripping the line cap.
 import { hostI18n } from "./i18n/host.ts";
-import { collectFiles, isDevicePath, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
+import { collectFiles, isDevicePath, outReplyArgs, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
 import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
 import { PHASE_TEXT, isJunkPlaceholderText, errorTextOf, stripDcpTags } from "./translate.ts";
 import { BRANCH_TITLE_CUSTOM_TYPE } from "./session-titles.ts";
 import { deliveryMarkerOf, deliveryMarkersForSession, type DeliveryMarker } from "./automations/delivery.ts";
 import { advisorHistoryRow } from "./translate-advisor.ts";
+import { readRunChanges } from "./run-changes.ts";
 
 // Disk history entries → frontend transcript (thinking blocks expandable;
 // tools carry path/command/line counts)
@@ -68,10 +69,30 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
     let lastA = r.items.length - 1;
     while (lastA >= 0 && (r.items[lastA].role === "advisor" || r.items[lastA].role === "error")) lastA--;
     const tailIdx = r.items[lastA]?.role === "assistant" ? lastA : -1;
+    // Dominance rule: a conclusion may live in a toolUse message (model wrote the full
+    // report, then appended a self-check tool call in the same message — no stop mark).
+    // If the last unlifted text dominates (>=400 chars and longer than every lifted
+    // output), it is the run's biggest deliverable and must not stay buried under a
+    // short confirmation tail. Measured on 974 local sessions: buried conclusions are
+    // 600+ chars (20/21); narration is <300 chars in 98% of cases, and >=400-char
+    // narration always precedes a LONGER stop report, which dominance already rejects.
+    let domIdx = -1;
+    let liftedMax = 0;
+    r.items.forEach((it, i) => {
+      if (it.role !== "assistant") return;
+      if (it.turnFinal || i === tailIdx) liftedMax = Math.max(liftedMax, it.text.length);
+      else domIdx = i; // last unlifted assistant
+    });
+    const domOk = domIdx >= 0 && r.items[domIdx].text.length >= 400 && r.items[domIdx].text.length > liftedMax;
     const kept: TranscriptItem[] = [];
     const finalOut: TranscriptItem[] = [];
+    const outReplies: TranscriptItem[] = [];
     r.items.forEach((it, i) => {
-      (it.role === "assistant" && (it.turnFinal || i === tailIdx) ? finalOut : kept).push(it);
+      if (it.role === "assistant" && (it.turnFinal || i === tailIdx || (domOk && i === domIdx))) finalOut.push(it);
+      // `out://` replies are output, not process: folding them into the loop group would
+      // hide the only copy on reload (same split as the live seal in store/run-seal.ts)
+      else if (it.role === "tool" && it.replies?.length) outReplies.push(it);
+      else kept.push(it);
     });
     if (kept.length) {
       out.push({
@@ -83,6 +104,7 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
         usage: r.usage,
       });
     }
+    out.push(...outReplies);
     out.push(...finalOut);
   };
 
@@ -308,6 +330,7 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
           args: toolArgsForUi(block.name, block.arguments),
           files: collectFiles(block.name, block.arguments),
           intent: typeof block.intent === "string" ? block.intent : undefined,
+          replies: outReplyArgs(block.name, block.arguments),
         };
         byId.set(block.id, item);
         sink.push(item);
@@ -315,6 +338,23 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
     }
   }
   finalizeRun();
+  // Run-final change records (custom entries) reattach to their anchor assistant row; revert
+  // markers are already folded in by readRunChanges. The idx used for snapshot filenames is a
+  // host-side addressing detail and stays off the wire.
+  const changeRecords = readRunChanges(entries);
+  if (changeRecords.length) {
+    const byAnchor = new Map(changeRecords.filter((c) => c.anchor).map((c) => [c.anchor as string, c.files.map(({ idx: _idx, ...f }) => f)]));
+    const attach = (items: TranscriptItem[]) => {
+      for (const it of items) {
+        if (it.role === "assistant" && it.entryId) {
+          const files = byAnchor.get(it.entryId);
+          if (files) it.changes = files;
+        }
+        if (it.items) attach(it.items);
+      }
+    };
+    attach(out);
+  }
   return out;
 }
 

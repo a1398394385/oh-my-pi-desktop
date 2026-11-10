@@ -25,6 +25,7 @@
 @import "./css/main/chat/messages.css";
 @import "./css/main/chat/readonly-group.css";
 @import "./css/main/chat/advisor.css";
+@import "./css/main/chat/run-changes.css";
 @import "./css/shared/markdown.css";
 @import "./css/shared/code-blocks.css";
 @import "./css/shared/form-layout.css";

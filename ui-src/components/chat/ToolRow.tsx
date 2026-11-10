@@ -2,6 +2,7 @@
 // ui/tool-labels.js (renderToolItem/toolKind + the render functions). Adding or removing a
 // tool label only touches this file.
 import { memo, useState } from "react";
+import type { ReactNode } from "react";
 import type { ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, cmdExpand, devExpand } from "../../store/groupExpand";
 export { cmdExpand, devExpand };
@@ -145,7 +146,7 @@ function hubSummary(args: NonNullable<ToolItem["args"]>) {
   return summary;
 }
 function renderHubTool(item: ToolItem) {
-  return <CmdRow item={item} command={hubSummary(item.args || {})} iconLabel={t("chat.labelBackground")} />;
+  return <CmdRow item={item} command={hubSummary(item.args || {})} summary={item.intent} iconLabel={t("chat.labelBackground")} />;
 }
 
 // ---------- Todo row ----------
@@ -167,27 +168,31 @@ function renderTodo(item: ToolItem) {
 function renderGrep(item: ToolItem) {
   const pat = item.args?.pattern || item.text || "";
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
+  const params = [pat, dir].filter(Boolean).join("  ");
   return (
-    <div className="act read">
-      <Icon name="read" size={15} />
-      <span className="lbl">{t("chat.labelSearch")}</span>
-      <Ellip className="path" title={pat}>{pat}</Ellip>
-      {dir && <Ellip className="path">{dir}</Ellip>}
-      {item.running && <Spin />}
-    </div>
+    <ExpandableRow
+      item={item}
+      iconName="read"
+      label={t("chat.labelSearch")}
+      summary={item.intent || params}
+      summaryTitle={params}
+      input={<ParamLine text={params} />}
+    />
   );
 }
 function renderGlob(item: ToolItem) {
   const pat = item.args?.pattern || item.text || "";
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
+  const params = [pat, dir].filter(Boolean).join("  ");
   return (
-    <div className="act read">
-      <Icon name="match" size={15} />
-      <span className="lbl">{t("chat.labelGlob")}</span>
-      <Ellip className="path" title={pat}>{pat}</Ellip>
-      {dir && <Ellip className="path">{dir}</Ellip>}
-      {item.running && <Spin />}
-    </div>
+    <ExpandableRow
+      item={item}
+      iconName="match"
+      label={t("chat.labelGlob")}
+      summary={item.intent || params}
+      summaryTitle={params}
+      input={<ParamLine text={params} />}
+    />
   );
 }
 
@@ -208,7 +213,17 @@ function renderWait(item: ToolItem) {
   } else if (details?.waited?.body != null) {
     summary = typeof details.waited.body === "string" ? details.waited.body : JSON.stringify(details.waited.body);
   }
-  return <ExpandableRow item={item} iconName="pause" label={t("chat.labelWait")} summary={summary || item.text || ""} />;
+  const params = summary || item.text || "";
+  return (
+    <ExpandableRow
+      item={item}
+      iconName="pause"
+      label={t("chat.labelWait")}
+      summary={item.intent || params}
+      summaryTitle={params}
+      input={<ParamLine text={params} />}
+    />
+  );
 }
 
 // Task row: subagent spawn (flat or batch), mirrors the TUI task card. The spawn count
@@ -247,7 +262,17 @@ function renderTask(item: ToolItem) {
 // is the submission itself — failure reason, incremental section labels, workpool key, or a
 // payload preview — read through the shared yieldSummary so the Hub activity row agrees.
 function renderYield(item: ToolItem) {
-  return <ExpandableRow item={item} iconName="upload" label={t("chat.labelYield")} summary={yieldSummary(item.args) || item.text || ""} />;
+  const params = yieldSummary(item.args) || item.text || "";
+  return (
+    <ExpandableRow
+      item={item}
+      iconName="upload"
+      label={t("chat.labelYield")}
+      summary={item.intent || params}
+      summaryTitle={params}
+      input={<ParamLine text={params} />}
+    />
+  );
 }
 // One spawned subagent row for the expanded card's result body. Source: resolved results first,
 // then live progress — never the call args (the args box shows the assignment text only).
@@ -313,12 +338,14 @@ function TaskBody({ item }: { item: ToolItem }) {
 function renderMcp(item: ToolItem) {
   const tool = String(item.name || "").split("__").slice(2).join("__");
   return (
-    <div className="act mcp">
-      <Icon name="plug" size={15} />
-      <span className="lbl">MCP</span>
-      {tool && <Ellip className="path" title={item.name}>{` ${tool}`}</Ellip>}
-      {item.running && <Spin />}
-    </div>
+    <ExpandableRow
+      item={item}
+      iconName="plug"
+      label="MCP"
+      summary={item.intent || tool}
+      summaryTitle={item.name}
+      input={<ParamLine text={item.name || ""} />}
+    />
   );
 }
 
@@ -349,7 +376,10 @@ function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["a
     </div>
   );
 }
-function ContentCard({ item, liftRef, noInput }: { item: ToolItem; liftRef?: (el: HTMLElement | null) => void; noInput?: boolean }) {
+// input: the row's former summary (icon/label/parameters) moved into the card head, so the
+// collapsed row can lead with the model-written intent; callers that pass it keep their own
+// layout instead of the raw args JSON
+function ContentCard({ item, liftRef, noInput, input }: { item: ToolItem; liftRef?: (el: HTMLElement | null) => void; noInput?: boolean; input?: ReactNode }) {
   const detailText = item.details?.displayContent?.text;
   // Result text: response output / read raw text / details JSON as fallback; when none of the
   // three exist, branch on running — result not yet arrived shows the Spin placeholder, and
@@ -360,14 +390,12 @@ function ContentCard({ item, liftRef, noInput }: { item: ToolItem; liftRef?: (el
     (item.details ? truncateText(JSON.stringify(item.details, null, 2)) : "");
   return (
     <div ref={liftRef} className="cmd-card drop">
-      {noInput ? null : item.name === "task" ? (
+      {noInput ? null : input ? (
+        input
+      ) : item.name === "task" ? (
         <TaskBody item={item} />
       ) : item.name === "ask" && Array.isArray(item.args?.questions) ? (
         <AskArgs questions={item.args.questions} />
-      ) : item.name === "wait" ? (
-        // wait's schema has no parameters — the harness strips the injected `i` intent field
-        // before execution, so the model-written intent is the only thing to show as params
-        <FadeBox className="cmd-card-cmd">{item.intent || t("chat.noParams")}</FadeBox>
       ) : (
         <FadeBox className="cmd-card-cmd">
           {truncateText(item.args ? JSON.stringify(item.args, null, 2) : t("chat.noParams"))}
@@ -383,7 +411,7 @@ function ContentCard({ item, liftRef, noInput }: { item: ToolItem; liftRef?: (el
 }
 // `count` renders a dim spawn-count badge right after the row label (task rows: "Subagent ×3");
 // omit it (0 / undefined) for tools whose label never carries a count.
-function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput, count }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string; noInput?: boolean; count?: number }) {
+function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput, count, input }: { item: ToolItem; iconName: string; label: string; summary: string; summaryTitle?: string; noInput?: boolean; count?: number; input?: ReactNode }) {
   const [, close, liftRef] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
@@ -401,7 +429,7 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput, 
           <Icon name="chevronRight" />
         </span>
       </div>
-      {item.cmdExpanded && <ContentCard item={item} liftRef={liftRef} noInput={noInput} />}
+      {item.cmdExpanded && <ContentCard item={item} liftRef={liftRef} noInput={noInput} input={input} />}
     </>
   );
 }
@@ -410,11 +438,30 @@ function renderFind(item: ToolItem) {
   const query = item.args?.query || item.text || "";
   const dir = item.args?.path ? splitPath(String(item.args.path)).dir : "";
   const summary = dir ? `${query} · ${dir}` : query;
-  return <ExpandableRow item={item} iconName="search" label={t("chat.labelFind")} summary={summary} summaryTitle={query} />;
+  return (
+    <ExpandableRow
+      item={item}
+      iconName="search"
+      label={t("chat.labelFind")}
+      summary={item.intent || summary}
+      summaryTitle={query}
+      input={<ParamLine text={summary} />}
+    />
+  );
 }
 // Web search row
 function renderWebSearch(item: ToolItem) {
-  return <ExpandableRow item={item} iconName="globe" label={t("chat.labelWebSearch")} summary={item.args?.query || item.text || ""} />;
+  const query = item.args?.query || item.text || "";
+  return (
+    <ExpandableRow
+      item={item}
+      iconName="globe"
+      label={t("chat.labelWebSearch")}
+      summary={item.intent || query}
+      summaryTitle={query}
+      input={<ParamLine text={query} />}
+    />
+  );
 }
 // Ask row: the first question (+N when more), title is the full question list
 function renderAsk(item: ToolItem) {
@@ -537,19 +584,32 @@ function renderDebug(item: ToolItem) {
   const args = item.args || {};
   const action = args.action ? String(args.action).replaceAll("_", " ") : "request";
   const target = args.program || (args.file ? `${args.file}${args.line ? `:${args.line}` : ""}` : "");
-  return <ExpandableRow item={item} iconName="monitor" label={t("chat.labelDebug")} summary={target ? `${action} ${target}` : action} />;
+  const params = target ? `${action} ${target}` : action;
+  return (
+    <ExpandableRow
+      item={item}
+      iconName="monitor"
+      label={t("chat.labelDebug")}
+      summary={item.intent || params}
+      summaryTitle={params}
+      input={<ParamLine text={params} />}
+    />
+  );
 }
 // GitHub row: operation and object (repo/path/query/title)
 function renderGithub(item: ToolItem) {
   const args = item.args || {};
   const op = args.op || "";
   const target = args.repo || args.path || args.query || args.title || args.pr || "";
+  const params = target ? `${op} ${target}` : op || item.text || "github";
   return (
     <ExpandableRow
       item={item}
       iconName="branch"
       label="GitHub"
-      summary={target ? `${op} ${target}` : op || item.text || "github"}
+      summary={item.intent || params}
+      summaryTitle={params}
+      input={<ParamLine text={params} />}
     />
   );
 }
@@ -580,13 +640,15 @@ function renderMemory(item: ToolItem) {
     item.text ||
     "memory";
   const title = memories.length > 1 ? memories.map((m) => m?.content || "").filter(Boolean).join("\n") : "";
+  const params = memories.length > 1 ? `${summary} +${memories.length - 1}` : summary;
   return (
     <ExpandableRow
       item={item}
       iconName="memory"
       label={t("chat.labelMemory")}
-      summary={memories.length > 1 ? `${summary} +${memories.length - 1}` : summary}
-      summaryTitle={title}
+      summary={item.intent || params}
+      summaryTitle={title || params}
+      input={<ParamLine text={params} />}
     />
   );
 }
@@ -614,7 +676,17 @@ function deviceSummary(item: ToolItem) {
   return [deviceNameOf(item.args?.path), deviceOpText(item)].filter(Boolean).join(" · ");
 }
 function renderDevice(item: ToolItem) {
-  return <ExpandableRow item={item} iconName="plugins" label={t("chat.labelDevice")} summary={deviceSummary(item) || item.text || ""} />;
+  const params = deviceSummary(item) || item.text || "";
+  return (
+    <ExpandableRow
+      item={item}
+      iconName="plugins"
+      label={t("chat.labelDevice")}
+      summary={item.intent || params}
+      summaryTitle={params}
+      input={<ParamLine text={params} />}
+    />
+  );
 }
 
 // ---------- Device group (consecutive same-device calls merged, structure copied 1:1 from the terminal group) ----------
@@ -626,7 +698,7 @@ function DeviceRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
       <span className="lbl">{t("chat.labelDevice")}</span>
-      <Ellip className="c-tx" title={detail}>{detail}</Ellip>
+      <Ellip className="c-tx" title={detail}>{sub.intent || detail}</Ellip>
       {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
         <Icon name="chevronRight" />
@@ -646,7 +718,13 @@ function DeviceEntry({ sub }: { sub: ToolItem }) {
   return (
     <>
       <DeviceRowUI sub={sub} open={open} onToggle={toggle} />
-      {sub.cmdExpanded && <ContentCard item={sub} liftRef={liftRef} />}
+      {sub.cmdExpanded && (
+        <ContentCard
+          item={sub}
+          liftRef={liftRef}
+          input={<ParamLine text={deviceSummary(sub) || sub.text || ""} />}
+        />
+      )}
     </>
   );
 }
@@ -687,8 +765,22 @@ export function renderDeviceGroup(item: ToolItem) {
   return <DeviceGroup subs={subs} />;
 }
 
+// A row's former parameters, rendered as the expand card's head now that the collapsed row
+// leads with the model-written intent (no icon/label: the row above already carries both)
+function ParamLine({ text }: { text: string }) {
+  return <FadeBox className="cmd-card-cmd">{text}</FadeBox>;
+}
+
 function renderGenericTool(item: ToolItem) {
-  return <div className="act">{item.name || item.text || ""}</div>;
+  // Tools without a dedicated row: the name is the label, so the intent is the only summary
+  return (
+    <ExpandableRow
+      item={item}
+      iconName="plug"
+      label={item.name || item.text || "tool"}
+      summary={item.intent || ""}
+    />
+  );
 }
 
 // Tool name → label kind mapping (edit/change row rendering lives in EditRow.tsx; this file only dispatches)
@@ -751,6 +843,8 @@ type ToolRowProps = {
   todo?: unknown;
   details?: unknown;
   diffContent?: string;
+  streamText?: string;
+  streamDiff?: ToolItem["streamDiff"];
 };
 
 export default memo(function ToolRow({ item }: ToolRowProps) {
@@ -810,7 +904,7 @@ export default memo(function ToolRow({ item }: ToolRowProps) {
     case "change":
       return renderChange(item);
     case "edit":
-      return <EditRow item={item} files={item.files} added={item.added} removed={item.removed} running={!!item.running} diffContent={item.diffContent} />;
+      return <EditRow item={item} files={item.files} added={item.added} removed={item.removed} running={!!item.running} diffContent={item.diffContent} streamText={item.streamText} streamDiff={item.streamDiff} />;
     default:
       return renderGenericTool(item);
   }

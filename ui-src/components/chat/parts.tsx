@@ -373,6 +373,14 @@ export function readRangeLabel(item: ToolItem): string {
   return fmtRange(start, end);
 }
 
+// Project-relative display for read rows: paths under the session cwd drop the prefix,
+// everything else (URLs, absolute paths outside the project) stays as-is
+function relToCwd(p: string, cwd?: string) {
+  if (!cwd || !p) return p;
+  const base = cwd.endsWith("/") ? cwd : cwd + "/";
+  return p.startsWith(base) ? p.slice(base.length) : p;
+}
+
 export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }) {
   let path = uniqueFiles(item.files?.length ? item.files : item.args?.path ? [item.args.path] : [])[0] || "";
   if (!path && item.text) {
@@ -380,7 +388,11 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
     if (m) path = m[1].trim();
   }
   const cleanPath = stripReadSelector(path);
-  const { dir } = splitPath(cleanPath);
+  // Rows read project-relative; anything outside the session cwd (URLs, sibling projects)
+  // keeps its absolute form so the path still identifies the file
+  const cwd = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.cwd : undefined));
+  const shownPath = relToCwd(cleanPath, cwd);
+  const { dir } = splitPath(shownPath);
   const rangeLabel = readRangeLabel(item);
   const [closing, close, liftRef] = useLift();
   // The expand body reads details.displayContent. Missing content has two kinds: result not
@@ -421,15 +433,13 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
       >
         <Icon name="file" size={15} />
         <span className="lbl">{t("chat.labelRead")}</span>
-        {cleanPath ? (
+        <Ellip className="path" title={cleanPath}>{item.intent || cleanPath || item.text || "read"}</Ellip>
+        {cleanPath && (
           <>
             <FileChip path={cleanPath} nameClass={hasContent ? "ed-name" : ""} onNameClick={hasContent ? () => openReadFileInSidebar(item, path || cleanPath) : undefined} />
-            {" "}
             {dir && <Ellip className="path" title={cleanPath}>{dir}</Ellip>}
             {rangeLabel && <span className="path">{rangeLabel}</span>}
           </>
-        ) : (
-          item.text || "read"
         )}
         {running && <Spin />}
         {canOpen && (
@@ -540,8 +550,14 @@ export function openReadFileInSidebar(item: ToolItem, path: string) {
 }
 
 // Open a local image (message-stream entry points: read rows, image chips in markdown)
-// in the right-panel image preview, expanding the panel over the process card
+// in the right-panel image preview, expanding the panel over the process card.
+// Markdown image sources are as often project-relative as absolute, and read_image
+// resolves against the HOST process cwd, so qualify against the session cwd here
+// (read rows already pass an absolute path, making this a no-op for them).
 export function openImagePathPanel(full: string) {
-  openImageFileView(full);
+  const st = useAppStore.getState();
+  const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+  const abs = full.startsWith("/") ? full : (s?.cwd ?? "") + "/" + full;
+  openImageFileView(abs);
   expandRightPanel("file");
 }

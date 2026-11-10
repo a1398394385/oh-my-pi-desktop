@@ -121,6 +121,13 @@ export function toolExpandKey(name: string | null | undefined): "readExpanded" |
   return "cmdExpanded";
 }
 
+/** The "all" process style opens every process block by default: thinking blocks while they
+ *  stream (a finished thought folds back, as in the other styles) and tool cards that stay
+ *  open after the call settles. */
+export function opensProcessBlocks(): boolean {
+  return useAppStore.getState().uiPrefs.agentProcessStyle === "all";
+}
+
 // Deduplicate tool-row file lists (moved over from tool-rows.js uniqueFiles; needed by the store's tool handling)
 function uniqueFiles(files: string[] | null | undefined): string[] {
   return [...new Set(files ?? [])];
@@ -141,6 +148,23 @@ export function updateSession(sessionId: string, fn: (s: OpenSession) => void, w
 }
 
 // ---------- Locating and activating ----------
+/** Adopting the "all" style opens the process rows already on screen instead of waiting for
+ *  the next frame: every tool card opens; a thinking block opens only while it still
+ *  streams (a finished thought folds back, same rule as the live path). Fresh item copies
+ *  are what wake the memoized rows — mutating in place would leave them rendered collapsed. */
+export function openProcessBlocksNow(): void {
+  const st = useAppStore.getState();
+  const path = st.activePath;
+  const s = path ? st.openSessions.get(path) : undefined;
+  if (!path || !s) return;
+  const items = s.items.map((it): SessionItem => {
+    if (it.role === "tool") return { ...it, [toolExpandKey(it.name)]: true } as SessionItem;
+    if (it.role === "thinking" && it.streaming) return { ...it, expanded: true };
+    return it;
+  });
+  useAppStore.setState({ openSessions: new Map(st.openSessions).set(path, { ...s, items }) });
+}
+
 export function activeOpen(): OpenSession | undefined {
   const st = useAppStore.getState();
   return st.activePath ? st.openSessions.get(st.activePath) : undefined;
@@ -535,6 +559,29 @@ function findToolRow(s: OpenSession, toolCallId?: string, name?: string): ToolIt
   );
 }
 
+// Base notices (UI-only, never persisted, never in the model context) land as a
+// session-scoped transient banner above the composer: not a transcript row (a
+// notice is not persisted, so a reloaded session has none) and not the app-level
+// toast (that bleeds across sessions). The newest notice replaces the previous one
+// and expires on its own.
+const NOTICE_TTL_MS = 8000;
+const noticeTimers = new Map<string, TimerHandle>();
+let noticeSeq = 0;
+
+function scheduleNoticeClear(sessionId: string, seq: number): void {
+  clearTimeout(noticeTimers.get(sessionId));
+  noticeTimers.set(
+    sessionId,
+    setTimeout(() => {
+      noticeTimers.delete(sessionId);
+      if (findBySessionId(sessionId)?.notice?.seq !== seq) return; // a newer notice took over
+      updateSession(sessionId, (s) => {
+        s.notice = null;
+      });
+    }, NOTICE_TTL_MS),
+  );
+}
+
 export function applyEvent(msg: EventFrame): void {
   // Any live frame proves this session's run is still emitting: it must not be settled as idle
   cancelIdleSettle(msg.sessionId);
@@ -543,6 +590,9 @@ export function applyEvent(msg: EventFrame): void {
     updateSession(
       msg.sessionId,
       (s) => {
+        // A new turn supersedes any prediction (the host aborts its request too)
+        s.prediction = null;
+        s.predictionOpen = false;
         s.streaming = true;
         s.assistantDraft = "";
         // Keep the previous tool's intent showing through in-run continuation turns (the gap
@@ -599,7 +649,8 @@ export function applyEvent(msg: EventFrame): void {
     }
   } else if (msg.kind === "text_delta") {
     applyDelta(msg.sessionId, (s) => {
-      s.assistantDraft += msg.text;
+      if (msg.reset) s.assistantDraft = msg.text;
+      else s.assistantDraft += msg.text;
     });
   } else if (msg.kind === "thinking") {
     updateSession(msg.sessionId, (s) => {
@@ -609,7 +660,7 @@ export function applyEvent(msg: EventFrame): void {
       s.assistantDraft = "";
       if (msg.phase === "start") {
         s.workingText = t("notify.thinking");
-        s.items.push({ role: "thinking", text: t("notify.thinkingLabel"), thinking: "", streaming: true, expanded: st.uiPrefs.showThinking });
+        s.items.push({ role: "thinking", text: t("notify.thinkingLabel"), thinking: "", streaming: true, expanded: st.uiPrefs.showThinking || opensProcessBlocks() });
       } else {
         const last = findLast(s.items, (it): it is ThinkingItem => it.role === "thinking");
         if (last) {
@@ -628,29 +679,90 @@ export function applyEvent(msg: EventFrame): void {
       const last = findLast(s.items, (it): it is ThinkingItem => it.role === "thinking" && !!it.streaming);
       if (last) last.thinking = (last.thinking || "") + msg.text;
     });
+  } else if (msg.kind === "tool_args") {
+    // A `write` body streams while the model is still emitting the call, so the row is born
+    // here — the `tool` frame that normally creates it only lands once the args complete.
+    applyDelta(msg.sessionId, (s) => {
+      const existing = findLast(s.items, (it): it is ToolItem => it.role === "tool" && !!it.toolCallId && it.toolCallId === msg.toolCallId);
+      let row = existing;
+      if (!row) {
+        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+        s.assistantDraft = "";
+        row = {
+          role: "tool",
+          text: msg.name,
+          name: msg.name,
+          toolCallId: msg.toolCallId,
+          args: msg.path ? { path: msg.path } : undefined,
+          running: true,
+          streamText: "",
+        };
+        s.items.push(row);
+      }
+      if (msg.path && !row.args?.path) row.args = { ...(row.args || {}), path: msg.path };
+      row.streamText = msg.reset ? msg.text : (row.streamText || "") + msg.text;
+      s.workingText = t("notify.working");
+    });
+  } else if (msg.kind === "tool_preview") {
+    // An `edit` call's diff streams before its args complete: same row-birth contract as a
+    // streamed write body, but each frame carries the whole diff and replaces the previous one.
+    applyDelta(msg.sessionId, (s) => {
+      const existing = findLast(s.items, (it): it is ToolItem => it.role === "tool" && !!it.toolCallId && it.toolCallId === msg.toolCallId);
+      let row = existing;
+      if (!row) {
+        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
+        s.assistantDraft = "";
+        row = {
+          role: "tool",
+          text: msg.name,
+          name: msg.name,
+          toolCallId: msg.toolCallId,
+          running: true,
+        };
+        s.items.push(row);
+      }
+      if (msg.path && !row.args?.path) row.args = { ...(row.args || {}), path: msg.path };
+      row.streamDiff = { path: msg.path, diff: msg.diff, error: msg.error };
+      s.workingText = t("notify.working");
+    });
   } else if (msg.kind === "tool") {
     updateSession(msg.sessionId, (s) => {
       if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) {
         s.items.push({ role: "assistant", text: s.assistantDraft });
       }
       s.assistantDraft = "";
-      const toolItem: SessionItem = {
-        role: "tool",
-        text: msg.name,
-        name: msg.name,
-        toolCallId: msg.toolCallId,
-        // wire shape is Record<string, unknown>; narrowed here to the supertype of the fields this repo reads
-        args: msg.args as ToolArgs | undefined,
-        intent: msg.intent,
-        files: msg.files,
-        // The tool frame = the tool starts executing (args arrived, result not yet); only the
-        // tool_update frame sets it back to false. Set for every tool unconditionally: the result
-        // slot renders a Spin placeholder while running; "no output" is judged only when not running
-        running: true,
-      };
-      // "expand while running" (Ctrl+O): the output card stays expanded during the run, tool_update collapses it at the end
-      if (st.uiPrefs.expandToolOutput) toolItem[toolExpandKey(msg.name)] = true;
-      s.items.push(toolItem);
+      // A row already exists when the model streamed this call's body (tool_args): upgrade it
+      // in place — pushing a second row would duplicate the edit event.
+      const live = msg.toolCallId
+        ? findLast(s.items, (it): it is ToolItem => it.role === "tool" && it.toolCallId === msg.toolCallId)
+        : undefined;
+      if (live) {
+        live.args = msg.args as ToolArgs | undefined;
+        live.intent = msg.intent;
+        live.files = msg.files;
+        // "expand while running" (Ctrl+O) keeps the output card expanded during the run and
+        // collapses it at the end; the "all" style opens it and leaves it open
+        if (st.uiPrefs.expandToolOutput || opensProcessBlocks()) live[toolExpandKey(msg.name)] = true;
+      } else {
+        const toolItem: SessionItem = {
+          role: "tool",
+          text: msg.name,
+          name: msg.name,
+          toolCallId: msg.toolCallId,
+          // wire shape is Record<string, unknown>; narrowed here to the supertype of the fields this repo reads
+          args: msg.args as ToolArgs | undefined,
+          intent: msg.intent,
+          files: msg.files,
+          // The tool frame = the tool starts executing (args arrived, result not yet); only the
+          // tool_update frame sets it back to false. Set for every tool unconditionally: the result
+          // slot renders a Spin placeholder while running; "no output" is judged only when not running
+          running: true,
+        };
+        // "expand while running" (Ctrl+O) keeps the output card expanded during the run and
+        // collapses it at the end; the "all" style opens it and leaves it open
+        if (st.uiPrefs.expandToolOutput || opensProcessBlocks()) toolItem[toolExpandKey(msg.name)] = true;
+        s.items.push(toolItem);
+      }
       if (msg.intent) s.workingText = msg.intent;
       else if (msg.name === "wait") s.workingText = t("notify.waiting"); // wait tool declares intent "optional" — show what it blocks on
     });
@@ -671,8 +783,11 @@ export function applyEvent(msg: EventFrame): void {
         if (msg.details != null) last.details = msg.details as ToolDetails; // wire is unknown; narrowed to the supertype of the fields this repo reads
         if (msg.diffContent != null) last.diffContent = msg.diffContent; // the tool's real diff for this call; edit-row inline expansion prefers it
         last.running = false;
-        // "expand while running": collapse at the end (the card auto-expanded during the run)
-        if (st.uiPrefs.expandToolOutput) last[toolExpandKey(last.name)] = false;
+        last.streamText = undefined; // the call's own diff replaces the live preview
+        last.streamDiff = undefined;
+        // "expand while running": collapse at the end (the card auto-expanded during the run);
+        // the "all" style keeps tool cards open after the call settles
+        if (st.uiPrefs.expandToolOutput && !opensProcessBlocks()) last[toolExpandKey(last.name)] = false;
       }
     });
   } else if (msg.kind === "tool_details") {
@@ -772,6 +887,15 @@ export function applyEvent(msg: EventFrame): void {
     // the host may immediately continue the run, and synchronous eviction would kick the session out
     // before the resumed-run frames arrive.
     scheduleEvict();
+  } else if (msg.kind === "run_changes") {
+    // Files this run changed: the host pushes them once the run is persisted (and re-pushes
+    // after a revert, with the affected row flagged). In-place write like the entryId backfill.
+    updateSession(msg.sessionId, (s) => {
+      const a = findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && it.entryId === msg.entryId);
+      if (a) a.changes = msg.files;
+    });
+    // A revert rewrote the working tree: the git diff cache is stale
+    if (findBySessionId(msg.sessionId)?.isGit) useAppStore.getState().refreshGitDiff(true);
   } else if (msg.kind === "thinking_level") {
     // Auto-level resolution frame: only records the resolved level for the bottom-right "auto · level" display; does not touch s.thinking
     if (msg.configured === "auto") {
@@ -809,6 +933,28 @@ export function applyEvent(msg: EventFrame): void {
       s.assistantDraft = "";
       s.items.push({ role: "ttsr", text: msg.rules.map((r) => r.name).join(", "), rules: msg.rules });
     });
+  } else if (msg.kind === "prediction") {
+    // Composer predictions: empty choices retire the ghost; a new batch always closes the list
+    updateSession(msg.sessionId, (s) => {
+      s.prediction = msg.choices.length > 0 ? msg.choices : null;
+      s.predictionOpen = false;
+    });
+  } else if (msg.kind === "assistant_rerender") {
+    // An extension re-drew one reply block (ctx.ui.rerenderMessage): replace that row's text in
+    // place, matched by reply timestamp + block index.
+    updateSession(msg.sessionId, (s) => {
+      const row = s.items.find((it): it is AssistantItem => it.role === "assistant" && it.ts === msg.ts && it.block === msg.block);
+      if (row) row.text = msg.text;
+    });
+  } else if (msg.kind === "notice") {
+    // Base UI-only notice (xd:// mount hints, tool-side warnings): a session-scoped
+    // transient strip above the composer, never a transcript row (not persisted, so a row
+    // would vanish on reload). The newest notice replaces the previous one and expires.
+    const seq = ++noticeSeq;
+    updateSession(msg.sessionId, (s) => {
+      s.notice = { level: msg.level, message: msg.message, seq };
+    });
+    scheduleNoticeClear(msg.sessionId, seq);
   } else if (msg.kind === "error") {
     // Provider/request failure (quota, auth, transport): one row of its own.
     // Settle the in-flight draft first so text produced before the failure stays above it.
@@ -820,6 +966,13 @@ export function applyEvent(msg: EventFrame): void {
       s.items.push({ role: "error", text: msg.text });
     });
   }
+}
+
+/** Open/close the composer prediction alternatives list (Tab again after inserting a candidate). */
+export function setPredictionOpen(sessionId: string, open: boolean): void {
+  updateSession(sessionId, (s) => {
+    s.predictionOpen = open;
+  });
 }
 
 /** Field patch for an entry inside a session (used by batch-C components: item-level toggles like

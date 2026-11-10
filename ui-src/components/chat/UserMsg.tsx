@@ -3,7 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import type { OpenSession, UserItem } from "../../types/session";
 import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
 import { REMOTE } from "../../store/layout";
-import { copyText } from "../main/sidebar/util";
+import { useCopyFeedback } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { atMentions } from "../../lib/at-mentions";
@@ -52,6 +52,7 @@ function PendingActs({ item }: { item: UserItem }) {
 export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?: string; pending?: UserItem["pending"]; branch?: ReactNode }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState(item.text);
+  const { copied, copy } = useCopyFeedback();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const images = item.images ?? [];
   // @file mentions the base auto-read: chips on top, tokens stripped from the text
@@ -232,13 +233,10 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
               title={t("chat.copyMsg")}
               onClick={(e) => {
                 e.stopPropagation();
-                copyText(mention.text || "").then(
-                  () => useAppStore.getState().toast(t("chat.copiedToClipboard")),
-                  () => useAppStore.getState().toast(t("chat.copyFailed")),
-                );
+                void copy(mention.text || "").catch(() => useAppStore.getState().toast(t("chat.copyFailed")));
               }}
             >
-              <Icon name="copy" size={13} />
+              <Icon name={copied ? "check" : "copy"} size={13} />
             </button>
           ) : null}
         </div>

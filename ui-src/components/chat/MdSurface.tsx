@@ -8,7 +8,7 @@
 // rules (ui/css/main-chat.css); surfaces needing their own font size or page height set them in
 // their domain CSS (e.g. .cmd-card-cmd.task-md).
 import { createElement, isValidElement, useMemo, useState, useEffect, type JSX, type MouseEvent as ReactMouseEvent } from "react";
-import { CodeBlock, CodeBlockCopyButton, Streamdown, useIsCodeFenceIncomplete, type Components } from "streamdown";
+import { CodeBlock, CodeBlockCopyButton, Streamdown, defaultRehypePlugins, useIsCodeFenceIncomplete, type Components } from "streamdown";
 import { cjk } from "@streamdown/cjk";
 import type * as mermaidNs from "@streamdown/mermaid";
 import type { DiagramPlugin } from "@streamdown/mermaid";
@@ -16,11 +16,12 @@ import type { Viz } from "@viz-js/viz";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { t } from "../../i18n";
-import { useAppStore } from "../../store";
+import { useAppStore, send as sendToHost } from "../../store";
 import { CODE_PLUGINS, resolvePluginKey, type CodePluginKey } from "../../lib/code-plugin-registry";
 import { getThemeById } from "../../theme-registry";
 import { FileChip, openExternal, openImagePathPanel, openInBrowser } from "./parts";
 import { modDown } from "../../platform";
+import { SUCCESS_FLASH_MS } from "../main/sidebar/util";
 import { IMAGE_EXTS } from "./util";
 import { fixStrongAutolink } from "./strong-autolink";
 
@@ -61,6 +62,36 @@ const CODE_LANGUAGE_EXTENSIONS: Record<string, string> = {
 // Props shape for the element mapping: the hast node is a non-DOM attribute attached by
 // react-markdown; destructure it away before passing through
 type ElProps<K extends keyof JSX.IntrinsicElements> = JSX.IntrinsicElements[K] & { node?: unknown };
+
+// Minimal hast node (only what the image retag walks).
+interface HastNode {
+  type: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: HastNode[];
+}
+
+// rehype-harden's image check accepts http(s) and "/"-prefixed sources only: a bare
+// project-relative "dir/pic.png" fails its URL parse, so streamdown replaced the image with
+// an "[Image blocked]" text node and the clickable file chip below never ran. Retag local
+// images between the sanitize and harden passes; remote/data/blob sources keep the default
+// chain untouched.
+function retagLocalImages(node: HastNode): void {
+  if (node.type === "element" && node.tagName === "img") {
+    const src = node.properties?.src;
+    if (typeof src === "string" && !/^(https?:|data:|blob:)/i.test(src)) node.tagName = "localimg";
+  }
+  for (const child of node.children ?? []) retagLocalImages(child);
+}
+
+// Pass order is the array order: the retag has to run after sanitize (an img node still
+// exists) and before harden (which would block it). Reference-stable, like mdComponents.
+const MD_REHYPE_PLUGINS = [
+  defaultRehypePlugins.raw,
+  defaultRehypePlugins.sanitize,
+  () => (tree: HastNode) => retagLocalImages(tree),
+  defaultRehypePlugins.harden,
+];
 
 // Element factory that re-attaches .md-* classes. mdComponents must be a module-level
 // constant to stay reference-stable — streamdown memoizes per block and compares the
@@ -125,7 +156,7 @@ function AsyncDiagram({ source, render, alt, language }: { source: string; rende
     return (
       <div className="md-code-block-frame">
         <CodeBlock className="md-streamdown-code" code={source} language={language} lineNumbers={false}>
-          <CodeBlockCopyButton />
+          <CodeBlockCopyButton timeout={SUCCESS_FLASH_MS} />
         </CodeBlock>
       </div>
     );
@@ -204,6 +235,9 @@ export const mdComponents: Components = {
   // requests, so a bare <a> never opens. The streamdown external-link confirm dialog stays
   // bypassed (same as before). Non-http(s) hrefs (anchors, relative file URLs) keep default
   // behavior: the manual view is an iframe and cannot load file:// targets.
+  // An extension-claimed scheme (extensionRenderers.assistantText's registerLinkScheme) is a
+  // click, not navigation: the host hands it to the owning extension and unknown schemes are
+  // ignored there.
   a: ({ node, href, ...rest }: ElProps<"a">) =>
     createElement("a", {
       ...rest,
@@ -214,7 +248,15 @@ export const mdComponents: Components = {
           e.stopPropagation();
           if (modDown(e)) void openExternal(href);
           else openInBrowser(href);
+          return;
         }
+        const scheme = href?.match(/^([a-z][a-z0-9+.-]+):/i)?.[1]?.toLowerCase();
+        if (!scheme || ["mailto", "file", "data", "blob"].includes(scheme)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const st = useAppStore.getState();
+        const sessionId = st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined;
+        if (sessionId) sendToHost({ type: "link_activate", sessionId, url: href });
       },
     }),
   // Images: remote/data URLs render inline (the Tauri webview has no CSP restrictions);
@@ -230,6 +272,10 @@ export const mdComponents: Components = {
     }
     return <img {...rest} src={src} alt={alt} className="md-img" />;
   },
+  // Bare project-relative image sources, retagged by MD_REHYPE_PLUGINS.localImages above
+  // harden would block them: same file chip as the absolute-path branch.
+  localimg: ({ node, src }: ElProps<"img">) =>
+    typeof src === "string" ? <FileChip path={src} onNameClick={() => openImagePathPanel(src)} /> : null,
   // Task-list checkboxes: type/disabled hardcoded explicitly (not relying on upstream
   // attribute pass-through); the class hits .md-task-cb
   input: ({ node, ...rest }: ElProps<"input">) =>
@@ -286,6 +332,7 @@ export default function MdSurface({ text, ...rest }: MdSurfaceProps) {
         key={pluginKey}
         plugins={SURFACE_PLUGINS[pluginKey]}
         components={mdComponents}
+        rehypePlugins={MD_REHYPE_PLUGINS}
         lineNumbers={false}
         codeBlockMaxHeight={400}
         tableMaxHeight={0}

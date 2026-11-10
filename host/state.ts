@@ -17,6 +17,7 @@ import { hostI18n } from "./i18n/host.ts";
 // import surface (translate/session-lifecycle/rpc domains) stays untouched.
 // The wire version is the field superset (adds role "error" + the `intent` field).
 import type { TranscriptItem, TurnUsage, AdvisorNote } from "./wire/payloads.ts";
+import type { AssistantMessageLike } from "./assistant-text.ts";
 export type { TranscriptItem, TurnUsage, AdvisorNote };
 export type PoolEntry = {
   session: Awaited<ReturnType<typeof createAgentSession>>["session"];
@@ -79,6 +80,11 @@ export type PoolEntry = {
   keepaliveSid?: string;
   transcript: TranscriptItem[];
   assistantDraft: string; // Streaming text accumulated for the current turn, finalized at turn_end
+  // Latest assistant snapshot of the streaming turn: the reply extension text renderers draw on
+  // (host/assistant-text.ts), and the timestamp `ctx.ui.rerenderMessage` addresses
+  assistantMessage?: AssistantMessageLike;
+  // Block index inside that reply the current draft belongs to (base contentIndex)
+  assistantBlock?: number;
   thinkingDraft: string;
   thinkingStartedAt: number | null;
   // Session active duration (same semantics as the TUI status-line
@@ -149,7 +155,7 @@ export type PoolEntry = {
   // Set when the scheduler spawned this session for an automation: surfaced on
   // session_list rows (sidebar clock badge) and echoed as a live user-message
   // event (automation sessions have no local composer send to draw the bubble)
-  automation?: { id: string; title: string };
+  automation?: { id: string; title: string; computer?: boolean };
   // Automation-run dialog deadline (seconds, spawn-time snapshot of the
   // automation settings page's approvalTimeoutSec): permission approvals in
   // this session auto-deny after it. Ask dialogs are bounded by the page's

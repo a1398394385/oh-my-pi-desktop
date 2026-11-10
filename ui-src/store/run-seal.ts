@@ -30,10 +30,29 @@ export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
   let lastA = flat.length - 1;
   while (lastA >= 0 && (flat[lastA].role === "advisor" || flat[lastA].role === "error")) lastA--;
   const tailIdx = flat[lastA]?.role === "assistant" ? lastA : -1;
+  // Dominance rule (same as host/translate-history.ts finalizeRun): a conclusion may
+  // live in a toolUse message (full report + self-check tool call in one message — no
+  // stop mark). If the last unlifted text dominates (>=400 chars and longer than every
+  // lifted output), lift it too so a short confirmation tail cannot bury the run's
+  // biggest deliverable.
+  let domIdx = -1;
+  let liftedMax = 0;
+  flat.forEach((it, i) => {
+    if (it.role !== "assistant") return;
+    if (it.turnFinal || i === tailIdx) liftedMax = Math.max(liftedMax, it.text.length);
+    else domIdx = i;
+  });
+  const domOk = domIdx >= 0 && flat[domIdx].text.length >= 400 && flat[domIdx].text.length > liftedMax;
   const kept: SessionItem[] = [];
   const finalOut: SessionItem[] = [];
+  const outReplies: SessionItem[] = [];
   flat.forEach((it, i) => {
-    (it.role === "assistant" && (it.turnFinal || i === tailIdx) ? finalOut : kept).push(it);
+    if (it.role === "assistant" && (it.turnFinal || i === tailIdx || (domOk && i === domIdx))) finalOut.push(it);
+    // `out://` replies are the agent talking to the user, not process noise: the run's
+    // single copy of them must not fold into the loop group (same rule as the live view's
+    // fold scans in items.tsx). They keep stream order, just above the group.
+    else if (it.role === "tool" && it.replies?.length) outReplies.push(it);
+    else kept.push(it);
   });
   if (kept.length) {
     s.items.push({
@@ -45,6 +64,7 @@ export function sealRunItems(s: OpenSession, usage?: TurnUsage | null): void {
       usage: usage ?? null,
     });
   }
+  s.items.push(...outReplies);
   s.items.push(...finalOut);
   s.turnItemStart = s.items.length;
 }

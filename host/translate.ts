@@ -4,10 +4,14 @@
 // share the same tool-entry summary logic.
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { parseStreamingJsonThrottled } from "@oh-my-pi/pi-utils";
+import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
 import { hostI18n } from "./i18n/host.ts";
-import { collectFiles, isDevicePath, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
+import { collectFiles, isDevicePath, outReplyArgs, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 import { advisorEvent, advisorHistoryRow } from "./translate-advisor.ts";
+import { renderAssistantText } from "./assistant-text.ts";
+import { trackRunToolStart, trackRunToolEnd } from "./run-changes.ts";
 
 // Compat regex for journals written by the retired ACP nudge prototype: old
 // sessions carry <dcp-message-id>mNNNNN</dcp-message-id> tags that UI
@@ -52,6 +56,79 @@ async function preadWriteOldText(toolCallId: string, abs: string, owner: PoolEnt
   if (pending && pending.owner === owner && pending.oldText === undefined) pending.oldText = oldText;
 }
 
+// Live body of a `write` call, keyed by toolCallId: the model streams the arguments as JSON,
+// and the card shows the file growing instead of waiting for the whole payload (TUI parity).
+// `raw` accumulates the streamed JSON, `parsedLen` throttles the re-parse, `sent` is how much
+// of the decoded `content` already went to the UI (only the suffix rides each frame, so a
+// large file costs O(n) traffic). Dropped when the call starts: its final args supersede it.
+const writeStreams = new Map<string, { raw: string; parsedLen: number; sent: number; owner: PoolEntry }>();
+
+type StreamedToolCallEvent = Extract<AssistantMessageEvent, { type: "toolcall_start" | "toolcall_delta" }>;
+
+function streamedWriteBody(ame: StreamedToolCallEvent, entry: PoolEntry): UiEvent | null {
+  const block = ame.partial.content[ame.contentIndex];
+  // Only `write` streams a file body; every other tool keeps its one-shot args frame.
+  if (block?.type !== "toolCall" || block.name !== "write" || typeof block.id !== "string") return null;
+  let st = writeStreams.get(block.id);
+  if (!st) {
+    st = { raw: "", parsedLen: 0, sent: 0, owner: entry };
+    writeStreams.set(block.id, st);
+  }
+  if (ame.type === "toolcall_delta" && typeof ame.delta === "string") st.raw += ame.delta;
+  const parsed = parseStreamingJsonThrottled<{ content?: unknown; path?: unknown }>(st.raw, st.parsedLen);
+  if (!parsed) return null;
+  st.parsedLen = parsed.parsedLen;
+  const content = typeof parsed.value.content === "string" ? parsed.value.content : "";
+  const path = typeof parsed.value.path === "string" ? parsed.value.path : undefined;
+  // A relaxed parse of a half-received escape can decode shorter than what was sent: resend
+  // the whole body and let the UI replace instead of appending.
+  const reset = content.length < st.sent;
+  if (content.length === st.sent && !reset) return null;
+  const text = reset ? content : content.slice(st.sent);
+  st.sent = content.length;
+  return { kind: "tool_args", name: "write", toolCallId: block.id, text, path, ...(reset ? { reset: true } : {}) };
+}
+
+
+// Live diff of an `edit` call, from the base's `tool_stream_update` (native preview pump,
+// EditPreviewBatch). The first file carrying a diff/error rides the frame whole: one section
+// is the normal case, and multi-file payloads show the rest in the settled diff. The pump
+// already merges pending argument deltas and back-pressures on one in-flight callback, so no
+// extra throttle here.
+function streamedEditPreview(ev: { toolCallId?: unknown; toolName?: unknown; update?: unknown }): UiEvent | null {
+  if (typeof ev.toolCallId !== "string") return null;
+  const update = ev.update;
+  if (!update || typeof update !== "object" || !("files" in update) || !Array.isArray(update.files)) return null;
+  let path: string | undefined;
+  let diff: string | undefined;
+  let error: string | undefined;
+  let fallbackError: { path?: string; error: string } | undefined;
+  for (const f of update.files) {
+    if (!f || typeof f !== "object") continue;
+    const p = "path" in f && typeof f.path === "string" ? f.path : undefined;
+    if ("diff" in f && typeof f.diff === "string") {
+      path = p;
+      diff = f.diff;
+      break;
+    }
+    // Keep the first error only as a fallback: a later file's real diff is what the user
+    // is waiting to see.
+    if (!fallbackError && "error" in f && typeof f.error === "string") fallbackError = { path: p, error: f.error };
+  }
+  if (diff === undefined) {
+    if (!fallbackError) return null;
+    path = fallbackError.path;
+    error = fallbackError.error;
+  }
+  return {
+    kind: "tool_preview",
+    name: typeof ev.toolName === "string" ? ev.toolName : "edit",
+    toolCallId: ev.toolCallId,
+    path,
+    diff,
+    error,
+  };
+}
 
 // Strip the <dcp-message-id> tags injected/replayed by ACP: disk keeps the
 // original text (historical fact); scrub uniformly before pushing to the UI.
@@ -185,10 +262,23 @@ export function backfillAssistantEntryIds(entry: PoolEntry, afterUserId?: string
 function flushAssistantDraft(entry: PoolEntry, final = false) {
   if (!entry.assistantDraft) return;
   const draft = stripDcpTags(entry.assistantDraft);
-  if (!isJunkPlaceholderText(draft)) {
+  const renderers = entry.session.extensionRunner?.getAssistantTextRenderers() ?? [];
+  const text =
+    renderers.length > 0
+      ? renderAssistantText(renderers, entry.assistantMessage, entry.assistantBlock ?? 0, draft, false)
+      : draft;
+  if (!isJunkPlaceholderText(text)) {
     // final: the message ended stopReason "stop" — a delivered output, lifted out of the
     // loop group at seal time (toolUse-turn prose stays process narration)
-    entry.transcript.push({ role: "assistant", text: draft, ...(final ? { turnFinal: true } : {}) });
+    entry.transcript.push({
+      role: "assistant",
+      text,
+      ...(final ? { turnFinal: true } : {}),
+      // A renderer re-draw (ctx.ui.rerenderMessage) addresses the row by reply + block index
+      ...(entry.assistantMessage
+        ? { ts: entry.assistantMessage.timestamp, block: entry.assistantBlock ?? 0 }
+        : {}),
+    });
   }
   entry.assistantDraft = "";
 }
@@ -287,7 +377,18 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       // switching into auto has no resolved); manual-switch frames have no
       // configured. Pass through only; the frontend decides display.
       return { kind: "thinking_level", configured: ev.configured, resolved: ev.resolved };
+    case "notice": {
+      // Base UI-only notice (e.g. the xd:// mount hint): the base keeps it out of the
+      // agent state and the model context, so the desktop forwards it verbatim. Never a
+      // transcript row — a notice is not persisted, so a row would vanish on reload;
+      // the UI shows it as a session-scoped transient instead.
+      const message = typeof ev.message === "string" ? ev.message : "";
+      if (!message) return null;
+      const level = ev.level === "warning" || ev.level === "error" ? ev.level : "info";
+      return { kind: "notice", level, message, source: typeof ev.source === "string" ? ev.source : undefined };
+    }
     case "message_end": {
+      if (ev.message?.role === "assistant") entry.assistantMessage = ev.message;
       const advice = advisorEvent(ev.message, entry);
       if (advice) return advice;
       // A failed request emits an error assistant message (stopReason "error",
@@ -310,9 +411,20 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
     }
     case "message_update": {
       const ame = ev.assistantMessageEvent;
+      // A `write` call's body streams as its arguments arrive; the card grows with the file.
+      if (ame?.type === "toolcall_start" || ame?.type === "toolcall_delta") return streamedWriteBody(ame, entry);
       if (ame?.type === "text_delta") {
         entry.assistantDraft += ame.delta;
-        return { kind: "text_delta", text: ame.delta };
+        entry.assistantMessage = ame.partial;
+        entry.assistantBlock = ame.contentIndex ?? 0;
+        const renderers = entry.session.extensionRunner?.getAssistantTextRenderers() ?? [];
+        if (renderers.length === 0) return { kind: "text_delta", text: ame.delta };
+        // Renderers draw the whole block, so the UI replaces its draft instead of appending
+        return {
+          kind: "text_delta",
+          text: renderAssistantText(renderers, entry.assistantMessage, entry.assistantBlock ?? 0, entry.assistantDraft, true),
+          reset: true,
+        };
       }
       if (ame?.type === "thinking_start") {
         flushAssistantDraft(entry);
@@ -342,8 +454,15 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       }
       return null;
     }
+    // Streamed edit diff (native preview pump): the card grows line by line while the
+    // model is still emitting the call's arguments.
+    case "tool_stream_update":
+      return streamedEditPreview(ev);
     case "tool_execution_start": {
       flushAssistantDraft(entry);
+      trackRunToolStart(entry, ev.toolName, ev.args);
+      // The call's final args supersede the streamed preview.
+      if (ev.toolCallId) writeStreams.delete(ev.toolCallId);
       if (ev.toolName === "write" && ev.toolCallId) {
         const p = pathOf(ev.args);
         if (p && !isDevicePath(p)) {
@@ -367,6 +486,10 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         files: collectFiles(ev.toolName, ev.args),
         intent,
       };
+      // `write` to `out://`: the reply text lives in the call args, and tool_execution_end
+      // carries no args — capture it here so the terminal frame can still emit it
+      const outReplies = outReplyArgs(ev.toolName, ev.args);
+      if (outReplies) item.replies = outReplies;
       entry.transcript.push(item);
       return uiToolPayload(item);
     }
@@ -379,6 +502,14 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       if (ev.toolCallId) pendingWrites.delete(ev.toolCallId);
       if (ev.toolCallId) forwardedReplies.delete(ev.toolCallId);
       if (item) Object.assign(item, summarizeResult(ev.toolName, { ...(item.args || {}), ...(ev.args || {}) }, ev.result, pendingWrite));
+      trackRunToolEnd(entry, ev.toolName, { ...(item?.args || {}), ...(ev.args || {}) }, ev.result, !!ev.isError, {
+        added: item?.added,
+        removed: item?.removed,
+      });
+      // `write` to `out://`: the reply text was captured on the start frame (end carries no
+      // args); a refused write (replies off, subagent) drops it — it is an error row, not a reply
+      const argReplies = ev.isError ? undefined : item?.replies ?? outReplyArgs(ev.toolName, ev.args);
+      if (item && ev.isError) delete item.replies;
       return {
         kind: "tool_update",
         name: ev.toolName,
@@ -393,7 +524,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
         // Terminal frame keeps the out:// replies the row showed while running (bash/eval
         // results carry the last full set; a backgrounded call omits them, the store then keeps
         // whatever the running frames already delivered)
-        replies: repliesOf(ev.result?.details),
+        replies: repliesOf(ev.result?.details) ?? argReplies,
       };
     }
     case "tool_execution_update": {
@@ -422,6 +553,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       flushAssistantDraft(entry);
       // 3c: an interrupted turn can strand a pre-read snapshot (≤2MB) — sweep this session's at terminal end
       for (const [k, v] of pendingWrites) if (v.owner === entry) pendingWrites.delete(k);
+      for (const [k, v] of writeStreams) if (v.owner === entry) writeStreams.delete(k);
       for (const [k, v] of forwardedReplies) if (v.owner === entry) forwardedReplies.delete(k);
       const userEntryId = backfillUserEntryIds(entry);
       return {

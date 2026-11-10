@@ -18,6 +18,8 @@ export interface RightSlice {
   selectedFile: string | null;
   fileView: FileViewState | null;
   fileViewPending: string | null; // file path with a request in flight
+  // Run change review: the snapshot diff (not the git diff) of one run's change to one file
+  runDiffView: { sessionId: string; entryId: string; path: string; diff: string; loading: boolean } | null;
   briefDiffPending: string | null; // inline diff path with a request in flight
   todoCollapsed: boolean;
   rightState: RightState;
@@ -65,6 +67,7 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   selectedFile: null,
   fileView: null,
   fileViewPending: null,
+  runDiffView: null,
   briefDiffPending: null,
   // Launch starts with the right panel collapsed, so the process card starts expanded
   todoCollapsed: false,
@@ -132,6 +135,7 @@ interface RightSlot {
   recentClosed: { name: string; at: number }[];
   selectedFile: string | null;
   fileView: FileViewState | null;
+  runDiffView: RightSlice["runDiffView"];
   collapsed: boolean;
   // ---- Agent Hub (all runtime-only: a launch always starts on the chat view) ----
   /** Whether the middle-card Agent Hub is open for this session (per-session, like the tabs). */
@@ -152,8 +156,9 @@ const WELCOME_SLOT = "welcome";
 const RIGHT_SLOT_MAX = 32;
 const RIGHT_SLOT_STORAGE_KEY = "omp-right-slots";
 
-/** Persisted slot row (runtime-only fields stripped). */
-type PersistedSlot = Omit<RightSlot, "disposers" | "hubOpen" | "hubPrevTab" | "hubWasCollapsed">;
+/** Persisted slot row (runtime-only fields stripped). The run diff text is bulky and always
+ *  refetchable, so it stays out of localStorage (like the hub fields). */
+type PersistedSlot = Omit<RightSlot, "disposers" | "hubOpen" | "hubPrevTab" | "hubWasCollapsed" | "runDiffView">;
 
 /** Restore persisted slots on module load. The legacy snapshot table is dropped
  *  wholesale (deliberate one-way switch, no migration); corrupted rows are skipped. */
@@ -183,6 +188,7 @@ function loadRightSlots(): Map<string, RightSlot> {
         recentClosed: p.recentClosed ?? [],
         selectedFile: p.selectedFile ?? null,
         fileView: p.fileView ?? null,
+        runDiffView: null,
         collapsed: p.collapsed ?? true,
         hubOpen: false,
         hubPrevTab: null,
@@ -230,6 +236,7 @@ export function saveRightSlot(path: string | null): void {
     // Skip half-loaded views (empty text would restore stuck in loading) and image views
     // (they depend on the global imageContent frame) — neither is persisted
     fileView: st.fileViewPending || st.fileView?.image ? null : st.fileView,
+    runDiffView: st.runDiffView,
     collapsed: st.rightCollapsed,
     hubOpen: st.hubOpen,
     hubPrevTab: st.hubPrevTab,
@@ -265,6 +272,7 @@ export function restoreRightSlot(path: string | null): void {
       rightRecentClosed: slot.recentClosed.slice(),
       selectedFile: slot.selectedFile,
       fileView: slot.fileView,
+      runDiffView: slot.runDiffView,
       rightCollapsed: slot.collapsed,
       // Hub is per-session: the incoming session brings its own open state (its "hub"
       // tab rides along in slot.tabs) and its own selection — hubSel indexes the live
@@ -296,6 +304,7 @@ export function restoreRightSlot(path: string | null): void {
     recentClosed: inherit ? st.rightRecentClosed.slice() : [],
     selectedFile: null,
     fileView: null,
+    runDiffView: null,
     collapsed: inherit ? st.rightCollapsed : true,
     hubOpen: false,
     hubPrevTab: null,
@@ -309,6 +318,7 @@ export function restoreRightSlot(path: string | null): void {
   useAppStore.setState({
     selectedFile: null,
     fileView: null,
+    runDiffView: null,
     selectedSubagent: null,
     fileViewPending: null,
     briefDiffPending: null,
@@ -347,7 +357,7 @@ export function openTabInSlot(path: string, name: string): void {
   if (!slot) {
     // Background-created session never activated in the UI: a minimal slot with just
     // this tab (inheriting the displayed layout would leak another session's panel)
-    slot = { tabs: [name], active: name, recentClosed: [], selectedFile: null, fileView: null, collapsed: false, hubOpen: false, hubPrevTab: null, hubWasCollapsed: false, disposers: new Set() };
+    slot = { tabs: [name], active: name, recentClosed: [], selectedFile: null, fileView: null, runDiffView: null, collapsed: false, hubOpen: false, hubPrevTab: null, hubWasCollapsed: false, disposers: new Set() };
     rightSlots.set(path, slot);
   } else {
     rightSlots.delete(path);

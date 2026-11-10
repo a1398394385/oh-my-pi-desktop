@@ -33,6 +33,7 @@ import type {
   ApprovalMode,
   AdvisorNote,
   AdvisorSeverity,
+  RunChangeFile,
 } from "./frames";
 export type { AdvisorNote, AdvisorSeverity };
 // SchemaDef is the authoritative shape of settings schema entries (aligned with SETTINGS_SCHEMA), defined in settings/placement.ts
@@ -127,6 +128,9 @@ export interface AssistantItem {
   branching?: boolean; // fork request in flight (written in place by TurnActs)
   streaming?: boolean; // generating (written in place by components)
   turnFinal?: boolean; // turn ended stopReason "stop": a delivered output (store lifts it out of the sealed loop group)
+  changes?: RunChangeFile[]; // files this run changed (host run_changes frame, tail item only)
+  ts?: number; // reply timestamp + block index: how an extension re-draw addresses this row
+  block?: number;
 }
 
 /** Thinking row (items.tsx:30-33 reads item.thinking || item.text) */
@@ -156,6 +160,8 @@ export interface ToolItem {
   running?: boolean; // executing (landed by store.ts: set by tool frames, reset by tool_update; clearRunningTools as fallback)
   todo?: { content?: string; total?: number; done?: number };
   diffContent?: string;
+  streamText?: string; // a `write` body received while its args still stream (host tool_args); cleared when the call settles
+  streamDiff?: { path?: string; diff?: string; error?: string }; // an `edit` diff received while its args still stream (host tool_preview, whole frame replaced); cleared when the call settles
   replies?: string[]; // `out://` mid-call replies (host tool_update.replies), cumulative; rendered in the card body
   streaming?: boolean; // executing (written in place by components)
   cmdExpanded?: boolean; // terminal output expanded (written in place by components)
@@ -330,6 +336,7 @@ export interface SubagentUsage {
   currentToolStartMs?: number;
   lastIntent?: string;
   resolvedModel?: string;
+  modelRole?: string; // base progress.modelRole: pre-expansion role alias (e.g. "smol"); resolvedModel stays concrete
   resolvedThinkingLevel?: string;
   recentTools?: unknown[];
 }
@@ -391,6 +398,14 @@ export interface OpenSession {
       it (host detaches on close), so a slot below the store's current epoch is stale: activating it
       must remount through load_session instead of showing a view that receives no frames. */
   connEpoch?: number;
+  /** Latest base notice (UI-only, never persisted): a transient banner above the composer.
+      Lives on the session, not in the global toast, so a background session's notice never
+      bleeds into the session on screen. */
+  notice?: { level: "info" | "warning" | "error"; message: string; seq: number } | null;
+  // Composer predictions (host/prediction.ts): ghost candidates for the next message, most
+  // likely first; absent/empty = none. predictionOpen is the alternatives list (Tab again).
+  prediction?: string[] | null;
+  predictionOpen?: boolean;
 }
 
 /** openSessions container: key = session file path (store.ts openSessions; LRU cap of 8) */

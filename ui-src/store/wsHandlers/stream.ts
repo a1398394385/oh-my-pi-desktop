@@ -314,6 +314,7 @@ export const streamHandlers = {
           currentToolStartMs: msg.currentToolStartMs,
           lastIntent: msg.lastIntent,
           resolvedModel: msg.resolvedModel,
+          modelRole: msg.modelRole,
           resolvedThinkingLevel: msg.resolvedThinkingLevel,
           recentTools: msg.recentTools,
         };

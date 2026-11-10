@@ -6,6 +6,7 @@ import { REMOTE } from "../ws";
 import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, landPoolSessions, settleAbortedRunLater, updateSession } from "../session";
 import { pathOfSessionId } from "../session-lookup";
 import { pushInputHistory } from "../../components/composer/lexical/draft";
+import { SUCCESS_FLASH_MS } from "../../components/main/sidebar/util";
 import { closeAllMenus } from "../../shell";
 import { t } from "../../i18n";
 import type { OpenSession, SubagentState } from "../../types/session";
@@ -34,8 +35,13 @@ function applyForkReceipt(msg: { ok: boolean; error?: string; newPath?: string; 
     return;
   }
   if (msg.selectedText) useAppStore.getState().setComposerValue(msg.selectedText, undefined, { guard: true });
-  useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // reuse the on-disk session loading path
+  // The fork button holds its success icon for SUCCESS_FLASH_MS; switching right away would
+  // unmount the button mid-flash, so the view swap waits out that window. The list refresh is
+  // not delayed — the new row appears immediately.
   useAppStore.getState().send({ type: "list_sessions" });
+  window.setTimeout(() => {
+    useAppStore.getState().send({ type: "load_session", path: msg.newPath }); // reuse the on-disk session loading path
+  }, SUCCESS_FLASH_MS);
 }
 
 export const sessionHandlers = {
@@ -74,6 +80,7 @@ export const sessionHandlers = {
       archivedSessions: archived,
       allProjects: msg.allProjects ?? [],
       gitProjects: new Set(msg.gitProjects ?? []),
+      repoGroups: msg.repoGroups ?? [],
       removedProjects: msg.removedProjects ?? [],
       defaultWorkspace: msg.defaultWorkspace ?? "",
       expandedProjects,

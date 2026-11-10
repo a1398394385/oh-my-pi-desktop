@@ -7,7 +7,7 @@ import { memo } from "react";
 import type { AssistantItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { patchActiveItem } from "./parts";
-import { copyText } from "../main/sidebar/util";
+import { useCopyFeedback, useSuccessFlash } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 import { t as i18nT } from "../../i18n";
@@ -43,6 +43,8 @@ export default memo(function TurnActs({
   // Forking is unavailable while entryId is not yet backfilled (not persisted during live
   // streaming): grayed out rather than hidden, to avoid layout jumps
   const canFork = !!item.entryId && !item.branching;
+  const { copied, copy } = useCopyFeedback();
+  const { flashed: forked, flash: flashForked } = useSuccessFlash();
   return (
     <div className="turn-acts">
       {/* Column-capped inner box (same max-width + auto-margin mechanism as .turn-flow):
@@ -55,13 +57,10 @@ export default memo(function TurnActs({
           title={t("chat.copyReply")}
           onClick={(e) => {
             e.stopPropagation();
-            copyText(reply).then(
-              () => useAppStore.getState().toast(t("chat.replyCopied")),
-              () => useAppStore.getState().toast(t("chat.copyFailed")),
-            );
+            void copy(reply).catch(() => useAppStore.getState().toast(t("chat.copyFailed")));
           }}
         >
-          <Icon name="copy" />
+          <Icon name={copied ? "check" : "copy"} />
         </button>
         <button
           className="q-btn"
@@ -71,10 +70,11 @@ export default memo(function TurnActs({
             e.stopPropagation();
             if (!canFork || !sessionId) return;
             patchActiveItem(item, (it) => { it.branching = true; }); // stays disabled across full redraws (the flag lives with the item data)
+            flashForked(); // receipt-driven switch waits for this flash (applyForkReceipt), so the check is actually seen
             useAppStore.getState().send({ type: "branch_session", sessionId, entryId: item.entryId });
           }}
         >
-          <Icon name="fork" />
+          <Icon name={forked ? "check" : "fork"} />
         </button>
         {/* This turn created a task: jump to it (same clock as the delivery marker on the
             user bubble, so the icon reads as "this came from a task"). */}

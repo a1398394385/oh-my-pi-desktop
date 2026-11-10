@@ -101,6 +101,47 @@ describe("entriesToTranscript turn-final lift (reload path)", () => {
 		expect(items[2].text).toBe("结论 X");
 		expect((items[1] as LoopView<TranscriptItem>).items!.map((i) => i.role)).toEqual(["error"]);
 	});
+
+	test("dominance rule: report inside a toolUse message (self-check tail) surfaces", () => {
+		// Shape of session 01a1aaef: 1388-char report + self-check toolCall in one
+		// toolUse message, then a 95-char stop confirmation — the report must surface.
+		const report = "根因有两个，都已修：" + "x".repeat(500);
+		const items = entriesToTranscript([
+			userEntry("u1", null, "修一下"),
+			assistantEntry("a1", "u1", [text(report), toolCall("c1")], "toolUse"),
+			toolResultEntry("r1", "c1"),
+			assistantEntry("a2", "r1", [text("无残留测试进程。")], "stop"),
+		]);
+		expect(items.map((i) => i.role)).toEqual(["user", "loop", "assistant", "assistant"]);
+		expect(items[2].text).toBe(report);
+		expect(items[2].turnFinal).toBeUndefined();
+		expect(items[3].text).toBe("无残留测试进程。");
+	});
+
+	test("dominance rule: long narration before a longer stop report stays folded", () => {
+		const narration = "发现三个问题，先修第一个：" + "y".repeat(450);
+		const items = entriesToTranscript([
+			userEntry("u1", null, "hi"),
+			assistantEntry("a1", "u1", [text(narration), toolCall("c1")], "toolUse"),
+			toolResultEntry("r1", "c1"),
+			assistantEntry("a2", "r1", [text("z".repeat(800))], "stop"),
+		]);
+		expect(items.map((i) => i.role)).toEqual(["user", "loop", "assistant"]);
+		expect(items[2].text).toBe("z".repeat(800));
+		expect((items[1] as LoopView<TranscriptItem>).items![0].text).toBe(narration);
+	});
+
+	test("dominance rule: short narration above a tiny tail stays folded", () => {
+		const items = entriesToTranscript([
+			userEntry("u1", null, "hi"),
+			assistantEntry("a1", "u1", [text("查完了，现在汇总一下"), toolCall("c1")], "toolUse"),
+			toolResultEntry("r1", "c1"),
+			assistantEntry("a2", "r1", [text("done")], "stop"),
+		]);
+		expect(items.map((i) => i.role)).toEqual(["user", "loop", "assistant"]);
+		expect(items[2].text).toBe("done");
+		expect((items[1] as LoopView<TranscriptItem>).items![0].text).toBe("查完了，现在汇总一下");
+	});
 });
 
 describe("sealRunItems turn-final lift (live path)", () => {

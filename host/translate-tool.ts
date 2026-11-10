@@ -17,6 +17,16 @@ export function pathOf(args: any): string {
   return "";
 }
 
+// `write` to `out://` is a mid-turn reply. The base returns a fixed "Shown to the user."
+// result and the TUI draws the text from the call args (ReplyWriteComponent); the desktop
+// reads the same args, since eval/bash carry replies in details.replies instead.
+export function outReplyArgs(name: string, args: any): string[] | undefined {
+  if (name !== "write") return undefined;
+  if (!pathOf(args).startsWith("out://")) return undefined;
+  const content = args?.content;
+  return typeof content === "string" && content.length > 0 ? [content] : undefined;
+}
+
 // The desktop edit tool addresses its target as an "[path#TAG]" header line inside
 // args.input (not args.path) — extract the path so the change row/group shows the file
 function editInputPath(input: unknown): string {
@@ -147,7 +157,7 @@ function capValue(v: unknown, max = 8000): unknown {
   return s.length > max ? s.slice(0, max) : v;
 }
 
-function diffStats(diff: string): { added: number; removed: number } {
+export function diffStats(diff: string): { added: number; removed: number } {
   let added = 0;
   let removed = 0;
   for (const line of String(diff || "").split("\n")) {
@@ -245,8 +255,10 @@ export function summarizeResult(name: string, args: any, result: any, pendingWri
     };
     return patch;
   }
-  // Tagged tools (find / web search / ask / debug / GitHub / LSP / yield / the memory suite): result text feeds the frontend's expandable card
+  // Tagged tools (grep / glob / find / web search / ask / debug / GitHub / LSP / yield / the
+  // memory suite): result text feeds the frontend's expandable card
   if (
+    name === "grep" || name === "ast_grep" || name === "glob" ||
     name === "find" ||
     name === "web_search" || name === "ask" || name === "debug" || name === "github" || name === "lsp" ||
     name === "read_session_context" || name === "yield" ||

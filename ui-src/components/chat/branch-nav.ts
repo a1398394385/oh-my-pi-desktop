@@ -6,13 +6,15 @@
 // order, then sorts every node's children by entry timestamp
 // (SessionEntryIndex.tree, session-manager.ts); roots keep append order. The
 // wire order is therefore stable across fetches — no client-side re-sort.
+//
+// Fork counting runs on the /tree projection, not on raw entries: bookkeeping
+// rows (title_change, model_change, session_exit…) are hidden and their
+// descendants lifted, so a chain of resume bookmarks that branches per entry
+// counts as ONE fork with the branches the tree page shows. Same helpers as the
+// tree page keep both views on one definition.
+import { getFilteredChildren, passesFilter, type EntryNode } from "../main/tree/sessionTreeUtil";
 
-export interface BranchNavNode {
-  id: string;
-  role?: string;
-  text?: string;
-  children?: BranchNavNode[];
-}
+export type BranchNavNode = EntryNode;
 
 // Fork-point identity + pager numbers for one host bubble.
 export interface BranchNavInfo {
@@ -32,7 +34,7 @@ export interface BranchRenderCtx {
 
 export const ROOT_FORK_ID = "__roots__";
 
-// Mirror of the store's isJunkPlaceholder (kept local so this module imports nothing)
+// Mirror of the store's isJunkPlaceholder (keeps this module free of store/React imports)
 function junkText(text: string | undefined): boolean {
   if (!text) return true;
   const t = text.trim();
@@ -71,24 +73,69 @@ export function cycleSiblingLeaf(leaves: string[], index: number, dir: 1 | -1): 
   return leaves[((index + dir) % n + n) % n];
 }
 
-// Walk the active path root→leaf; each fork point's pager mounts on the first
-// bubble entry at or below the active fork child. A nearer fork point met
-// while descending supersedes the pending one (the older fork gets no host) —
-// confirmed design. A fork whose branch holds no bubble at all mounts nothing.
+// Hidden rows' descendants lift to the nearest visible ancestor (recursive root
+// lift, same as the tree page's collectRoots and getFilteredChildren)
+function logicalRoots(roots: BranchNavNode[]): BranchNavNode[] {
+  const out: BranchNavNode[] = [];
+  const collect = (nodes: BranchNavNode[]) => {
+    for (const n of nodes) {
+      if (passesFilter(n, "default")) out.push(n);
+      else collect(n.children ?? []);
+    }
+  };
+  collect(roots);
+  return out;
+}
+
+// Walk the active path root→leaf (raw entries, so a hidden leaf still resolves);
+// each visible fork point's pager mounts on the first bubble entry at or below
+// the active fork child. A nearer fork point met while descending supersedes
+// the pending one (the older fork gets no host) — confirmed design. A fork
+// whose branch holds no bubble at all mounts nothing.
 export function computeBranchNav(roots: BranchNavNode[], leafId: string | null): Map<string, BranchNavInfo> {
   const path: BranchNavNode[] = [];
   const map = new Map<string, BranchNavInfo>();
   if (!leafId || !findPath(roots, leafId, path)) return map;
+
+  const parentOf = new Map<string, BranchNavNode>();
+  const indexParents = (nodes: BranchNavNode[]) => {
+    for (const n of nodes) {
+      for (const c of n.children ?? []) parentOf.set(c.id, n);
+      indexParents(n.children ?? []);
+    }
+  };
+  indexParents(roots);
+
+  // One sibling list per visible parent; identity search below needs the very
+  // same objects, and getFilteredChildren returns the tree's own nodes
+  const optionsCache = new Map<string, BranchNavNode[]>();
+  const optionsOf = (parent: BranchNavNode | null): BranchNavNode[] => {
+    const key = parent ? parent.id : ROOT_FORK_ID;
+    let opts = optionsCache.get(key);
+    if (!opts) {
+      opts = parent ? getFilteredChildren(parent, "default") : logicalRoots(roots);
+      optionsCache.set(key, opts);
+    }
+    return opts;
+  };
+  // Logical parent of a visible node: its nearest visible ancestor (hidden rows
+  // in between are lifted away), null at root level
+  const logicalParentOf = (node: BranchNavNode): BranchNavNode | null => {
+    let p = parentOf.get(node.id);
+    while (p && !passesFilter(p, "default")) p = parentOf.get(p.id);
+    return p ?? null;
+  };
+
   let fork: BranchNavInfo | null = null;
-  for (let i = 0; i < path.length; i++) {
-    const node = path[i];
-    // identity search is safe: path nodes are the tree's own objects
-    const sibs = i === 0 ? roots : path[i - 1].children ?? [];
+  for (const node of path) {
+    if (!passesFilter(node, "default")) continue; // bookkeeping rows are folded out of the /tree view
+    const parent = logicalParentOf(node);
+    const sibs = optionsOf(parent);
     if (sibs.length > 1) {
       fork = {
         index: sibs.indexOf(node),
         total: sibs.length,
-        forkId: i === 0 ? ROOT_FORK_ID : path[i - 1].id,
+        forkId: parent ? parent.id : ROOT_FORK_ID,
         siblingLeaves: sibs.map(deepestLeafId),
       };
     }

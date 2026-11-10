@@ -102,6 +102,39 @@ describe("computeBranchNav mounting", () => {
     expect(map.get("d12")!.index).toBe(1);
   });
 
+  test("bookmark chain counts as the tree page's branches (hidden rows lifted)", () => {
+    // Real shape: one session_exit with a genuine 2-way split, then nested
+    // title_change bookmarks that only add siblings. /tree folds the hidden rows
+    // and shows 5 options; the pager must report 5 too, not the last 2.
+    const u5 = n("u5", "user", "compact");
+    const tc3 = { ...n("tc3", undefined, undefined, [u5]), isSettings: true };
+    const u4 = n("u4", "user", "compact");
+    const tc2 = { ...n("tc2", undefined, undefined, [u4, tc3]), isSettings: true };
+    const u3 = n("u3", "user", "compact");
+    const tc1 = { ...n("tc1", undefined, undefined, [u3, tc2]), isSettings: true };
+    const exit = {
+      ...n("exit", undefined, undefined, [n("u1", "user", "height"), n("u2", "user", "composer"), tc1]),
+      isSettings: true,
+    };
+    const roots = [n("root", "user", "hi", [exit])];
+    const map = computeBranchNav(roots, "u5");
+    expect(map.size).toBe(1);
+    const info = map.get("u5")!;
+    expect(info.forkId).toBe("root");
+    expect(info.total).toBe(5);
+    expect(info.index).toBe(4);
+    expect(info.siblingLeaves).toEqual(["u1", "u2", "u3", "u4", "u5"]);
+  });
+
+  test("hidden leaf still resolves its path through the raw tree", () => {
+    const tc = { ...n("tc", undefined, undefined, [n("leaf", "user", "last")]), isSettings: true };
+    const roots = [n("r1", "user", "a"), n("r2", "user", "b", [tc])];
+    // resumed onto the bookmark row without a new turn: the leaf is hidden itself
+    const map = computeBranchNav(roots, "tc");
+    expect(map.get("r2")!.total).toBe(2);
+    expect(map.get("r2")!.index).toBe(1);
+  });
+
   test("fork whose subtree holds no visible bubble mounts nothing", () => {
     const kid1 = n("k1", "toolCall", undefined, [n("l1", "toolResult", "out")]);
     const kid2 = n("k2", "toolCall", undefined, [n("l2", "toolResult", "out")]);
