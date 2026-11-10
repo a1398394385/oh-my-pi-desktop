@@ -37,6 +37,7 @@ import {
 } from "lexical";
 import type { LexicalNode } from "lexical";
 import { useAppStore } from "../../../store";
+import { setPredictionOpen } from "../../../store/session";
 import type { CompletionResult } from "../../../store/session";
 import { $flattenText, $flattenWithCaret } from "./flat";
 import { $createGhostNode, $findGhostNode } from "./GhostNode";
@@ -71,6 +72,9 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
   const lastTextRef = useRef<string | null>(null);
   // The request a reply must match (text + session) to be applied
   const lastReqRef = useRef<{ sessionId: string; text: string } | null>(null);
+  // Text of the ghost this plugin mounted from a composer prediction (null: the ghost, if any,
+  // came from the inline completion path)
+  const predictionGhostRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Set on cleanup: post-unmount deferred dismissals must not touch the
@@ -92,9 +96,39 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
     // Drop the ghost if present (no-op update when none exists)
     const dismissGhost = () => {
       if (disposed) return;
+      predictionGhostRef.current = null;
       if (!editor.read(() => $findGhostNode())) return;
       ghostUpdate(() => {
         $findGhostNode()?.remove();
+      });
+    };
+
+    // Active session's prediction (host/prediction.ts), or null while none is offered
+    const activePrediction = (): { sessionId: string; choices: readonly string[] } | null => {
+      const st = useAppStore.getState();
+      const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+      return s?.sessionId && s.prediction?.length ? { sessionId: s.sessionId, choices: s.prediction } : null;
+    };
+
+    // ---- Composer prediction ghost (empty draft only) ----
+    // The prediction paints the first candidate over an empty composer; Tab accepts it like the
+    // inline completion (same GhostNode), and a second Tab opens the alternatives list.
+    const syncPredictionGhost = () => {
+      const prediction = activePrediction();
+      const text = editor.read(() => $flattenText());
+      if (!prediction || text !== "" || composingRef.current || typeaheadOpenRef.current) {
+        if (predictionGhostRef.current === null) return;
+        predictionGhostRef.current = null;
+        dismissGhost();
+        return;
+      }
+      if (editor.read(() => $findGhostNode())) return; // already painted (completion or prediction)
+      const top = prediction.choices[0]!;
+      predictionGhostRef.current = top;
+      ghostUpdate(() => {
+        const last = $getRoot().getLastChild();
+        if (!$isElementNode(last)) return;
+        last.append($createGhostNode(top));
       });
     };
 
@@ -112,6 +146,11 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
       const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
       if (!s?.sessionId) {
         lastReqRef.current = null; // welcome slot / session not loaded yet
+        return;
+      }
+      // A prediction already inserted as the whole message: nothing left to complete
+      if (s.prediction?.includes(text)) {
+        lastReqRef.current = null;
         return;
       }
       lastReqRef.current = { sessionId: s.sessionId, text };
@@ -143,15 +182,27 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
     // Drafts restored via initialConfig.editorState may carry a stale ghost
     // (the snapshot persists it as-is); strip it before first paint
     dismissGhost();
+    // A prediction that landed while the composer was unmounted (welcome slot) still shows
+    setTimeout(syncPredictionGhost, 0);
 
+    const predictionOf = (st: ReturnType<typeof useAppStore.getState>): readonly string[] | null => {
+      const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+      return s?.prediction ?? null;
+    };
     const unsubStore = useAppStore.subscribe((st, prev) => {
       if (st.completionResult !== prev.completionResult && st.completionResult) {
         applyCompletion(st.completionResult);
       }
+      if (predictionOf(st) !== predictionOf(prev) || st.activePath !== prev.activePath) syncPredictionGhost();
     });
 
     const unregisterUpdates = editor.registerUpdateListener(({ tags }) => {
       if (tags.has(GHOST_TAG)) return;
+      // Any user edit belongs to a new draft: the alternatives list closes, and an emptied
+      // composer re-offers the prediction's first candidate below
+      const active = useAppStore.getState();
+      const current = active.activePath ? active.openSessions.get(active.activePath) : undefined;
+      if (current?.predictionOpen && current.sessionId) setPredictionOpen(current.sessionId, false);
       const text = editor.read(() => $flattenText());
       if (text !== lastTextRef.current) {
         clearTimer();
@@ -162,7 +213,10 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
       // read-only context (Lexical commits inside its own microtask cycle --
       // a queued microtask can still land mid-flush and get deferred with a
       // warning) -- hop to the next macrotask instead
-      setTimeout(dismissGhost, 0);
+      setTimeout(() => {
+        dismissGhost();
+        syncPredictionGhost();
+      }, 0);
     });
 
     // compositionstart/end can fire before the root element mounts (same
@@ -198,7 +252,15 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
       (ev) => {
         if (typeaheadOpenRef.current) return false; // palette Tab accepts a candidate
         const suggestion = editor.read(() => $findGhostNode())?.__suggestion;
-        if (suggestion === undefined) return false;
+        if (suggestion === undefined) {
+          // An inserted prediction with more than one candidate: Tab opens the list of them
+          const prediction = activePrediction();
+          const text = editor.read(() => $flattenText());
+          if (!prediction || prediction.choices.length < 2 || !prediction.choices.includes(text)) return false;
+          ev.preventDefault();
+          setPredictionOpen(prediction.sessionId, true);
+          return true;
+        }
         ev.preventDefault();
         // Deliberately a plain undoable update (no tag/discrete/guard): the
         // ghost removal rides along, and the unguarded listener afterwards

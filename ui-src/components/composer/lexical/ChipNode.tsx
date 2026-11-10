@@ -6,11 +6,27 @@
 // send serialization consume getTextContent() directly, keeping the WS prompt
 // format unchanged. The chip is not inline-editable (atomic) and deletable as
 // a whole (isKeyboardSelectable defaults to true).
+// decorate() splits display from serialization: the kind is derived from the
+// text prefix alone (no extra node field), skills render the bare name, and the
+// icon + category tint come from the kind-specific class in composer.css.
 import { DecoratorNode, $applyNodeReplacement } from "lexical";
 import type { LexicalNode, SerializedLexicalNode, Spread } from "lexical";
 import type { JSX } from "react";
+import Icon from "../../../Icon";
 
 export type SerializedChipNode = Spread<{ text: string }, SerializedLexicalNode>;
+
+// Chip kind: derived from the text prefix, mirroring trigger.ts insertFile
+// ("@path ") / insertCommand ("/cmd " or "/skill:<name> ")
+type ChipKind = "file" | "command" | "skill";
+
+function chipKindOf(text: string): ChipKind {
+  if (text.startsWith("@")) return "file";
+  if (text.startsWith("/skill:")) return "skill";
+  return "command";
+}
+
+const CHIP_ICON: Record<ChipKind, string> = { file: "file", command: "commands", skill: "skills" };
 
 export class ChipNode extends DecoratorNode<JSX.Element> {
   __text: string;
@@ -54,7 +70,17 @@ export class ChipNode extends DecoratorNode<JSX.Element> {
   decorate(): JSX.Element {
     // Display text drops the trailing space (that is a delimiter in the send
     // text; visual spacing is carried by the chip itself)
-    return <span className="chip">{this.__text.replace(/ +$/, "")}</span>;
+    const text = this.__text.replace(/ +$/, "");
+    const kind = chipKindOf(text);
+    // Skills display the bare name; the "/skill:" prefix stays in the serialized
+    // text so the host still dispatches parseSkillInvocation
+    const label = kind === "skill" ? text.slice("/skill:".length) : text;
+    return (
+      <span className={`chip chip-${kind}`}>
+        <Icon name={CHIP_ICON[kind]} size={12} className="chip-ic" />
+        <span className="chip-t">{label}</span>
+      </span>
+    );
   }
 
   isInline(): boolean {

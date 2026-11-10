@@ -1,14 +1,13 @@
-// Composer sigil completion card (shared by @ file candidates / line-leading /
-// command candidates / line-leading $ skill candidates): the same rounded card
-// as the composer card, two cards stacked vertically (2px gap, same width, max
-// height = 2.6x the composer card; see placePaletteCard for positioning).
-// Reuses the existing .menu/.mi/.sub base classes and the popIn animation;
-// only the card look and positioning differ.
+// Composer sigil completion card. Slash commands add a category strip and
+// keyboard footer; file, $skill and subcommand completion keep the plain list.
 import { useLayoutEffect, useRef, useState, useEffect } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { placePaletteCard } from "./place";
+import { COMMAND_CATEGORIES } from "./completionFilters";
+import type { CommandCategory } from "./completionFilters";
 import { pathBase, useAppStore } from "../../store";
+import Icon from "../../Icon";
 
 // Built-in command descriptions (zh-CN dictionary): loaded on first palette
 // render so the module stays out of the startup closure; rows fall back to the
@@ -16,9 +15,16 @@ import { pathBase, useAppStore } from "../../store";
 let builtinDescZh: Record<string, string> | null = null;
 let builtinDescLoad: Promise<Record<string, string>> | null = null;
 const NO_DESC: Record<string, string> = {};
+const CATEGORY_LABELS: Record<CommandCategory, string> = {
+  recent: "composer.paletteRecent",
+  mode: "composer.paletteModes",
+  skill: "composer.paletteSkills",
+  plugin: "composer.palettePlugins",
+  command: "composer.paletteCommands",
+};
 
 /** @ file candidate (an element of mentionResult.matches) */
-export type FileItem = { path: string; dir: boolean };
+export type FileItem = { path: string; dir: boolean; empty?: boolean };
 /** Slash command candidate (structural subset of the commands list element) */
 export type CommandItem = { name: string; aliases?: string[]; description?: string; hint?: string | null; source?: string };
 export type PaletteItem = FileItem | CommandItem;
@@ -29,31 +35,55 @@ type PaletteMenuProps = {
   index: number;
   loading: boolean;
   composerRef: RefObject<HTMLDivElement | null>;
+  category: CommandCategory;
+  query: string;
+  onCategoryChange: (category: CommandCategory) => void;
   onPick: (i: number) => void;
   onHover: (i: number) => void;
 };
 
-/**
- * mode: "file" | "command" | "skill"; items: {path,dir} for file,
- * {name,aliases,description,hint} for command/skill; index is the currently
- * highlighted item; loading means fetching (shows loading...).
- */
-export default function PaletteMenu({ mode, items, index, loading, composerRef, onPick, onHover }: PaletteMenuProps) {
+export default function PaletteMenu({ mode, items, index, loading, composerRef, category, query, onCategoryChange, onPick, onHover }: PaletteMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
   const lang = useAppStore((s) => s.uiPrefs.lang);
   const [builtinDesc, setBuiltinDesc] = useState<Record<string, string>>(builtinDescZh ?? NO_DESC);
-  // Position on mount; re-position after candidate/loading changes alter the
-  // height (the bottom edge always hugs 2px above the composer card)
+  const commandMode = mode === "command";
+
   useLayoutEffect(() => {
-    placePaletteCard(composerRef.current, menuRef.current);
-  }, [composerRef, items.length, loading, mode]);
-  // When the keyboard moves the highlight, scroll the highlighted row into view
-  // (block:"nearest" does not jump the container)
+    const composer = composerRef.current;
+    const menu = menuRef.current;
+    const place = () => {
+      placePaletteCard(composer, menu, commandMode ? Number.POSITIVE_INFINITY : 2.6);
+      if (commandMode && menu) menu.style.overflowY = "hidden";
+    };
+    place();
+    if (!commandMode || !composer) return;
+    const observer = new ResizeObserver(place);
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [commandMode, composerRef, items.length, loading, mode]);
+
   useLayoutEffect(() => {
     menuRef.current?.querySelector(".mi.on")?.scrollIntoView({ block: "nearest" });
   }, [index]);
-  // zh-CN only: fetch the dictionary chunk on first command palette use
+
+  // The editor retains focus. Left/right switches categories only for the
+  // empty-query browser; with a query they remain ordinary caret movement.
+  useEffect(() => {
+    if (!commandMode || query) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.key !== "ArrowLeft" && event.key !== "ArrowRight") || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const offset = event.key === "ArrowLeft" ? -1 : 1;
+      const current = COMMAND_CATEGORIES.indexOf(category);
+      const next = (current + offset + COMMAND_CATEGORIES.length) % COMMAND_CATEGORIES.length;
+      onCategoryChange(COMMAND_CATEGORIES[next]);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [category, commandMode, onCategoryChange, query]);
+
   useEffect(() => {
     if (lang !== "zh-CN" || builtinDescZh) return;
     builtinDescLoad ??= import("../../i18n/locales/commands-zh-CN").then((m) => {
@@ -70,62 +100,94 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
   }, [lang]);
 
   return (
-    <div className="menu palette open" ref={menuRef}>
-      {loading ? (
-        <div className="mi empty">{t("common.loading")}</div>
-      ) : !items.length ? (
-        <div className="mi empty">{t("composer.noMatch")}</div>
-      ) : (
-        items.map((it, i) => {
-          let label: string;
-          let key: string;
-          let desc = "";
-          let hint: string | null = null;
-          if (mode === "file") {
-            if (!("path" in it)) return null; // type guard: mode and items share one source; file candidates always carry path
-            const tail = pathBase(it.path) || it.path;
-            label = it.dir ? tail + "/" : tail;
-            key = it.path;
-            desc = it.path;
-          } else if (mode === "skill") {
-            if (!("name" in it)) return null; // type guard: skill candidates are command-list entries carrying name
-            // The palette is entered via $, so the row shows the bare name with
-            // the $ sigil; the accepted chip text is "/skill:<name>"
-            label = "$" + it.name.replace(/^skill:/, "");
-            key = it.name;
-            desc = it.description || "";
-          } else if (mode === "commandArgs") {
-            if (!("name" in it)) return null; // type guard: subcommand candidates carry name
-            // No sigil prefix and no builtin dictionary: subcommand names
-            // (view/stats/...) would collide with command-name keys
-            label = it.name;
-            key = it.name;
-            desc = it.description || "";
-            hint = it.hint || null;
-          } else {
-            if (!("name" in it)) return null; // type guard: command candidates always carry name
-            label = "/" + it.name + (it.aliases?.length ? " /" + it.aliases[0] : "");
-            key = it.name;
-            // Built-in command descriptions: zh-CN maps through the dictionary;
-            // en has no dictionary by design, unmapped and non-builtin names
-            // fall back to the command's own English description.
-            desc = (it.source === "builtin" && lang === "zh-CN" ? builtinDesc[it.name] : null) || it.description || "";
-            hint = it.hint || null;
-          }
-          return (
-            <div
-              className={"mi" + (i === index ? " on" : "")}
-              key={key}
-              onMouseEnter={() => onHover(i)}
-              onClick={() => onPick(i)}
+    <div className={"menu palette open" + (commandMode ? " slash" : "")} ref={menuRef}>
+      {commandMode ? (
+        <div className="slash-tabs" role="tablist" aria-label={t("composer.paletteCategories")}>
+          {COMMAND_CATEGORIES.map((name) => (
+            <button
+              type="button"
+              role="tab"
+              tabIndex={-1}
+              className="slash-tab"
+              id={`slash-tab-${name}`}
+              aria-selected={!query && category === name}
+              aria-controls="slash-command-results"
+              key={name}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onCategoryChange(name)}
             >
-              <span className="mi-tx">{label}</span>
-              {hint ? <span className="sub">{hint}</span> : null}
-              {desc ? <span className="sub">{desc}</span> : null}
-            </div>
-          );
-        })
-      )}
+              {t(CATEGORY_LABELS[name])}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div
+        className={commandMode ? "slash-list" : "palette-list"}
+        id={commandMode ? "slash-command-results" : undefined}
+        role={commandMode ? "listbox" : undefined}
+        aria-labelledby={commandMode ? `slash-tab-${category}` : undefined}
+      >
+        {loading ? (
+          <div className="mi empty">{t("common.loading")}</div>
+        ) : !items.length ? (
+          <div className="mi empty">{t("composer.noMatch")}</div>
+        ) : (
+          items.map((it, i) => {
+            let label: string;
+            let key: string;
+            let desc = "";
+            let hint: string | null = null;
+            if (mode === "file") {
+              if (!("path" in it)) return null;
+              const tail = pathBase(it.path) || it.path;
+              label = it.dir ? tail + "/" : tail;
+              key = it.path;
+              desc = it.path;
+            } else if (mode === "skill") {
+              if (!("name" in it)) return null;
+              label = "$" + it.name.replace(/^skill:/, "");
+              key = it.name;
+              desc = it.description || "";
+            } else if (mode === "commandArgs") {
+              if (!("name" in it)) return null;
+              label = it.name;
+              key = it.name;
+              desc = it.description || "";
+              hint = it.hint || null;
+            } else {
+              if (!("name" in it)) return null;
+              label = it.name + (it.aliases?.length ? " /" + it.aliases[0] : "");
+              key = it.name;
+              desc = (it.source === "builtin" && lang === "zh-CN" ? builtinDesc[it.name] : null) || it.description || "";
+              hint = it.hint || null;
+            }
+            const secondary = [hint, desc].filter(Boolean).join(" · ");
+            return (
+              <div
+                className={"mi" + (i === index ? " on" : "")}
+                key={key}
+                role={commandMode ? "option" : undefined}
+                aria-selected={commandMode ? i === index : undefined}
+                title={secondary ? `${label} — ${secondary}` : label}
+                onMouseEnter={() => onHover(i)}
+                onClick={() => onPick(i)}
+              >
+                {commandMode ? <span className="slash-ic"><Icon name={"name" in it && it.name === "plan" ? "plan" : "command"} size={15} /></span> : null}
+                <span className="mi-tx">{label}</span>
+                {secondary ? <span className="sub">{secondary}</span> : null}
+              </div>
+            );
+          })
+        )}
+      </div>
+      {commandMode ? (
+        <div className="slash-footer">
+          <span className="slash-hint"><kbd>↑↓</kbd>{t("composer.paletteSelect")}</span>
+          <span className="slash-hint"><kbd>←→</kbd>{t("composer.paletteSwitchCategory")}</span>
+          <span className="slash-hint"><kbd>Enter / Tab</kbd>{t("composer.paletteAdd")}</span>
+          <span className="slash-hint slash-close"><kbd>Esc</kbd>{t("common.close")}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 // moving out of components/Composer.tsx).
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/composer-filters.test.ts
 import { describe, expect, test } from "bun:test";
-import { filterCommands, filterSkills, filterSubcommands } from "../ui-src/components/composer/completionFilters";
+import { filterCommands, filterPaletteCommands, filterSkills, filterSubcommands } from "../ui-src/components/composer/completionFilters";
 import { bgTaskCount, subagentCount } from "../ui-src/components/composer/sessionCounts";
 
 const cmd = (name: string, source: string, aliases?: string[]) => ({ name, source, aliases });
@@ -32,6 +32,37 @@ describe("filterCommands", () => {
   test("result cap is 50", () => {
     const list = Array.from({ length: 60 }, (_, i) => cmd(`cmd${String(i).padStart(2, "0")}`, "builtin"));
     expect(filterCommands(list, "cmd")).toHaveLength(50);
+  });
+});
+
+describe("filterPaletteCommands", () => {
+  const list = [
+    cmd("plan", "builtin"),
+    cmd("memory", "builtin"),
+    cmd("loop", "extension"),
+    cmd("skill:review", "skill"),
+    cmd("deploy", "extension"),
+    cmd("project-command", "custom"),
+  ];
+
+  test("empty query separates modes, skills, plugins and other builtin commands", () => {
+    expect(filterPaletteCommands(list, "", "mode", []).map((c) => c.name)).toEqual(["loop", "plan"]);
+    expect(filterPaletteCommands(list, "", "skill", []).map((c) => c.name)).toEqual(["skill:review"]);
+    expect(filterPaletteCommands(list, "", "plugin", []).map((c) => c.name)).toEqual(["deploy", "loop"]);
+    expect(filterPaletteCommands(list, "", "command", []).map((c) => c.name)).toEqual(["memory"]);
+  });
+
+  test("recent commands preserve recency and skip unavailable entries", () => {
+    expect(filterPaletteCommands(list, "", "recent", ["deploy", "removed", "plan", "deploy"]).map((c) => c.name)).toEqual([
+      "deploy",
+      "plan",
+    ]);
+    expect(filterPaletteCommands(list, "", "recent", [])).toEqual([]);
+  });
+
+  test("typed query searches every source regardless of the active category", () => {
+    expect(filterPaletteCommands(list, "project", "skill", []).map((c) => c.name)).toEqual(["project-command"]);
+    expect(filterPaletteCommands(list, "pla", "recent", []).map((c) => c.name)).toEqual(["plan"]);
   });
 });
 

@@ -26,9 +26,12 @@ import AttachRow from "./composer/AttachRow";
 import ModeMenu, { MODE_META, SMART_MODE } from "./composer/ModeMenu";
 import ModelMenu from "./composer/ModelMenu";
 import PaletteMenu from "./composer/PaletteMenu";
+import PredictionList from "./composer/PredictionList";
 import type { PaletteItem } from "./composer/PaletteMenu";
 import { detectTrigger, isBashMode, insertFile, insertCommand } from "./composer/trigger";
-import { filterCommands, filterSkills, filterSubcommands } from "./composer/completionFilters";
+import { filterPaletteCommands, filterSkills, filterSubcommands } from "./composer/completionFilters";
+import type { CommandCategory } from "./composer/completionFilters";
+import { readRecentCommands, recordRecentCommand } from "./composer/recentCommands";
 import { bgTaskCount, subagentCount } from "./composer/sessionCounts";
 import { sendComposerPrompt } from "./composer/send";
 import CtxCard from "./chat/CtxCard";
@@ -234,6 +237,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const [taQuery, setTaQuery] = useState("");
   const [taReqId, setTaReqId] = useState(0); // @ candidate request sequence (paired with mentionResult.reqId)
   const [taOpen, setTaOpen] = useState(false); // panel open/close (for yielding to keyboard commands)
+  const [commandCategory, setCommandCategory] = useState<CommandCategory>("recent");
+  const [recentCommands, setRecentCommands] = useState<string[]>(readRecentCommands);
   const taOpenRef = useRef(false);
   useEffect(() => {
     taOpenRef.current = taOpen;
@@ -258,6 +263,19 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // for selection-only updates; the same trigger state runs the request side
   // effect only once (aligned with the old updatePalette running only on text input)
   const lastKeyRef = useRef<string | null>(null);
+  // Which key accepted the current candidate: TypeaheadMenuPlugin funnels Tab and
+  // Enter into the same onSelectOption callback, but a directory's Tab drills in
+  // while Enter always picks. Recorded in the capture phase (ahead of the
+  // editor's own handler) and cleared by any other key so a stale Tab cannot
+  // leak into a click-driven pick.
+  const pickKeyRef = useRef<"Tab" | "Enter" | null>(null);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      pickKeyRef.current = event.key === "Tab" || event.key === "Enter" ? event.key : null;
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   // ---- Attachment isolation and restore (restore from draft on mount, save to
   // draft on change) ----
@@ -456,6 +474,9 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setTaKind(trig.kind);
     setTaQuery(q);
     setTaCommand(trig.command ?? "");
+    // A typed slash query is a global search, so no category is current. Reset
+    // the stored category to Recent so deleting back to bare "/" returns there.
+    if (trig.kind === "command" && q) setCommandCategory("recent");
     const st = useAppStore.getState();
     const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
     if (trig.kind !== "file") {
@@ -490,7 +511,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         ? mentionResult.matches
         : []
       : taKind === "command"
-        ? filterCommands(commands, taQuery)
+        ? filterPaletteCommands(commands, taQuery, commandCategory, recentCommands)
         : taKind === "commandArgs"
           ? filterSubcommands(commands?.find((c) => c.name === taCommand || c.aliases?.includes(taCommand))?.subcommands, taQuery)
         : taKind === "skill"
@@ -500,15 +521,15 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" || taKind === "commandArgs" || taKind === "skill" ? commands === null : false;
   const taOptions = taItems.map((it) => new PalOption(it));
 
-  // ---- Accepting a completion: file -> ChipNode (serialization = insertFile
-  // verbatim); command/skill -> ChipNode (insertCommand; a skill entry's name is
-  // "skill:<name>", so the chip text is "/skill:<name> " which the host
-  // dispatches); directory -> plain-text replacement with
-  // the caret parked at the token tail (no trailing space), triggerFn recomputes
-  // the trigger after update and chains into that directory's contents (aligned
-  // with the old dispatchEvent(input) trigger recompute; after a chip the anchor
-  // is an element node, text-level typeahead can no longer trigger, so directory
-  // chaining must go through plain text) ----
+  // ---- Accepting a completion: file/directory -> ChipNode (serialization =
+  // insertFile); command/skill -> ChipNode (insertCommand; a skill entry's name
+  // is "skill:<name>", so the chip text is "/skill:<name> " which the host
+  // dispatches). One exception: Tab on a directory that has children drills in
+  // instead, as a plain-text replacement with the caret parked at the token tail
+  // (no trailing space) so triggerFn recomputes the trigger after the update and
+  // chains into that directory's contents (after a chip the anchor is an element
+  // node, text-level typeahead can no longer trigger, so directory chaining must
+  // go through plain text) ----
   const onSelectOption = useCallback((option: PalOption, node: TextNode | null, closeMenu: () => void) => {
     // A null node with a live trigger is the empty-query corner: Lexical's
     // $splitNodeContainingQuery returns undefined when startOffset equals the
@@ -529,12 +550,18 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         closeMenu(); // type guard: candidates must be FileItem when kind=file
         return;
       }
-      const next = insertFile(it.path, it.dir, trig.quoted);
-      if (it.dir) {
+      // Directories drill in only on Tab with children below; the drill stays a
+      // plain-text replacement (a chip would block the next trigger, so the
+      // directory chaining must run through text). Enter always picks, and so
+      // does Tab on a leaf directory — a picked directory gets the trailing
+      // space, otherwise the next typed character would extend its path.
+      const drill = it.dir && pickKeyRef.current === "Tab" && it.empty !== true;
+      if (drill) {
+        const next = insertFile(it.path, true, trig.quoted);
         node.setTextContent(next);
         node.select(next.length, next.length);
       } else {
-        const chip = $createChipNode(next);
+        const chip = $createChipNode(insertFile(it.path, false, trig.quoted));
         node.replace(chip);
         $selectAfter(chip);
       }
@@ -601,6 +628,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         closeMenu(); // type guard: candidates must be CommandItem when kind=command/skill
         return;
       }
+      if (trig.kind === "command") setRecentCommands(recordRecentCommand(it.name));
       const chip = $createChipNode(insertCommand(it.name));
       node.replace(chip);
       // Commands with declared subcommands: park the caret inside a one-space
@@ -626,9 +654,17 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     closeMenu();
   }, []);
 
-  // Panel rendering: reuses PaletteMenu (.menu/.mi visuals + placePaletteCard
-  // anchoring the card above #composer, pixel-identical to the old version);
-  // navigation/highlight/accept go through the plugin-provided itemProps
+  // Slash categories only govern the empty-query browser. Picking a category
+  // during a typed global search resets the editor to "/", preserving one clear
+  // query contract; left/right keys never steal caret movement while typing.
+  const onCommandCategory = useCallback((next: CommandCategory) => {
+    setCommandCategory(next);
+    if (!taQuery) return;
+    lexRef.current?.setText("/");
+    lexRef.current?.focus();
+  }, [taQuery]);
+
+  // Navigation/highlight/accept go through the plugin-provided itemProps.
   const menuRenderFn: MenuRenderFn<PalOption> = (_anchorRef, itemProps) => (
     <PaletteMenu
       mode={taKind ?? "file"}
@@ -636,15 +672,23 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       index={itemProps.selectedIndex ?? 0}
       loading={taLoading}
       composerRef={rootRef}
+      category={commandCategory}
+      query={taQuery}
+      onCategoryChange={onCommandCategory}
       onPick={(i) => {
         const opt = itemProps.options[i];
-        if (opt) itemProps.selectOptionAndCleanUp(opt);
+        if (!opt) return;
+        pickKeyRef.current = null; // a click accepts like Enter
+        itemProps.selectOptionAndCleanUp(opt);
       }}
       onHover={(i) => itemProps.setHighlightedIndex(i)}
     />
   );
   const onTaOpen = useCallback(() => setTaOpen(true), []);
-  const onTaClose = useCallback(() => setTaOpen(false), []);
+  const onTaClose = useCallback(() => {
+    lastKeyRef.current = null;
+    setTaOpen(false);
+  }, []);
 
   // ---- Attachment handling: pick files / paste screenshots (drag-drop lives on #main) ----
   // Native picker (Tauri): returns absolute paths, which the host turns into @mentions —
@@ -699,7 +743,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // ---- Coordinated menu closing on outside click / window blur / omp:close-menus
   // (old window click/blur -> closeAllMenus) ----
   useEffect(() => {
-    const close = () => {
+    const close = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest(".menu.palette.slash")) return;
       setOpenMenu(null);
       closeTypeahead();
     };
@@ -1125,6 +1170,15 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         {/* Merged model + thinking menu (delivered after the host filters
             enabledModels; the second-level overlay is a direct child of #composer) */}
         {openMenu === "model" && <ModelMenu btnRef={modelBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
+        {/* Composer prediction alternatives: Tab again after inserting a prediction */}
+        <PredictionList
+          composerRef={rootRef}
+          draftKey={draftKey}
+          onPick={(text) => {
+            lexRef.current?.setText(text);
+            lexRef.current?.focus();
+          }}
+        />
         <input type="file" id="filePicker" multiple hidden ref={pickerRef} onChange={onPick} />
         {/* A consumed slash command echoes here: the whole composer card (editor +
             toolbar) is replaced for ~1s by this page-turning card. Siblings are

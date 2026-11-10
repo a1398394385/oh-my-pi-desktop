@@ -32,6 +32,45 @@ export function filterCommands(list: CommandItem[] | null | undefined, query: st
   return [...pre.sort(byRank), ...incl.sort(byRank)].slice(0, 50);
 }
 
+export const COMMAND_CATEGORIES = ["recent", "mode", "skill", "plugin", "command"] as const;
+export type CommandCategory = (typeof COMMAND_CATEGORIES)[number];
+
+const MODE_COMMANDS: Record<string, true> = { plan: true, loop: true, advisor: true, goal: true, computer: true };
+
+/** Empty queries browse one category; typed queries deliberately retain the
+ * existing global search so custom/file commands remain reachable. */
+export function filterPaletteCommands(
+  list: CommandItem[] | null | undefined,
+  query: string,
+  category: CommandCategory,
+  recentNames: readonly string[],
+): CommandItem[] {
+  if (query) return filterCommands(list, query);
+  if (!Array.isArray(list) || !list.length) return [];
+  if (category === "recent") {
+    const byName = new Map(list.map((c) => [c.name, c]));
+    const seen = new Set<string>();
+    const recent: CommandItem[] = [];
+    for (const name of recentNames) {
+      const command = byName.get(name);
+      if (!command || seen.has(name)) continue;
+      seen.add(name);
+      recent.push(command);
+      if (recent.length === 50) break;
+    }
+    return recent;
+  }
+  return list
+    .filter((c) => {
+      if (category === "mode") return MODE_COMMANDS[c.name] === true;
+      if (category === "skill") return c.source === "skill";
+      if (category === "plugin") return c.source === "extension";
+      return c.source === "builtin" && MODE_COMMANDS[c.name] !== true;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 50);
+}
+
 // $ skill candidate filter: the source==="skill" entries of the same commands
 // list; matching uses the bare name (strip the "skill:" prefix the host reports)
 export function filterSkills(list: CommandItem[] | null | undefined, query: string): CommandItem[] {
