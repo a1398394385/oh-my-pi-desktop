@@ -29,8 +29,8 @@ import { H, sessions, defaultCwd, stampEvent, entryBus, sendSessionState, pushPr
 import { relayGuestPrompt } from "./collab.ts";
 import { markSeen } from "../keepalive-host.ts";
 import { PHASE_TEXT } from "../translate.ts";
-import { noteTitlePrompt } from "../titles.ts";
 import { entriesToTranscript } from "../translate-history.ts";
+import { noteTitlePrompt } from "../titles.ts";
 import { readPluginsEnabled } from "../plugin-assets.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
@@ -665,11 +665,11 @@ async function handlePrompt(
   // loop fully finishes, without interrupting in-flight work);
   // steer = injected immediately (inserted after the current tool batch, the
   // bubble finalized and the process split). When idle, the base ignores
+  // both and opens a turn as usual.
   // Title refresh drift counter (titles.ts): every operator prompt
   // counts, steers and queued follow-ups included — same accounting as the
   // base's #noteTitleDrift.
   noteTitlePrompt(entry);
-  // both and opens a turn as usual.
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),
