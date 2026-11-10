@@ -33,6 +33,7 @@ import { modelsFrame } from "./frames.ts";
 import { handleStatsHttp } from "./stats.ts";
 import { closeAllSharedMcpConnections } from "./mcp-pool.ts";
 import { startSessionPoll } from "./session-poll.ts";
+import { startAutoArchiveSweep } from "./auto-archive-sweep.ts";
 import { refreshAllLimits } from "./limits/index";
 import { augmentGuiPath } from "./gui-path.ts";
 import { startBrowserMirror } from "./browser-mirror.ts";
@@ -179,3 +180,9 @@ setInterval(() => {
 
 // ---------- Host pooled-session file polling (moved to session-poll.ts) ----------
 startSessionPoll();
+
+// ---------- Auto-archive of stale sessions (host/auto-archive-sweep.ts) ----------
+// Starts after the profile is applied (the config lives in the profile's
+// omp-desktop.json) and sweeps hourly; the config is re-read on every tick, so
+// a profile switch needs no re-arm.
+void profileReady.then(() => startAutoArchiveSweep());

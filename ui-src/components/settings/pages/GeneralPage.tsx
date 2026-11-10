@@ -12,7 +12,7 @@ import { saveUiPrefs, saveUiLocale } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { IS_MAC } from "../../../platform";
 import { invoke } from "../../../store/ws";
-import { Sel, Srow, useDropdownClose } from "../common";
+import { Sel, Srow, Toggle, useDropdownClose } from "../common";
 import { formatBytes } from "../stats/data/formatters";
 import type { DesktopEnv } from "../../../types/frames";
 
@@ -340,6 +340,13 @@ export default function GeneralPage() {
   const [noProxy, setNoProxy] = useState(env.noProxy || "");
   const [ca, setCa] = useState(env.caCerts || "");
   const [askTimeout, setAskTimeout] = useState(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
+  // Auto-archive (host/auto-archive.ts): the switch and the retention window
+  // arrive in the host settings frame; both are unknown until that frame lands.
+  const archiveKnown = typeof hs?.autoArchiveEnabled === "boolean";
+  const archiveEnabled = archiveKnown && !!hs?.autoArchiveEnabled;
+  const retentionDays = hs?.autoArchiveRetentionDays ?? 14;
+  const retentionOptions = hs?.autoArchiveRetentionOptions?.length ? hs.autoArchiveRetentionOptions : [7, 14, 30, 90];
+  const retentionLabel = t("settingsPage.general.archiveRetentionDays", { days: retentionDays });
   // Refill after the host settings reply (never disturb focused inputs; the fill guard of the old applyHostSettings)
   useEffect(() => {
     const e2: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" };
@@ -580,6 +587,36 @@ export default function GeneralPage() {
             <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>{t("common.save")}</button>
           </div>
         </div>
+      </div>
+      <div className="set-group-tt">{t("settingsPage.general.groupArchive")}</div>
+      <div className="set-card">
+        <Srow
+          title={t("settingsPage.general.archiveAutoTitle")}
+          desc={t("settingsPage.general.archiveAutoDesc")}
+          dataKey="app.autoArchive"
+        >
+          <Toggle
+            on={archiveEnabled}
+            disabled={!archiveKnown}
+            onChange={() => send({ type: "set_auto_archive", enabled: !archiveEnabled })}
+          />
+        </Srow>
+        <Srow
+          title={t("settingsPage.general.archiveRetentionTitle")}
+          desc={t("settingsPage.general.archiveRetentionDesc")}
+          dataKey="app.autoArchiveRetention"
+        >
+          <Sel
+            label={retentionLabel}
+            value={String(retentionDays)}
+            options={retentionOptions.map((d) => ({
+              v: String(d),
+              label: t("settingsPage.general.archiveRetentionDays", { days: d }),
+              ck: d === retentionDays ? "✓" : "",
+            }))}
+            onPick={(v) => send({ type: "set_auto_archive", retentionDays: Number(v) })}
+          />
+        </Srow>
       </div>
       {IS_MAC && <PermissionsCard />}
       <SchemaRows sections={PAGE_PLACEMENT["pg-general"]} />

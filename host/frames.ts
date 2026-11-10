@@ -14,6 +14,7 @@ import { readExternalBrowserEnabled } from "./browser-config.ts";
 import { readKimiAutoThinking } from "./kimi-thinking.ts";
 import { isAutoReviewEnabled, isSmartModeOffered } from "./auto-review.ts";
 import { readBranchTitles, readSessionTitleRefresh } from "./session-titles.ts";
+import { AUTO_ARCHIVE_RETENTION_DAYS, readAutoArchiveConfig } from "./auto-archive.ts";
 import { kimiCuInstalled } from "./mcp-builtin.ts";
 import { readComputerDefaultEnabled, readComputerProvider } from "./computer-mode.ts";
 import { readAdvisorDefaultEnabled } from "./advisor-mode.ts";
@@ -30,6 +31,7 @@ export function modelsFrame() {
 
 /** Settings frame = base settings snapshot + host-side experimental switches. */
 export function settingsFrame() {
+  const autoArchive = readAutoArchiveConfig();
   return {
     ...settingsSnapshot(),
     acpConfig: readAcpConfig(),
@@ -79,6 +81,13 @@ export function settingsFrame() {
     // omp-desktop.json sessionTitles.branchTitles: journal titles per branch and
     // mirror the active branch's title into the header on branch switch
     branchTitles: readBranchTitles(),
+    // omp-desktop.json autoArchive section (host/auto-archive.ts): the periodic
+    // scan that files sessions whose last activity predates the retention
+    // window into the archive list
+    autoArchiveEnabled: autoArchive.enabled,
+    autoArchiveRetentionDays: autoArchive.retentionDays,
+    // the offered windows, so the dropdown cannot drift from the accepted set
+    autoArchiveRetentionOptions: [...AUTO_ARCHIVE_RETENTION_DAYS],
     // omp-desktop.json remote section (host/remote.ts): LAN remote-control
     // server config; the settings page's remote group reads/builds URLs from it
     remote: remotePayload(),

@@ -321,6 +321,14 @@ export async function applyProfile(profileName: string) {
   const cacheWarmingSetting = lookupSetting("providers.cacheWarming");
   if (cacheWarmingSetting) H.settings.writeValue(cacheWarmingSetting, "off", "override");
 
+  // out:// mid-turn replies: the base turns them on only for TUI transcripts, but the
+  // desktop draws them itself (translate.ts + ToolRow). Pin the schema default on the
+  // runtime override layer — a soft pin a global write or unset of the setting releases
+  // (base config/settings.ts pinDefaultValue), so the settings toggle wins while an
+  // untouched install keeps out:// on. Runtime layer only: config.yml stays clean.
+  const outEnabledSetting = lookupSetting("out.enabled");
+  if (outEnabledSetting) outEnabledSetting.pinDefault(H.settings);
+
   H.desktopEnvPath = path.join(H.agentDir, "desktop-env.json");
   H.desktopEnvFilePresent = fs.existsSync(H.desktopEnvPath);
   H.desktopEnv = H.desktopEnvFilePresent ? readDesktopEnv() : defaultDesktopEnv();

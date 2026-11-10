@@ -30,6 +30,8 @@ import { writeKeepaliveEnabled, writeKeepaliveConfig } from "../keepalive-config
 import { writeAutoReviewEnabled, writeSmartModeOffered } from "../auto-review.ts";
 import { writeKimiAutoThinking } from "../kimi-thinking.ts";
 import { writeBranchTitles, writeSessionTitleRefresh } from "../session-titles.ts";
+import { AUTO_ARCHIVE_RETENTION_DAYS, readAutoArchiveConfig, writeAutoArchiveConfig } from "../auto-archive.ts";
+import { triggerAutoArchiveSweep } from "../auto-archive-sweep.ts";
 import { setPlanMode } from "../plan.ts";
 import { setComputerMode, pushComputerMode, writeComputerProvider, writeComputerDefaultEnabled, warmKimiCu } from "../computer-mode.ts";
 import { writeAdvisorDefaultEnabled } from "../advisor-mode.ts";
@@ -40,7 +42,7 @@ import { hostI18n, initHostI18n } from "../i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
 import { openExternal } from "../open-external.ts";
-import { getInstalledEditors, openInEditor } from "../editors.ts";
+import { getFileOpenTargets, openInEditor } from "../editors.ts";
 import { settingsSet, settingsSchemaRecord } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
 
@@ -130,6 +132,12 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     if (key === "computer.display") await reconcileComputerDisplay();
     if (isModelKey) ws.send(JSON.stringify(modelsFrame()));
     pushSettings();
+    // Worktree merge mode changes the project list shape (repoGroups): every sidebar
+    // and welcome picker has to rebuild from a fresh session_list frame.
+    if (key === "session.worktreeScope") {
+      const { refreshAllSessionLists } = await import("./session.ts");
+      await refreshAllSessionLists(ws);
+    }
   },
   async list_displays(ws) {
     // Enumerate physical displays through the natives desktop adapter for the
@@ -284,6 +292,26 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // to "user", without which the base would refuse the second switch.
     writeBranchTitles(msg.enabled === true);
     pushSettings();
+  },
+  async set_auto_archive(ws, msg) {
+    // Auto-archive page switches: write the autoArchive section in omp-desktop.json
+    // (enabled + retentionDays). The scan re-reads the section on every tick, so
+    // both fields apply without a restart; enabling it also scans immediately.
+    const patch: { enabled?: boolean; retentionDays?: number } = {};
+    if (typeof msg.enabled === "boolean") patch.enabled = msg.enabled;
+    if (msg.retentionDays !== undefined) {
+      const days = Number(msg.retentionDays);
+      if (!(AUTO_ARCHIVE_RETENTION_DAYS as readonly number[]).includes(days)) {
+        throw new Error(hostI18n.t("errors.setting.mustBeOneOf", { key: "retentionDays", values: AUTO_ARCHIVE_RETENTION_DAYS.join("/") }));
+      }
+      patch.retentionDays = days;
+    }
+    const before = readAutoArchiveConfig();
+    const next = writeAutoArchiveConfig(patch);
+    pushSettings();
+    // Flipping the switch on is an explicit "file the stale ones now"; the
+    // hourly tick alone would leave the user waiting up to an hour.
+    if (!before.enabled && next.enabled) triggerAutoArchiveSweep();
   },
   async set_hooks_enabled(ws, msg) {
     // Hooks master switch: writes hooks.enabled in omp-desktop.json (affects only sessions created afterwards)
@@ -445,8 +473,9 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     // Right-panel file menu: unknown editor / missing path / failed launch throw, the error frame toasts
     await openInEditor(String(msg.editorId ?? ""), String(msg.path ?? ""));
   },
-  async list_editors(ws) {
-    // Installed editors/terminals/file managers for the open-with menu (probed once per host run)
-    ws.send(JSON.stringify({ type: "editors", editors: await getInstalledEditors() }));
+  async list_open_apps(ws, msg) {
+    // Per-path open-with list: macOS asks Launch Services each time, so the path travels with the request
+    const path = String(msg.path ?? "");
+    ws.send(JSON.stringify({ type: "open_apps", path, apps: path ? await getFileOpenTargets(path) : [] }));
   },
 };
