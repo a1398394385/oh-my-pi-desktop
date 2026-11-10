@@ -12,6 +12,17 @@ import { translateSubagentEvent } from "./translate.ts";
 import { entriesToTranscript, sumRunDurationMs } from "./translate-history.ts";
 import { SessionManager } from "./bootstrap.ts";
 
+// Structural slice of the base's RpcSubagentSnapshot: the SDK graph stays out of this
+// module's import surface (same shortcut rpc/session.ts takes for control_subagent).
+interface SeedSnapshot {
+  id: string;
+  agent: string;
+  description?: string;
+  status: string;
+  sessionFile?: string;
+  progress?: { durationMs?: number };
+}
+
 // The whole spawn tree shares the root session's eventBus (sdk.ts:1341):
 // subagent lifecycle/event/progress frames all travel on it. Derived data
 // the host fills in (absent from AgentProgress itself):
@@ -164,6 +175,7 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
       currentToolStartMs: pr.currentToolStartMs,
       lastIntent: pr.lastIntent,
       resolvedModel: pr.resolvedModel,
+      modelRole: pr.modelRole,
       resolvedThinkingLevel: pr.resolvedThinkingLevel,
       recentTools: pr.recentTools,
     };
@@ -175,6 +187,17 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
     subSentStatus.set(subagentId, pr.status);
     ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, name: subName(subagentId, p.agent, pr.index), parent: subParent(subagentId), registeredAt: subRegistered.get(subagentId), ...payload }));
   });
+  // Late joiner (remote control / frontend reload): a subagent already running when this
+  // socket subscribes fired its "started" frame into the void, and the disk replay skips a
+  // transcript still being written — the in-flight row stayed invisible until the run ended.
+  // Seed it from the live registry; later frames reuse the same id, so the row updates in place.
+  const registry = entry.subagentRegistry as { getSubagents(): SeedSnapshot[] } | undefined;
+  for (const snap of registry?.getSubagents() ?? []) {
+    if (snap.status !== "running" && snap.status !== "pending") continue;
+    const registeredAt = Date.now() - (snap.progress?.durationMs ?? 0);
+    subRegistered.set(snap.id, registeredAt);
+    ws.send(JSON.stringify(stampEvent({ type: "subagent_lifecycle", sessionId, subagentId: snap.id, agent: snap.agent, description: snap.description ?? "", status: "started", name: subName(snap.id, snap.agent), parent: subParent(snap.id), sessionFile: snap.sessionFile, registeredAt, detached: false })));
+  }
   const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
     // Task calls inside a subagent stream: owned by that subagent (nested spawn)
     if (event.type === "tool_execution_start" && spawnTools[event.toolName]) {
@@ -258,6 +281,7 @@ interface HistEntry {
   timestamp?: string;
   parentSession?: string;
   model?: string;
+  modelRole?: string; // session_init: explicit pre-expansion role alias (e.g. "smol"), resolvedModel stays concrete
   readOnly?: boolean;
   message?: {
     role?: string;
@@ -293,6 +317,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
   let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, total = 0, cost = 0, requests = 0;
   let lastContextTokens = 0; // final assistant turn's totalTokens — terminal context size (same semantics as the executor's progress.contextTokens)
   let model: string | null = null;
+  let modelRole: string | undefined;
   let result: string | undefined;
   let error: string | undefined;
   let task: string | undefined;
@@ -317,6 +342,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
     }
     if (e.type === "session_init") {
       readOnly = e.readOnly === true;
+      modelRole = e.modelRole;
       continue;
     }
     if (e.type === "model_change" && !model) model = e.model ?? null;
@@ -395,6 +421,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
       contextTokens: lastContextTokens || undefined,
       contextWindow: modelRegistryContextWindow(model),
       resolvedModel: model,
+      modelRole,
     },
     toolEvents,
   };

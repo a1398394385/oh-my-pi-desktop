@@ -171,6 +171,8 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
   // "active N ago" measures from the last activity (registered + elapsed), not registration
   const lastActivity = (sub.registeredAt ?? Date.now()) + (sub.usage?.durationMs ?? 0);
   const age = ageText(Math.max(1, Math.round((Date.now() - lastActivity) / 1000)), t);
+  // Role alias (TASK/SMOL) rides left of the model badge, " · "-joined; absent for concrete-model runs
+  const role = sub.usage?.modelRole?.toUpperCase();
   const model = modelShort(sub.usage?.resolvedModel);
   const rowTask = sub.description || sub.task || sub.text.slice(0, 80) || "…";
   return (
@@ -190,10 +192,11 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
           <span className="hub-branch text-faint">{row.prefix}</span>
         ) : null}
         <SubStatusPill sub={sub} />
+        <span className="hub-agent">{sub.agent}</span>
         <span className="hub-name">{sub.name ?? sub.agent}</span>
         {flat && sub.parent && sub.parent !== "Main" ? <span className="text-faint"> ↳ {sub.parent}</span> : null}
         {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onOpen={() => openSubagentSession(row.id, sub)} /> : null}
-        {model ? <span className="hub-model">{model}</span> : null}
+        {role || model ? <span className="hub-model">{role ? role + (model ? " · " + model : "") : model}</span> : null}
       </span>
       {/* Running rows show the live progress line ("Current" in the detail) instead of the
           static assignment; it falls back to the assignment until the first tool/intent lands.
