@@ -29,7 +29,6 @@ export const sshEn = {
   testOk: "Connected ({{ms}}ms)",
   testFail: "Connection failed",
   copyResult: "Copy details",
-  copiedResult: "Connection details copied",
   copyResultFailed: "Copy failed",
   saveAfterTest: "Test successfully before saving the host",
   saveFirst: "Save the host first",

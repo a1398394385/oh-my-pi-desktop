@@ -19,7 +19,6 @@ export const miscEn = {
   connDiagStatus: "Status: {{text}}",
   connDiagPlatform: "Platform: {{platform}}",
   connDiagTime: "Time: {{time}}",
-  diagCopied: "Diagnostics copied",
   connBanner: "Host connection issue: {{text}} (waited {{sec}}s, retrying automatically)",
   retryNow: "Retry now",
   copyDiag: "Copy diagnostics",

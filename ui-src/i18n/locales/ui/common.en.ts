@@ -7,6 +7,7 @@ export const commonEn = {
   save: "Save",
   close: "Close",
   copy: "Copy",
+  copied: "Copied",
   retry: "Retry",
   loading: "Loading…",
   none: "(none)",

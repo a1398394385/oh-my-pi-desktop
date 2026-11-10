@@ -29,7 +29,6 @@ export const sshZh = {
   testOk: "连接成功（{{ms}}ms）",
   testFail: "连接失败",
   copyResult: "复制详情",
-  copiedResult: "已复制连接详情",
   copyResultFailed: "复制失败",
   saveAfterTest: "测试成功后才能保存主机",
   saveFirst: "请先保存主机",

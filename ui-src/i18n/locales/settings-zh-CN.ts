@@ -29,6 +29,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "emojiAutocomplete": { "label": "Emoji 补全", "description": "打 :name: 短代码时给出 emoji 建议，:D、:-) 这类颜文字也展开。" },
   "paste.largeMenuThreshold": { "label": "大段粘贴菜单", "description": "粘贴达到该行数时弹菜单，可包成代码块、包成 XML 标签或存成文件；设为 0 关闭菜单（大段粘贴仍折叠为 [Paste] 标记）。" },
   "startup.quiet": { "label": "静默启动", "description": "关掉会话里的即时提示消息（比如 xd:// 设备挂载/卸载的通知）。桌面端本来就没有启动横幅，这里只影响这些提示。" },
+  "session.worktreeScope": { "label": "按仓库合并工作区", "description": "同一仓库的各个工作区在项目列表里合并成一行，新会话默认开在主工作区。" },
   "magicKeywords.enabled": { "label": "魔法关键词", "description": "单独说出 ultrathink、orchestrate、workflowz 时，附带它们各自隐藏的提示。" },
   "magicKeywords.ultrathink": { "label": "Ultrathink 关键词", "description": "在消息里单独写 ultrathink，这一轮就按最大思考力度来，并带上它的隐藏提示。" },
   "magicKeywords.orchestrate": { "label": "Orchestrate 关键词", "description": "单独写 orchestrate，就给这一轮加上多智能体编排的隐藏提示。" },
@@ -53,6 +54,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "stt.submitTrigger": { "label": "语音转文字提交触发", "description": "听写完什么时候自动发出去：从不、松开时（2 个及以上单词）、松开且句子完整时，或当我说“提交”时。" },
   "tools.approval": { "label": "工具审批策略", "description": "给单个工具定规矩：'allow' 放行，'prompt' 每次问你，'deny' 拦截；所有审批模式下都照办。" },
   "tools.approvalMode": { "label": "工具审批", "description": "工具默认放行到哪一档：'总是询问' 只放行只读工具，'询问并记住' 读操作也要问、可记住文件或目录，'写入' 连读和写工作区也放行，'Yolo' 全放行；单工具策略仍可能要求确认或拦截。" },
+  "tools.restrictedFolders": { "label": "受限目录", "description": "这些目录下的读写、编辑、搜索和命令每次都要你明确批准，权限模式和记住的授权都不作数。" },
   "features.unexpectedStopDetection": { "label": "意外停止", "description": "助手没留下可见消息就停下时，自动让它接着干；选「智能」还会用小模型判断这种只出文字的停顿。" },
   "workspace.additionalDirectories": { "label": "附加工作区目录", "description": "附加目录加入每个会话作附加根；用 /add-dir、/remove-dir 增删；相对 cwd 解析路径，建议绝对路径，智能体可读可搜。" },
   "contextPromotion.enabled": { "label": "自动提升上下文", "description": "上下文装不下时换到该模型配置的更大窗口目标继续，而不是压缩旧消息。重试时的模型回退由「重试模型回退」控制。" },
@@ -149,12 +151,15 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "tools.xdev": { "label": "xd:// 工具", "description": "省上下文的总开关。开启后，MCP、插件/扩展工具和部分内置工具不再每次请求都带上参数结构，而是挂成 xd:// 设备按需取用：read xd:// 列出设备，read xd://<工具名> 看文档，write xd://<工具名> 执行。关闭后每个工具的参数结构每轮都会发送，MCP 多或结构大时很占上下文。只授权 read 的会话仍能取用设备，write 仅作 xd:// 通道，写文件仍被拒。" },
   "tools.xdevDocs": { "label": "xd:// 提示词文档", "description": "决定这些设备有多少内容直接写进系统提示词：写进去每轮都占上下文，但模型不用先查文档。所有设备最省事也最费上下文；仅内置只内联内置工具，MCP 与扩展工具由模型按需读取；仅目录（默认）只写名字和一句摘要，最省上下文。" },
   "tools.xdevInlineDevices": { "label": "xd:// 内联设备", "description": "只在上一项选「仅内置」时生效：名字匹配这些通配符的设备也一并内联，一行一个（例如 mcp__context7_*）；选「仅目录」时忽略本项。" },
+  "tools.xdevNotices": { "label": "xd:// 挂载提示", "description": "MCP 或扩展工具挂载、卸载时在会话里显示一条提示。" },
   "mcp.enableProjectConfig": { "label": "MCP 项目配置", "description": "开启后从项目根目录的 .mcp.json 或 mcp.json 里加载 MCP 配置。" },
   "mcp.renderMarkdownResults": { "label": "MCP Markdown 结果", "description": "MCP 返回的非 JSON 文本结果，在会话记录里按 Markdown 排版显示。" },
   "mcp.notifications": { "label": "MCP 更新注入", "description": "MCP 资源更新时，把新内容注入当前对话。" },
   "mcp.notificationDebounceMs": { "label": "MCP 通知防抖", "description": "MCP 资源更新注入对话前的等待窗口（毫秒），这段时间里连续到来的更新会合并成一次。" },
   "tasks.todoClearDelay": { "label": "待办自动清除延迟", "description": "完成或放弃的待办会先留在列表里，过这么久才被自动移除。" },
   "extensionHandlers.toolCallTimeoutMs": { "label": "工具调用处理器超时 (ms)", "description": "扩展的工具调用处理器最多能干活多久（毫秒）；无效值按 30000 毫秒算，等 OMP 自己弹的确认框不算在内。" },
+  "extensionHandlers.modeControl": { "label": "扩展模式控制", "description": "允许扩展自己切换 plan、vibe、goal、loop 等模式。" },
+  "extensionRenderers.assistantText": { "label": "扩展回复渲染", "description": "允许扩展改写助手回复的样式、重绘已发出的回复，并接管自己链接的点击。" },
   "extensions": { "label": "外部扩展路径", "description": "手动添加要加载的外部扩展包或扩展目录，多个路径用逗号分隔。" },
   "disabledExtensions": { "label": "已禁用扩展列表", "description": "写在这里的扩展或插件名称/ID 不会被加载，多个用逗号分隔。" },
   "dev.autoqa": { "label": "自动 QA", "description": "工具出问题时自动上报（xd://report_issue）。默认开启，首次上报会先征求同意；拒绝后停用，需手动重开。" },
@@ -165,6 +170,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "images.autoResize": { "label": "自动调整图像大小", "description": "过大的图片会先缩到 2000x2000 以内再发给模型，兼容性更好。" },
   "images.blockImages": { "label": "屏蔽图像", "description": "打开后模型就收不到你发的图片了。" },
   "display.showTokenUsage": { "label": "显示 Token 用量", "description": "在每条助手回复末尾附上这一轮用了多少 token（输入/输出/缓存）。" },
+  "display.advisorCollapsedLines": { "label": "顾问折叠行数", "description": "顾问卡片折叠后，标题下最多显示几行笔记；0 表示保留完整预览。" },
   "advisor.enabled": { "label": "启用顾问", "description": "再配一个模型当顾问，安静地审查每一轮并把意见插进来。" },
   "prewalk.enabled": { "label": "启用预演", "description": "先用当前模型规划待办，第一次改文件时换用便宜的小模型（默认 smol 角色）；--prewalk/--no-prewalk 按会话覆盖。" },
   "advisor.syncBacklog": { "label": "顾问同步积压", "description": "顾问落后到设定轮数时，先让主代理停下等它追上来，最多等 30 秒；strict 不限时；关闭则不等待。中断、失败或结束会解除等待。" },
@@ -251,6 +257,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "hindsight.apiToken": { "label": "Hindsight API 令牌", "description": "访问需要鉴权的 Hindsight 服务器时随请求带上的令牌。" },
   "hindsight.bankId": { "label": "Hindsight 记忆库 ID", "description": "记忆存进哪个库的标识；不填就用项目名称。" },
   "hindsight.scoping": { "label": "Hindsight 作用域", "description": "global = 共用一个库；per-project = 每个工作目录一个库；per-project-tagged = 共用一个库并打项目标签，召回时合并全局与项目记忆。" },
+  "hindsight.globalScope": { "label": "Hindsight 全局作用域", "description": "写入记忆时不带项目标签，让每个项目都能召回它；需要 global 或 per-project-tagged 作用域。" },
   "hindsight.autoRecall": { "label": "Hindsight 自动召回", "description": "每个会话的第一轮自动把相关记忆找出来，附在提问里。" },
   "hindsight.autoRetain": { "label": "Hindsight 自动保留", "description": "每隔 N 轮对话、以及会话结束时，自动把对话内容存进记忆库。" },
   "hindsight.retainMode": { "label": "Hindsight 保留模式", "description": "full-session = 整个会话存成一份文档并持续更新；last-turn = 按轮次切成多段分别保存。" },
@@ -429,6 +436,7 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
 
   // ---- pg-services (provider rows) ----
   "providers.openaiLiveSteering": { "label": "OpenAI 实时插话", "description": "GPT-6 回复正在流出时，你新打的字会通过 Codex WebSocket 插进这条回复，不用等下一次工具调用。" },
+  "providers.openai-codex.daybreak": { "label": "Codex Daybreak Blue", "description": "在符合条件的 ChatGPT 账号上自动申请 Daybreak Blue 网络访问计划；OpenAI 可能用这类会话的内容改进模型。" },
   "providers.muse-code.storeResponses": { "label": "Muse Code 存储响应", "description": "把 Muse Code 的结果存在 Meta 的服务器上：哪一轮中途断线可以接着恢复，而不是重跑。代价是提示和回复留在 Meta 那边。" },
   "providers.cacheWarming": { "label": "缓存预热", "description": "提示缓存快过期前，用只允许输出一个 token 的请求把它续上，省得下次重新算前缀。" },
   "claudeResets.autoRedeem": { "label": "Claude 自动兑换重置", "description": "自动花掉符合条件的 Claude 重置：Cedar 只能顶自己覆盖的限额，Juniper 只能救单独的 5 小时封锁。unset 先问一句，yes 直接花，no 都不做。" },
@@ -444,6 +452,9 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "prewalk.autoTarget": { "label": "自动预演目标", "description": "自动预演在第一次动手改文件时交给哪个模型或角色，默认 '@smol'。" },
   "expandThinkingBlocks": { "label": "展开思考块", "description": "一轮结束后，思考内容保持展开，不自动折叠。" },
   "retry.fallbackOn": { "label": "回退触发条件", "description": "哪些失败才允许换用回退模型：全部错误、只有用量超限，或除用量超限外的其他错误。" },
+  "retry.rateLimitWalksChain": { "label": "限流时走回退链", "description": "被限流且这一轮由失败模型签名思考时，直接换用回退链里的下一个模型。" },
+  "prewalk.from": { "label": "预演起始模型", "description": "/prewalk 重新开始时回到哪个模型或角色做规划，默认 @default。" },
+  "prewalk.into": { "label": "预演交接模型", "description": "预演在第一次动手改文件前交给哪个模型或角色，默认 @smol。" },
   "advisor.reviewMode": { "label": "顾问审查模式", "description": "没有 WATCHDOG.yml 名单时顾问多久看一次：每轮都看，或只在最后交付时看。" },
   "advisor.reviewInterval": { "label": "顾问审查间隔", "description": "没有 WATCHDOG.yml 名单时，顾问每 N 次可检查的更新看一次，1 表示每次都看；跳过的内容留到下次一起看。" },
   "advisor.evictStaleResults": { "label": "顾问清理旧结果", "description": "每次审查前，把顾问之前读文件、搜代码的旧结果换成一句占位说明，只留最新一次。" },
@@ -458,6 +469,8 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "find.enabled": { "label": "语义查找", "description": "用自然语言描述需求来搜文件和代码位置，由判定模型裁决。选「自动」时只有判定模型是原生 TypeSafe jev 才开启。" },
   "ratchet.enabled": { "label": "Ratchet 评估", "description": "为一个模型流程搭评测集，再一轮轮只保留确实更好的改动。输入 /ratchet 可只对当前会话临时开启。" },
   "archive.enabled": { "label": "归档读取", "description": "让模型回看你的旧记录：以前提过的提示词、最近做过的项目、过去的会话和它们的摘要，只能读不能改。" },
+  "out.enabled": { "label": "中途回话", "description": "允许智能体在任务中途先回一条消息，不结束当前这一轮；命令行与接口模式下默认关闭。" },
+  "async.printWake": { "label": "打印模式等待作业结果", "description": "命令行批量模式下，等后台作业有结果时唤醒同一会话继续；关闭则直接退出。" },
 
   // ---- pg-skills ----
   "skills.registryUrl": { "label": "技能仓库地址", "description": "`omp skill` 安装、搜索和发布技能用的仓库地址，格式如 `https://host[:port]`。" },
@@ -483,11 +496,17 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "task.structured": { "label": "结构化任务结果", "description": "让 task 工具能按结构校验子智能体的结果。关掉后子智能体只回最后一段文字（定义里声明结构化的除外），eval 派生的一直保留。" },
   "task.speculativeLaunch": { "label": "任务提前启动", "description": "批量任务里某一项写完就立刻派它开工，不用等整批写完；若这批调用没通过校验、被拦下或参数变了，已开跑的会被中止。需任务自动放行。" },
   "task.completionProbe": { "label": "子代理完成度探测", "description": "干活中的子智能体会被问进度（2、5、10、30 分钟后各一次，之后每小时一次），估计显示在它旁边；只有交互会话里主智能体派出的会被问。" },
+  "title.refreshAfterPrompts": { "label": "按提问数刷新标题", "description": "每积累这么多条提问后，让判定模型看一眼自动生成的标题还贴不贴题，不贴就重新生成。" },
+  "task.file": { "label": "子代理说明读自文件", "description": "允许 task 工具从指定文件读取子代理说明，并记下文件路径和校验值。" },
+  "task.perCallModel": { "label": "单次调用指定模型", "description": "允许子代理调用时用一个精确的 provider/模型 id 指定模型：关闭、仅求值可用、或完全放开。" },
+  "task.perCallModelAllow": { "label": "单次调用模型白名单", "description": "只有列在这里的模型能被单次调用指定；留空表示当前配置允许的都行，项目配置只能收紧。" },
   "worktree.onStart": { "label": "启动时新建 worktree", "description": "新开的交互会话要不要从一个新的 worktree 开始：保持现状、每次先问你，或者总在新的 wt/* 分支上开工。" },
   "worktree.onExit": { "label": "退出时处理 worktree", "description": "退出时怎么处理这次启动以来建的 worktree：保留、询问，或删除干净的；有未提交改动或新提交会先问，被忽略的文件（如 .env）也会删。" },
 
   // ---- pg-interaction ----
   "composer.predictions": { "label": "输入框预测", "description": "一轮结束后让模型猜你下一句要说什么，以灰字显示在空输入框；Tab 或右方向键插入，不发送。每轮结束多发一次计费请求（计入 /stats）。" },
+  "composer.predictionAlternatives": { "label": "预测给出多个候选", "description": "一次给出最多四条候选，按可能性排序；插入一条后再按 Tab 可换下一条。同一次请求会多返回几个 token。" },
+  "btw.inject": { "label": "/btw 转向注入", "description": "向 /btw 索要转向提示时，草案会包在 <inject> 标签里高亮；按 Alt+I 把它发到主会话。" },
 
   // ---- pg-shell ----
   "bash.gitGuard": { "label": "Git 危险操作拦截", "description": "拒绝 stash、reset --hard、切到别的提交，以及合并/变基冲突外的 checkout、switch、restore，这些会丢弃或搬走共享成果。" },
@@ -630,6 +649,10 @@ export const OPTS_ZH: Record<string, Record<string, string>> = {
   "shellMinimizer.sourceOutlineLevel": { "default": "默认", "aggressive": "激进" },
   "python.kernelMode": { "session": "会话级保持", "per-call": "单次调用独立" },
   "dev.autoqaConsent": { "unset": "未设置", "granted": "已授权", "denied": "已拒绝" },
+  "display.advisorCollapsedLines": { "0": "不限", "1": "1 行", "2": "2 行", "3": "3 行", "5": "5 行" },
+  "session.worktreeScope": { "directory": "每个工作区分开", "repo": "同一仓库合并成一行" },
+  "title.refreshAfterPrompts": { "0": "关闭", "1": "每条提问", "3": "每 3 条提问", "5": "每 5 条提问", "10": "每 10 条提问" },
+  "task.perCallModel": { "off": "关闭", "eval": "仅求值调用", "on": "开启" },
 };
 
 export const GROUPS_ZH: Record<string, string> = {

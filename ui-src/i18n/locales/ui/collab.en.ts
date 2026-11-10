@@ -23,7 +23,6 @@ const collabEn = {
   webLinkControl: "Web control link",
   webLinkView: "Web view link",
   copy: "Copy",
-  copied: "Link copied",
   copyFailed: "Copy failed",
   participants: "Participants",
   roleHost: "Host",

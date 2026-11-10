@@ -9,6 +9,7 @@ export const commonZh = {
   save: "保存",
   close: "关闭",
   copy: "复制",
+  copied: "已复制",
   retry: "重试",
   loading: "加载中…",
   none: "（无）",

@@ -23,7 +23,6 @@ const collabZhCn = {
   webLinkControl: "Web 控制链接",
   webLinkView: "Web 只读链接",
   copy: "复制",
-  copied: "链接已复制",
   copyFailed: "复制失败",
   participants: "参与者",
   roleHost: "发起人",

@@ -140,8 +140,6 @@ export const chatZh = {
   filterMode: "过滤模式：",
   refreshTree: "刷新条目树",
   // ---- session tree stream (SessionTreeStream.tsx) ----
-  copiedToClipboard: "已复制到剪贴板",
-  copySuccessFallback: "复制成功",
   noEntriesForFilter: "当前过滤条件下没有条目。",
   roleSystem: "系统",
   roleUser: "用户",
@@ -167,7 +165,6 @@ export const chatZh = {
   copyReply: "复制这条回复",
   speakReply: "朗读这条回复",
   openAutomation: "本回合创建了定时任务「{{title}}」，点击打开",
-  replyCopied: "已复制回复",
   copyFailed: "复制失败",
   branchFromHere: "从此处分叉出新会话",
   branchAfterSaved: "回复落盘后可分叉",
@@ -253,6 +250,15 @@ export const chatZh = {
   subagentReadonlyHint: "子代理会话为只读浏览模式，不可输入消息",
   subagentSlashNotSupported: "子代理会话暂不支持 Slash 命令与终端命令",
   backToParentSession: "‹ 返回主会话",
+  // ---- run file-change card (RunChanges.tsx) ----
+  runChanges: "{{count}} 个文件已更改",
+  runChangeReview: "审查",
+  runChangeOpen: "打开",
+  runChangeRevert: "撤销",
+  runChangeReverted: "已撤销",
+  runChangeLater: "该文件已被后续运行修改，请到最近一次运行中撤销",
+  runChangeNoSnapshot: "未保留快照，无法审查或撤销",
+  runChangeGone: "该文件已不存在",
 };
 
 export default chatZh;

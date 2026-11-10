@@ -19,7 +19,6 @@ export const miscZh = {
   connDiagStatus: "状态: {{text}}",
   connDiagPlatform: "平台: {{platform}}",
   connDiagTime: "时间: {{time}}",
-  diagCopied: "诊断信息已复制",
   connBanner: "宿主连接异常：{{text}}（已等待 {{sec}}s，自动重试中）",
   retryNow: "立即重试",
   copyDiag: "复制诊断",

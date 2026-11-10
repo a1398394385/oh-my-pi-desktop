@@ -153,8 +153,6 @@ export const chatEn = {
   filterMode: "Filter mode:",
   refreshTree: "Refresh entry tree",
   // ---- session tree stream (SessionTreeStream.tsx) ----
-  copiedToClipboard: "Copied to clipboard",
-  copySuccessFallback: "Copy succeeded",
   noEntriesForFilter: "No entries match the current filter.",
   roleSystem: "System",
   roleUser: "User",
@@ -182,7 +180,6 @@ export const chatEn = {
   copyReply: "Copy this reply",
   speakReply: "Read this reply aloud",
   openAutomation: "This turn created the task “{{title}}” — open it",
-  replyCopied: "Reply copied",
   copyFailed: "Copy failed",
   branchFromHere: "Branch into a new session from here",
   branchAfterSaved: "Branching available once the reply is saved",
@@ -269,6 +266,15 @@ export const chatEn = {
   subagentReadonlyHint: "Subagent session is in read-only mode, sending messages is disabled",
   subagentSlashNotSupported: "Slash and terminal commands are not supported in subagent sessions",
   backToParentSession: "‹ Back to main session",
+  // ---- run file-change card (RunChanges.tsx) ----
+  runChanges: "{{count}} file(s) changed",
+  runChangeReview: "Review",
+  runChangeOpen: "Open",
+  runChangeRevert: "Revert",
+  runChangeReverted: "Reverted",
+  runChangeLater: "Changed by a later run; revert it there",
+  runChangeNoSnapshot: "No snapshot kept, review and revert are unavailable",
+  runChangeGone: "This file no longer exists",
 };
 
 export default chatEn;

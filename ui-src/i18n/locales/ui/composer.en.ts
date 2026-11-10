@@ -60,6 +60,15 @@ export const composerEn = {
   dropGoal: "Drop goal (/goal drop)",
   // PaletteMenu.tsx
   noMatch: "No match",
+  paletteCategories: "Slash command categories",
+  paletteRecent: "Recent",
+  paletteModes: "Modes",
+  paletteSkills: "Skills",
+  palettePlugins: "Plugins",
+  paletteCommands: "Commands",
+  paletteSelect: "Select",
+  paletteSwitchCategory: "Switch category",
+  paletteAdd: "Add",
   // prompt_dropped handler: the submit was cancelled before it reached the agent
   cancelledBeforeSend: "Cancelled — message restored to the input",
 };

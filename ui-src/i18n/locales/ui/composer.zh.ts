@@ -60,6 +60,15 @@ export const composerZh = {
   dropGoal: "删除目标 (/goal drop)",
   // PaletteMenu.tsx
   noMatch: "无匹配",
+  paletteCategories: "斜杠命令分类",
+  paletteRecent: "最近使用",
+  paletteModes: "模式",
+  paletteSkills: "技能",
+  palettePlugins: "插件",
+  paletteCommands: "命令",
+  paletteSelect: "选择",
+  paletteSwitchCategory: "切换类别",
+  paletteAdd: "添加",
   // prompt_dropped handler: 消息未到达模型即被取消
   cancelledBeforeSend: "已取消，消息已放回输入框",
 };

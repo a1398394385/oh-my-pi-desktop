@@ -17,6 +17,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "tools.xdev": { "label": "xd:// Tools", "description": "Master switch for context size. On: rarely used tools (MCP, plugin/extension tools, some built-ins) stop shipping their schemas with every request and mount as xd:// devices instead — read xd:// lists them, read xd://<tool> shows its docs, write xd://<tool> runs the call. Off: every tool's schema goes out with each request, which gets expensive with many or large MCP servers. A read-only session still reaches the devices: write then serves purely as the xd:// transport, and filesystem writes stay denied." },
   "tools.xdevDocs": { "label": "xd:// Prompt Docs", "description": "How much of the mounted devices goes into the system prompt — inlined text costs context every request but saves the model a lookup. All devices: docs and schemas together, easiest and costliest; Built-ins only: built-ins inlined, MCP and extension tools read on demand; Catalog only (default): name and one-line summary only, cheapest." },
   "tools.xdevInlineDevices": { "label": "xd:// Inline Devices", "description": "Applies only while the setting above is Built-ins only: devices whose names match these glob patterns are inlined too, one per line (e.g. mcp__context7_*). Ignored under Catalog only." },
+  "tools.xdevNotices": { "label": "xd:// Mount Notices", "description": "Show a notice in the session when MCP or extension tools mount or unmount." },
 
   // ---- pg-plugins ----
   "extensions": { "label": "External extension paths", "description": "Paths of external extension packages or folders to register by hand, separated by commas." },
@@ -138,6 +139,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "providers.kimiApiFormat": { "label": "Kimi API Format", "description": "Which API format Kimi Code speaks. Auto follows the protocol the model server declares." },
   "providers.openaiWebsockets": { "label": "OpenAI WebSockets", "description": "Whether OpenAI Codex models talk over WebSocket: auto follows the model default, on forces it, off disables it." },
   "providers.openaiLiveSteering": { "label": "OpenAI Live Steering", "description": "Messages typed while a GPT-6 reply streams are delivered into that reply over the Codex WebSocket, instead of waiting for the next tool boundary." },
+  "providers.openai-codex.daybreak": { "label": "Codex Daybreak Blue", "description": "Automatically request the Daybreak Blue cyber access program on ChatGPT accounts eligible for it." },
   "providers.muse-code.storeResponses": { "label": "Muse Code Stored Responses", "description": "Keeps Muse Code results on Meta's servers, so a turn that drops its connection resumes instead of rerunning. Prompts stay on Meta's side." },
   "providers.cacheRetention": { "label": "Prompt Cache Retention", "description": "How long prompt caches are kept, for the providers that support it (Anthropic, Bedrock, OpenRouter, OpenAI)." },
   "providers.cacheWarming": { "label": "Cache Warming", "description": "Just before a prompt-cache entry expires, resends the last request with a one-token output budget so the cache stays alive." },
@@ -185,6 +187,9 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "retry.waitForUsageReset": { "label": "Wait For Usage Reset", "description": "When a provider reports the quota exhausted and gives a reset time (5-hour or weekly windows), sleep until then instead of failing. Esc aborts it, but it also holds subagents — keep it off unattended." },
   "retry.modelFallback": { "label": "Retry Model Fallback", "description": "Lets a failed provider request retry on a model from the fallback chains. Independent of auto-promoting context." },
   "retry.fallbackOn": { "label": "Fallback Trigger", "description": "Which failures may switch to a fallback model: any error, usage limits only, or everything except usage limits." },
+  "retry.rateLimitWalksChain": { "label": "Rate Limit Walks Chain", "description": "On a rate limit, switch to the next model in the fallback chain when that turn's thinking was signed by the failing model." },
+  "prewalk.from": { "label": "Prewalk planning model", "description": "The model or role /prewalk restart returns to for planning. Defaults to @default." },
+  "prewalk.into": { "label": "Prewalk target", "description": "The model or role prewalk hands off to at the first edit. Defaults to @smol." },
   "retry.usageAwareFallback": { "label": "Usage-Aware Fallback", "description": "Before a hard usage limit, prefer same-provider accounts, then configured fallback models, using reliable coding-plan quota reports. Ordinary API keys are excluded." },
   "retry.usageReservePct": { "label": "Reserve Margin", "description": "A coding-plan model counts as near its limit once its remaining usage drops below this percentage. Unknown usage keeps the primary model." },
   "retry.usageReservePolicy": { "label": "Reserve Policy", "description": "What to do once every same-provider coding-plan account is inside the reserve margin: confirm, fall back automatically, or fail closed." },
@@ -260,6 +265,8 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "generate_image.enabled": { "label": "Generate Image", "description": "Lets the model generate and edit images; with xd:// tools on, it is exposed as a device." },
   "ratchet.enabled": { "label": "Ratchet", "description": "Build an eval for a model flow and keep only the changes that improve it. /ratchet turns it on for the current session." },
   "archive.enabled": { "label": "Archive", "description": "Lets the model look back at past prompts, recent projects, earlier sessions, and their recaps — read-only." },
+  "out.enabled": { "label": "Out", "description": "Let the agent reply mid-task by writing to out://, shown like a response without ending its turn. Off by default in print, RPC and ACP sessions." },
+  "async.printWake": { "label": "Wake Print Mode on Job Results", "description": "In print mode, keep running while background jobs are active and start another turn with each result; off exits and cancels them." },
   "checkpoint.enabled": { "label": "Checkpoint/Rewind", "description": "Lets the model snapshot before exploring and rewind later, replacing the intermediate steps with a short report." },
   "fetch.enabled": { "label": "Read URLs", "description": "Lets the read tool fetch and work through web pages, not just local files." },
   "vault.enabled": { "label": "Obsidian Vault", "description": "Lets the model read and edit your Obsidian vault via the Obsidian CLI. Off: vault:// links are refused and hidden from the model." },
@@ -300,6 +307,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "hindsight.apiToken": { "label": "Hindsight API Token", "description": "The token sent with requests to Hindsight servers that require authentication." },
   "hindsight.bankId": { "label": "Hindsight Bank ID", "description": "Which memory bank the memories go into; the project name is used when left blank." },
   "hindsight.scoping": { "label": "Hindsight Scoping", "description": "global shares one bank; per-project isolates each working directory; per-project-tagged shares one bank tagged by project, merging global and project memories." },
+  "hindsight.globalScope": { "label": "Hindsight Global Scope", "description": "Lets retained and learned memories carry no project tag, so every project recalls them. Needs global or per-project-tagged scoping." },
   "hindsight.autoRecall": { "label": "Hindsight Auto Recall", "description": "Relevant memories are fetched automatically on the first turn of each session." },
   "hindsight.autoRetain": { "label": "Hindsight Auto Retain", "description": "Conversation content is saved into the memory bank every N turns and at session boundaries." },
   "hindsight.retainMode": { "label": "Hindsight Retain Mode", "description": "full-session keeps one document per session and keeps updating it; last-turn stores the chat in chunks split by turns." },
@@ -357,8 +365,11 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "loop.mode": { "label": "Loop Mode", "description": "What happens between /loop iterations before the prompt is sent again: send it as a follow-up, compact the context first, or start a fresh session." },
   "loop.conditionTimeoutMs": { "label": "Loop Condition Timeout (ms)", "description": "How long a /loop --while / --until condition command may run before the loop stops; 0 waits forever." },
   "composer.predictions": { "label": "Composer Predictions", "description": "After a turn, the model guesses your next message and shows it as ghost text in the empty composer; Tab or right arrow inserts it. Costs one extra billed request per turn (counted in /stats)." },
+  "composer.predictionAlternatives": { "label": "Prediction Alternatives", "description": "Ask for up to four predictions at once, most likely first; press Tab again after inserting one to pick another. The same request returns a few more output tokens." },
+  "btw.inject": { "label": "/btw Steering Inject", "description": "When you ask /btw for a steering prompt, it drafts one in <inject> tags, highlighted in the answer; Alt+I sends it to the main session." },
   "tools.approval": { "label": "Tool Approval Policies", "description": "Per-tool rules: 'allow' auto-approves, 'prompt' asks first, 'deny' blocks. They apply in every approval mode." },
   "tools.approvalMode": { "label": "Tool Approval", "description": "Default for tool calls: 'Always ask' auto-approves read-only tools, 'Ask and remember' also asks before reads and can remember a file or folder, 'Write' also approves reads and writes, 'Yolo' approves all. Per-tool rules can still prompt or block." },
+  "tools.restrictedFolders": { "label": "Restricted Folders", "description": "Reads, writes, edits, searches and commands under these folders always ask for approval, whatever the permission mode or a remembered grant." },
   "recap.enabled": { "label": "Idle Recap", "description": "After the terminal sits idle, the model writes a short recap of where things stand." },
   "recap.idleSeconds": { "label": "Idle Recap Delay", "description": "How many idle seconds pass before the recap shows up." },
   "stream.serverUrl": { "label": "Stream Server", "description": "The live stream server `omp stream` uses (https://host[:port]); viewers watch at <base>/<your username>." },
@@ -411,6 +422,8 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
 
   // ---- pg-hooks ----
   "extensionHandlers.toolCallTimeoutMs": { "label": "Tool Call Handler Timeout (ms)", "description": "How long an extension's tool-call handler may work, in milliseconds; invalid values fall back to 30000 ms, and waiting on OMP's own dialogs doesn't count." },
+  "extensionHandlers.modeControl": { "label": "Extension Mode Control", "description": "Lets extensions switch between plan, vibe, goal and loop modes on their own." },
+  "extensionRenderers.assistantText": { "label": "Extension Reply Renderers", "description": "Lets extensions restyle assistant replies, redraw one in place, and handle clicks on their own links." },
 
   // ---- pg-appearance ----
   "colorBlindMode": { "label": "Color-Blind Mode", "description": "New lines in diffs are highlighted in blue instead of green." },
@@ -418,6 +431,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "tui.renderSvg": { "label": "Render SVG Figures", "description": "Lets the agent draw diagrams and charts as SVG, shown inline as images on terminals that support graphics." },
   "tui.autoGraph": { "label": "Auto-Graph Tables", "description": "Draws a chart under numeric tables in the agent's replies, using your theme's colors, on terminals that show graphics." },
   "display.showTokenUsage": { "label": "Show Token Usage", "description": "Shows the token usage (input, output, cache) for each turn at the end of the assistant's message." },
+  "display.advisorCollapsedLines": { "label": "Advisor Collapsed Lines", "description": "How many note lines a collapsed advisor card shows below its header; 0 keeps the full preview." },
   "title.icons": { "label": "Title Icons", "description": "The icon and short code that prefix new or renamed session titles." },
   "images.autoResize": { "label": "Auto-Resize Images", "description": "Shrinks large images to at most 2000x2000 before sending them, for better model compatibility." },
   "images.blockImages": { "label": "Block Images", "description": "Keeps images from being sent to your model provider." },
@@ -441,6 +455,7 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   // ---- pg-general ----
   "startup.quiet": { "label": "Quiet Startup", "description": "Skips the welcome screen and startup status messages; on desktop that only means the in-session notices (such as xd:// device mount/unmount), since there is no startup banner." },
   "power.sleepPrevention": { "label": "Sleep Prevention", "description": "Keeps the system awake while a session is active; each level adds the flags of all lower levels." },
+  "session.worktreeScope": { "label": "Merge Worktrees by Repository", "description": "List every checkout of a repository as one project row; new sessions start in the main worktree." },
 
   // ---- pg-agents ----
   "plan.enabled": { "label": "Plan Mode", "description": "Turns on plan mode: the model explores read-only and lays out a plan instead of jumping straight to edits." },
@@ -463,6 +478,10 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "task.maxRecursionDepth": { "label": "Max Task Recursion", "description": "How many levels deep a subagent may spawn its own subagents; 0 forbids further spawning." },
   "task.maxRuntimeMs": { "label": "Max subagent runtime (minutes)", "description": "Hard time limit per subagent, in minutes; 0 disables it. Catches provider streams that hang and aborts the subagent with a 'timed out' reason." },
   "task.completionProbe": { "label": "Subagent Completion Probe", "description": "Asks a working subagent how complete it is, after 2, 5, 10 and 30 minutes, then hourly. The estimate shows next to the subagent." },
+  "title.refreshAfterPrompts": { "label": "Refresh Title After Prompts", "description": "Every this many operator prompts, ask the judge model whether the generated title still fits the conversation, and regenerate it if not." },
+  "task.file": { "label": "Task Instructions from Files", "description": "Let the task tool read subagent instructions from a file, recording its path and checksum." },
+  "task.perCallModel": { "label": "Per-Call Model", "description": "Whether a subagent call may pick its model with one exact provider/model-id selector. Project settings can turn it off but not on." },
+  "task.perCallModelAllow": { "label": "Per-Call Model Allowlist", "description": "Exact model selectors a per-call model must also appear in. Empty allows every model the configuration grants." },
   "task.agentIdleTtlMs": { "label": "Agent Idle TTL", "description": "How long an idle subagent stays in memory before being parked to disk, in milliseconds. Parked agents wake up when messaged or resumed; 0 keeps them alive." },
   "task.softRequestBudget": { "label": "Soft Subagent Request Budget", "description": "Soft cap on requests per subagent run. Crossing it triggers a wrap-up notice; at 1.5x the run is force-stopped and partial findings handed back. 0 disables it." },
   "task.softRequestBudgetNotice": { "label": "Soft Request Budget Notice", "description": "Gives a subagent one heads-up when it passes its soft request budget, asking it to wrap up before the forced stop." },
@@ -536,6 +555,10 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
 
 export const OPTS_EN: Record<string, Record<string, string>> = {
   "advisor.continueSeverity": { "nit": "Nit", "concern": "Concern", "blocker": "Blocker" },
+  "display.advisorCollapsedLines": { "0": "No limit", "1": "1 line", "2": "2 lines", "3": "3 lines", "5": "5 lines" },
+  "session.worktreeScope": { "directory": "Each worktree separately", "repo": "One row per repository" },
+  "title.refreshAfterPrompts": { "0": "Off", "1": "Every prompt", "3": "Every 3 prompts", "5": "Every 5 prompts", "10": "Every 10 prompts" },
+  "task.perCallModel": { "off": "Off", "eval": "Eval only", "on": "On" },
   "providers.anthropic.slowMode": { "off": "Off", "auto": "Automatic" },
   "computer.backgroundFallback": { "takeover": "Takeover", "refuse": "Refuse" },
   "hindsight.recallBudget": { "low": "Low", "mid": "Mid", "high": "High" },
