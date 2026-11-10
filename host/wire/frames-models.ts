@@ -247,19 +247,22 @@ export interface AssetFileFrame {
   content: string;
 }
 
-/** Editor/terminal/file-manager entry of the right-panel open-with menu (host/editors.ts) */
+/** Open target of the right-panel open-with menu (host/editors.ts) */
 export interface EditorInfo {
+  /** "sys:<bundle path>" on macOS (Launch Services), an allow-list id / "finder" / "explorer" otherwise */
   id: string;
   name: string;
-  kind: "editor" | "terminal" | "fileManager";
+  /** Absent for system file associations: their category is only known once opened */
+  kind?: "editor" | "terminal" | "fileManager";
   /** PNG data URL of the installed app's icon; absent when the icon cannot be resolved */
   iconDataUrl?: string;
 }
 
-/** Installed editors reply (host/rpc/settings.ts list_editors) */
-export interface EditorsFrame {
-  type: "editors";
-  editors: EditorInfo[];
+/** Open targets for one path (host/rpc/settings.ts list_open_apps); path echoes the request */
+export interface OpenAppsFrame {
+  type: "open_apps";
+  path: string;
+  apps: EditorInfo[];
 }
 
 /** Asset file saved reply (host/host.ts asset_file_write) */

@@ -5,6 +5,7 @@
 import { hostI18n } from "./i18n/host.ts";
 import { installProposalHandler } from "./plan-approve.ts";
 import { pushCommandOutput, entryBus, type PoolEntry } from "./state.ts";
+import { reportModeChange } from "./mode-state.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 const PLAN_MODE_NAME = "plan";
@@ -57,6 +58,8 @@ export function setPlanMode(
   }
   // Cross-channel: the other attached UI's Plan pill flips with the same toggle
   pushPlanMode(entryBus(entry), sessionId, entry);
+  // Extension observers (ctx.sessionModes consumers) hear about slash-command toggles too
+  reportModeChange(entry.session);
 }
 
 /**

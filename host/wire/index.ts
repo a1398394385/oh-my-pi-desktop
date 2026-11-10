@@ -17,11 +17,12 @@ import type {
   ApprovalModeFrame, ApprovalRequestFrame, ApprovalResolvedFrame, AskDialogQuestionWire, BashChunkFrame, BashCompleteResultFrame,
   BashDoneFrame, BashStartFrame, CommandOutputFrame, CommandPhaseFrame, CommandResultFrame, CommandsFrame,
   AdvisorModeFrame, ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
-  FileDiffFrame, FileMatchesFrame, FileVersionsFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,
+  FileCopiedFrame, FileDiffFrame, FileMatchesFrame, FileVersionsFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,
   GitGraphFrame,
   GitPushedFrame, GitStagedFrame, GitStatusFrame, GitUnstagedFrame, GoalFrame, ImageContentFrame,
   LimitsResultFrame, MessagesFrame, PlanModeFrame, PlanOutputFrame, PoolSessionsFrame, ProviderAccountEntry, ProviderAccountsFrame,
   PromptDroppedFrame,
+  RunFileDiffFrame,
   ProviderDisabledAccount, ProviderLimitsResultFrame, ReadyFrame, SessionAbortedFrame, SessionArchivedFrame, SessionBranchedFrame,
   SessionCompactedFrame, SessionCreatedFrame, SessionEditedFrame, SessionExternalWriteFrame, SessionForkedFrame, SessionListFrame, SessionModelFrame,
   SessionFinishedFrame, SessionNavigatedFrame, SessionRenamedFrame, SessionThinkingFrame, SessionTitleChangedFrame, SessionTreeFrame,
@@ -31,7 +32,7 @@ import type {
 import type {
   AgentAssetsFrame, AllProvidersFrame, AssetFileDeletedFrame, AssetFileFrame, AssetFileSavedFrame, BrowserMirrorFrame,
   BrowserPickFrame, BrowserTabInfo, BrowserTabsFrame, CapabilitiesFrame, CapabilitiesMcpFrame, CapabilitiesSnapshot, CycleModelFrame,
-  EditorInfo, EditorsFrame, ExtSource, ExtensionDetail, ExtensionItem, ExtensionStatusFrame,
+  EditorInfo, OpenAppsFrame, ExtSource, ExtensionDetail, ExtensionItem, ExtensionStatusFrame,
   ExtensionsFrame, LoginDoneFrame, LoginProgressFrame, LoginPromptFrame, ManualProbeCatalogMatch, ManualProbeModel,
   McpServerTestedFrame, MemoryFileFrame, ModelRolesFrame, ModelsCatalogFrame, ModelsConfigPathFrame, ModelsFrame,
   PluginInstallResultFrame, ProfileSwitchedFrame, ProviderKeyDoneFrame, ProviderModelMetaFrame, ProviderModelMetaRow, ProviderModelSavedFrame, ProviderModelTestFrame,
@@ -88,7 +89,9 @@ export type HostFrame =
   | SessionNavigatedFrame
   | SessionEditedFrame
   | SessionExternalWriteFrame
+  | FileCopiedFrame
   | FileDiffFrame
+  | RunFileDiffFrame
   | FileContentFrame
   | ImageContentFrame
   | DirListFrame
@@ -142,7 +145,7 @@ export type HostFrame =
   | ExtensionsFrame
   | AssetFileFrame
   | AssetFileSavedFrame
-  | EditorsFrame
+  | OpenAppsFrame
   | AssetFileDeletedFrame
   | PluginInstallResultFrame
   | MemoryFileFrame

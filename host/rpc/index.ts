@@ -25,6 +25,7 @@ import { gitGraphHandlers } from "./git-graph";
 import { gitCompareHandlers } from "./git-compare";
 import { collabHandlers } from "./collab";
 import { remoteHandlers } from "./remote";
+import { runChangesHandlers } from "./run-changes";
 import { REMOTE_WRITE_DENYLIST } from "../remote.ts";
 import { hostI18n } from "../i18n/host.ts";
 
@@ -51,6 +52,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...gitCompareHandlers,
   ...collabHandlers,
   ...remoteHandlers,
+  ...runChangesHandlers,
 };
 
 /** Single-command dispatch: table lookup + invoke; unknown commands reply with error (old switch default semantics) */

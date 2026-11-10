@@ -11,6 +11,7 @@
 // #handleGoalSessionEvent.
 import { hostI18n } from "./i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { reportModeChange } from "./mode-state.ts";
 
 /** Goal record (isomorphic to modeData.goal of the persisted mode_change; field validation in goalFromModeData). */
 export interface GoalLike {
@@ -35,6 +36,8 @@ export interface GoalSession {
   getGoalModeState(): GoalStateLike | undefined;
   setGoalModeState(state: GoalStateLike | undefined): void;
   getPlanModeState(): { enabled?: boolean } | undefined;
+  getVibeModeState(): { enabled: boolean } | undefined;
+  extensionRunner?: { emit(event: unknown): Promise<unknown> } | null;
   getEnabledToolNames(): string[];
   setActiveToolsByName(names: string[]): Promise<unknown> | void;
   settings: { get(key: string): unknown };
@@ -168,6 +171,8 @@ export class GoalController {
     this.#costUsed += Math.max(0, cost - this.#costAnchor);
     this.#costAnchor = cost;
     this.#onChange();
+    // Extension observers see goal changes from every source (/goal, the goal tool, restore)
+    reportModeChange(this.#session);
   }
 
   /** Cost consumed during the goal (accumulated session cost deltas, USD). */

@@ -172,6 +172,19 @@ export interface SessionListFrame {
   defaultWorkspace?: string;
   /** allProjects entries whose working tree carries a .git entry (gates the row's Git entry). */
   gitProjects?: string[];
+  /** Repositories merged into one row per repo (session.worktreeScope === "repo"); absent when off. */
+  repoGroups?: RepoGroupFrame[];
+}
+
+/** One repository's checkouts (host/repo-roots.ts RepoGroup) */
+export interface RepoGroupFrame {
+  /** Primary checkout path (the row's cwd: sessions created from the merged row open here). */
+  root: string;
+  /** Display name (primary checkout's directory name, disambiguated on collision). */
+  name: string;
+  worktrees: { path: string; branch: string; detached: boolean }[];
+  /** Registered project cwds belonging to this repository. */
+  cwds: string[];
 }
 
 /** Pool residency snapshot (state.ts pushPoolSnapshot): every session the host still holds in memory */
@@ -328,12 +341,28 @@ export interface FileDiffFrame {
   diff: string; // truncated to 500KB
 }
 
+/** Run-change snapshot diff reply (host/rpc/run-changes.ts get_run_file_diff): before/after
+ *  snapshots of one run's change to one file, independent of git. */
+export interface RunFileDiffFrame {
+  type: "run_file_diff";
+  sessionId: string;
+  entryId: string;
+  path: string;
+  diff: string;
+}
+
 /** File content reply (host/host.ts too large / 1123 binary / 1126 success) */
 export interface FileContentFrame {
   type: "file_content";
   path: string;
   text?: string; // success only
   error?: string; // failure only
+}
+
+/** "Save as" receipt (host/rpc/files.ts copy_file): the copy landed at `path` */
+export interface FileCopiedFrame {
+  type: "file_copied";
+  path: string;
 }
 
 /** Image content reply (host/host.ts format / 1150 not a file / 1154 too large / 1158 success) */
@@ -571,6 +600,8 @@ export interface GitGraphFrame {
   commits?: GitGraphCommitWire[];
   hasMore?: boolean;
   branches?: { local: string[]; remotes: string[]; tags: string[] };
+  /** Every checkout of this repository; `current` marks the caller's own. */
+  worktrees?: { path: string; branch: string; detached: boolean; current: boolean }[];
 }
 
 /** Commit detail reply (host/rpc/git-graph.ts git_commit_detail). */

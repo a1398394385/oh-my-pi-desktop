@@ -62,6 +62,48 @@ export function writeComputerDefaultEnabled(enabled: boolean): void {
 }
 
 /**
+ * Explicit per-session opt-in/out, keyed by session file path. The per-session
+ * `computer.enabled` value lives in the session settings overlay, whose writes
+ * are never persisted (base Settings: "overlays never persist or write back"),
+ * so a pool eviction + reload would silently drop the user's choice. Recording
+ * it here lets a reload restore it; absent = follow the desktop default.
+ */
+function readComputerSessions(): Record<string, boolean> {
+  const raw = readComputerSection().sessions;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, boolean> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "boolean") out[key] = value;
+  }
+  return out;
+}
+
+export function readSessionComputerChoice(sessionPath: string): boolean | undefined {
+  return readComputerSessions()[sessionPath];
+}
+
+/** Record the user's explicit choice for one session (not the desktop default). */
+export function writeSessionComputerChoice(sessionPath: string, enabled: boolean): void {
+  const sessions = readComputerSessions();
+  if (sessions[sessionPath] === enabled) return;
+  writeDesktopSection("computer", { ...readComputerSection(), sessions: { ...sessions, [sessionPath]: enabled } });
+}
+
+/** Drop the record with the session file (delete_session cleanup). */
+export function clearSessionComputerChoice(sessionPath: string): void {
+  const sessions = readComputerSessions();
+  if (!(sessionPath in sessions)) return;
+  delete sessions[sessionPath];
+  writeDesktopSection("computer", { ...readComputerSection(), sessions });
+}
+
+/** Session file backing this pool entry (the record key); null while the session is not persisted yet. */
+export function sessionComputerKey(entry: PoolEntry): string | null {
+  const file = entry.manager?.getSessionFile?.() ?? entry.path;
+  return typeof file === "string" && file.length > 0 ? file : null;
+}
+
+/**
  * Whether a freshly spawned session should start opted in. User sessions follow the desktop
  * default; automation runs follow the automation's own flag instead — the desktop default
  * deliberately never applies there (an unattended scheduled run must not drive the desktop
@@ -137,12 +179,23 @@ export async function setComputerMode(
   sessionId: string,
   entry: PoolEntry,
   enabled: boolean,
+  opts?: {
+    /** Spawn-time default application: arm the overlay without recording it as the user's choice. */
+    persist?: boolean;
+  },
 ): Promise<void> {
+  const persist = opts?.persist !== false;
+  // Best-effort record: an unpersisted session has no path to key the choice on.
+  const remember = () => {
+    const key = persist ? sessionComputerKey(entry) : null;
+    if (key) writeSessionComputerChoice(key, enabled);
+  };
   const gate = lookupSetting(COMPUTER_ENABLED);
   if (!gate) throw new Error(`Unknown setting: ${COMPUTER_ENABLED}`);
   if (!enabled) {
     unmountServerForSession(sessionId, entry, KIMI_CU_SERVER);
     entry.session.settings.writeValue(gate, false, "override");
+    remember();
     pushComputerMode(ws, sessionId, entry);
     return;
   }
@@ -156,6 +209,7 @@ export async function setComputerMode(
       pushCommandOutput(sessionId, msg);
       pushComputerMode(ws, sessionId, entry, msg);
     } else {
+      remember();
       pushComputerMode(ws, sessionId, entry);
     }
     return;
@@ -175,5 +229,29 @@ export async function setComputerMode(
     pushComputerMode(ws, sessionId, entry, msg);
     return;
   }
+  remember();
   pushComputerMode(ws, sessionId, entry);
+}
+
+/**
+ * Re-apply the session's computer opt-in right after it is (re)built: the
+ * settings overlay that carries it is never persisted, so every rebuild starts
+ * pinned off. An explicit user choice wins; otherwise the same default a spawn
+ * would use applies (desktop switch for user sessions, the automation's own
+ * flag for runs). No socket is attached yet, so the frame this arms is a no-op —
+ * the caller's snapshot pushes the real computer_mode frame afterwards.
+ */
+export async function restoreComputerMode(
+  sessionId: string,
+  sessionPath: string | undefined,
+  entry: PoolEntry,
+  automation?: { computer?: boolean },
+): Promise<void> {
+  const choice = sessionPath ? readSessionComputerChoice(sessionPath) : undefined;
+  if (!(choice ?? computerDefaultAppliesFor(automation))) return;
+  try {
+    await setComputerMode({ send() {} }, sessionId, entry, true, { persist: false });
+  } catch (err) {
+    safeStderr(`[host] computer mode restore failed on session ${sessionId.slice(0, 8)}: ${err}\n`);
+  }
 }

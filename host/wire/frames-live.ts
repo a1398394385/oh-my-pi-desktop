@@ -77,6 +77,8 @@ export interface SubagentProgressFrame {
   currentToolStartMs?: number;
   lastIntent?: string;
   resolvedModel?: string;
+  /** Base progress.modelRole: explicit pre-expansion role alias (e.g. "smol"); resolvedModel stays concrete */
+  modelRole?: string;
   resolvedThinkingLevel?: string;
   recentTools?: unknown[];
   name?: string; // carried by regular frames; absent from the terminal-state re-send (2431)

@@ -22,7 +22,7 @@ export const REMOTE_DEFAULT_PORT = 16800;
 // reload_settings stays OUT: it only re-reads model settings from disk into
 // memory (no persistence) and the UI sends it when opening any session.
 export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
-  // settings.ts (21)
+  // settings.ts (22)
   "set_setting", "set_locale", "set_ui_prefs", "set_external_browser", "set_computer_provider",
   "set_computer_default", "set_advisor_default", "set_approval_mode", "set_acp_enabled", "set_acp_config",
   "set_session_context_enabled", "set_keepalive_enabled", "set_keepalive_config",
@@ -30,6 +30,7 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "set_automation_dialog_timeouts",
   "set_kimi_auto_thinking", "set_hooks_enabled", "set_plugins_enabled", "set_skills_enabled",
   "set_desktop_env", "switch_profile", "set_auto_review", "set_session_title_refresh", "set_branch_titles",
+  "set_auto_archive",
   // models.ts (2)
   "set_enabled_model", "set_model_role",
   // provider-wizard.ts (2)
@@ -38,6 +39,8 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "provider_login", "provider_logout", "provider_list_accounts", "provider_disable_account",
   "provider_enable_account", "provider_reorder_account", "provider_login_cancel",
   "provider_set_key", "login_prompt_reply", "open_models_config",
+  // files.ts (1): the save-as destination comes from a native dialog on the host machine
+  "copy_file",
   // assets.ts (12)
   "asset_file_write", "asset_file_create", "asset_skill_toggle", "asset_plugin_toggle", "asset_plugin_install",
   "asset_skill_delete", "toggle_extension_item", "toggle_extension_provider",
@@ -50,10 +53,15 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "set_session_pinned", "archive_session", "set_project_expanded", "add_project", "remove_project",
   "reorder_projects", "delete_session", "rename_session", "compact_session", "branch_session", "fork_session",
   "edit_resend",
+  // Extension link handlers run arbitrary extension code (they may write): a remote viewer
+  // must not be able to trigger them.
+  "link_activate",
   // collab.ts (3): collab_state is a pure read and stays requestable
   "collab_start", "collab_join", "collab_leave",
   // worktree.ts (2): worktree_status is a pure read
   "worktree_create", "worktree_remove",
+  // run-changes.ts (1): get_run_file_diff is a pure read
+  "revert_run_file",
 ]);
 
 export interface RemoteConfig {

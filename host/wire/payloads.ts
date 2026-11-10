@@ -140,6 +140,12 @@ export type SettingsPayload = SettingsSnapshot & {
   // each title as a branchTitle custom entry on the active branch and mirror the
   // branch's own title into the header on branch switch. Experimental page switch.
   branchTitles?: boolean;
+  // omp-desktop.json autoArchive section (host/auto-archive.ts): the periodic
+  // scan that archives sessions whose last activity predates the retention
+  // window. retentionOptions lists the accepted windows (days).
+  autoArchiveEnabled?: boolean;
+  autoArchiveRetentionDays?: number;
+  autoArchiveRetentionOptions?: number[];
   // omp-desktop.json remote section (host/remote.ts): LAN remote-control
   // server config; the settings page's remote group reads/builds URLs from it
   remote?: RemoteConfigPayload;
@@ -275,6 +281,9 @@ export interface SlashCommand {
 export interface FileMatch {
   path: string;
   dir: boolean;
+  /** Directory only: no children. A leaf directory is picked on Tab instead of
+   *  drilling into an empty next level (Enter always picks). */
+  empty?: boolean;
 }
 
 /** Single-level directory entry (host/host.ts list_dir) */
@@ -458,6 +467,9 @@ export type TranscriptItem = {
   removed?: number;
   diffContent?: string;
   todo?: { content: string; done: number; total: number };
+  // `out://` mid-call replies: eval/bash carry them in details.replies (cumulative), a
+  // `write` to `out://` carries the text in its call args (host/translate-tool.ts outReplyArgs)
+  replies?: string[];
   thinking?: string;
   expandable?: boolean;
   output?: string;
@@ -471,6 +483,10 @@ export type TranscriptItem = {
   usage?: TurnUsage | null;
   entryId?: string;
   endMs?: number;
+  // Assistant rows: reply timestamp + block index, the address a renderer re-draw
+  // (ctx.ui.rerenderMessage) uses to find the row it must replace
+  ts?: number;
+  block?: number;
   // Turn-final assistant text (stopReason "stop" on disk): a delivered output, not
   // process narration — seal paths lift it out of the collapsed loop group
   turnFinal?: boolean;
@@ -497,6 +513,27 @@ export type TranscriptItem = {
   notes?: AdvisorNote[];
   // ---- ttsr rows (role "ttsr": which rules a TTSR rewound-and-injected at this point) ----
   rules?: TtsrRule[];
+  // ---- run-final file changes (host/run-changes.ts): set only on the run-tail assistant
+  // item the run's change record is anchored to; the UI renders the expandable card between
+  // the output and the turn actions. Live updates arrive as the run_changes UiEvent.
+  changes?: RunChangeFile[];
+};
+
+/** One file touched by an agent run (edit/write/apply_patch), with net line stats.
+ *  Snapshots live under the session artifacts dir (run-changes/<changeId>/), keyed by the
+ *  file's index inside its change record — never inside this wire shape. */
+export type RunChangeFile = {
+  path: string; // absolute
+  added: number;
+  removed: number;
+  /** The run created the file (revert = delete it) */
+  created?: boolean;
+  /** The run deleted the file (revert = write the old text back) */
+  deleted?: boolean;
+  /** This run's change to the file has been reverted */
+  reverted?: boolean;
+  /** Snapshot unavailable (>2MB / binary / read failure): review and revert are both disabled */
+  noSnapshot?: boolean;
 };
 
 /** One TTSR rule behind an injection notice (base Rule, narrowed to the fields a row shows) */
@@ -529,10 +566,18 @@ export interface QueuedMessage {
 export type UiEvent =
   | { kind: "turn_start" }
   | { kind: "user_message"; text: string; images?: Array<{ type: "image"; data: string; mimeType: string }>; automation?: { id: string; title: string } } // host-side prompt echo: every attached UI draws the bubble (cross-channel send); automation variant has no local composer send
-  | { kind: "text_delta"; text: string }
+  | { kind: "text_delta"; text: string; reset?: boolean } // reset: renderer output for the whole block replaces the draft (not a suffix)
   | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
   | { kind: "thinking_delta"; text: string }
   | { kind: "tool"; name: string; toolCallId?: string; args?: Record<string, unknown>; files?: string[]; intent?: string }
+  // Live body of a `write` call while its arguments still stream (TUI parity: the card grows
+  // with the file). `text` is the appended suffix; `reset` replaces the body instead (a relaxed
+  // parse of a half-received escape can briefly decode shorter than what was already sent).
+  | { kind: "tool_args"; name: string; toolCallId: string; text: string; path?: string; reset?: boolean }
+  // Live diff of an `edit` call while its arguments still stream (base `tool_stream_update`,
+  // native preview batch): the row shows the patch growing line by line instead of popping in
+  // whole once the call settles. One frame per batch, replaced wholesale — the diff is small.
+  | { kind: "tool_preview"; name: string; toolCallId: string; path?: string; diff?: string; error?: string }
   | {
       kind: "tool_update";
       name: string;
@@ -555,7 +600,11 @@ export type UiEvent =
   | { kind: "mention"; files: string[] } // @-mention read-back: paths the base auto-read; the UI folds them onto the issuing user bubble
   | { kind: "advisor"; notes: AdvisorNote[] } // one delivered advice batch (base customType "advisor"); rendered at its injection point
   | { kind: "ttsr"; rules: TtsrRule[] } // a TTSR rewind injected these rules here (read-only row; base event ttsr_triggered)
-  | { kind: "error"; text: string }; // provider/request failure (quota, auth, transport): rendered as a standalone row
+  | { kind: "run_changes"; entryId: string; files: RunChangeFile[] } // run-final file-change card, anchored to the run-tail assistant entry; re-sent after a revert with the reverted flags updated
+  | { kind: "error"; text: string } // provider/request failure (quota, auth, transport): rendered as a standalone row
+  | { kind: "notice"; level: "info" | "warning" | "error"; message: string; source?: string }
+  | { kind: "assistant_rerender"; ts: number; block: number; text: string } // an extension re-drew one reply block (ctx.ui.rerenderMessage)
+  | { kind: "prediction"; choices: string[] }; // composer predictions (host/prediction.ts): ghost candidates, most likely first; empty clears // base UI-only notice (e.g. the xd:// mount hint): never persisted, never in the model context — the UI shows a session-scoped transient
 
 /** Whole-session stats (expanded fields of the session_stats frame, host/session-lifecycle.ts buildSessionStats) */
 export interface SessionStatsPayload {
