@@ -123,6 +123,7 @@
 | BUG-129 | ACP 会话里的 subagent 完全没有自动压缩——`compaction.enabled` pin 经 settings 树读穿到子代理，而 ACP 面根本不进子会话 | 2026-11-09 |
 | BUG-130 | 统计页 ACP「状态返回」列永远为空——`projectView` 每请求清空 `#lastStatusTokens`，而拉取与压缩天然跨请求 | 2026-11-09 |
 | BUG-131 | ACP 压缩一轮之后 `context_status` 永远返回空清单——ACP 的 journal 取 `getEntries()`（全文件，含废弃兄弟分支），`annotateView` 的 64 条对齐窗口跨不过分支跳空，此后所有块退化成伪 id | 2026-11-09 |
+| BUG-132 | 套娃子代理（孙代）在 Agent Hub 永不出现——宿主只订 root 的 `eventBus`，孙代帧发在 `subagentEventBus` 上；磁盘回放也只扫一层且把 parent 硬编码成 Main | 2026-11-10 |
 ---
 
 ## 详情
@@ -1918,4 +1919,18 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **教训**：BUG-127/128 的判据「`getEntries()` 只该用于必须覆盖全文件的游标类用途」这次漏在 ACP 注入点——它既不展示也不计时，看着像内部推断，实际是「推导当前状态」。另一条更强的：**任何带「前向窗口」的启发式对齐都必须在数据源作用域上自洽**；journal 与 view 的作用域不一致时，失败是静默的（伪 id 是合法值），只在长途分叉后才暴露，而且表现为「工具正常但清单为空」这种最像正常结果的形态。
 
 **遗留**：已落盘的历史会话在重启宿主后即恢复（journal 每次从 branch 重建）；本次修复需重启宿主生效。
+
+### BUG-132: 套娃子代理（孙代）在 Agent Hub 里永不出现——宿主只订 root 的 `eventBus`，孙代帧发在 `subagentEventBus` 上
+
+**日期**：2026-11-10
+
+**现象**：会话 `01a1c30e` 的 Agent Hub 只列出 1 个子代理 `AcpV35FullReview`，可它自己又派了 4 个孙代（`BaseHookAudit` / `HostReadAudit` / `HostWriteAudit` / `StateModelAudit`），运行中与重开都看不到。产物磁盘上 4 个孙代 transcript 都在，`parentSession` 都指向 `AcpV35FullReview.jsonl`。
+
+**根因**：`host/subagent-view.ts` 的 `createSubagentView` 订阅的是 `result.eventBus`，注释还写着「整棵 spawn 树共享 root 的 eventBus」——这条假设在底座里已经不成立。`task/executor.ts` 构建子会话 spec 时只传 `subagentEventBus: options.subagentEventBus`，**不传 `eventBus`**，所以每个子会话的 `eventBus` 是新建的独立 bus；孙代的 lifecycle/progress/event 帧由 `emitSubagentFrame(childEventBus, root.subagentEventBus, …)` 发出，只落在 root 的 **subagentEventBus** 上。宿主订 root eventBus → depth-1 帧收得到（root 自己的 task 工具还在用 eventBus），depth-2 全丢。第二条：磁盘回放 `replaySubagentHistory` 只 `readdirSync` 一层，孙代文件在 `<session>/<parent>/<parent>.<child>.jsonl` 子目录里被 `endsWith(".jsonl")` 过滤掉；即使扫到，`parent` 也被硬编码成 `"Main"`，挂不到父行下。
+
+**修复**：`createSubagentView` 改用 `entry.sessionResult.subagentEventBus ?? eventBus`（与同文件 `entry.subagentRegistry` 一致），并订正顶部注释为「共享 root 的 subagentEventBus」；`replaySubagentHistory` 改为递归扫描产物目录，目录名即父代理显示名（roster 树模式按名字匹配，parent id 不落盘），每层仍用 `aggregateSubagentHistory(file, <父 transcript 路径>)` 校验 `parentSession` 回链，`hist-` id 取相对根路径。
+
+**验证**：一次性探针用真模型跑套娃（root 派 `OuterProbe`，`OuterProbe` 再派 `InnerProbe`）：修复前只收到 `OuterProbe` 的 lifecycle，`InnerProbe` 静默丢失；修复后 16 秒内收到 `id=OuterProbe.InnerProbe name=InnerProbe parent=OuterProbe`。历史回放对真实会话 `01a1c30e` 跑出 4 条孙代（`parent=AcpV35FullReview`）。新增 `scripts/subagent-nested.test.ts`（4 例：孙代帧走 subagent bus、无 subagent bus 时回退 root bus、嵌套回放挂父、跨树同名文件被回链校验拒绝）；`scripts/subagent-roster-seed.test.ts` 的 fake entry 补 `sessionResult`；`bun run check` 全绿。
+
+**教训**：底座把「会话事件」和「可观测事件」拆成两条 bus 后，注释里的「整棵树共用一个 bus」就不能再靠印象沿用——**订阅点必须和 registry 订阅同一个 bus**，而两者分处不同文件时最容易漂移。另一条：产物目录的层级结构就是父子关系的唯一持久化证据，回放逻辑不能假设扁平。
 

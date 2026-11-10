@@ -23,8 +23,13 @@ interface SeedSnapshot {
   progress?: { durationMs?: number };
 }
 
-// The whole spawn tree shares the root session's eventBus (sdk.ts:1341):
-// subagent lifecycle/event/progress frames all travel on it. Derived data
+// The whole spawn tree shares the root session's SUBAGENT event bus, not its
+// eventBus: task/executor.ts builds each child session spec with
+// `subagentEventBus: options.subagentEventBus` and no eventBus at all, so a
+// child's own bus is a fresh EventBus and only the subagent one reaches the
+// root. Subscribing the root eventBus therefore sees depth-1 rows (emitted by
+// the root's own task tool, which still has it) and silently loses every
+// grandchild. Derived data
 // the host fills in (absent from AgentProgress itself):
 //   registeredAt — when the lifecycle started frame arrived (the detail
 //                  card's Registered timestamp)
@@ -33,6 +38,9 @@ interface SeedSnapshot {
 //                   inside a subagent stream = that subagent), and
 //                   parentToolCallId reverse-looks-up "Spawned by X"
 export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry, eventBus: any): { unsubscribe(): void } {
+  // Same bus entry.subagentRegistry subscribes (session-lifecycle createSessionCore):
+  // the root session's observability bus, which every nested level forwards into.
+  const bus = entry.sessionResult.subagentEventBus ?? eventBus;
   const subRegistered = new Map<string, number>(); // subagentId -> first started timestamp
   const subSpawnCall = new Map<string, string>(); // subagentId -> parent task toolCallId
   // A kept-alive subagent is re-run by IRC wake turns (base: attachIrcWakeTurnMonitor
@@ -68,7 +76,7 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
       callOwner.set(ev.toolCallId, { owner: "Main", names: spawnNames(ev.args) });
     }
   });
-  const unsubLifecycle = eventBus.on("task:subagent:lifecycle", (p: any) => {
+  const unsubLifecycle = bus.on("task:subagent:lifecycle", (p: any) => {
     if (p.parentToolCallId) subSpawnCall.set(p.id, p.parentToolCallId);
     // started fires once per run: the first one registers the subagent, later ones are
     // IRC wake turns reusing the id — archive the finished run instead of resetting
@@ -138,7 +146,7 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
     }
     return merged;
   };
-  const unsubProgress = eventBus.on("task:subagent:progress", (p: any) => {
+  const unsubProgress = bus.on("task:subagent:progress", (p: any) => {
     const pr = p.progress ?? {};
     // Subagent identity lives inside the progress object (AgentProgress.id) — the
     // channel payload's top level carries no id field (base contract; the TUI's
@@ -198,7 +206,7 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
     subRegistered.set(snap.id, registeredAt);
     ws.send(JSON.stringify(stampEvent({ type: "subagent_lifecycle", sessionId, subagentId: snap.id, agent: snap.agent, description: snap.description ?? "", status: "started", name: subName(snap.id, snap.agent), parent: subParent(snap.id), sessionFile: snap.sessionFile, registeredAt, detached: false })));
   }
-  const unsubEvents = eventBus.on("task:subagent:event", ({ id, event }: any) => {
+  const unsubEvents = bus.on("task:subagent:event", ({ id, event }: any) => {
     // Task calls inside a subagent stream: owned by that subagent (nested spawn)
     if (event.type === "tool_execution_start" && spawnTools[event.toolName]) {
       callOwner.set(event.toolCallId, { owner: subName(id, id), names: spawnNames(event.args) });
@@ -441,27 +449,51 @@ function modelRegistryContextWindow(model: string | null): number | undefined {
 // includeTools: also replay the per-tool event stream (cold loads where the frontend store is
 // guaranteed empty). Same-store switch-backs must pass false — replaying tool events would
 // append duplicates next to the live entries.
+//
+// Nested spawns persist one level deeper (<root>/<parent>/<parent>.<child>.jsonl), so the scan
+// recurses: a directory's own name is the display name of the parent whose transcript lives
+// beside it, which is exactly what the roster's tree mode matches on (parent ids are not
+// persisted). Top-level files hang off "Main".
 export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: string, includeTools: boolean) {
   if (!sessionPath.endsWith(".jsonl")) return;
-  let names: string[];
-  try {
-    names = fs.readdirSync(sessionPath.slice(0, -".jsonl".length));
-  } catch {
-    return; // no artifacts dir: the session never spawned subagents (or pre-artifact base)
-  }
-  for (const name of names) {
-    if (!name.endsWith(".jsonl")) continue;
-    const file = path.join(sessionPath.slice(0, -".jsonl".length), name);
+  const rootDir = sessionPath.slice(0, -".jsonl".length);
+  const files: { file: string; parent: string; parentPath: string; rel: string }[] = [];
+  const scan = (dir: string, parent: string, parentPath: string, rel: string) => {
+    let names: string[];
     try {
-      if (!fs.statSync(file).isFile()) continue;
-      // Still being written = a live subagent of a pooled session; its real frames arrive through subscriptions
-      if (Date.now() - fs.statSync(file).mtimeMs < HIST_SUBAGENT_RECENT_MS) continue;
+      names = fs.readdirSync(dir);
     } catch {
-      continue;
+      return; // no artifacts dir: the session never spawned subagents (or pre-artifact base)
     }
-    const agg = aggregateSubagentHistory(file, sessionPath);
+    for (const name of names) {
+      const full = path.join(dir, name);
+      let isFile: boolean;
+      try {
+        isFile = fs.statSync(full).isFile();
+      } catch {
+        continue;
+      }
+      if (name.endsWith(".jsonl") && isFile) {
+        // Still being written = a live subagent of a pooled session; its real frames arrive through subscriptions
+        try {
+          if (Date.now() - fs.statSync(full).mtimeMs < HIST_SUBAGENT_RECENT_MS) continue;
+        } catch {
+          continue;
+        }
+        files.push({ file: full, parent, parentPath, rel: path.join(rel, name) });
+      } else if (!isFile) {
+        // <root>/<parent>/ holds <parent>.<child>.jsonl; the parent transcript sits beside the dir
+        scan(full, name, path.join(dir, `${name}.jsonl`), path.join(rel, name));
+      }
+    }
+  };
+  scan(rootDir, "Main", sessionPath, "");
+  for (const { file, parent, parentPath, rel } of files) {
+    // aggregateSubagentHistory re-checks the parentSession backlink against parentPath, so a
+    // same-named foreign file (or a stray top-level transcript) cannot be adopted by this tree
+    const agg = aggregateSubagentHistory(file, parentPath);
     if (!agg) continue;
-    const subagentId = "hist-" + name.slice(0, -".jsonl".length);
+    const subagentId = "hist-" + rel.slice(0, -".jsonl".length);
     ws.send(
       JSON.stringify({
         type: "subagent_lifecycle",
@@ -471,7 +503,7 @@ export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: s
         description: "",
         status: agg.status,
         name: agg.title,
-        parent: "Main",
+        parent,
         registeredAt: agg.registeredAt,
         sessionFile: file,
         readOnly: agg.readOnly,

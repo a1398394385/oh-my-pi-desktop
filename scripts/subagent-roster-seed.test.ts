@@ -22,6 +22,8 @@ function attach(snapshots: unknown[]): Frame[] {
   const unsubscribe = () => {};
   const entry = {
     session: { subscribe: () => unsubscribe },
+    // The roster subscribes the root session's observability bus when the SDK exposes one
+    sessionResult: {},
     subagentRegistry: { getSubagents: () => snapshots },
   } as unknown as PoolEntry;
   const eventBus = { on: () => unsubscribe };
