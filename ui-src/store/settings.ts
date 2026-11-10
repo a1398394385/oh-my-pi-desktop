@@ -41,6 +41,7 @@ export interface RemoteConfigState {
 export interface SettingsSlice {
   settingsOpen: boolean; // fullscreen overlay open state
   settingsPage: string; // current settings page id
+  settingsModelManage: boolean; // pg-model shows the catalog/roles manager instead of the config rows
   updateVersion: string | null; // newer build found by the startup probe (sidebar badge + settings button)
   hostSettings: SettingsPayload | null;
   settingsSchema: Record<string, SchemaDef> | null; // entry shape matches SETTINGS_SCHEMA
@@ -89,7 +90,7 @@ export interface SettingsSlice {
   // of the settings frame (SettingsPayload.remote), then updated by remote_config / remote_key
   // replies; `error` is the last set_remote_config failure (service kept its previous state).
   remoteConfig: RemoteConfigState | null;
-  openSettings(pageId?: string): void;
+  openSettings(pageId?: string, view?: "manage"): void;
   closeSettings(): void;
   probeUpdate(): Promise<void>;
   refreshSettingsData(): void;
@@ -98,6 +99,7 @@ export interface SettingsSlice {
 export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> = (set, get) => ({
   settingsOpen: false,
   settingsPage: "pg-general",
+  settingsModelManage: false,
   updateVersion: null,
   hostSettings: null,
   settingsSchema: null,
@@ -144,11 +146,11 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   remoteConfig: null,
   memoryDetail: { base: null, files: null, rollouts: [], active: null, status: "idle", content: "", error: null },
 
-  openSettings(pageId = "pg-general") {
+  openSettings(pageId = "pg-general", view?: "manage") {
     // Remote mode (spec §4.2): no settings surface on remote clients; host denylist is the
     // backstop, this only hides the entry points (Sidebar button is likewise not rendered)
     if (REMOTE) return;
-    set((s) => ({ settingsOpen: true, settingsPage: pageId }));
+    set((s) => ({ settingsOpen: true, settingsPage: pageId, settingsModelManage: view === "manage" }));
   },
   closeSettings() {
     set((s) => ({ settingsOpen: false }));

@@ -74,7 +74,8 @@ export const expandProject = (cwd: string): void => useAppStore.getState().expan
 export const setBriefDiff = (path: string, diff: string | undefined): void =>
   useAppStore.getState().setBriefDiff(path, diff);
 export const refreshGitDiff = (force = false): void => useAppStore.getState().refreshGitDiff(force);
-export const openSettings = (pageId = "pg-general"): void => useAppStore.getState().openSettings(pageId);
+export const openSettings = (pageId = "pg-general", view?: "manage"): void =>
+  useAppStore.getState().openSettings(pageId, view);
 export const closeSettings = (): void => useAppStore.getState().closeSettings();
 export const refreshSettingsData = (): void => useAppStore.getState().refreshSettingsData();
 

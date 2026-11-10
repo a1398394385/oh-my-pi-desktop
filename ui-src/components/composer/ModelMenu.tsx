@@ -275,7 +275,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
       setShowRoles(true);
       closeFly();
     } else if (k === MANAGE_ROW) {
-      useAppStore.getState().openSettings("pg-model"); // no-ops on remote (the row is not rendered there anyway)
+      useAppStore.getState().openSettings("pg-model", "manage"); // no-ops on remote (the row is not rendered there anyway)
       onClose();
     } else if (providers.includes(k)) {
       setProv(k);
