@@ -11,6 +11,7 @@ import Icon from "../../../Icon";
 import { useAppStore, invoke, toast, type TimerHandle } from "../../../store";
 import { t } from "../../../i18n";
 import { AgentBrowserView } from "./AgentBrowserView";
+import { SUCCESS_FLASH_MS } from "../sidebar/util";
 
 // ---------- URL normalization (simplified embeddedBrowserHelpers.normalizeBrowserUrl) ----------
 // Without a scheme: localhost/loopback/intranet IPs/explicit port -> http, others -> https
@@ -121,6 +122,8 @@ function ManualBrowserView() {
   const [nonce, setNonce] = useState(0); // for reload: force-reload the same URL
   const [addr, setAddr] = useState(""); // address bar input value
   const [menuOpen, setMenuOpen] = useState(false);
+  // Link copy holds the menu open until the icon flash ends (closing first would hide it).
+  const [copiedLink, setCopiedLink] = useState(false);
   const loadTimer = useRef<TimerHandle | undefined>(undefined); // DOM setTimeout handle; undefined has the old null semantics (clearTimeout tolerates it)
 
   const current = idx >= 0 ? stack[idx] : null;
@@ -272,12 +275,24 @@ function ManualBrowserView() {
                 className="mi"
                 disabled={!current}
                 onClick={() => {
-                  setMenuOpen(false);
-                  if (current) navigator.clipboard.writeText(current).then(() => toast(t("right.linkCopied"))).catch(() => toast(t("right.copyFailed")));
+                  if (!current) return;
+                  navigator.clipboard
+                    .writeText(current)
+                    .then(() => {
+                      setCopiedLink(true);
+                      window.setTimeout(() => {
+                        setCopiedLink(false);
+                        setMenuOpen(false);
+                      }, SUCCESS_FLASH_MS);
+                    })
+                    .catch(() => {
+                      setMenuOpen(false);
+                      toast(t("right.copyFailed"));
+                    });
                 }}
               >
-                <span className="mi-ic"><Icon name="globe" size={14} /></span>
-                {t("right.copyLink")}
+                <span className="mi-ic"><Icon name={copiedLink ? "check" : "globe"} size={14} /></span>
+                {copiedLink ? t("common.copied") : t("right.copyLink")}
               </button>
               <button
                 className="mi"

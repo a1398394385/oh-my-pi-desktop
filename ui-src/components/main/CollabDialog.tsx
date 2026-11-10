@@ -8,18 +8,13 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, toast } from "../../store";
-import { copyText } from "./sidebar/util";
+import { useCopyFeedback } from "./sidebar/util";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 import Icon from "../../Icon";
 
 function LinkRow({ label, value }: { label: string; value: string }) {
   const { t } = useTranslation();
-  const copy = () => {
-    void copyText(value).then(
-      () => toast(t("collab.copied")),
-      () => toast(t("collab.copyFailed"), true),
-    );
-  };
+  const { copied, copy } = useCopyFeedback();
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
       <span style={{ flex: "none", width: "110px", color: "var(--dim)", fontSize: "var(--ui-fs-sm)" }}>{label}</span>
@@ -30,8 +25,13 @@ function LinkRow({ label, value }: { label: string; value: string }) {
       >
         {value}
       </code>
-      <button className="save-btn" style={{ flex: "none" }} onClick={copy} title={t("collab.copy")}>
-        <Icon name="copy" size={12} />
+      <button
+        className="save-btn"
+        style={{ flex: "none" }}
+        title={t("collab.copy")}
+        onClick={() => void copy(value).catch(() => toast(t("collab.copyFailed"), true))}
+      >
+        <Icon name={copied ? "check" : "copy"} size={12} />
       </button>
     </div>
   );

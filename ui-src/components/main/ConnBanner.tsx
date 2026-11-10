@@ -9,6 +9,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store";
 import { REMOTE, getRemoteKey } from "../../store/ws";
+import { useCopyFeedback } from "./sidebar/util";
+import Icon from "../../Icon";
 
 // Threshold of 30s: covers the host cold-start worst path (model catalog refresh over a proxy
 // can take >15s), while staying ahead of the Rust side's 60s ws_url timeout — users should
@@ -22,6 +24,7 @@ export default function ConnBanner() {
   const connFailSince = useAppStore((s) => s.connFailSince);
   const [keyInput, setKeyInput] = useState("");
   const [now, setNow] = useState(Date.now());
+  const { copied: diagCopied, copy } = useCopyFeedback();
 
   // Refresh once per second while failing (drives the "waited Ns" text and threshold check);
   // no timer while connected
@@ -75,8 +78,7 @@ export default function ConnBanner() {
       `UA: ${navigator.userAgent}`,
       t("misc.connDiagTime", { time: new Date().toISOString() }),
     ].join("\n");
-    void navigator.clipboard.writeText(report);
-    useAppStore.getState().toast(t("misc.diagCopied"));
+    void copy(report);
   };
 
   return (
@@ -89,7 +91,8 @@ export default function ConnBanner() {
         {t("misc.retryNow")}
       </button>
       <button className="save-btn" onClick={copyDiagnostics}>
-        {t("misc.copyDiag")}
+        <Icon name={diagCopied ? "check" : "copy"} size={13} />
+        {diagCopied ? t("common.copied") : t("misc.copyDiag")}
       </button>
     </div>
   );

@@ -14,7 +14,7 @@ import { useAppStore, send, toast, setWelcomeProject } from "../../store";
 import { placeMenu } from "../../shell";
 import Icon from "../../Icon";
 import { confirmDialog } from "../settings/common";
-import { copyText } from "../main/sidebar/util";
+import { useCopyFeedback } from "../main/sidebar/util";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "../ui/dialog";
 
 // Host row shape from the ssh_hosts frame (see SshHostsFrame)
@@ -40,14 +40,15 @@ function hostSubtitle(h: SshHostRow): string {
 // the raw ssh diagnostic is copied verbatim — no toast: a toast auto-hides in
 // 2.2s, cannot be selected, and sits below the dialog mask (z 400 < 1000).
 // Status rides on the border color, the copy button is the only chrome.
-function ResultPanel({ ok, text, copyLabel, onCopy }: { ok: boolean; text: string; copyLabel: string; onCopy: () => void }) {
+function ResultPanel({ ok, text, copyLabel, copied, onCopy }: { ok: boolean; text: string; copyLabel: string; copied: boolean; onCopy: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="rd-result" data-ok={ok}>
       <div className="rd-result-bar">
         {!ok && <span className="mcp-err-icon" title={text}>ⓘ</span>}
         <button type="button" className="save-btn" onClick={onCopy}>
-          <Icon name="copy" size={12} />
-          {copyLabel}
+          <Icon name={copied ? "check" : "copy"} size={12} />
+          {copied ? t("common.copied") : copyLabel}
         </button>
       </div>
       <pre className="rd-result-body">{text}</pre>
@@ -276,13 +277,12 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
     send({ type: "ssh_remove_host", name: h.name });
   };
 
-  // Copy the raw diagnostic verbatim — the user pastes it into a bug report.
+  // Copy the raw diagnostic verbatim — the user pastes it into a bug report. Success rides on
+  // the button icon (a toast would hide under the dialog mask), failure still toasts.
+  const { copied: resultCopied, copy: copyResultText } = useCopyFeedback();
   const copyResult = () => {
     if (!result) return;
-    copyText(result.text).then(
-      () => toast(t("ssh.copiedResult")),
-      () => toast(t("ssh.copyResultFailed")),
-    );
+    void copyResultText(result.text).catch(() => toast(t("ssh.copyResultFailed")));
   };
 
   const testTarget = () => {
@@ -500,7 +500,7 @@ export default function RemoteDialog({ onClose }: { onClose: () => void }) {
           {/* Probe/connect failure outcome. Success needs no panel — the test
               button carries a pale-green tint instead (see .rd-test-ok); the
               user only needs the ssh diagnostic to stay put and be copyable. */}
-          {result && !result.ok && <ResultPanel ok={result.ok} text={result.text} copyLabel={t("ssh.copyResult")} onCopy={copyResult} />}
+          {result && !result.ok && <ResultPanel ok={result.ok} text={result.text} copyLabel={t("ssh.copyResult")} copied={resultCopied} onCopy={copyResult} />}
         </div>
 
         <DialogFooter className="confirm-actions" style={{ marginTop: "16px" }}>

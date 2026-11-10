@@ -1,6 +1,7 @@
 import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SUCCESS_FLASH_MS } from "../../../main/sidebar/util";
 
 export interface JsonBlockProps {
   data: unknown;
@@ -22,7 +23,7 @@ export function JsonBlock({ data, title = "JSON", initialCollapsed = false }: Js
       await navigator.clipboard.writeText(json);
       setCopied(true);
       window.clearTimeout(copyResetRef.current);
-      copyResetRef.current = window.setTimeout(() => setCopied(false), 1500);
+      copyResetRef.current = window.setTimeout(() => setCopied(false), SUCCESS_FLASH_MS);
     } catch {}
   };
 
@@ -42,7 +43,7 @@ export function JsonBlock({ data, title = "JSON", initialCollapsed = false }: Js
         </button>
         <button type="button" className="btn" data-variant="ghost" data-size="sm" onClick={copy}>
           {copied ? <Check size={13} /> : <Copy size={13} />}
-          {copied ? t("settingsPage.stats.ui.copied") : t("settingsPage.stats.ui.copy")}
+          {copied ? t("common.copied") : t("settingsPage.stats.ui.copy")}
         </button>
       </div>
       {!collapsed && (

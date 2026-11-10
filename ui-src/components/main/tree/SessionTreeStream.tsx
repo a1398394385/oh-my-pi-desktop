@@ -2,7 +2,7 @@
 // branches switch via a single-row horizontal scroller; cards support in-place drawer expansion.
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import Icon from "../../../Icon";
-import { fmtAgo } from "../sidebar/util";
+import { copyText, fmtAgo, useSuccessFlash } from "../sidebar/util";
 import { toast, effZoom, type TimerHandle } from "../../../store";
 import { t } from "../../../i18n";
 import type { EntryNode, StreamItem, StreamSection } from "./sessionTreeUtil";
@@ -54,6 +54,10 @@ export default function SessionTreeStream({
   const [confirmNode, setConfirmNode] = useState<EntryNode | null>(null);
   // Node id the keyboard cursor points at (null = no cursor yet)
   const [cursorId, setCursorId] = useState<string | null>(null);
+  // Which node's copy button is currently flashing: a single shared flag would light up every
+  // expanded drawer at once.
+  const [copiedNodeId, setCopiedNodeId] = useState<string | null>(null);
+  const { flashed, flash } = useSuccessFlash();
 
   // Container ref plus the viewport-anchoring ref used when switching branches
   const containerRef = useRef<HTMLDivElement>(null);
@@ -222,12 +226,11 @@ export default function SessionTreeStream({
     });
   };
 
-  const onCopyText = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      toast(t("chat.copiedToClipboard"));
-    }).catch(() => {
-      toast(t("chat.copySuccessFallback"));
-    });
+  const onCopyText = (text: string, nodeId: string) => {
+    void copyText(text).then(() => {
+      setCopiedNodeId(nodeId);
+      flash();
+    }).catch(() => toast(t("chat.copyFailed")));
   };
 
   if (sequence.length === 0) {
@@ -329,11 +332,11 @@ export default function SessionTreeStream({
                   className="save-btn px-2.5 py-1 text-ui-xs border border-line rounded hover:bg-hover-fill cursor-pointer flex items-center gap-1"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onCopyText(node.text || "");
+                    onCopyText(node.text || "", node.id);
                   }}
                 >
-                  <Icon name="copy" size={12} />
-                  <span>{t("common.copy")}</span>
+                  <Icon name={flashed && copiedNodeId === node.id ? "check" : "copy"} size={12} />
+                  <span>{flashed && copiedNodeId === node.id ? t("common.copied") : t("common.copy")}</span>
                 </button>
                 <button
                   type="button"

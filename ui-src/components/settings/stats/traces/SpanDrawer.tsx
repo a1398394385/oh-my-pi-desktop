@@ -2,6 +2,7 @@ import { Check, Copy } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getSessionEntryDetail } from "../api";
+import { SUCCESS_FLASH_MS } from "../../../main/sidebar/util";
 import { formatDurationMs, formatInteger } from "../data/formatters";
 import type { TraceSpan, TraceTrack } from "../types";
 import { Badge, Drawer, ErrorState, JsonBlock, KeyValues, Skeleton } from "../ui";
@@ -92,7 +93,7 @@ export function SpanDrawer({ span, track, onClose, onOpenChildTrack }: SpanDrawe
       await navigator.clipboard.writeText(JSON.stringify(entry ?? span, null, 2));
       setCopied(true);
       window.clearTimeout(copyResetRef.current);
-      copyResetRef.current = window.setTimeout(() => setCopied(false), 1500);
+      copyResetRef.current = window.setTimeout(() => setCopied(false), SUCCESS_FLASH_MS);
     } catch {}
   };
 

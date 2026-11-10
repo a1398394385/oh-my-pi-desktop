@@ -83,8 +83,7 @@ function McpLogDialog({
     try {
       await navigator.clipboard.writeText(content);
       setCopied(true);
-      toast(ti("settingsPage.mcp.copiedToast"));
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 1000);
     } catch {
       toast(ti("settingsPage.mcp.copyFailToast"));
     }
@@ -131,7 +130,8 @@ function McpLogDialog({
         </div>
         <DialogFooter className="confirm-actions" style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <button type="button" className="confirm-btn" onClick={onCopy}>
-            {copied ? ti("settingsPage.mcp.copied") : ti("settingsPage.mcp.copyLog")}
+            <Icon name={copied ? "check" : "copy"} size={13} />
+            {copied ? ti("common.copied") : ti("settingsPage.mcp.copyLog")}
           </button>
           <DialogClose asChild>
             <button type="button" className="confirm-btn" onClick={onClose}>

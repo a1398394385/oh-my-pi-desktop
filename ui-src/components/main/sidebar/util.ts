@@ -2,6 +2,7 @@
 // session label / clipboard copy.
 // fmtAgo is the single shared definition (consumed by tree/SessionTreeStream);
 // fmtDuration lives in chat/util.ts.
+import { useEffect, useRef, useState } from "react";
 import { atMentions } from "../../../lib/at-mentions";
 import { t } from "../../../i18n";
 
@@ -46,6 +47,30 @@ export function copyText(text: string): Promise<void> {
     return Promise.resolve();
   }
   return navigator.clipboard.writeText(text).catch(() => execFallback());
+}
+
+// Button success flash without a toast: the button swaps its icon/label for this long, then
+// reverts. One window for every success-shaped button (copy, fork) so the rhythm stays uniform.
+export const SUCCESS_FLASH_MS = 800;
+
+export function useSuccessFlash() {
+  const [flashed, setFlashed] = useState(false);
+  const timer = useRef(0);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const flash = () => {
+    window.clearTimeout(timer.current);
+    setFlashed(true);
+    timer.current = window.setTimeout(() => setFlashed(false), SUCCESS_FLASH_MS);
+  };
+  return { flashed, flash };
+}
+
+// Copy feedback: writes the clipboard, then flashes the button. Rejection is left to the caller,
+// which keeps its failure toast.
+export function useCopyFeedback() {
+  const { flashed, flash } = useSuccessFlash();
+  const copy = (text: string) => copyText(text).then(flash);
+  return { copied: flashed, copy };
 }
 
 export interface ShortcutSessionCandidate {

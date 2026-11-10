@@ -3,10 +3,12 @@
 // + mark as unread. The old version's capture-phase
 // interception to coordinate with the shell menu doesn't exist in the React version (the menu
 // is a component); word-selection undo logic stays in the Sidebar container layer.
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Menu from "./Menu";
-import { copyText } from "./util";
+import { copyText, SUCCESS_FLASH_MS, useSuccessFlash } from "./util";
+import Icon from "../../../Icon";
 import type { SessionInfo } from "./SessionRow";
 
 export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWorktree }: {
@@ -38,6 +40,31 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWo
   const item = (label: string, fn: () => void, disabled = false) => (
     <button key={label} disabled={disabled} onClick={() => { onClose(); fn(); }}>{label}</button>
   );
+  // Copy rows keep the menu open for the flash (check icon + "Copied") before closing.
+  const { flashed, flash } = useSuccessFlash();
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyItem = (key: string, label: string, text: string, disabled = false) => (
+    <button
+      key={key}
+      className="ctx-copy"
+      disabled={disabled}
+      onClick={() => {
+        void copyText(text)
+          .then(() => {
+            setCopiedKey(key);
+            flash();
+            window.setTimeout(onClose, SUCCESS_FLASH_MS);
+          })
+          .catch(() => {
+            onClose();
+            toast(t("sidebar.copyFailed"));
+          });
+      }}
+    >
+      <span className="mi-ic"><Icon name={flashed && copiedKey === key ? "check" : "copy"} size={14} /></span>
+      {flashed && copiedKey === key ? t("common.copied") : label}
+    </button>
+  );
   const togglePin = () => {
     const st = useAppStore.getState();
     const on = !st.pinnedSessions.has(entry.path);
@@ -67,24 +94,10 @@ export default function SessCtxMenu({ entry, x, y, onClose, onRename, onRemoveWo
       {item(entry.archived ? t("sidebar.unarchive") : t("sidebar.archiveSession"), () => send({ type: "archive_session", path: entry.path, archived: !entry.archived }), running && !entry.archived)}
       {isWorktreeCwd && onRemoveWorktree && item(t("worktree.remove.title"), () => onRemoveWorktree(entry))}
       <div className="sep" />
-      {item(t("sidebar.copySessionId"), () => {
-        copyText(entry.id ?? "").then(
-          () => toast(t("sidebar.copySessionIdDone")),
-          () => toast(t("sidebar.copyFailed")),
-        );
-      }, entry.pending)}
-      {item(t("sidebar.copySessionPath"), () => {
-        copyText(entry.path).then(
-          () => toast(t("sidebar.copySessionPathDone")),
-          () => toast(t("sidebar.copyFailed")),
-        );
-      })}
-      {cwd && item(t("sidebar.copyCwdPath"), () => {
-        copyText(cwd).then(
-          () => toast(t("sidebar.copyCwdPathDone")),
-          () => toast(t("sidebar.copyFailed")),
-        );
-      })}
+      {/* Copy rows flash their icon + label, then close the menu. */}
+      {copyItem("sessionId", t("sidebar.copySessionId"), entry.id ?? "", entry.pending)}
+      {copyItem("sessionPath", t("sidebar.copySessionPath"), entry.path)}
+      {cwd && copyItem("cwd", t("sidebar.copyCwdPath"), cwd)}
       {cwd && item(t("sidebar.openInFileManager"), () => send({ type: "open_folder", path: cwd }))}
     </Menu>
   );
