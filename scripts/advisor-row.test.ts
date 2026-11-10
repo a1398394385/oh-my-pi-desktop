@@ -123,6 +123,7 @@ function flat(els: ReactElement[]): ReactElement[] {
   const acc: ReactElement[] = [];
   const walk = (list: ReactElement[]) => {
     for (const el of list) {
+      if (!el) continue; // conditional JSX leaves null slots in a children array
       acc.push(el);
       const kids = (el.props as { children?: unknown }).children;
       if (Array.isArray(kids)) walk(kids as ReactElement[]);

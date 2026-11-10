@@ -315,6 +315,14 @@ export const hostErrorsEn = {
     userScopeFailed: "[host] MCP user-scope discovery failed: {{detail}}\n",
     projectScopeFailed: "[host] MCP project-scope discovery failed ({{cwd}}): {{detail}}\n",
   },
+  runChanges: {
+    sessionNotLoaded: "Session is not loaded; file changes are unavailable\n",
+    notFound: "Change record not found\n",
+    alreadyReverted: "This change has already been reverted\n",
+    noSnapshot: "No file snapshot (file too large or binary); operation unavailable\n",
+    notTop: "The file was changed by a later run; only the last change can be reverted\n",
+    modified: "The file has been modified since; cannot revert that run's change\n",
+  },
   lifecycle: {
     queuedFollowUpFailed: "[host] Queued-message follow-up trigger failed: {{detail}}\n",
     extensionSendFailed: "[host] Extension sendMessage failed: {{detail}}\n",

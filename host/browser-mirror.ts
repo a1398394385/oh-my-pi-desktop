@@ -396,14 +396,16 @@ async function poll(): Promise<void> {
 
 /**
  * Map a tab-creating session id to its jsonl path in the host pool.
- * PoolEntry.providerSessionId (= sessionManager.getSessionId()) is the same id
- * the supervisor records as TabSession.ownerSessionId. Undefined when the tab
- * has no owner or its session is no longer pooled (closed / external process).
+ * TabSession.ownerSessionId is the eval-kernel owner id the SDK mints per
+ * AgentSession (`getEvalKernelOwnerId()`, "agent-session:<snowflake>") — see
+ * tools/browser.ts tabOwnerId — NOT the disk session id or PoolEntry.providerSessionId;
+ * matching on those leaves every tab ownerless. Undefined when the tab has no
+ * owner or its owner is not pooled (closed session, subagent, external process).
  */
-function pathForOwnerSession(ownerSessionId: string | undefined): string | undefined {
+export function pathForOwnerSession(ownerSessionId: string | undefined): string | undefined {
 	if (!ownerSessionId) return undefined;
 	for (const entry of sessions.values()) {
-		if (entry.providerSessionId === ownerSessionId) return entry.path;
+		if (entry.session.getEvalKernelOwnerId() === ownerSessionId) return entry.path;
 	}
 	return undefined;
 }

@@ -244,6 +244,9 @@ export async function autoReviewThenApprove(
 	options: readonly string[],
 	showCard: (title: string) => Promise<string | undefined>,
 ): Promise<string | undefined> {
+	// A restricted folder (tools.restrictedFolders) asks on every call: the base marks that
+	// prompt with this reason and no setting may bypass it, so neither may auto-review.
+	if (title.includes("Restricted folder: ")) return showCard(title);
 	if (!isAutoReviewEnabled() || !options.includes("Approve")) return showCard(title);
 	const tool = takePendingToolCall(sessionId);
 	// Concurrency guard: parallel tool calls overwrite the slot, so the pending

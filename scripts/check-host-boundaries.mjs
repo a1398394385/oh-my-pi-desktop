@@ -45,6 +45,11 @@ const ALLOWED_EDGES = new Set([
   "acp-runtime.ts→acp-assembly.ts", "acp-assembly.ts→acp-runtime.ts",
   "acp-compress.ts→acp-plan.ts", "acp-compress.ts→acp-projection.ts",
   "acp-compress.ts→acp-persist.ts", "acp-assembly.ts→acp-plan.ts",
+  // In-session leaf moves (navigate_tree / edit_resend) must re-derive the ACP
+  // dual-zone state from the new root→leaf branch (a fork back before a
+  // compression node restores the uncompressed context): rpc/session calls the
+  // runtime's resyncToBranch directly — type-only import, no graph pull-in.
+  "rpc/session.ts→acp-runtime.ts",
   "acp-assembly.ts→acp-persist.ts", "acp-assembly.ts→stderr.ts",
   // The assembly binds the block-price helpers (`signatureTokensOf`) and the
   // whole-list counter from the projection leaf: the catalog's thinking-replay
@@ -213,6 +218,20 @@ const ALLOWED_EDGES = new Set([
   "session-titles.ts→desktop-json.ts",
   "session-lifecycle.ts→session-titles.ts", "rpc/settings.ts→session-titles.ts", "frames.ts→session-titles.ts",
   "rpc/session.ts→session-titles.ts", "translate-history.ts→session-titles.ts",
+  // Auto-archive of stale sessions (omp-desktop.json autoArchive section):
+  // auto-archive.ts is a pure leaf over desktop-json (the retention window and
+  // the selection rule), projected into the settings frame and written by
+  // rpc/settings; auto-archive-sweep.ts owns the hourly scan — it lists the
+  // sessions, archives the stale ones into the project list and refreshes the
+  // sidebar lists.
+  "auto-archive.ts→desktop-json.ts",
+  "frames.ts→auto-archive.ts", "rpc/settings.ts→auto-archive.ts",
+  "auto-archive-sweep.ts→auto-archive.ts", "auto-archive-sweep.ts→bootstrap.ts",
+  "auto-archive-sweep.ts→activity-time.ts", "auto-archive-sweep.ts→state.ts",
+  "auto-archive-sweep.ts→profile.ts", "auto-archive-sweep.ts→automations/store.ts",
+  "auto-archive-sweep.ts→rpc/session.ts", "auto-archive-sweep.ts→stderr.ts",
+  "main.ts→auto-archive-sweep.ts",
+  "rpc/settings.ts→auto-archive-sweep.ts", // flipping the switch on runs one scan immediately
   "frames.ts→computer-mode.ts", "rpc/assets.ts→computer-mode.ts", "profile.ts→computer-mode.ts",
   // A2: the seven private omp-desktop.json read/merge-write wheels converged
   // onto the shared desktop-json helpers — profile's project-list save (multi-
@@ -335,6 +354,9 @@ const ALLOWED_EDGES = new Set([
   // file mtime, which a `session_exit` diagnostic frame refreshes, so
   // rpc/session.ts rewrites it to the last `message` frame's timestamp
   "rpc/session.ts→activity-time.ts",
+  // delete_session sweeps the per-session computer opt-in record (omp-desktop.json
+  // computer.sessions, keyed by the same session paths) alongside pin/archive
+  "rpc/session.ts→computer-mode.ts",
   "rpc/prompt.ts→rpc/types.ts", "rpc/prompt.ts→rpc/session.ts",
   "rpc/prompt.ts→bootstrap.ts", "rpc/prompt.ts→state.ts", "rpc/prompt.ts→translate.ts",
   // ! bash-mode completion: PATH scan + cwd path candidates (reads the pool for the session cwd, replies on its ws)
@@ -585,6 +607,37 @@ const ALLOWED_EDGES = new Set([
   "mcp-builtin.ts→mcp-assets.ts", "mcp-mount.ts→mcp-assets.ts",
   "rpc/assets.ts→asset-paths.ts", "rpc/assets.ts→mcp-assets.ts", "rpc/assets.ts→plugin-assets.ts",
   "rpc/prompt.ts→plugin-assets.ts", "rpc/settings.ts→plugin-assets.ts",
+  // Run-final file-change card (run-changes.ts): the live translator feeds the tracker,
+  // entry-core finalizes at terminal agent_end, disk replay reattaches the records, and the
+  // RPC domain replays the journal for revert/diff. Leaf contract: only translate-tool
+  // helpers, state types and host i18n flow in.
+  "translate.ts→run-changes.ts", "session-entry-core.ts→run-changes.ts",
+  "translate-history.ts→run-changes.ts",
+  "run-changes.ts→translate-tool.ts", "run-changes.ts→state.ts",
+  "run-changes.ts→i18n/host.ts", "run-changes.ts→wire/payloads.ts", "run-changes.ts→stderr.ts",
+  "rpc/index.ts→rpc/run-changes.ts",
+  "rpc/run-changes.ts→run-changes.ts", "rpc/run-changes.ts→state.ts",
+  "rpc/run-changes.ts→i18n/host.ts", "rpc/run-changes.ts→rpc/types.ts",
+  // Extension mode control + assistant-text renderers: the pure state snapshot leaf
+  // (mode-state) is read by the desktop's own plan/goal controllers and by the
+  // ctx.sessionModes bridge, so both report `mode_changed` through it; the bridge drives
+  // plan mode via plan.ts and reads settings/state like any other domain module, and the
+  // text renderer leaf stays pure (one stderr sink for a broken renderer).
+  "mode-control.ts→plan.ts", "mode-control.ts→mode-state.ts",
+  "mode-control.ts→settings-compat.ts", "mode-control.ts→state.ts",
+  "session-entry-core.ts→mode-control.ts", "session-entry-core.ts→assistant-text.ts",
+  "plan.ts→mode-state.ts", "goal.ts→mode-state.ts",
+  "translate.ts→assistant-text.ts", "state.ts→assistant-text.ts",
+  "assistant-text.ts→stderr.ts", "assistant-text.ts→state.ts",
+  // Composer predictions: entry-core starts one after a completed turn, an aborting turn cancels
+  // it; the leaf reads the mirrored SDK prompt, the setting gates, the entry bus and one log sink.
+  "session-entry-core.ts→prediction.ts", "prediction.ts→bootstrap.ts",
+  "prediction.ts→settings-compat.ts", "prediction.ts→state.ts", "prediction.ts→stderr.ts",
+  // One-row-per-repository project list (session.worktreeScope="repo"): repo-roots is a small
+  // leaf that only runs git reads; the session list groups the registered project dirs with it,
+  // and the Git page shares its porcelain parser instead of keeping a second copy.
+  "repo-roots.ts→git.ts",
+  "rpc/session.ts→repo-roots.ts", "rpc/git-graph.ts→repo-roots.ts",
 ]);
 
 // Scan one level of host/ plus the rpc/, automations/, i18n/ and wire/ subtrees (keys carry a path prefix like rpc/session.ts)

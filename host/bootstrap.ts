@@ -171,10 +171,12 @@ export const { resolveLocalUrlToPath, copyLocalArtifacts } = await import(
 // after a base upgrade run `bun run host:sync-prompts`.
 import planModeApproved from "./prompts/plan-mode-approved.md";
 import planModeCompactInstructions from "./prompts/plan-mode-compact-instructions.md";
+import composerPredictionPrompt from "./prompts/composer-prediction-user.md";
 
 const SDK_PROMPTS: Record<string, string> = {
   "plan-mode-approved.md": planModeApproved,
   "plan-mode-compact-instructions.md": planModeCompactInstructions,
+  "composer-prediction-user.md": composerPredictionPrompt,
 };
 
 export function readSdkPrompt(fileName: string): string {

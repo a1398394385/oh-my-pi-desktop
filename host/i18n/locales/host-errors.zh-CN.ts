@@ -319,6 +319,14 @@ export const hostErrorsZh = {
     userScopeFailed: "[host] MCP 用户级发现失败: {{detail}}\n",
     projectScopeFailed: "[host] MCP 项目级发现失败 ({{cwd}}): {{detail}}\n",
   },
+  runChanges: {
+    sessionNotLoaded: "会话未加载，无法操作文件变更\n",
+    notFound: "未找到该次修改记录\n",
+    alreadyReverted: "该修改已被撤销\n",
+    noSnapshot: "缺少文件快照（文件过大或为二进制），无法执行此操作\n",
+    notTop: "该文件已被后续运行修改，只能撤销最后一次修改\n",
+    modified: "文件内容在之后已被改动，无法撤销该次修改\n",
+  },
   lifecycle: {
     queuedFollowUpFailed: "[host] 排队消息续轮触发失败: {{detail}}\n",
     extensionSendFailed: "[host] 扩展 sendMessage 失败: {{detail}}\n",

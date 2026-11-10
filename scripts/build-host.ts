@@ -61,7 +61,7 @@ const version = (JSON.parse(await Bun.file(path.join(nativesPkgDir, "package.jso
 const codingAgentPkgDir = path.join(repoRoot, "node_modules", "@oh-my-pi", "pi-coding-agent");
 const sdkPromptsDir = path.join(codingAgentPkgDir, "src", "prompts", "system");
 const mirrorDir = path.join(repoRoot, "host", "prompts");
-const promptMirrors = ["plan-mode-approved.md", "plan-mode-compact-instructions.md"] as const;
+const promptMirrors = ["plan-mode-approved.md", "plan-mode-compact-instructions.md", "composer-prediction-user.md"] as const;
 
 if (process.argv.includes("--sync-prompts")) {
 	for (const file of promptMirrors) {
