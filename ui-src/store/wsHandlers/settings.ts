@@ -191,9 +191,9 @@ export const settingsHandlers = {
   displays(msg) {
     useAppStore.setState({ computerDisplays: msg });
   },
-  // ---- Right-panel open-with menu (host list_editors reply) ----
-  editors(msg) {
-    useAppStore.setState({ editors: Array.isArray(msg.editors) ? msg.editors : [] });
+  // ---- Right-panel open-with menu (host list_open_apps reply) ----
+  open_apps(msg) {
+    useAppStore.setState({ openApps: msg });
   },
   // ---- Remote control (spec §3.2): set_remote_config reply; SSOT for the settings page.
   // Successful replies carry no error and clear any previous failure; key/url are preserved

@@ -151,26 +151,35 @@ function Composer({
 
 /** The answer's steering prompt: send it to the main session as a steer. Sent state is local —
  *  the host persists nothing, so a remount offers the send again. */
-function InjectBlock({ sessionId, text }: { sessionId: string; text: string }) {
+function InjectBlock({ sessionId, text, hotkey }: { sessionId: string; text: string; hotkey?: boolean }) {
   const { t } = useTranslation();
   const connected = useAppStore((s) => s.connected);
   const [sent, setSent] = useState(false);
   const [failed, setFailed] = useState(false);
+  const act = () => {
+    if (!connected) {
+      setFailed(true);
+      return;
+    }
+    send({ type: "prompt", sessionId, text, steer: true });
+    setSent(true);
+  };
+  // Alt+I (base app.btw.inject) sends the newest answer's inject block; bound here rather than in
+  // keys.ts because the block only exists while its topic view is mounted.
+  useEffect(() => {
+    if (!hotkey || sent) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.key.toLowerCase() !== "i") return;
+      e.preventDefault();
+      act();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [hotkey, sent, connected, sessionId, text]);
   return (
     <div className="btw-u">
       <div>{text}</div>
-      <button
-        className="save-btn"
-        disabled={sent}
-        onClick={() => {
-          if (!connected) {
-            setFailed(true);
-            return;
-          }
-          send({ type: "prompt", sessionId, text, steer: true });
-          setSent(true);
-        }}
-      >
+      <button className="save-btn" disabled={sent} onClick={act}>
         {sent ? t("right.btwInjectSent") : t("right.btwInjectSend")}
       </button>
       {failed && !sent && <div className="btw-err">{t("right.btwInjectFailed")}</div>}
@@ -178,7 +187,7 @@ function InjectBlock({ sessionId, text }: { sessionId: string; text: string }) {
   );
 }
 
-function Turn({ turn, sessionId }: { turn: BtwTurn; sessionId: string }) {
+function Turn({ turn, sessionId, hotkey }: { turn: BtwTurn; sessionId: string; hotkey?: boolean }) {
   const { t } = useTranslation();
   const parts = turn.answer ? splitInject(turn.answer) : undefined;
   const prose = parts?.before ?? turn.answer;
@@ -188,7 +197,7 @@ function Turn({ turn, sessionId }: { turn: BtwTurn; sessionId: string }) {
       {turn.answer ? (
         <>
           {prose.trim() && <MdSurface className="btw-a md-body md-surface" text={prose} />}
-          {parts && <InjectBlock sessionId={sessionId} text={parts.inject} />}
+          {parts && <InjectBlock sessionId={sessionId} text={parts.inject} hotkey={hotkey} />}
           {parts?.after.trim() && <MdSurface className="btw-a md-body md-surface" text={parts.after} />}
         </>
       ) : (
@@ -240,10 +249,12 @@ function TopicChat({ sessionId, topic, onBack }: { sessionId: string; topic: Btw
         </button>
       </div>
       <div className="btw-scroll" ref={scrollRef}>
-        {turnsOf(topic).map((turn) => (
+        {turnsOf(topic).map((turn, i, turns) => (
           // Key by identity, not index: the inject block's sent state must not carry over
           // to another topic that happens to reuse an index.
-          <Turn key={`${topic.id}:${turn.createdAt}`} turn={turn} sessionId={sessionId} />
+          // Alt+I only answers for the newest turn: an older inject block is not what the user
+          // is looking at.
+          <Turn key={`${topic.id}:${turn.createdAt}`} turn={turn} sessionId={sessionId} hotkey={i === turns.length - 1} />
         ))}
       </div>
       <Composer

@@ -387,6 +387,18 @@ export const HIDDEN_KEYS: Record<string, true> = {
   // job for the widget spec, so the session overlay pins it off
   // (host/session-lifecycle.ts).
   "async.widgets": true,
+  // async.printWake only gates the base's print mode (-p / --mode json) waiting
+  // for background jobs before exit; the desktop never runs print mode and
+  // drives its own async-job wakeups.
+  "async.printWake": true,
+  // The desktop's advisor card is self-drawn React: the collapsed state never
+  // renders the note body, so the base's "max collapsed preview rows" switch
+  // (consumed by pi-tui's transcript) has no desktop consumer.
+  "display.advisorCollapsedLines": true,
+  // prewalk.from is only read by the base's /prewalk slash command, which the
+  // desktop removed (host/rpc/prompt.ts REMOVED_SLASH_COMMANDS). The handover
+  // target prewalk.into is consumed inside the SDK session and stays visible.
+  "prewalk.from": true,
   "display.shimmer": true,
   "display.pinnedAgents": true,
   "display.subagentLivePreview": true,

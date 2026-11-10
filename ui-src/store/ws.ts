@@ -199,6 +199,8 @@ declare global {
       event?: { listen: (event: string, handler: (e: { payload?: any }) => void) => Promise<unknown> };
       app?: { getVersion: () => Promise<string> };
       window?: { getCurrentWindow(): import("./titlebar-window").TauriWindow };
+      // Native save panel (tauri-plugin-dialog); absent in browser direct-connect debugging
+      dialog?: { save: (opts?: { defaultPath?: string; title?: string }) => Promise<string | null> };
     };
   }
 }

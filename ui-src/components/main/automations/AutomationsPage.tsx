@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEven
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { useAppStore, send, openSettings } from "../../../store";
+import { SEARCH_FLASH_MS } from "../../settings/Settings";
 import Icon from "../../../Icon";
 import { confirmDialog } from "../../settings/common";
 import {
@@ -138,6 +139,25 @@ export default function AutomationsPage() {
     setView({ mode: "list" });
   }, [automations]);
 
+  // Header gear → subagents & tasks page, landed on the agent-tools switch. That page is a
+  // lazy chunk and the hub may be opening cold, so poll until the row mounts (settings
+  // search jumps after a fixed delay because it only runs on an already-open hub).
+  function openAgentSettings() {
+    openSettings("pg-agents");
+    const deadline = Date.now() + 2000;
+    const land = () => {
+      const el = document.querySelector<HTMLElement>('#setBody [data-key="automationAgentEnabled"]');
+      if (!el) {
+        if (Date.now() < deadline) setTimeout(land, 50);
+        return;
+      }
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.add("search-flash");
+      setTimeout(() => el.classList.remove("search-flash"), SEARCH_FLASH_MS);
+    };
+    setTimeout(land, 50);
+  }
+
   // Optimistic enable flip; the host's fresh automations_list reconciles any divergence.
   function flipEnabled(a: Automation) {
     const next = !a.enabled;
@@ -217,7 +237,7 @@ export default function AutomationsPage() {
         </button>
         {/* Automations settings (bottom of pg-agents): the agent-tools switch lives there,
             not on the task cards — it decides whether new sessions get the automation tools */}
-        <button type="button" className="icon-btn" title={t("autoList.settingsTitle")} onClick={() => openSettings("pg-agents")}>
+        <button type="button" className="icon-btn" title={t("autoList.settingsTitle")} onClick={openAgentSettings}>
           <Icon name="settings" size={17} />
         </button>
         <button type="button" className="frm-primary" onClick={() => setView({ mode: "create" })}>{t("autoEdit.createBtn")}</button>

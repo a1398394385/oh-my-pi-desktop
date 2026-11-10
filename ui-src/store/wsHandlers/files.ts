@@ -93,6 +93,15 @@ export const filesHandlers = {
     }));
     useAppStore.getState().setBriefDiff(msg.path, msg.diff); // the same reply also feeds the edit-row inline expansion
   },
+  run_file_diff(msg) {
+    // Run change review reply: fill the view it was opened for (a stale reply for another
+    // file/run is dropped)
+    useAppStore.setState((s) => {
+      const v = s.runDiffView;
+      if (!v || v.sessionId !== msg.sessionId || v.entryId !== msg.entryId || v.path !== msg.path) return {};
+      return { runDiffView: { ...v, diff: msg.diff, loading: false } };
+    });
+  },
   file_content(msg) {
     // File page full-content reply: write unconditionally (the user may have switched tabs away)
     useAppStore.setState((s) => {
@@ -115,6 +124,10 @@ export const filesHandlers = {
   },
   image_content(msg) {
     useAppStore.setState((s) => ({ rightState: { ...s.rightState, imageContent: msg } }));
+  },
+  file_copied(msg) {
+    // "Save as" receipt: the dialog already confirmed the destination, so the copy is the last step
+    useAppStore.getState().toast(t("right.savedAs"));
   },
 } satisfies HandlerSlice;
 

@@ -46,7 +46,8 @@ export default function AutomationsSection() {
     <>
       <div className="set-group-tt">{t("settingsPage.auto.agentGroup")}</div>
       <div className="set-card">
-        <div className="srow">
+        {/* data-key: the automations header gear opens this page and lands on this row */}
+        <div className="srow" data-key="automationAgentEnabled">
           <div className="srow-tx">
             <b className="srow-hd">
               {t("settingsPage.auto.agentTitle")}

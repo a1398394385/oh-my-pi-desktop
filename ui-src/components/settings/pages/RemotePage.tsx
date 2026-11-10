@@ -7,8 +7,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
-import { copyText, fmtAgo } from "../../main/sidebar/util";
+import { fmtAgo, useCopyFeedback } from "../../main/sidebar/util";
 import { Toggle, confirmDialog } from "../common";
+import Icon from "../../../Icon";
 import SshSection from "./SshSection";
 
 export default function RemotePage() {
@@ -41,13 +42,8 @@ export default function RemotePage() {
     send({ type: "set_remote_config", port: n });
   };
 
-  const copyLink = () => {
-    if (!url) return;
-    // WKWebView rejects clipboard.writeText without user activation; copyText has the execCommand fallback
-    void copyText(url).then(() =>
-      useAppStore.getState().toast(t("settingsPage.remote.keyCopied")),
-    );
-  };
+  // Success rides on the button label for 1s instead of a toast.
+  const { copied: linkCopied, copy: copyLink } = useCopyFeedback();
 
   const regenerate = async () => {
     if (
@@ -111,8 +107,9 @@ export default function RemotePage() {
             {key ? <code>{key.slice(0, 6)}…{key.slice(-4)}</code> : null}
           </div>
           <div className="srow-ctl">
-            <button type="button" className="save-btn" disabled={!url} title={url || undefined} onClick={copyLink}>
-              {t("settingsPage.remote.keyCopy")}
+            <button type="button" className="save-btn" disabled={!url} title={url || undefined} onClick={() => void copyLink(url)}>
+              <Icon name={linkCopied ? "check" : "copy"} size={13} />
+              {linkCopied ? t("common.copied") : t("settingsPage.remote.keyCopy")}
             </button>
             <button type="button" className="save-btn danger" disabled={!known} onClick={regenerate}>
               {t("settingsPage.remote.keyRegen")}
