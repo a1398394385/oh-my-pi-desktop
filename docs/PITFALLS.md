@@ -163,3 +163,8 @@
 - **`--short` 是人读输出，会把非 ASCII 路径做 C 风格引用 + 八进制转义**：`git status --short` 对 `中文文件名.txt` 给出 `"中文文件名.txt"`，解析器剥掉状态列后剩下的转义串既不能显示也不能当 pathspec 用。机器可读一律 `--porcelain`，再配 `-z`（NUL 分隔）彻底消除「路径里可能有换行/引号/反斜杠」的转义问题。git4idea `GitIndexStatusUtilKt` 用的正是 `--porcelain -z --no-renames`，并且把「记录长度不足 4 字符」当硬错误而不是兜底。
 - **`checkout --track <name>` 对本地已存在的分支不会失败**：它会新建一个同名短分支并让它追踪原分支，exit 0。用来实现「点远程分支 → DWIM 到本地跟踪分支」时，若判据是「短名里有没有 `/`」，本地分支 `feat/login-flow` 会被误判为远程，用户被静默放到新建的 `login-flow` 上。判据必须来自 refname 前缀（`refs/heads/` vs `refs/remotes/`），也就是一次 `for-each-ref --format='%(refname)\t%(objectname)\t%(HEAD)'` 能同时给出的东西——顺带第三字段 `%(HEAD)` 也是 detached HEAD 的判据。
 
+
+## 改 `ui/css/**` 内层文件后 dev 服务器不重建样式（2026-11-09，文件页「打开」按钮字号实测）
+
+- **`ui/style.css` 用 `@import` 汇总 `ui/css/**`；改被 @import 的内层文件后，页面拿到的仍是旧规则**：`bun run dev:browser` 下 `fetch('/css/main/right/files.css')` 已是新内容，但页面实际加载的 `/style.css`（内联后）和 `getComputedStyle()` 还是旧值，连续多次 reload 无效。Vite 8 没把这条 @import 依赖纳入 HMR/重建图。**改内层 CSS 后要重启 dev 服务器再验证**，否则极易把「样式没生效」误判成选择器或优先级写错。
+- 定位手法：页面里遍历 `document.styleSheets` 取目标类名的 `cssText`，与实际文件 `fetch('/css/...')` 的内容对照——两者不一致即缓存/未重建，不必怀疑 CSS 本身。

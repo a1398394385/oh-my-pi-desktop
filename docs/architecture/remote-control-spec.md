@@ -81,14 +81,14 @@
 
 | 域 | RPC |
 |---|---|
-| settings.ts(20) | `set_setting` `set_locale` `set_ui_prefs` `set_external_browser` `set_computer_provider` `set_computer_default` `set_approval_mode` `set_acp_enabled` `set_acp_config` `set_session_context_enabled` `set_keepalive_enabled` `set_keepalive_config` `set_kimi_auto_thinking` `set_hooks_enabled` `set_plugins_enabled` `set_skills_enabled` `set_desktop_env` `switch_profile` `set_auto_review` `set_session_title_refresh` |
+| settings.ts(25) | `set_setting` `set_locale` `set_ui_prefs` `set_external_browser` `set_computer_provider` `set_computer_default` `set_advisor_default` `set_approval_mode` `set_acp_enabled` `set_acp_config` `set_session_context_enabled` `set_keepalive_enabled` `set_keepalive_config` `set_automation_agent_enabled` `set_automation_dialog_timeouts` `set_kimi_auto_thinking` `set_hooks_enabled` `set_plugins_enabled` `set_skills_enabled` `set_desktop_env` `switch_profile` `set_auto_review` `set_session_title_refresh` `set_branch_titles` `set_auto_archive` |
 | models.ts(2) | `set_enabled_model` `set_model_role` |
 | provider-wizard.ts(2) | `save_provider_models` `save_provider_model` |
 | login.ts(10) | 全部:`provider_login` `provider_logout` `provider_list_accounts` `provider_disable_account` `provider_enable_account` `provider_reorder_account` `provider_login_cancel` `provider_set_key` `login_prompt_reply` `open_models_config` |
-| assets.ts(11) | `asset_file_write` `asset_file_create` `asset_skill_toggle` `asset_plugin_toggle` `asset_skill_delete` `toggle_extension_item` `toggle_extension_provider` `toggle_extension_user_source` `set_mcp_server_enabled` `save_mcp_server` `delete_mcp_server` |
+| assets.ts(12) | `asset_file_write` `asset_file_create` `asset_skill_toggle` `asset_plugin_toggle` `asset_skill_delete` `toggle_extension_item` `toggle_extension_provider` `toggle_extension_user_source` `set_mcp_server_enabled` `save_mcp_server` `delete_mcp_server` |
 | automations.ts(4) | `automations_create` `automations_update` `automations_delete` `automations_toggle` |
 | ssh.ts(3) | `ssh_save_host` `ssh_remove_host` `add_remote_workspace` |
-| session.ts(11) | `set_session_pinned` `archive_session` `set_project_expanded` `add_project` `remove_project` `reorder_projects` `delete_session` `rename_session` `compact_session` `branch_session` `fork_session` |
+| session.ts(12) | `set_session_pinned` `archive_session` `set_project_expanded` `add_project` `remove_project` `reorder_projects` `delete_session` `rename_session` `compact_session` `branch_session` `fork_session` `edit_resend` |
 
 **明确放行(远程会话能力所需,边界项)**:`create_session` `load_session` `mark_seen` `navigate_tree`;`git_*` / `bash_exec` / `terminal_*` / `open_folder` / `open_with` / `stt_*` / `browser_*` / `ui_error` 等会话与本机能力不在表(见 §1 非目标)。
 
