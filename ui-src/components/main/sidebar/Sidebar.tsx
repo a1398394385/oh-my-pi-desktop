@@ -12,7 +12,7 @@ import appIcon from "../../../../ui/app-icon.png";
 import { MOD } from "../../../platform";
 import {
   useAppStore, setBump, send, invoke, showWelcomeScreen, initNewSessionModel, activeOpen,
-  getAvailableProjects, openSettings, pathBase, effZoom,
+  getAvailableProjects, openSettings, pathBase, effZoom, toast,
 } from "../../../store";
 import { disposeRightSlot } from "../../../store/right";
 import { REMOTE } from "../../../store/layout";
@@ -28,7 +28,8 @@ import SessCtxMenu from "./SessCtxMenu";
 import ProjAddPop from "./ProjAddPop";
 import ArchiveGroup from "./ArchiveGroup";
 import WorktreeRemoveDialog from "./WorktreeRemoveDialog";
-import { computeSidebarSessionShortcuts, computeArchiveGroups, sessionLabel } from "./util";
+import { computeSidebarSessionShortcuts, computeArchiveGroups, sessionLabel, copyText, SUCCESS_FLASH_MS } from "./util";
+import { noMaximizeOnDoubleClick } from "../../../lib/titlebar-drag";
 
 // Content of the delete/remove confirm dialog
 interface ConfirmSpec {
@@ -133,6 +134,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // underlying fields must each be subscribed so changes trigger re-render
   const allProjects = useAppStore((s) => s.allProjects);
   const gitProjects = useAppStore((s) => s.gitProjects);
+  const repoGroups = useAppStore((s) => s.repoGroups);
   const removedProjects = useAppStore((s) => s.removedProjects);
   const expandedProjects = useAppStore((s) => s.expandedProjects);
   const projectLimits = useAppStore((s) => s.projectLimits);
@@ -156,11 +158,13 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // written to the store, so the desktop choice survives.
   const effView = narrow ? "project" : viewMode;
   void allProjects;
+  void repoGroups;
   void removedProjects;
   // Popover/local interaction state (formerly scattered across body-appended temp DOM and module vars)
   const [confirmDlg, setConfirmDlg] = useState<ConfirmSpec | null>(null); // { title, message, confirmText, danger, onConfirm }
   const [sessCtx, setSessCtx] = useState<SessCtxSpec | null>(null); // { entry, x, y } session row context menu
   const [projMenu, setProjMenu] = useState<{ cwd: string; rect: DOMRect } | null>(null); // { cwd, rect } project row "⋯" menu
+  const [projCopied, setProjCopied] = useState(false); // project-menu copy flash (menu stays open for it)
   const [projAdd, setProjAdd] = useState<{ rect: DOMRect } | null>(null); // { rect } manual add-project popover anchor
   const [wtRemove, setWtRemove] = useState<{ path: string } | null>(null); // worktree-remove confirm dialog target
   const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }: inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
@@ -225,7 +229,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   // —— Remove-project confirm (shared by the group-head "remove" button and the "⋯" menu) ——
-  const askRemoveProject = (cwd: string) => {
+  const askRemoveProject = (cwd: string, extraCwds?: string[]) => {
     const projName = pathBase(cwd) || cwd;
     setConfirmDlg({
       title: t("sidebar.removeProjectTitle"),
@@ -233,7 +237,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
       confirmText: t("sidebar.removeProjectConfirm"),
       danger: true,
       onConfirm: () => {
-        send({ type: "remove_project", cwd });
+        send({ type: "remove_project", cwd, ...(extraCwds ? { cwds: extraCwds } : {}) });
       },
     });
   };
@@ -538,7 +542,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   };
 
   return (
-    <aside id="sidebar" className={(collapsed ? "collapsed" : "") + (narrow && REMOTE ? " ms-remote" : "")} data-tauri-drag-region="">
+    <aside id="sidebar" className={(collapsed ? "collapsed" : "") + (narrow && REMOTE ? " ms-remote" : "")} data-tauri-drag-region="" {...noMaximizeOnDoubleClick}>
       {/* Collapse button at the sidebar's own top-right corner (the expand
           button lives on the center topbar while collapsed). Narrow is a page,
           not a resizable column — no collapse affordance (spec §4.3). */}
@@ -548,7 +552,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           title={t("misc.collapseSidebar", { mod: MOD })}
           onClick={toggleSidebar}
         >
-          <Icon name="collapseLeft" />
+          <Icon name="panelLeftClose" />
         </button>
       )}
       {narrow && <MobileSideHead />}
@@ -761,6 +765,19 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
           {gitProjects.has(projMenu.cwd) && (
             <button onClick={() => { const cwd = projMenu.cwd; setProjMenu(null); useAppStore.getState().openGitManage(cwd); }}>{t("sidebar.gitManage")}</button>
           )}
+          <button className="ctx-copy" onClick={() => {
+            const cwd = projMenu.cwd;
+            void copyText(cwd)
+              .then(() => {
+                setProjCopied(true);
+                window.setTimeout(() => { setProjCopied(false); setProjMenu(null); }, SUCCESS_FLASH_MS);
+              })
+              .catch(() => { setProjMenu(null); toast(t("sidebar.copyFailed")); });
+          }}>
+            <span className="mi-ic"><Icon name={projCopied ? "check" : "copy"} size={14} /></span>
+            {projCopied ? t("common.copied") : t("sidebar.copyCwdPath")}
+          </button>
+          <button onClick={() => { const cwd = projMenu.cwd; setProjMenu(null); send({ type: "open_folder", path: cwd }); }}>{t("sidebar.openInFileManager")}</button>
           <button onClick={() => { setProjMenu(null); askRemoveProject(projMenu.cwd); }}>{t("sidebar.remove")}</button>
         </Menu>
       )}

@@ -16,6 +16,7 @@ import Composer from "../Composer";
 import ProjectMenu from "../welcome/ProjectMenu";
 import BranchMenu from "../welcome/BranchMenu";
 import RemoteDialog from "../welcome/RemoteDialog";
+import Menu from "./sidebar/Menu";
 
 function greeting() {
   const h = new Date().getHours();
@@ -37,9 +38,10 @@ export default function Welcome() {
   // body then positions itself
   const [projMenu, setProjMenu] = useState<DOMRect | null>(null);
   const [branchMenu, setBranchMenu] = useState<DOMRect | null>(null);
+  const [wtMenu, setWtMenu] = useState<DOMRect | null>(null);
   const [remoteDlg, setRemoteDlg] = useState(false);
 
-  const menuOpen = !!projMenu || !!branchMenu;
+  const menuOpen = !!projMenu || !!branchMenu || !!wtMenu;
 
   // Global close: click anywhere outside the menu / window blur (the open actions and
   // in-menu clicks already stopPropagation, so no accidental closes)
@@ -48,6 +50,7 @@ export default function Welcome() {
     const close = () => {
       setProjMenu(null);
       setBranchMenu(null);
+      setWtMenu(null);
     };
     window.addEventListener("click", close);
     window.addEventListener("blur", close);
@@ -63,6 +66,7 @@ export default function Welcome() {
     e.stopPropagation();
     if (projMenu) return setProjMenu(null);
     setBranchMenu(null);
+    setWtMenu(null);
     setProjMenu(e.currentTarget.getBoundingClientRect());
   };
 
@@ -70,7 +74,21 @@ export default function Welcome() {
     e.stopPropagation();
     if (branchMenu) return setBranchMenu(null);
     setProjMenu(null);
+    setWtMenu(null);
     setBranchMenu(e.currentTarget.getBoundingClientRect());
+  };
+
+  // Worktree picker (merge mode only): one pill between the project and branch capsules,
+  // listing every checkout of the repository. Picking one only swaps the new session's cwd —
+  // the project capsule keeps the repository name.
+  const repoGroups = useAppStore((s) => s.repoGroups);
+  const repoGroup = repoGroups.find((g) => g.root === newSessionProject || g.cwds.includes(newSessionProject) || g.worktrees.some((w) => w.path === newSessionProject));
+  const toggleWtMenu = (e: MouseEvent) => {
+    e.stopPropagation();
+    if (wtMenu) return setWtMenu(null);
+    setProjMenu(null);
+    setBranchMenu(null);
+    setWtMenu(e.currentTarget.getBoundingClientRect());
   };
 
   // Remote workspace stubs display their host:path label instead of the stub dir basename;
@@ -81,7 +99,7 @@ export default function Welcome() {
   const projName = projIsDefault
     ? t("misc.defaultProject")
     : newSessionProject
-      ? projEntry?.remoteLabel || pathBase(newSessionProject) || newSessionProject
+      ? repoGroup?.name || projEntry?.remoteLabel || pathBase(newSessionProject) || newSessionProject
       : t("misc.projectFallback");
   const projIsRemote = projEntry?.remote === true;
 
@@ -120,10 +138,45 @@ export default function Welcome() {
                   <Icon name="xmark" size={12} />
                 </span>
                 {/* Folder icon at the same visual size as the picker rows' icons */}
-                <span className="wb-ic-folder"><Icon name={projIsDefault ? "comment" : projIsRemote ? "server" : "folder"} size={15} /></span>
+                <span className="wb-ic-folder"><Icon name={projIsDefault ? "comment" : projIsRemote ? "server" : repoGroup ? "folderGit2" : "folder"} size={15} /></span>
                 <span id="wbProjectName">{projName}</span>
                 <span className="caret caret-svg"><Icon name="caret" /></span>
               </button>
+              {repoGroup && (
+                <button
+                  id="wbWorktreeBtn"
+                  className={"wb-pill" + (wtMenu ? " active" : "")}
+                  title={newSessionProject}
+                  onClick={toggleWtMenu}
+                >
+                  <Icon name="folderGit2" />
+                  <span id="wbWorktreeName">{newSessionProject === repoGroup.root ? t("gitPage.worktreeMain") : pathBase(newSessionProject)}</span>
+                  <span className="caret caret-svg"><Icon name="caret" /></span>
+                </button>
+              )}
+              {wtMenu && repoGroup && (
+                <Menu
+                  place={(mr) => [wtMenu.left, Math.max(8, wtMenu.top - mr.height - 6)]}
+                  onClose={() => setWtMenu(null)}
+                >
+                  {repoGroup.worktrees.map((wt) => (
+                    <button
+                      key={wt.path}
+                      type="button"
+                      className="gp-ws-row"
+                      data-current={wt.path === newSessionProject ? "true" : undefined}
+                      title={wt.path}
+                      onClick={() => {
+                        setWtMenu(null);
+                        setWelcomeProject(wt.path);
+                      }}
+                    >
+                      <span className="gp-ws-row-path">{wt.path === repoGroup.root ? t("gitPage.worktreeMain") : pathBase(wt.path)}</span>
+                      <span className="gp-ws-row-branch">{wt.detached ? t("gitPage.worktreeDetached") : wt.branch}</span>
+                    </button>
+                  ))}
+                </Menu>
+              )}
               {newSessionIsGit && (
                 <button
                   id="wbBranchBtn"
@@ -131,7 +184,7 @@ export default function Welcome() {
                   title={t("misc.gitBranchTitle", { branch: newSessionBranch || "main" })}
                   onClick={toggleBranchMenu}
                 >
-                  <Icon name="branch" />
+                  <Icon name="gitFork" />
                   <span id="wbBranchName">{newSessionBranch || "main"}</span>
                   <span className="caret caret-svg"><Icon name="caret" /></span>
                 </button>

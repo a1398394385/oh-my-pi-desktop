@@ -23,6 +23,7 @@ import type { GitCommitDetailFrame, GitCommitFileWire, GitGraphFrame } from "../
 import CommitGraph from "./CommitGraph";
 import BranchPanel from "./BranchPanel";
 import CommitDetail from "./CommitDetail";
+import Menu from "../sidebar/Menu";
 import WorktreeList from "./WorktreeList";
 import FileCompare, { type CompareTarget } from "./FileCompare";
 import SplitHandle from "./SplitHandle";
@@ -30,6 +31,9 @@ import type { WorktreeRow } from "./worktree-rows";
 
 const INITIAL_LIMIT = 200;
 const PAGE_STEP = 100;
+// Picked from ui/prototypes/git-workspace-icons.html (#08 folder-git-2): the
+// workspace pill shows a checkout/working tree, not a branch.
+const WS_ICON = "folderGit2";
 
 export default function GitPage() {
   const { t } = useTranslation();
@@ -51,7 +55,30 @@ export default function GitPage() {
   const [sideMode, setSideMode] = useState<"worktree" | "commit">("worktree");
   /** Open compare view; null = the graph column. */
   const [pair, setPair] = useState<CompareTarget | null>(null);
+  const wsTrigger = useRef<HTMLButtonElement>(null);
+  const [wsOpen, setWsOpen] = useState(false);
   const graphSeq = useRef(0);
+
+  // Menu has no Escape handling of its own (it only closes on an outside click);
+  // the settings popovers get theirs from their own pages, so this page adds one.
+  useEffect(() => {
+    if (!wsOpen) return;
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setWsOpen(false);
+    };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [wsOpen]);
+
+  // Another checkout is a different repository view: the scope, commit and open
+  // diff of the previous workspace must not survive the switch.
+  useEffect(() => {
+    setScope("");
+    setLimit(INITIAL_LIMIT);
+    setSelected(null);
+    setPair(null);
+    setSideMode("worktree");
+  }, [cwd]);
 
   // Shell side columns are collapsed for the page's lifetime. Restoring only the
   // columns the user did not re-expand keeps a manual toggle intact.
@@ -179,6 +206,24 @@ export default function GitPage() {
   };
 
   const currentBranch = graph?.branch ?? "";
+  const worktrees = graph?.worktrees ?? [];
+  const currentTree = worktrees.find((w) => w.current);
+  // The menu offers the other checkouts only: switching to the current one is a
+  // no-op, and repeating it beside the pill reads as a second name for this page.
+  const others = worktrees.filter((w) => !w.current);
+  // Branch names identify a checkout: the main repo keeps its own, a worktree
+  // carries the branch it was created on. Detached checkouts fall back to the
+  // directory name, and before the first graph reply to the page's own branch.
+  // The primary checkout (git lists it first) is named by role instead: with every
+  // checkout of a repo merged into one project, "main" no longer says what it is.
+  const isPrimary = (wt: { path: string } | undefined) => !!wt && wt === worktrees[0];
+  const wsLabel = currentTree
+    ? isPrimary(currentTree)
+      ? t("gitPage.worktreeMain")
+      : currentTree.detached
+        ? pathBase(currentTree.path)
+        : currentTree.branch
+    : graph?.branch || pathBase(cwd);
   const detailOid = detail?.commit?.oid ?? "";
   const openCommitFile = (file: GitCommitFileWire) => {
     setSideMode("commit");
@@ -208,10 +253,68 @@ export default function GitPage() {
   return (
     <div id="gitPage">
       <div className="gp-head">
-        <Icon name="branch" size={14} style={{ color: "var(--dim)" }} />
         <span className="gp-project" title={cwd}>
           {pathBase(cwd)}
         </span>
+        <div className="gp-ws-wrap">
+          <button
+            ref={wsTrigger}
+            type="button"
+            className="gp-ws"
+            aria-expanded={wsOpen}
+            aria-haspopup="menu"
+            title={t("gitPage.worktreeSwitch")}
+            onClick={(e) => {
+              // The opening click must not reach the window: the menu it mounts
+              // listens there for outside clicks and would close itself in the
+              // same dispatch.
+              e.stopPropagation();
+              if (wsOpen) {
+                setWsOpen(false);
+                return;
+              }
+              // Re-read on open: a worktree created after the page loaded is
+              // otherwise missing until the next manual refresh.
+              runLoad(true);
+              setWsOpen(true);
+            }}
+          >
+            <Icon name={WS_ICON} size={13} />
+            <span className="gp-ws-label">{wsLabel}</span>
+            <Icon name="caretSlim" size={10} className="gp-ws-caret" />
+          </button>
+          {wsOpen && (
+            <Menu
+              place={() => {
+                const r = wsTrigger.current!.getBoundingClientRect();
+                return [r.left, r.bottom + 6];
+              }}
+              onClose={() => setWsOpen(false)}
+            >
+              {others.length === 0 ? (
+                <div className="gp-ws-empty">{t("gitPage.worktreeNone")}</div>
+              ) : (
+                others.map((wt) => (
+                  <button
+                    key={wt.path}
+                    type="button"
+                    className="gp-ws-row"
+                    title={wt.path}
+                    onClick={() => {
+                      setWsOpen(false);
+                      useAppStore.getState().openGitManage(wt.path);
+                    }}
+                  >
+                    <span className="gp-ws-row-path">{isPrimary(wt) ? t("gitPage.worktreeMain") : pathBase(wt.path)}</span>
+                    <span className="gp-ws-row-branch">
+                      {wt.detached ? t("gitPage.worktreeDetached") : wt.branch}
+                    </span>
+                  </button>
+                ))
+              )}
+            </Menu>
+          )}
+        </div>
         {graph?.root && (
           <span className="gp-root" title={graph.root}>
             {graph.root}

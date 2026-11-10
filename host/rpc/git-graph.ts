@@ -20,6 +20,7 @@ import type { RpcHandler } from "./types";
 // Every git call routes through the shared process layer (argv/env/timeout in
 // one place); this file only decides which command to run and how to read it.
 import { forEachRef, gitError, gitRead, repoRoot, type RefRow } from "../git.ts";
+import { parseWorktreeList } from "../repo-roots.ts";
 
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;
@@ -176,6 +177,16 @@ function remember<T>(map: Map<string, T>, key: string, value: T, max: number = M
   return value;
 }
 
+/** One entry of `git worktree list --porcelain`: a checkout the Git page can switch to. */
+interface GraphWorktree {
+  path: string;
+  /** Short branch name; "" when the checkout is detached. */
+  branch: string;
+  detached: boolean;
+  /** The checkout the caller's cwd lives in (the page's current workspace). */
+  current: boolean;
+}
+
 /** Graph payload, cached per (repo, scope, limit). */
 interface GraphPayload {
   root: string;
@@ -183,6 +194,16 @@ interface GraphPayload {
   commits: GraphCommit[];
   hasMore: boolean;
   branches: { local: string[]; remotes: string[]; tags: string[] };
+  worktrees: GraphWorktree[];
+}
+
+/**
+ * Porcelain worktree records are blank-line separated, one attribute per line.
+ * `bare` marks a bare repository checkout, which has no files to diff, so the
+ * page cannot switch to it.
+ */
+export function parseWorktrees(stdout: string, currentRoot: string): GraphWorktree[] {
+  return parseWorktreeList(stdout).map((w) => ({ ...w, current: w.path === currentRoot }));
 }
 
 const graphCache = new Map<string, { at: number; payload: GraphPayload }>();
@@ -235,6 +256,10 @@ export const gitGraphHandlers: Record<string, RpcHandler> = {
     // One for-each-ref feeds all three namespace lists and the current branch.
     const refs = await forEachRef(repoRootPath);
     const head = refs.find((r) => r.isHead);
+    // Same round trip: the page's workspace switcher needs every checkout of
+    // this repository, and `show-toplevel` above already resolved which one the
+    // caller sits in.
+    const tree = await gitRead(repoRootPath, ["worktree", "list", "--porcelain"]);
     const payload: GraphPayload = {
       root: repoRootPath,
       branch: head?.short ?? "",
@@ -245,6 +270,7 @@ export const gitGraphHandlers: Record<string, RpcHandler> = {
         remotes: groupRefs(refs, "refs/remotes"),
         tags: groupRefs(refs, "refs/tags"),
       },
+      worktrees: tree.ok ? parseWorktrees(tree.stdout, repoRootPath) : [],
     };
     // delete first: a re-set of an existing key keeps its old insertion order,
     // which would evict a still-open scope before colder ones.

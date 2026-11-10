@@ -24,6 +24,7 @@ export default function ProjectMenu({ anchorRect, onClose, onOpenRemote }: Proje
   // list changes (replacing the old useStore global subscription)
   useAppStore((s) => s.diskProjects);
   useAppStore((s) => s.allProjects);
+  useAppStore((s) => s.repoGroups);
   useAppStore((s) => s.removedProjects);
   const [filter, setFilter] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -129,8 +130,8 @@ export default function ProjectMenu({ anchorRect, onClose, onOpenRemote }: Proje
                 choose(p.cwd);
               }}
             >
-              <Icon name={p.isDefault ? "comment" : p.remote ? "server" : "folderLine"} size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
-              <span className="wb-proj-item-name flex-1 truncate">{p.isDefault ? t("misc.defaultProject") : p.remoteLabel || pathBase(p.cwd) || p.cwd}</span>
+              <Icon name={p.isDefault ? "comment" : p.remote ? "server" : p.isRepoGroup ? "folderGit2" : "folderLine"} size={15} className="wb-proj-item-icon flex items-center justify-center text-dim flex-none" />
+              <span className="wb-proj-item-name flex-1 truncate">{p.isDefault ? t("misc.defaultProject") : p.name || p.remoteLabel || pathBase(p.cwd) || p.cwd}</span>
             </div>
           ))
         )}

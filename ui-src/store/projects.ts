@@ -4,7 +4,22 @@
 import type { StateCreator } from "zustand";
 import type { AppStore } from "./index";
 import { REMOTE } from "./ws";
-import type { DiskProject, DiskSessionRow, SessionTextSearchFrame } from "../types/frames";
+import type { DiskProject, DiskSessionRow, RepoGroupFrame, SessionTextSearchFrame } from "../types/frames";
+
+/** One sidebar / welcome-picker project row. Repository-merged rows (worktree merge mode)
+ *  carry the display name and every checkout; `cwd` is the primary checkout there. */
+export interface AvailableProject {
+  cwd: string;
+  /** Display name override (repository rows: the repo dir name). */
+  name?: string;
+  remote?: boolean;
+  remoteLabel?: string;
+  isDefault?: boolean;
+  /** Merged repository row: icon is the worktree one, and the row owns every checkout. */
+  isRepoGroup?: boolean;
+  worktrees?: RepoGroupFrame["worktrees"];
+  sessions: DiskSessionRow[];
+}
 
 /** One full-text search hit (session_text_search frame) */
 export type SessionTextHit = SessionTextSearchFrame["hits"][number];
@@ -16,6 +31,8 @@ export interface ProjectsSlice {
   removedProjects: string[];
   /** Project cwds whose working tree has a .git entry (host session_list): gates the row's Git entry. */
   gitProjects: Set<string>;
+  /** Repositories merged into one row (host session_list, only when session.worktreeScope is "repo"); empty otherwise. */
+  repoGroups: RepoGroupFrame[];
   /** App-owned backing dir for "work without a project" (from the session_list frame). */
   defaultWorkspace: string;
   archivedSessions: (DiskSessionRow & { cwd: string })[];
@@ -26,7 +43,9 @@ export interface ProjectsSlice {
   expandedProjects: Set<string>;
   pinnedSessions: Set<string>;
   unseenFinished: Set<string>;
-  getAvailableProjects(): { cwd: string; remote?: boolean; remoteLabel?: string; sessions: DiskSessionRow[]; isDefault?: boolean }[];
+  getAvailableProjects(): AvailableProject[];
+  /** The merged repository row `cwd` belongs to (undefined when merge mode is off). */
+  repoGroupOf(cwd: string): RepoGroupFrame | undefined;
   /** Optimistically stamp the sidebar row's activity time at message send (see impl). */
   bumpSessionActivity(path: string): void;
   saveUnseen(): void;
@@ -39,6 +58,7 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
   allProjects: [],
   removedProjects: [],
   gitProjects: new Set(),
+  repoGroups: [],
   defaultWorkspace: "",
   archivedSessions: [],
   diskProjects: [],
@@ -53,17 +73,51 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
     const st = get();
     const removedSet = new Set(st.removedProjects);
     const byCwd = new Map(st.diskProjects.map((p) => [p.cwd, p]));
-    const rows: { cwd: string; remote?: boolean; remoteLabel?: string; isDefault?: boolean; sessions: DiskSessionRow[] }[] = st.allProjects
-      .filter((cwd) => !removedSet.has(cwd))
-      .map((cwd) => {
-        const entry = byCwd.get(cwd);
-        return {
-          cwd,
-          // Remote SSH workspace stubs carry their display fields onto the sidebar/welcome rows
-          ...(entry?.remote ? { remote: true, remoteLabel: entry.remoteLabel } : {}),
-          sessions: entry?.sessions ?? [],
-        };
-      });
+    const rowOf = (cwd: string): AvailableProject => {
+      const entry = byCwd.get(cwd);
+      return {
+        cwd,
+        // Remote SSH workspace stubs carry their display fields onto the sidebar/welcome rows
+        ...(entry?.remote ? { remote: true, remoteLabel: entry.remoteLabel } : {}),
+        sessions: entry?.sessions ?? [],
+      };
+    };
+    // Worktree merge mode: the host ships repoGroups only while session.worktreeScope is
+    // "repo". Every checkout of a repository then collapses into ONE row (cwd = the primary
+    // checkout, so new sessions open there) sitting at the position of its first registered
+    // member. Removed members drop out of the merged session list; the row disappears once
+    // its primary checkout is removed (host remove_project writes every member cwd).
+    const memberOf = new Map<string, RepoGroupFrame>();
+    for (const g of st.repoGroups) for (const c of g.cwds) memberOf.set(c, g);
+    const groupRow = (g: RepoGroupFrame): AvailableProject => ({
+      cwd: g.root,
+      name: g.name,
+      isRepoGroup: true,
+      worktrees: g.worktrees,
+      sessions: g.cwds
+        .filter((c) => !removedSet.has(c))
+        .flatMap((c) => byCwd.get(c)?.sessions ?? [])
+        .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified)),
+    });
+    const rows: AvailableProject[] = [];
+    const emitted = new Set<RepoGroupFrame>();
+    for (const cwd of st.allProjects) {
+      if (removedSet.has(cwd)) continue;
+      const g = memberOf.get(cwd);
+      if (!g) {
+        rows.push(rowOf(cwd));
+        continue;
+      }
+      if (emitted.has(g)) continue;
+      emitted.add(g);
+      rows.push(groupRow(g));
+    }
+    // Repository with no registered member (only a linked worktree was ever opened) still
+    // gets its row, so its primary checkout stays reachable for new sessions.
+    for (const g of st.repoGroups) {
+      if (emitted.has(g) || removedSet.has(g.root)) continue;
+      rows.push(groupRow(g));
+    }
     // The app-owned "work without a project" dir is never in allProjects (the host
     // refuses to register it), so its row is injected here — always first, never
     // removable. Its sessions still arrive through diskProjects keyed by cwd.
@@ -72,6 +126,13 @@ export const createProjectsSlice: StateCreator<AppStore, [], [], ProjectsSlice> 
       rows.unshift({ cwd: st.defaultWorkspace, isDefault: true, sessions: entry?.sessions ?? [] });
     }
     return rows;
+  },
+
+  // The repository row `cwd` belongs to (session header chip, welcome worktree picker);
+  // undefined when merge mode is off or the dir is not a repository checkout.
+  repoGroupOf(cwd: string) {
+    if (!cwd) return undefined;
+    return get().repoGroups.find((g) => g.root === cwd || g.cwds.includes(cwd) || g.worktrees.some((w) => w.path === cwd));
   },
 
   // Sidebar activity clock = the two user-visible moments only: message send (this bump,

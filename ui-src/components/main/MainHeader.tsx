@@ -8,6 +8,7 @@ import SessCtxMenu from "./sidebar/SessCtxMenu";
 import type { SessionInfo } from "./sidebar/SessionRow";
 import { IS_WINDOWS, MOD } from "../../platform";
 import { termGroupKey } from "./right/termTabs";
+import { noMaximizeOnDoubleClick } from "../../lib/titlebar-drag";
 
 // Middle-column topbar: sidebar toggle + session title + project/branch chips
 // + right panel toggle (the old index.html chat-head structure)
@@ -42,11 +43,17 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
         ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
         : "";
   const cwd = session?.cwd;
+  // Merged repository row (worktree merge mode): the project chip shows the repository name
+  // and a worktree chip identifies which checkout the session runs in.
+  const repoGroups = useAppStore((s) => s.repoGroups);
+  const repoGroup = cwd
+    ? repoGroups.find((g) => g.root === cwd || g.cwds.includes(cwd) || g.worktrees.some((w) => w.path === cwd))
+    : undefined;
   // Remote workspace stubs show their host:path label instead of the stub dir basename
   const projectName = gitManage
     ? pathBase(gitManage)
     : cwd
-      ? diskProjects.find((p) => p.cwd === cwd)?.remoteLabel ?? pathBase(cwd)
+      ? repoGroup?.name ?? diskProjects.find((p) => p.cwd === cwd)?.remoteLabel ?? pathBase(cwd)
       : null;
   const git = !gitManage && headerGit && headerGit.cwd === cwd ? headerGit : null;
   // null = closed; when open, holds the trigger chip's viewport coords (menu drops below it)
@@ -97,7 +104,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   }, [branchMenu, moreMenu]);
 
   return (
-    <div className="chat-head" data-tauri-drag-region="">
+    <div className="chat-head" data-tauri-drag-region="" {...noMaximizeOnDoubleClick}>
       {/* Sidebar/right-panel toggles live on their own panel's top corner while
           it is expanded; the center topbar only carries the expand buttons.
           Narrow (ZCode remote model): back to the session list on the left, right
@@ -109,7 +116,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
       )}
       {!narrow && sidebarCollapsed && (
         <button className="icon-btn" title={t("misc.collapseSidebar", { mod: MOD })} id="sidebarToggle" onClick={onToggleSidebar}>
-          <Icon name="collapseRight" />
+          <Icon name="panelLeftOpen" />
         </button>
       )}
       {isSubagent && session?.parentPath ? (
@@ -121,7 +128,6 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           {t("chat.backToParentSession")}
         </button>
       ) : null}
-      <Icon name="folderOld" style={{ color: "var(--faint)" }} />
       {renaming && ctxEntry ? (
         <HeaderTitleRename entry={ctxEntry} onDone={() => setRenaming(false)} />
       ) : session || isCreatingNew || gitManage ? (
@@ -134,7 +140,21 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
         </span>
       ) : null}
       {projectName && !isCreatingNew && !gitManage && (
-        <span className="head-chip" title={cwd ?? undefined}><span>{projectName}</span></span>
+        <span className="head-chip" title={cwd ?? undefined}>
+          <Icon name={repoGroup ? "folderGit2" : "folderOld"} size={13} style={{ color: "var(--dim)" }} />
+          <span>{projectName}</span>
+        </span>
+      )}
+      {repoGroup && cwd && !isCreatingNew && !gitManage && (
+        <button
+          type="button"
+          className="head-chip clickable"
+          title={cwd}
+          onClick={() => useAppStore.getState().openGitManage(cwd)}
+        >
+          <Icon name="folderGit2" size={13} style={{ color: "var(--dim)" }} />
+          <span>{cwd === repoGroup.root ? t("gitPage.worktreeMain") : pathBase(cwd)}</span>
+        </button>
       )}
       {git?.isGit && git.current && !isCreatingNew && (
         <button
@@ -149,7 +169,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
             setBranchMenu(e.currentTarget.getBoundingClientRect());
           }}
         >
-          <Icon name="branch" size={13} style={{ color: "var(--dim)" }} />
+          <Icon name="gitFork" size={13} style={{ color: "var(--dim)" }} />
           <span>{git.current}</span>
           <span className="caret-svg"><Icon name="caret" size={12} /></span>
         </button>
@@ -237,7 +257,7 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
         </button>
       ) : rightCollapsed && (
         <button className="icon-btn" title={t("misc.collapseRightPanel")} id="panelToggle" onClick={onToggleRight}>
-          <Icon name="collapseLeft" />
+          <Icon name="panelRightOpen" />
         </button>
       )}
       {/* Windows frameless window control buttons: when the right panel is

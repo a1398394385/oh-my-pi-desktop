@@ -4,14 +4,15 @@
 #gitPage {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
-  background: var(--bg); --hover-fill: var(--panel-2);
+  background: var(--bg); --hover-fill: var(--card-hl);
   color: var(--text);
   font-size: var(--ui-fs-base);
 }
 
-/* Topbar: title / project / repo root / refresh / close */
+/* Topbar: title / project / repo root / refresh / close — same 48px height as the
+   chat header it replaces (one header height for every center-column top bar) */
 .gp-head {
-  height: 43px; flex: none;
+  height: 48px; flex: none;
   display: flex; align-items: center; gap: 8px;
   padding: 0 16px;
   border-bottom: 1px solid var(--line-soft);
@@ -19,6 +20,33 @@
 }
 
 .gp-project { flex: none; font-weight: 600; }
+
+/* Workspace switcher: capsule between the project name and the repo path. It
+   names the checkout the page reads (its branch), not the project again. */
+.gp-ws {
+  display: flex; align-items: center; gap: 6px; flex: none;
+  height: 24px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--ctl-bg); color: var(--text);
+  font-size: var(--ui-fs-sm); cursor: pointer;
+}
+.gp-ws:hover, .gp-ws[aria-expanded="true"], .gp-ws:focus-visible { background: var(--hover-fill); }
+.gp-ws .pi-ic { color: var(--dim); }
+.gp-ws-label {
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gp-ws-caret { transition: transform var(--dur-snap) var(--swift); }
+.gp-ws[aria-expanded="true"] .gp-ws-caret { transform: rotate(180deg); }
+
+/* Rows: directory name over its branch (the two ways a checkout is named). */
+.gp-ws-row { display: flex; flex-direction: column; gap: 1px; }
+.gp-ws-row-path { font-weight: 600; }
+.gp-ws-row-branch {
+  color: var(--dim); font-family: var(--mono); font-size: var(--ui-fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gp-ws-empty { padding: 7px 10px; color: var(--dim); font-size: var(--ui-fs-sm); }
+
 .gp-root {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--faint); font-family: var(--mono); font-size: var(--ui-fs-sm);
@@ -655,7 +683,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
    minimap is the scrollbar, so the native one is hidden. */
 .gp-cmp-scroll {
   flex: 1; min-height: 0; overflow: auto;
-  background: var(--bg); --hover-fill: var(--panel-2);
+  background: var(--bg); --hover-fill: var(--card-hl);
   font-family: var(--mono); font-size: var(--ui-fs-sm);
   scrollbar-width: none;
 }
@@ -667,7 +695,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
    instead of panning the page, grab cursor because a press anywhere grips it. */
 .gp-cmp-map {
   flex: none; width: 12px; position: relative;
-  background: var(--bg); --hover-fill: var(--panel-2);
+  background: var(--bg); --hover-fill: var(--card-hl);
   border-left: 1px solid var(--line-soft);
   cursor: grab;
   touch-action: none;
@@ -728,7 +756,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
 
 .gp-cmp-gutter {
   padding: 0 8px;
-  background: var(--bg); --hover-fill: var(--panel-2); border-right: 1px solid var(--line);
+  background: var(--bg); --hover-fill: var(--card-hl); border-right: 1px solid var(--line);
   color: var(--faint); text-align: right; user-select: none;
   font-variant-numeric: tabular-nums;
 }

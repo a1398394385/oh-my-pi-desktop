@@ -25,6 +25,8 @@ export interface ProjectIconSource {
   remoteLabel?: string;
   /** The app-owned "work without a project" row (icon, not a folder). */
   isDefault?: boolean;
+  /** Merged repository row (worktree merge mode): every checkout of one repo. */
+  isRepoGroup?: boolean;
 }
 
 // Project entry (structural subset of getAvailableProjects/diskProjects elements;
@@ -34,6 +36,8 @@ export interface ProjectInfo extends ProjectIconSource {
   cwd: string;
   name?: string;
   isDefault?: boolean;
+  /** Every checkout of a merged repository row (worktree merge mode). */
+  worktrees?: { path: string; branch: string; detached: boolean }[];
   sessions: SessionInfo[];
 }
 
@@ -48,6 +52,8 @@ export function projectIconName(p: ProjectIconSource, expanded: boolean): string
   const home = Boolean(p.isHome || p.home) || cwd === "~";
   if (remote) return "server";
   if (home) return "house";
+  // Merged repository row: same glyph as the Git page's workspace pill.
+  if (p.isRepoGroup) return "folderGit2";
   return expanded ? "folderOpen" : "folder";
 }
 
@@ -134,7 +140,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
   onPointerCancelHead: (e: ReactPointerEvent, cwd: string) => void;
   shouldSuppressProjectClick: () => boolean;
   onOpenProjMenu: (e: ReactMouseEvent, cwd: string) => void;
-  onRemoveProject: (cwd: string) => void;
+  onRemoveProject: (cwd: string, extraCwds?: string[]) => void;
   rowProps: SessionRowCallbacks;
   renaming: RenamingState | null;
   shortcuts?: Map<string, string>;
@@ -234,7 +240,8 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
             title={t("sidebar.removeProjectCwd", { cwd: p.cwd })}
             onClick={(e) => {
               e.stopPropagation();
-              onRemoveProject(p.cwd);
+              // Merged repository row: hide every checkout in one go (host remove_project `cwds`)
+              onRemoveProject(p.cwd, p.isRepoGroup ? p.worktrees?.map((w) => w.path) : undefined);
             }}
           >
             {t("sidebar.remove")}

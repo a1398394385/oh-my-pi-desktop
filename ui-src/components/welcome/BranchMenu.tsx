@@ -63,8 +63,8 @@ export default function BranchMenu({ anchorRect, onClose, branches, remotes, cur
           }}
         >
           <span className="ck">{b === current ? "✓" : ""}</span>
-          {/* Branch icon same as the branch-picker capsule (branch), keeping the global icon style consistent */}
-          <Icon name="branch" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
+          {/* git-fork, same glyph as the branch-picker capsule: one branch icon family across the page */}
+          <Icon name="gitFork" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
           {b}
         </div>
       ))}
@@ -80,7 +80,7 @@ export default function BranchMenu({ anchorRect, onClose, branches, remotes, cur
           }}
         >
           <span className="ck">{b === current ? "✓" : ""}</span>
-          <Icon name="branch" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
+          <Icon name="gitFork" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
           {b}
         </div>
       ))}

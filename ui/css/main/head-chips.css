@@ -22,6 +22,7 @@
 .head-chip > .pi-ic { flex: none; }
 .chat-head button.head-chip { cursor: pointer; transition: background var(--dur-snap), color var(--dur-snap); }
 .chat-head button.head-chip:hover,
+.chat-head button.head-chip:focus-visible,
 .chat-head button.head-chip.active { background: var(--panel-3); color: var(--text); }
 .head-chip .caret-svg { display: inline-flex; flex: none; color: var(--faint); }
 .head-chip .caret-svg svg { transition: transform var(--dur-snap) var(--swift); transform: rotate(180deg); }
