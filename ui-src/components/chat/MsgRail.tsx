@@ -330,8 +330,9 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       railTickMeta.forEach((m) => {
         const anchor = streamEl.querySelector(`[data-fk="${m.entry.key}"]`);
         if (!anchor) return;
-        const pinEl = anchor.closest(".sticky-user-wrap") ?? anchor;
-        const pr = pinEl.getBoundingClientRect();
+        // Geometry from the turn section, never the sticky wrap: a pinned/clamped sticky
+        // rect is not its layout position (see the write pass below).
+        const pr = (anchor.closest(".turn-section") ?? anchor).getBoundingClientRect();
         m.topDoc = (pr.top - streamTop) / zs + streamEl.scrollTop;
       });
       return;
@@ -360,9 +361,10 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       const anchor = streamEl.querySelector(`[data-fk="${en.key}"]`);
       if (!anchor) return;
       const pinEl = anchor.closest(".sticky-user-wrap") ?? anchor;
-      const pr = pinEl.getBoundingClientRect();
-      // message position within the full text; measured on the sticky wrap so a
-      // click lands it exactly at the scrollport top (the anchor sits lower inside it)
+      // Click lands the message at the scrollport top. Measured on the turn section, not
+      // the sticky wrap: a pinned/clamped sticky rect is not its layout position, so
+      // measuring it landed the jump mid-turn with the reply above the bubble.
+      const pr = (anchor.closest(".turn-section") ?? anchor).getBoundingClientRect();
       measured.push({ en, i, pinEl, topDoc: (pr.top - streamTop) / zs + streamEl.scrollTop });
     });
     // Write pass: tick nodes + styles; the card payloads live on the module-level list
