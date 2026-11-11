@@ -2,7 +2,7 @@
 // this repo's .sel pill (transparent background / hover --panel-2 / caret
 // rotates 180° when open), the popover aligns with .menu (--ctl-bg surface +
 // --line border + r-md + popIn entrance), and item rows align with .mi (r6 +
-// hover --menu-hl) plus a 14px left check slot (✓, --green). Keyboard
+// hover --menu-hl) plus a right-pinned 14px check slot (✓, --menu-check). Keyboard
 // navigation / focus management provided by Radix.
 import * as React from "react";
 import { Select as SelectPrimitive } from "radix-ui";
@@ -38,7 +38,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       className={cn(
         // Pill language: same as .sel (transparent background + radius 999 + hover/open --panel-2 background)
-        "group/sel inline-flex flex-none shrink-0 cursor-pointer items-center gap-[6px] rounded-full border-0 bg-transparent px-[10px] py-[5px] text-ui-base text-dim outline-none",
+        "group/sel inline-flex flex-none shrink-0 cursor-pointer items-center gap-[7px] text-left rounded-full border-0 bg-transparent px-[10px] py-[5px] text-dim outline-none",
         "transition-[background-color,color] duration-[var(--dur-snap)] ease-[var(--swift)]",
         "hover:bg-hover-fill hover:text-text data-[state=open]:bg-panel-2 data-[state=open]:text-text",
         "focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-[1px]",
@@ -51,7 +51,7 @@ function SelectTrigger({
       <Icon
         name="caret"
         size={14}
-        className="shrink-0 text-faint transition-transform duration-[var(--dur-base)] ease-[var(--spring)] group-data-[state=open]/sel:rotate-180"
+        className="ml-auto h-[14px] w-[14px] shrink-0 text-faint transition-transform duration-[var(--dur-base)] ease-[var(--spring)] group-data-[state=open]/sel:rotate-180"
       />
     </SelectPrimitive.Trigger>
   );
@@ -79,7 +79,7 @@ function SelectContent({
         align={align}
         className={cn(
           "z-[500] flex flex-col overflow-x-hidden overflow-y-auto rounded-md border border-line bg-[var(--ctl-bg)] p-[5px] text-text outline-none",
-          "max-h-(--radix-select-content-available-height) min-w-[170px] origin-(--radix-select-content-transform-origin)",
+          "max-h-(--radix-select-content-available-height) min-w-(--radix-select-trigger-width) origin-(--radix-select-content-transform-origin)",
           "[--pop-from:-6px] data-[state=open]:[animation:popIn_.18s_ease-out] data-[state=closed]:[animation:none]",
           className,
         )}
@@ -114,17 +114,17 @@ const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item
         ref={ref}
         data-slot="select-item"
         className={cn(
-          "flex w-full cursor-default items-center gap-[7px] rounded-[6px] px-[9px] py-[6px] text-ui-base text-text outline-none select-none",
+          "flex w-full cursor-default items-center gap-[7px] rounded-[6px] px-[4px] py-[6px] min-h-[32px] text-text outline-none select-none",
           "data-[highlighted]:bg-menu-hl data-[disabled]:pointer-events-none data-[disabled]:text-faint",
           className,
         )}
         {...props}
       >
-        {/* Check slot aligns with .ck: fixed 14px column width, reserved even when unselected to keep text aligned */}
-        <span className="flex w-[14px] flex-none justify-center text-green">
-          <SelectPrimitive.ItemIndicator>✓</SelectPrimitive.ItemIndicator>
-        </span>
         <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+        {/* Same mark as .menu .mi .ck: gray ✓ pinned to the row's right end, 14px slot kept when unselected */}
+        <span className="ml-auto flex h-[14px] w-[14px] flex-none items-center justify-center text-[var(--menu-check)]">
+          <SelectPrimitive.ItemIndicator><Icon name="check" size={14} /></SelectPrimitive.ItemIndicator>
+        </span>
       </SelectPrimitive.Item>
     );
   },

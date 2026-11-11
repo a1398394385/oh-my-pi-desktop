@@ -60,7 +60,7 @@ function FontPicker({ value, onPick, fallback }: { value: string; onPick: (v: st
   const cssFamily = (name: string) => `"${name.replace(/"/g, '\\"')}", monospace`;
   return (
     <div
-      className="sel"
+      className="sel sel-value"
       onClick={(e) => {
         e.stopPropagation();
         setOpen(!open);
@@ -78,7 +78,7 @@ function FontPicker({ value, onPick, fallback }: { value: string; onPick: (v: st
         <div className="fm-list">
           {!lower && (
             <div className="mi" onClick={() => { setOpen(false); setFilter(""); onPick(""); }}>
-              <span className="ck">{value ? "" : "✓"}</span>
+              <span className="ck">{value ? null : <Icon name="check" size={14} />}</span>
               {t("settingsPage.general.terminalFontDefault")}
             </div>
           )}
@@ -94,7 +94,7 @@ function FontPicker({ value, onPick, fallback }: { value: string; onPick: (v: st
                 style={{ fontFamily: cssFamily(f) }}
                 onClick={() => { setOpen(false); setFilter(""); onPick(f); }}
               >
-                <span className="ck">{value === f ? "✓" : ""}</span>
+                <span className="ck">{value === f ? <Icon name="check" size={14} /> : null}</span>
                 {f}
               </div>
             ))

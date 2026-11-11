@@ -256,7 +256,6 @@
 :is(#pg-stats, .stats-scope) .input:focus {
 	outline: none;
 	border-color: var(--focus);
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent);
 }
 
 :is(#pg-stats, .stats-scope) .search {

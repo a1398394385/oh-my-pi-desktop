@@ -155,7 +155,7 @@ function MetaSel({ value, onChange, options, inheritLabel, disabled }: {
   }, [open]);
   const cur = value === "" ? inheritLabel : (options.find((o) => o.v === value)?.label ?? value);
   return (
-    <div className="sel mcp-form-sel" ref={ref}>
+    <div className="sel sel-value mcp-form-sel" ref={ref}>
       <button
         type="button"
         className="mcp-form-sel-btn"
@@ -166,7 +166,7 @@ function MetaSel({ value, onChange, options, inheritLabel, disabled }: {
         }}
       >
         <span className="mcp-form-sel-cur">{cur}</span>
-        <span className="caret-svg"><Icon name="caret" size={12} /></span>
+        <span className="caret-svg"><Icon name="caret" size={14} /></span>
       </button>
       <div
         className={"menu" + (open ? " open" : "")}
@@ -179,12 +179,12 @@ function MetaSel({ value, onChange, options, inheritLabel, disabled }: {
         }}
       >
         <div className="mi" data-v="">
-          <span className="ck" style={{ visibility: value === "" ? "visible" : "hidden" }}>✓</span>
+          <span className="ck" style={{ visibility: value === "" ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>
           <span className="mi-label">{inheritLabel}</span>
         </div>
         {options.map((o) => (
           <div key={o.v} className="mi" data-v={o.v}>
-            <span className="ck" style={{ visibility: value === o.v ? "visible" : "hidden" }}>✓</span>
+            <span className="ck" style={{ visibility: value === o.v ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>
             <span className="mi-label">{o.label}</span>
           </div>
         ))}

@@ -305,8 +305,8 @@ function RolesView() {
               onPick={setNewModel}
               // Opt-out from the sm control tier: this picker sits next to a text
               // input in the role-creation row and keeps the base size.
-              selClassName="sel-base"
-              menuClassName="menu model mp-role-menu mp-menu-base"
+              selClassName="sel-base sel-value"
+              menuClassName="menu model mp-role-menu mp-menu-base sel-value-portal"
             />
             <button
               type="button"
@@ -842,7 +842,7 @@ function ThinkSel({ modelId }: { modelId: string }) {
   return (
     <div
       ref={selRef}
-      className="sel"
+      className="sel sel-value"
       data-sel="think"
       title={t("settingsPage.model.thinkDefaultTitle")}
       style={optW ? { width: optW + 44 } : undefined} // border-box: text + padding 20 + gap 6 + caret 14 + JSX space ~4
@@ -862,7 +862,7 @@ function ThinkSel({ modelId }: { modelId: string }) {
             write(null);
           }}
         >
-          <span className="ck">{!cur ? "✓" : ""}</span>
+          <span className="ck">{!cur ? <Icon name="check" size={14} /> : null}</span>
           {t("settingsPage.model.thinkFollowGlobal")}
         </div>
         {levels.map((lv) => (
@@ -875,7 +875,7 @@ function ThinkSel({ modelId }: { modelId: string }) {
               write(lv);
             }}
           >
-            <span className="ck">{cur === lv ? "✓" : ""}</span>
+            <span className="ck">{cur === lv ? <Icon name="check" size={14} /> : null}</span>
             {t(`composer.thinkingLevels.${lv}`, { defaultValue: lv })}
           </div>
         ))}

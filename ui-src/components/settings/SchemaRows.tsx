@@ -103,13 +103,24 @@ function SchemaSel({ settingKey, settingType, current, options, onPick }: Schema
   };
 
   const selectedValue = sel ? (sel.v || "__empty__") : "";
+  // In-place expansion, same treatment as .sel (see anchorMenuToSelection): lift the popover by
+  // trigger height + menu border/padding + the selected row's offset so that row lands on the trigger.
+  // 32px rows and the 6px vertical inset come from the #settings grid in common.css; collisions stay
+  // ignored on purpose — the settings body scrolls, so a popover taller than the viewport is fine.
+  const idx = Math.max(0, options.findIndex((o) => (o.v || "") === curStr));
 
   return (
     <Select value={selectedValue} onValueChange={handlePick}>
       <SelectTrigger>
-        <SelectValue placeholder={sel ? sel.label : curStr || t("settingsPage.schema.selectPlaceholder")} />
+        {/* Hidden grid twins reserve the widest option, so the first open cannot resize the trigger. */}
+        <span className="grid">
+          <span className="col-start-1 row-start-1 whitespace-nowrap"><SelectValue placeholder={sel ? sel.label : curStr || t("settingsPage.schema.selectPlaceholder")} /></span>
+          {options.map((o) => (
+            <span key={o.v || "__empty__"} aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap">{o.label}</span>
+          ))}
+        </span>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent sideOffset={-(38 + idx * 32)} avoidCollisions={false}>
         {options.map((o) => {
           const itemVal = o.v || "__empty__";
           return (

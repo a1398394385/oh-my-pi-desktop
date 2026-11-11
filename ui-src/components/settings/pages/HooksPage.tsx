@@ -193,18 +193,19 @@ function HookNewForm({ scope, onScopeChange, onClose }: {
               <Sel
                 id="hookEventSel"
                 className="mcp-form-sel"
+                inPlace
                 btnClassName="mcp-form-sel-btn"
                 btnChildren={
                   <>
                     <span className="mcp-form-sel-cur">{EVENT_LABEL[event]}</span>
-                    <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                    <span className="caret-svg"><Icon name="caret" size={14} /></span>
                   </>
                 }
                 onPickMi={(mi) => setEvent((mi.dataset.v as HookEvent) || "tool_call")}
               >
                 {HOOK_EVENTS.map((e) => (
                   <div key={e} className="mi" data-v={e}>
-                    <span className="ck" style={{ visibility: event === e ? "visible" : "hidden" }}>✓</span>
+                    <span className="ck" style={{ visibility: event === e ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>
                     <span className="mi-label">{EVENT_LABEL[e]}</span>
                   </div>
                 ))}

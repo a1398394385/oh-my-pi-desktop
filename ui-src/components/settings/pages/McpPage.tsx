@@ -556,12 +556,13 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
             <FormRow label={t("settingsPage.mcp.transportLabel")}>
               <Sel
                 className="mcp-form-sel"
+                inPlace
                 btnClassName="mcp-form-sel-btn"
                 disabled={readOnly}
                 btnChildren={
                   <>
                     <span className="mcp-form-sel-cur">{transportCurLabel}</span>
-                    <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                    <span className="caret-svg"><Icon name="caret" size={14} /></span>
                   </>
                 }
                 onPickMi={(mi) => setTransport(mi.dataset.v || "stdio")}
@@ -572,7 +573,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                   ["sse", t("settingsPage.mcp.transportSse")],
                 ].map(([v, label]) => (
                   <div key={v} className="mi" data-v={v}>
-                    <span className="ck" style={{ visibility: transport === v ? "visible" : "hidden" }}>✓</span>
+                    <span className="ck" style={{ visibility: transport === v ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>
                     <span className="mi-label">{label}</span>
                   </div>
                 ))}
@@ -581,11 +582,12 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
             <FormRow label={t("settingsPage.mcp.sharingFieldLabel")}>
               <Sel
                 className="mcp-form-sel"
+                inPlace
                 btnClassName="mcp-form-sel-btn"
                 btnChildren={
                   <>
                     <span className="mcp-form-sel-cur">{sharingCurLabel}</span>
-                    <span className="caret-svg"><Icon name="caret" size={12} /></span>
+                    <span className="caret-svg"><Icon name="caret" size={14} /></span>
                   </>
                 }
                 onPickMi={(mi) => setSharing((mi.dataset.v as "session" | "project" | "global") || "session")}
@@ -602,7 +604,7 @@ function McpEditor({ server, defaultScope, onClose, onViewLog }: McpEditorProps)
                     ]
                 ).map(([v, label]) => (
                   <div key={v} className="mi" data-v={v}>
-                    <span className="ck" style={{ visibility: sharing === v ? "visible" : "hidden" }}>✓</span>
+                    <span className="ck" style={{ visibility: sharing === v ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>
                     <span className="mi-label">{label}</span>
                   </div>
                 ))}

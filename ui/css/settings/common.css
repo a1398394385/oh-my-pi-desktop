@@ -95,6 +95,104 @@
 
 #settings.hidden { display: none; }
 
+/* Field language shared by every settings page (and its sub-pages): a field carries no fill of
+   its own — the card face shows through — and is identified by a hairline outline, the same
+   treatment as the global search field (.palette-search). Value-displaying dropdown triggers
+   follow it; icon/action menus keep the global .sel pill and popover language.
+   Element-level, not class-level: settings fields come from four conventions (.inp, .mcp-form-*,
+   the ui/ Textarea + Input primitives, page-local search boxes) and a new page must not need a
+   fifth opt-in. background-color, not background: the stats page's native select draws its caret
+   with background-image. */
+#settings :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select
+) {
+  background-color: transparent;
+}
+
+#settings :is(.sel-value, [data-slot="select-trigger"]) {
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+  /* --text, not the base --dim: with the filled plate gone, a dimmed trigger reads as a
+     disabled control next to the row's full-strength label. Menu rows (.menu .mi) are already
+     --text, so the trigger and its options now match. */
+  color: var(--text);
+}
+
+/* Focus marks the outline only, exactly like the global search field (.palette-search's
+   :focus-within). The app-wide 3px accent ring reads as a glow around a field that already
+   draws its own hairline; here it is dropped and the outline itself turns accent.
+   Every settings field carries a real 1px border (transparent for .inp-style fields, which
+   paint the hairline with an inset shadow — both are cleared), so border-color is the whole
+   focus treatment. */
+#settings :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+  textarea,
+  select
+):focus {
+  border-color: var(--accent);
+  box-shadow: none;
+  outline: none;
+}
+
+/* The plate is gone, so hover/open feedback moves to the label only (color still comes from the
+   base rules: .sel in controls.css, hover:text-text on the Radix trigger) */
+#settings :is(.sel-value, [data-slot="select-trigger"]):hover,
+#settings :is(.sel-value, [data-slot="select-trigger"])[data-state="open"],
+#settings .sel-value:has(.menu.open) { background-color: transparent; }
+
+/* Value triggers are laid out at the widest option's width (measured in Sel), so the menu it
+   opens is exactly as wide and opening never widens the block. */
+#settings .sel-value > .menu { min-width: 100%; }
+/* 32px grid shared by the trigger and the option row: in-place expansion lines the selected row
+   up with the button, so a 27px button next to 32px rows would visibly drift. */
+#settings :is(.sel-value, [data-slot="select-trigger"]) { min-height: 32px; box-sizing: border-box; }
+/* Vertical padding moves to the 32px min-height so a trigger whose button is a child (ScopeSel,
+   mcp-form-sel) fills the same box instead of growing past the 32px row grid. */
+#settings .sel-value { padding-top: 0; padding-bottom: 0; }
+/* Trigger text sits in a 20px line box like .mi-tx rows; the browser default ("normal", ~1.35)
+   centres the label 2px lower than the option text, so the label jumps on open. */
+#settings :is(.sel-value, [data-slot="select-trigger"]) { font-size: var(--ui-fs-sm); line-height: 20px; }
+/* Radix popovers portal to <body>, outside the style.zoom on #settings: without this the menu
+   renders at 100% under a zoomed trigger (font, row height and padding all 1/zoom smaller). */
+[data-slot="select-content"] { zoom: var(--ui-zoom, 1); }
+[data-slot="select-item"] { font-size: var(--ui-fs-sm); line-height: 20px; }
+/* The caret and selected-row check occupy the same 14px right-edge slot. With the trigger sized
+   to its menu, the standard 10px content inset makes the check replace the caret in place. */
+#settings .sel-value .caret-svg { margin-left: auto; width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; }
+#settings .sel-value > .menu .mi .ck { height: 14px; display: inline-flex; align-items: center; justify-content: center; }
+#settings .scope-sel-btn { width: 100%; }
+#settings .scope-menu { width: 100%; padding: 5px; }
+#settings .scope-menu .mi { gap: 6px; }
+/* In-place expansion: the trigger's content steps aside while the menu's matching row sits on
+   top of it (see anchorMenuToSelection), so one box appears to grow out of the button.
+   color: transparent covers the options-mode label, which is a bare text node. */
+#settings .sel-value:has(> .menu.open) { color: transparent; }
+#settings .sel-value:has(> .menu.open) > *:not(.menu) { visibility: hidden; }
+#settings [data-slot="select-trigger"][data-state="open"] { visibility: hidden; }
+/* The selected row IS the trigger while open: no plate, the ✓ marks it. */
+#settings .sel-value > .menu .mi.on { background: none; }
+#settings .sel-value > .menu .mi { min-height: 32px; padding: 6px 4px; }
+/* In-place expansion must not animate: a 180ms fade + 6px slide is exactly what reads as "a
+   popover floating up over the button" instead of the button's own box growing. The drop shadow
+   goes with it for the same reason (a shadow implies a layer above). Radix and model-cascade
+   content are unscoped because they portal to <body>, outside #settings. */
+#settings .sel-value > .menu { animation: none; box-shadow: none; }
+[data-slot="select-content"][data-state="open"],
+.menu.open.sel-value-portal { animation: none; box-shadow: none; }
+/* 20px content line + 6+6 padding = the 32px grid; the base 1.35 line-height pushed single-line
+   rows to 35px. Rows carrying a .mi-note just grow one more line. */
+#settings .sel-value > .menu .mi .mi-tx { line-height: 20px; }
+/* Icon+label option content is an inline-flex span (tailwind gap-1.5): as an inline box the 16px
+   glyph rides the text baseline and inflates the row to 23px. Blockifying it holds the row on the
+   20px content line, so the icon stays vertically centred instead of pushing the row open. */
+#settings .sel-value > .menu .mi .mi-tt > .inline-flex { display: flex; height: 20px; }
+#settings .sel-value > .menu .mi :is(.mi-ic, .mi-icon) {
+  width: 16px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+}
+#settings .sel-value > .menu .mi .mi-icon svg { width: 16px; height: 16px; }
+
 #setNav {
   /* 58px = #sidebar's 48px top strip + its nav container's 10px: the back button must land
      exactly on the workspace sidebar's first nav row, so switching into settings does not

@@ -22,6 +22,7 @@
    - 刷新按钮：统一 `class="icon-btn pg-refresh"` + `<span data-icon="refresh" data-size="17">`（31×31 底板；**禁止用 FA 实心 `rotateRight`**，实心块视觉上像常亮高亮）。点击旋转反馈走 `.pg-refresh.spin`。
    - 新建/添加按钮：`.add-btn` 语言（透明底 + `--line` 描边 + r8 + hover `--panel-2`），高度一律 31px，与刷新钮同高。
    - 开关 `.tg`、下拉胶囊 `.sel`、输入框 `.inp`（r9 + 蓝色聚焦光晕）、弹窗/延展区按钮 `.confirm-btn`（危险操作 `.danger`）、图标小按钮 `.plus-btn`、分段选择 `.mcp-type-pill` 胶囊。
+   - 下拉对齐：只有显示当前值/内容的触发器（`.sel-value`、Radix Select）使用原地展开——文字左对齐、caret 右置，caret 与选中勾共用 14×14px 右侧槽位，按钮与菜单同宽；Radix 触发器用同网格隐藏选项预留最长宽度，不在页面写私有宽度。内容型菜单一律取消 `popIn` 与阴影；Portal 到 `<body>` 的模型级联菜单用 `.sel-value-portal` 复用同一动效。纯图标或“…”操作菜单不加 `.sel-value`，保持普通浮层定位、触发器和入场动画；`Sel` children 模式须显式 `inPlace` 才启用。
    - 行内展开编辑：一律走记忆页 `.mem-expand` 向下延展模式（行 `.on` 高亮 + caret 旋转 + popIn），**不用模态弹窗**。
 2. **一级大标题**：`.set-tt` 语言——`calc(var(--ui-fs) * 1.75)`、font-weight 500、标题后首元素间距 29px（skills/MCP 页标题容器 margin-bottom 25px）。
 3. **颜色只用 token**（`--panel-*`/`--line*`/`--accent`/`--err`/`--green`…），禁止硬编码十六进制；hover 底板走 `--hover-fill`（见 §6），行 hover 用 `.srow` 同款 2.5% 微高亮。

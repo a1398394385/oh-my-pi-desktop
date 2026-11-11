@@ -23,7 +23,7 @@ function themeLabel(themeId: string): ReactNode {
   if (themeId === "system") {
     return (
       <span className="inline-flex items-center gap-1.5">
-        <Icon name="monitor" size={14} />
+        <Icon name="monitor" size={16} />
         {ti("settingsPage.appearance.themeSystem")}
       </span>
     );
@@ -32,7 +32,7 @@ function themeLabel(themeId: string): ReactNode {
   if (!entry) return themeId;
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Icon name={entry.mode === "light" ? "sun" : "moon"} size={14} />
+      <Icon name={entry.mode === "light" ? "sun" : "moon"} size={16} />
       {ti(THEME_LABEL_KEYS[themeId] || entry.name)}
     </span>
   );

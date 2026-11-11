@@ -236,7 +236,7 @@ export function ModelCascadePicker({
 
   return (
     <div
-      className={"sel mp-role-sel" + (disabled ? " disabled" : "") + (up ? " sel-up" : "")}
+      className={"sel sel-value mp-role-sel" + (disabled ? " disabled" : "") + (up ? " sel-up" : "")}
       role="button"
       ref={selRef}
       onClick={(e) => {

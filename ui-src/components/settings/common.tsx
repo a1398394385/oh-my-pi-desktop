@@ -4,7 +4,7 @@
 // Ported from ui/settings/providers.js (confirmDialog / showLoginBanner / showLoginPrompt)
 // and PROV_IC at the top of ui/settings/index.js; dialog DOM language (.lp-mask/.lp-box/
 // .login-banner) is 1:1 with the old version.
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { useAppStore, setBump, send, effZoom } from "../../store";
@@ -165,6 +165,51 @@ export function useDropdownClose(open: boolean, close: () => void): void {
   }, [open]);
 }
 
+// The trigger must already be as wide as its widest option, otherwise opening visibly widens the
+// block (a menu can never be narrower than its content). Lays the menu out off-screen for one
+// measurement pass, so max-content width is real, then pins the trigger's min-width to it.
+export function sizeTriggerToMenu(sel: HTMLElement, menu: HTMLElement): void {
+  if (!sel.offsetWidth) return; // page hidden: nothing measurable yet
+  const prev = menu.getAttribute("style") ?? "";
+  menu.style.cssText =
+    "position:absolute;left:-9999px;top:0;display:block;visibility:hidden;width:max-content;min-width:0";
+  const width = menu.offsetWidth;
+  menu.setAttribute("style", prev);
+  sel.style.minWidth = width ? `${width}px` : "";
+}
+
+// In-place expansion: the selected row lands exactly on the trigger, the rest of the options
+// extend above and below it (the trigger is hidden while open, so one box appears to grow out of
+// the button). Row height must equal trigger height or the alignment drifts — the #settings 32px
+// grid in common.css guarantees both.
+// When the menu top would leave the scroll container, the whole block shifts down so the first
+// row stays visible.
+export function anchorMenuToSelection(sel: HTMLElement, menu: HTMLElement): void {
+  menu.style.bottom = "auto";
+  // `.mi.on` is the options-mode marker; pages that only carry a ck glyph (Sel without a value
+  // prop) mark the current row by a non-empty .mi-ck instead.
+  const on =
+    menu.querySelector<HTMLElement>(".mi.on") ??
+    [...menu.querySelectorAll<HTMLElement>(".mi")].find((mi) => mi.querySelector(".mi-ck")?.textContent?.trim()) ??
+    null;
+  if (!on) {
+    menu.style.top = "";
+    return;
+  }
+  // Distance from the menu's top edge to the selected row's top edge (menu padding included);
+  // lifting the menu by exactly that puts the row on the trigger. Rects are visual px under
+  // #settings zoom, while style.top is layout px.
+  const zoom = effZoom();
+  const shift = on.getBoundingClientRect().top - menu.getBoundingClientRect().top;
+  let top = -shift / zoom;
+  menu.style.top = `${top}px`;
+  const bound = sel.closest("#setBody");
+  if (bound) {
+    const over = menu.getBoundingClientRect().top - bound.getBoundingClientRect().top;
+    if (over < 0) menu.style.top = `${top - over / zoom}px`;
+  }
+}
+
 // Dropdown option (1:1 with the old .mi; ck/note/disabled all optional)
 export interface SelOption {
   v: string;
@@ -211,6 +256,8 @@ interface SelChildrenProps extends SelBaseProps {
   btnClassName?: string;
   btnTitle?: string;
   btnChildren?: ReactNode;
+  /** Value-displaying triggers expand in place; icon/action triggers keep the normal popover. */
+  inPlace?: boolean;
   menuId?: string;
   children?: ReactNode;
   onPickMi: (mi: HTMLElement) => void; // the picked .mi element
@@ -227,8 +274,21 @@ export type SelProps = SelOptionsProps | SelChildrenProps;
 export function Sel(props: SelProps) {
   const [open, setOpen] = useState(false);
   useDropdownClose(open, () => setOpen(false));
+  const selRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const inPlace = !("onPickMi" in props) || props.inPlace === true;
+  // Only value-displaying triggers expand in place. Icon/action menus keep their normal position,
+  // animation and trigger; sizing them to their menu would also turn an icon into a wide button.
+  useLayoutEffect(() => {
+    if (!inPlace || !open || !selRef.current || !menuRef.current) return;
+    anchorMenuToSelection(selRef.current, menuRef.current);
+  }, [open, inPlace]);
+  useLayoutEffect(() => {
+    if (inPlace && selRef.current && menuRef.current) sizeTriggerToMenu(selRef.current, menuRef.current);
+  });
   const cls =
     "sel" +
+    (inPlace ? " sel-value" : "") +
     (props.disabled ? " disabled" : "") +
     (props.dropUp ? " sel-up" : "") +
     (props.wide ? " sel-wide" : "") +
@@ -239,6 +299,7 @@ export function Sel(props: SelProps) {
     return (
       <div
         className={cls}
+        ref={selRef}
         id={props.id}
         data-sel={props.dataSel}
         onClick={(e) => {
@@ -252,6 +313,7 @@ export function Sel(props: SelProps) {
         </button>
         <div
           id={menuId}
+          ref={menuRef}
           className={menuCls}
           onClick={(e) => {
             e.stopPropagation();
@@ -272,6 +334,7 @@ export function Sel(props: SelProps) {
   return (
     <div
       className={cls}
+      ref={selRef}
       id={props.id}
       data-sel={props.dataSel}
       onClick={(e) => {
@@ -281,14 +344,14 @@ export function Sel(props: SelProps) {
       }}
     >
       {label} <Icon name="caret" size={14} className="caret-svg" />
-      <div className={menuCls}>
+      <div className={menuCls} ref={menuRef}>
         {options.map((o) => (
           <div
             key={o.v}
             className={
               "mi" +
               (o.disabled ? " disabled" : "") +
-              (value != null && o.v === value ? " on" : "")
+              ((value != null && o.v === value) || o.ck ? " on" : "")
             }
             onClick={(e) => {
               e.stopPropagation();
@@ -298,7 +361,7 @@ export function Sel(props: SelProps) {
             }}
           >
             {/* Right column: ✕ for unavailable options, otherwise the checkmark (empty keeps the slot so the row's trailing edge does not shift) */}
-            <span className="mi-ck">{o.disabled ? <Icon name="xmark" size={12} /> : o.ck}</span>
+            <span className="mi-ck">{o.disabled ? <Icon name="xmark" size={12} /> : o.ck ? <Icon name="check" size={14} /> : null}</span>
             <span className="mi-tx">
               <span className="mi-tt">{o.label}</span>
               {o.note && <span className="mi-note">{o.note}</span>}

@@ -140,14 +140,14 @@ export default function ModelProviderWizard() {
             />
           </FormRow>
           <FormRow label={t("settingsPage.model.wizardApi")}>
-            <div className="sel mcp-form-sel" onClick={(e) => { e.stopPropagation(); setApiOpen(!apiOpen); }}>
+            <div className="sel sel-value mcp-form-sel" onClick={(e) => { e.stopPropagation(); setApiOpen(!apiOpen); }}>
               <button type="button" className="mcp-form-sel-btn">
                 {apiLabel(api)} <Icon name="caret" size={14} className="caret-svg" />
               </button>
               <div className={"menu" + (apiOpen ? " open" : "")}>
                 {WIZARD_APIS.map((a) => (
                   <div key={a.v} className="mi" data-v={a.v} onClick={() => setApi(a.v)}>
-                    <span className="ck" style={{ visibility: api === a.v ? "visible" : "hidden" }}>✓</span>
+                    <span className="ck" style={{ visibility: api === a.v ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>
                     <span className="mi-label">{apiLabel(a.v)}</span>
                   </div>
                 ))}

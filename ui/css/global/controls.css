@@ -215,7 +215,7 @@ svg { vertical-align: middle; }
 /* Options-mode .sel rows (settings dropdowns): name above note, and the same right-pinned gray ✓
    column as plain .mi rows (order:1 sorts it after the flexible .mi-tx). The disabled ✕ keeps its
    error color: it warns about the row, it is not a selection mark. */
-.menu .mi .mi-ck { width: 16px; flex: none; order: 1; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; color: var(--menu-check); }
+.menu .mi .mi-ck { width: 14px; height: 14px; flex: none; order: 1; margin-left: auto; display: inline-flex; align-items: center; justify-content: center; color: var(--menu-check); }
 .menu .mi.disabled .mi-ck { color: var(--err); }
 .menu .mi .mi-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; }
 .menu .mi .mi-tt { font-size: var(--ui-fs-sm); color: var(--text); }
