@@ -38,6 +38,13 @@ export interface UiSlice {
   /** Left column of the Git page: worktree status of the page's own cwd. Kept apart from
    *  gitDiffCache, which mirrors the active session's right-panel Git tab. */
   gitPageStatus: { cwd: string; files: GitStatusFile[]; state: GitOperationState; loading: boolean } | null;
+  /** Git page header data published by the page so the center topbar (MainHeader) can
+   *  render the project title, the workspace switcher and the repo root next to the
+   *  page title (the page's own top row moved up into the shared topbar). */
+  gitPageHead: { cwd: string; root: string; branch: string; worktrees: { path: string; branch: string; detached: boolean; current: boolean }[] } | null;
+  /** Reload request for the open Git page: the topbar bumps the seq to ask for a
+   *  re-read of the graph (status=true also re-reads the worktree status). */
+  gitPageReload: { seq: number; status: boolean } | null;
   newSessionProject: string;
   newSessionBranch: string;
   newSessionBranches: string[]; // landed from the git_branches frame's branches (branch picker on the new-session page; list of branch names)
@@ -139,6 +146,9 @@ export interface UiSlice {
   closeAutomations(): void;
   openGitManage(cwd: string): void;
   closeGitManage(): void;
+  /** Ask the open Git page to re-read its data (the topbar's refresh button and the
+   *  workspace switcher). status=true also re-reads the worktree status. */
+  reloadGitPage(status: boolean): void;
   showWelcomeScreen(preferredCwd?: string | null): void;
   hideWelcomeScreen(): void;
   setWelcomeProject(cwd?: string): void;
@@ -204,6 +214,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   automationEditId: null,
   gitManage: null,
   gitPageStatus: null,
+  gitPageHead: null,
+  gitPageReload: null,
   newSessionProject: "",
   newSessionBranch: "",
   headerGit: null,
@@ -377,6 +389,12 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     // session behind it: come back to the welcome page instead of an empty stream.
     const { activePath, isCreatingNew } = get();
     if (!activePath && !isCreatingNew) get().showWelcomeScreen();
+  },
+
+  reloadGitPage(status) {
+    // The Git page owns its data and lives below the topbar, so the topbar asks
+    // for a re-read through this signal instead of holding the graph itself.
+    set((s) => ({ gitPageReload: { seq: (s.gitPageReload?.seq ?? 0) + 1, status } }));
   },
 
   showWelcomeScreen(preferredCwd) {

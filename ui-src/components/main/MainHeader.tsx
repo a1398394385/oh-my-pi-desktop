@@ -5,6 +5,7 @@ import Icon from "../../Icon";
 import WindowControls from "../WindowControls";
 import BranchMenu from "../welcome/BranchMenu";
 import SessCtxMenu from "./sidebar/SessCtxMenu";
+import GitPageHead from "./git/GitPageHead";
 import type { SessionInfo } from "./sidebar/SessionRow";
 import { IS_WINDOWS, MOD } from "../../platform";
 import { termGroupKey } from "./right/termTabs";
@@ -139,6 +140,16 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           {isSubagent && <span className="subagent-head-badge">{t("chat.subagentBadge")}</span>}
         </span>
       ) : null}
+      {/* Git page: its own top row moved up into this bar — the project name, the
+          workspace switcher and the repo root sit right of the page title. */}
+      {gitManage && (
+        <>
+          <span className="head-chip" title={gitManage}>
+            <span>{projectName}</span>
+          </span>
+          <GitPageHead />
+        </>
+      )}
       {projectName && !isCreatingNew && !gitManage && (
         <span className="head-chip" title={cwd ?? undefined}>
           <Icon name={repoGroup ? "folderGit2" : "folderOld"} size={13} style={{ color: "var(--dim)" }} />
@@ -238,6 +249,28 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
         </button>
       )}
       <span className="sp"></span>
+      {/* Git page's own refresh/close: the page's top row moved into this bar, so
+          they park left of the terminal toggle. */}
+      {gitManage && (
+        <>
+          <button
+            type="button"
+            className="icon-btn"
+            title={t("gitPage.refresh")}
+            onClick={() => useAppStore.getState().reloadGitPage(true)}
+          >
+            <Icon name="refresh" size={15} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            title={t("gitPage.close")}
+            onClick={() => useAppStore.getState().closeGitManage()}
+          >
+            <Icon name="xmark" size={15} />
+          </button>
+        </>
+      )}
       {/* Terminal dock toggle (⌘/Ctrl+J): parked in the top-right corner, left of the
           right-panel button so the two panel entries stay adjacent */}
       {!narrow && (

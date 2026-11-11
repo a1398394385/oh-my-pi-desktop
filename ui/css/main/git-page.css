@@ -1,6 +1,5 @@
-/* Middle-column Git manager page (project row "more" → the Git entry): branch tree +
-   commit graph with lane topology + selected-commit detail. Tokens only. */
-
+/* The page's top row (project name, workspace switcher, repo root) lives in the
+   center topbar now (MainHeader renders GitPageHead) — only the body is here. */
 #gitPage {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
@@ -8,35 +7,6 @@
   color: var(--text);
   font-size: var(--ui-fs-base);
 }
-
-/* Topbar: title / project / repo root / refresh / close — same 48px height as the
-   chat header it replaces (one header height for every center-column top bar) */
-.gp-head {
-  height: 48px; flex: none;
-  display: flex; align-items: center; gap: 8px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line-soft);
-  min-width: 0;
-}
-
-.gp-project { flex: none; font-weight: 600; }
-
-/* Workspace switcher: capsule between the project name and the repo path. It
-   names the checkout the page reads (its branch), not the project again. */
-.gp-ws {
-  display: flex; align-items: center; gap: 6px; flex: none;
-  height: 24px; padding: 0 8px;
-  border: 1px solid var(--line); border-radius: 999px;
-  background: var(--ctl-bg); color: var(--text);
-  font-size: var(--ui-fs-sm); cursor: pointer;
-}
-.gp-ws:hover, .gp-ws[aria-expanded="true"], .gp-ws:focus-visible { background: var(--hover-fill); }
-.gp-ws .pi-ic { color: var(--dim); }
-.gp-ws-label {
-  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.gp-ws-caret { transition: transform var(--dur-snap) var(--swift); }
-.gp-ws[aria-expanded="true"] .gp-ws-caret { transform: rotate(180deg); }
 
 /* Rows: directory name over its branch (the two ways a checkout is named). */
 .gp-ws-row { display: flex; flex-direction: column; gap: 1px; }

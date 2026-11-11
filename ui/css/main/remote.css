@@ -44,8 +44,14 @@
   #main { margin: var(--shell-gap) 0; }
   .chat-head { padding: 0 12px; }
   /* One-row header on phones: back + title + ⋯ + panel. The project/branch chips
-     would squeeze the title out of the row (ZCode moves them to their own line). */
+     would squeeze the title out of the row (ZCode moves them to their own line).
+     The Git page's workspace switcher stays: it is that page's only checkout
+     picker, and the header is the only place the row lives now. */
   .chat-head .head-chip { display: none; }
+  .chat-head .head-chip.gp-ws { display: inline-flex; }
+  /* The repo root path is a wide mono string: on a phone it would squeeze the
+     page title out of the one-row header (the checkout name is on the chip). */
+  .chat-head .gp-root { display: none; }
   .dock { margin-bottom: calc(12px + env(safe-area-inset-bottom)); }
   .stats-bar { margin-bottom: calc(10px + env(safe-area-inset-bottom)); }
   /* Narrow-only two fixed rows (desktop keeps ONE line, see composer.css): smaller type +

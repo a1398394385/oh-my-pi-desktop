@@ -16,14 +16,12 @@
 // The page owns its render state locally — it never touches the session pool.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Icon from "../../../Icon";
-import { pathBase, useAppStore } from "../../../store";
+import { useAppStore } from "../../../store";
 import { cachedGitGraph, fetchGitCommitDetail, fetchGitGraph } from "../../../store/git-graph";
 import type { GitCommitDetailFrame, GitCommitFileWire, GitGraphFrame } from "../../../types/frames";
 import CommitGraph from "./CommitGraph";
 import BranchPanel from "./BranchPanel";
 import CommitDetail from "./CommitDetail";
-import Menu from "../sidebar/Menu";
 import WorktreeList from "./WorktreeList";
 import FileCompare, { type CompareTarget } from "./FileCompare";
 import SplitHandle from "./SplitHandle";
@@ -31,9 +29,6 @@ import type { WorktreeRow } from "./worktree-rows";
 
 const INITIAL_LIMIT = 200;
 const PAGE_STEP = 100;
-// Picked from ui/prototypes/git-workspace-icons.html (#08 folder-git-2): the
-// workspace pill shows a checkout/working tree, not a branch.
-const WS_ICON = "folderGit2";
 
 export default function GitPage() {
   const { t } = useTranslation();
@@ -55,20 +50,7 @@ export default function GitPage() {
   const [sideMode, setSideMode] = useState<"worktree" | "commit">("worktree");
   /** Open compare view; null = the graph column. */
   const [pair, setPair] = useState<CompareTarget | null>(null);
-  const wsTrigger = useRef<HTMLButtonElement>(null);
-  const [wsOpen, setWsOpen] = useState(false);
   const graphSeq = useRef(0);
-
-  // Menu has no Escape handling of its own (it only closes on an outside click);
-  // the settings popovers get theirs from their own pages, so this page adds one.
-  useEffect(() => {
-    if (!wsOpen) return;
-    const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setWsOpen(false);
-    };
-    document.addEventListener("keydown", esc);
-    return () => document.removeEventListener("keydown", esc);
-  }, [wsOpen]);
 
   // Another checkout is a different repository view: the scope, commit and open
   // diff of the previous workspace must not survive the switch.
@@ -148,6 +130,34 @@ export default function GitPage() {
     loadStatus();
   }, [loadStatus]);
 
+  // The page's top row lives in the center topbar now (MainHeader renders it), so
+  // publish what that row shows: the repo root, the branch and the checkouts. The
+  // frame's own cwd travels with it: after a workspace switch the previous frame is
+  // still on screen, and the topbar must not show it as the current one.
+  useEffect(() => {
+    useAppStore.setState({
+      gitPageHead: graph
+        ? {
+            cwd: graph.cwd,
+            root: graph.root ?? "",
+            branch: graph.branch ?? "",
+            worktrees: graph.worktrees ?? [],
+          }
+        : null,
+    });
+  }, [graph]);
+
+  // The topbar's refresh button and the workspace switcher ask for a re-read
+  // through this signal: the page owns the graph and the worktree status.
+  const reload = useAppStore((s) => s.gitPageReload);
+  const handledReload = useRef(useAppStore.getState().gitPageReload?.seq ?? 0);
+  useEffect(() => {
+    if (!reload || reload.seq === handledReload.current) return;
+    handledReload.current = reload.seq;
+    runLoad(true);
+    if (reload.status) loadStatus();
+  }, [reload, runLoad, loadStatus]);
+
   // Keep a selection valid across reloads but never invent one: the page opens
   // with nothing selected so the side panel shows the working changes.
   useEffect(() => {
@@ -199,31 +209,8 @@ export default function GitPage() {
     setSelected(oid);
     setSideMode("commit");
   }, []);
-  const close = () => useAppStore.getState().closeGitManage();
-  const refresh = () => {
-    runLoad(true);
-    loadStatus();
-  };
 
   const currentBranch = graph?.branch ?? "";
-  const worktrees = graph?.worktrees ?? [];
-  const currentTree = worktrees.find((w) => w.current);
-  // The menu offers the other checkouts only: switching to the current one is a
-  // no-op, and repeating it beside the pill reads as a second name for this page.
-  const others = worktrees.filter((w) => !w.current);
-  // Branch names identify a checkout: the main repo keeps its own, a worktree
-  // carries the branch it was created on. Detached checkouts fall back to the
-  // directory name, and before the first graph reply to the page's own branch.
-  // The primary checkout (git lists it first) is named by role instead: with every
-  // checkout of a repo merged into one project, "main" no longer says what it is.
-  const isPrimary = (wt: { path: string } | undefined) => !!wt && wt === worktrees[0];
-  const wsLabel = currentTree
-    ? isPrimary(currentTree)
-      ? t("gitPage.worktreeMain")
-      : currentTree.detached
-        ? pathBase(currentTree.path)
-        : currentTree.branch
-    : graph?.branch || pathBase(cwd);
   const detailOid = detail?.commit?.oid ?? "";
   const openCommitFile = (file: GitCommitFileWire) => {
     setSideMode("commit");
@@ -252,82 +239,6 @@ export default function GitPage() {
 
   return (
     <div id="gitPage">
-      <div className="gp-head">
-        <span className="gp-project" title={cwd}>
-          {pathBase(cwd)}
-        </span>
-        <div className="gp-ws-wrap">
-          <button
-            ref={wsTrigger}
-            type="button"
-            className="gp-ws"
-            aria-expanded={wsOpen}
-            aria-haspopup="menu"
-            title={t("gitPage.worktreeSwitch")}
-            onClick={(e) => {
-              // The opening click must not reach the window: the menu it mounts
-              // listens there for outside clicks and would close itself in the
-              // same dispatch.
-              e.stopPropagation();
-              if (wsOpen) {
-                setWsOpen(false);
-                return;
-              }
-              // Re-read on open: a worktree created after the page loaded is
-              // otherwise missing until the next manual refresh.
-              runLoad(true);
-              setWsOpen(true);
-            }}
-          >
-            <Icon name={WS_ICON} size={13} />
-            <span className="gp-ws-label">{wsLabel}</span>
-            <Icon name="caretSlim" size={10} className="gp-ws-caret" />
-          </button>
-          {wsOpen && (
-            <Menu
-              place={() => {
-                const r = wsTrigger.current!.getBoundingClientRect();
-                return [r.left, r.bottom + 6];
-              }}
-              onClose={() => setWsOpen(false)}
-            >
-              {others.length === 0 ? (
-                <div className="gp-ws-empty">{t("gitPage.worktreeNone")}</div>
-              ) : (
-                others.map((wt) => (
-                  <button
-                    key={wt.path}
-                    type="button"
-                    className="gp-ws-row"
-                    title={wt.path}
-                    onClick={() => {
-                      setWsOpen(false);
-                      useAppStore.getState().openGitManage(wt.path);
-                    }}
-                  >
-                    <span className="gp-ws-row-path">{isPrimary(wt) ? t("gitPage.worktreeMain") : pathBase(wt.path)}</span>
-                    <span className="gp-ws-row-branch">
-                      {wt.detached ? t("gitPage.worktreeDetached") : wt.branch}
-                    </span>
-                  </button>
-                ))
-              )}
-            </Menu>
-          )}
-        </div>
-        {graph?.root && (
-          <span className="gp-root" title={graph.root}>
-            {graph.root}
-          </span>
-        )}
-        <span className="sp" />
-        <button type="button" className="icon-btn" title={t("gitPage.refresh")} onClick={refresh}>
-          <Icon name="refresh" size={15} />
-        </button>
-        <button type="button" className="icon-btn" title={t("gitPage.close")} onClick={close}>
-          <Icon name="xmark" size={15} />
-        </button>
-      </div>
       <div className="gp-body">
         {pair ? (
           <div className="gp-compare-slot">
