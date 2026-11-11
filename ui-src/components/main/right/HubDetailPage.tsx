@@ -74,7 +74,9 @@ export default function HubDetailPage() {
   if (!sub) {
     return <div className="py-3 text-faint text-ui-base">{t("right.hubEmpty")}</div>;
   }
-  return <HubDetail sub={sub} subagentId={hubSel ?? undefined} sessionId={s?.sessionId} t={t} />;
+  // key: without it React reuses the instance across subagents, carrying the previous
+  // one’s preview/source toggle state into the next.
+  return <HubDetail key={hubSel} sub={sub} subagentId={hubSel ?? undefined} sessionId={s?.sessionId} t={t} />;
 }
 
 export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentState; t: SegT; sessionId?: string; subagentId?: string }) {
@@ -101,8 +103,11 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
   // Markdown blocks default to the rendered preview; the section switch flips to raw text
   const [mdTask, setMdTask] = useState(true);
   const [mdResult, setMdResult] = useState(true);
-  // Task block renders as markdown; the raw transcript fallback stays truncated
-  const task = sub.description || sub.task || (sub.text ? sub.text.slice(0, 300) : "");
+  // Task block renders as markdown; the raw transcript fallback is capped — marked with
+  // an ellipsis like the host-side result cap, source view keeps the full text in `title`
+  const rawTask = sub.description || sub.task || sub.text || "";
+  const taskTruncated = rawTask.length > 300;
+  const task = taskTruncated ? rawTask.slice(0, 300) + "\u2026" : rawTask;
   const segs: string[] = [];
   if (elapsed > 0) segs.push(fmtDurationMs(elapsed));
   if (age) segs.push(age.isNow ? t("right.closedNow") : t("right.hubActiveAgo", { age: age.text }));
@@ -114,7 +119,9 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
       <div className={"hub-detail-head st-" + st}>
         <span className="sub-dot">{st === "running" ? "●" : st === "completed" ? "✓" : st === "failed" ? "✗" : "○"}</span>
         <b>{sub.name ?? sub.agent}</b>
-        <span className="hub-detail-id text-faint">{sub.agent}</span>
+        <span className="hub-detail-id text-faint" title={sub.agent}>
+          {sub.agent}
+        </span>
         {/* Status + elapsed/age pinned to the top-right; model sits beneath */}
         <span className="hub-detail-st text-ui-sm text-faint">
           {warming ? <span className="hub-warming">{t("hubExt.warming")}</span> : null}
@@ -129,7 +136,7 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
       {task ? (
         <MdSec label={t("right.hubTask")} view={mdTask} onView={setMdTask} t={t}>
           <div className="hub-box">
-            {mdTask ? <MdSurface className="md-body md-surface hub-task-md" text={task} /> : <div className="hub-src">{task}</div>}
+            {mdTask ? <MdSurface className="md-body md-surface hub-task-md" text={task} /> : <div className="hub-src" title={taskTruncated ? rawTask : undefined}>{task}</div>}
           </div>
         </MdSec>
       ) : null}

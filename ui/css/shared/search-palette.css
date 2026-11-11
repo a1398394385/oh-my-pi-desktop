@@ -115,6 +115,10 @@
   padding: 8px 10px;
   border-radius: var(--r-md);
   cursor: pointer;
+  /* A click-and-move on a result row otherwise starts a native text drag (the global
+     dragover guard only cancels Files), yanking a ghost out of the palette. */
+  user-select: none;
+  -webkit-user-select: none;
   transition: background var(--dur-fast) var(--swift);
 }
 .palette-item.on {

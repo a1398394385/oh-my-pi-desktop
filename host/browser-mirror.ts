@@ -353,13 +353,12 @@ async function probeElement(cdp: CDPSession, x: number, y: number): Promise<Pick
 		: [];
 	const style = (prop: string): string => computed.find((s) => s.name === prop)?.value ?? "";
 	const { outerHTML } = await cdp.send("DOM.getOuterHTML", { backendNodeId: loc.backendNodeId });
-	// showStyles alone fills the card's Color/Font/Background rows (verified against
-	// the DevTools UI); fontFamily/fontSize are not protocol fields and are ignored.
+	// Outline only: showInfo/showStyles draw the DevTools card inside the mirrored
+	// page, covering the very content the user is aiming at. Picked details already
+	// come back to the UI as `browser_pick`, so the card was pure occlusion.
 	await cdp.send("Overlay.highlightNode", {
 		backendNodeId: loc.backendNodeId,
 		highlightConfig: {
-			showInfo: true,
-			showStyles: true,
 			contentColor: { r: 111, g: 168, b: 220, a: 0.66 },
 			colorFormat: "hex",
 		},

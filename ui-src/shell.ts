@@ -262,7 +262,9 @@ export function bindColResizer(): void {
         const dx = (ev.clientX - startX) / useAppStore.getState().zoomLevel;
         if (dx !== 0) moved = true;
         const outward = side === "right" ? dx : -dx;
-        document.documentElement.style.setProperty("--col-user-max", Math.round(Math.max(480, startW + outward * 2)) + "px");
+        // 360 floor: the composer's 260px min-width is the hard content floor, so the
+        // old 480 only blocked the user from using width they already had.
+        document.documentElement.style.setProperty("--col-user-max", Math.round(Math.max(360, startW + outward * 2)) + "px");
       };
       const up = () => {
         document.removeEventListener("mousemove", move);

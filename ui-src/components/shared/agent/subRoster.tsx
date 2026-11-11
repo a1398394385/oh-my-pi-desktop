@@ -93,6 +93,16 @@ export function RosterHead({ s }: { s: RosterSession }) {
   const { t } = useTranslation();
   const hubMode = useAppStore((st) => st.hubMode);
 
+  // Same signature trick as useRosterRows: the subagents Map mutates in place, so keying
+  // these aggregates on [s] rebuilt them on every unrelated session write (delta frames
+  // arrive at ~10Hz). Streams: subStatus depends on `streaming`, hence it is in the key.
+  const usageSig = [...s.subagents]
+    .map(
+      ([id, x]) =>
+        `${id}:${x.streaming ? 1 : 0}:${x.status}:${x.usage?.cost ?? ""}:${x.usage?.durationMs ?? ""}:${x.usage?.requests ?? ""}:${x.usage?.toolCount ?? x.tools.length}:${tokenTotal(x.usage?.tokens) ?? ""}`,
+    )
+    .join(";");
+
   const agg = useMemo(() => {
     let cost = 0, dur = 0, reqs = 0, tools = 0, tok = 0, measured = 0, timed = 0;
     for (const [, sub] of s.subagents) {
@@ -107,7 +117,7 @@ export function RosterHead({ s }: { s: RosterSession }) {
       if ((u.durationMs ?? 0) > 0) timed++;
     }
     return { cost, dur, reqs, tools, tok, measured, timed, total: s.subagents.size };
-  }, [s]);
+  }, [usageSig]);
 
   // Grouped and ordered like the roster (running → completed → failed → aborted), so the
   // header never reshuffles as statuses arrive and reads in the pills' color language.
@@ -118,7 +128,7 @@ export function RosterHead({ s }: { s: RosterSession }) {
       c[g] = (c[g] ?? 0) + 1;
     }
     return ST_GROUPS.flatMap((g) => (c[g] ? [[g, c[g]] as const] : []));
-  }, [s]);
+  }, [usageSig]);
 
   return (
     <>
@@ -174,7 +184,9 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
   // Role alias (TASK/SMOL) rides left of the model badge, " · "-joined; absent for concrete-model runs
   const role = sub.usage?.modelRole?.toUpperCase();
   const model = modelShort(sub.usage?.resolvedModel);
-  const rowTask = sub.description || sub.task || sub.text.slice(0, 80) || "…";
+  // Fallback transcript is capped; mark the cut so the row is not read as the whole task
+  const rawTask = sub.description || sub.task || sub.text || "";
+  const rowTask = rawTask.length > 80 ? rawTask.slice(0, 80) + "…" : rawTask || "…";
   return (
     <div
       role="option"
@@ -202,7 +214,7 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
           static assignment; it falls back to the assignment until the first tool/intent lands.
           The completion probe's self-estimate leads the line while the child runs (the probe
           stops at terminal status, and a yield pins it to 99). */}
-      <span className="hub-task text-faint">
+      <span className="hub-task text-faint" title={rawTask || undefined}>
         {sub.streaming && sub.usage?.completionPercent !== undefined ? (
           <span className="hub-pct">{sub.usage.completionPercent}%</span>
         ) : null}

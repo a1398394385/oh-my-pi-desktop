@@ -27,7 +27,9 @@ export default function SubagentPage() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
   const hubMode = useAppStore((st) => st.hubMode);
-  useRosterTick(s);
+  // Detail view hides the roster, whose tick would otherwise repaint the whole page every
+  // second next to the detail's own clock.
+  useRosterTick(selectedSubagent ? undefined : s);
   const rows = useRosterRows(s);
   // Entrance-animation flag: set in the same setState as selectedSubagent (subscribers
   // read it at render); silent macrotask reset — the reset has no subscribers so no
@@ -85,7 +87,8 @@ function SubagentDetail({ sub, sessionId, subagentId }: { sub: SubagentState; se
         </button>
       </div>
       <div className={"rb-scroll" + (kids ? " kids-in" : "")}>
-        <HubDetail sub={sub} subagentId={subagentId} sessionId={sessionId} t={t} />
+        // key: switching subagents must remount, or the previous one’s markdown view mode sticks
+        <HubDetail key={subagentId} sub={sub} subagentId={subagentId} sessionId={sessionId} t={t} />
       </div>
     </>
   );

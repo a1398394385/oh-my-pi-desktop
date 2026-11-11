@@ -130,9 +130,11 @@ export function useQuery<T>(
   const waiting = useRef<{ key: string; request: Inflight } | null>(null);
 
   const run = useCallback((targetKey: string) => {
-    lastFetchAt.current = Date.now();
     const current = waiting.current;
     if (current?.key === targetKey && inflight.get(targetKey) === current.request) return;
+    // Stamped only when a request actually goes out: stamping first let a deduped call
+    // (another component already fetching this key) postpone the next live refetch.
+    lastFetchAt.current = Date.now();
     const shownBefore = cachedEntry(targetKey)?.data;
     setRefreshing(true);
     const request = load(targetKey, currentLiveVersion(), fetcherRef.current);
@@ -142,8 +144,10 @@ export function useQuery<T>(
     request.promise
       .then(data => {
         if (keyRef.current !== targetKey) return;
-        // Revalidated to the very same object: nothing on screen changes.
-        if (data === shownBefore) {
+        // Every fetch deserializes to a fresh object, so an identity check never fired and
+        // a live-version bump that changed nothing still re-rendered the whole page.
+        // Compare content and keep the current render when the numbers are the same.
+        if (shownBefore !== undefined && JSON.stringify(data) === JSON.stringify(shownBefore)) {
           setError(prev => (prev === null ? prev : null));
           return;
         }
