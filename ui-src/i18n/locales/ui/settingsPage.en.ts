@@ -1512,6 +1512,12 @@ export const settingsPageEn = {
       navSections: "Stats Sections",
       timeRange: "Time range",
     },
+    time: {
+      daysAgo: "{{count}}d ago",
+      hoursAgo: "{{count}}h ago",
+      justNow: "just now",
+      minutesAgo: "{{count}}m ago",
+    },
     tools: {
       allTools: "All tools",
       apiEquivalent: "API-equivalent",

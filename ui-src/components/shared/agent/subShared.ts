@@ -2,6 +2,7 @@
 // Agent Hub roster and the hub's linked detail page all render the same metrics
 // (model/tokens/cost/requests/tools/start/elapsed) from SubagentState.usage.
 import { useAppStore, fmtTokens, fmtDurationMs } from "../../../store";
+import { localeDate } from "../../../lib/locale";
 import { t } from "../../../i18n";
 import type { SubagentState } from "../../../types/session";
 
@@ -26,9 +27,9 @@ export function tokenTotal(tokens: Record<string, number> | undefined): number |
   return sum || undefined;
 }
 
-const clockFmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const clockFmt = localeDate({ hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 export function fmtClock(ts: number | undefined): string {
-  return ts ? clockFmt.format(new Date(ts)) : "—";
+  return ts ? clockFmt(ts) : "—";
 }
 
 export type SegT = (k: string, o?: Record<string, unknown>) => string;

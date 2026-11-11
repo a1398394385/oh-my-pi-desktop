@@ -116,7 +116,7 @@ export function SpanDrawer({ span, track, onClose, onOpenChildTrack }: SpanDrawe
     {
       key: "start",
       label: t("settingsPage.stats.traceView.drawer.start"),
-      value: <span className="stats-num">{new Date(span.start).toLocaleTimeString()}</span>,
+      value: <span className="stats-num">{new Date(span.start).toLocaleTimeString(appLocale())}</span>,
     },
     {
       key: "track",

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { localeDate } from "../../../../lib/locale";
 import { getGainDashboardStats } from "../api";
 import { Chart, type ChartSeries, Legend } from "../charts";
 import { formatBytes, formatCompact, formatInteger, formatPercent } from "../data/formatters";
@@ -29,7 +30,7 @@ const DAY_MS = 86_400_000;
 
 const SOURCE_LABEL: Record<GainSource, string> = { snapcompact: "Snapcompact", acp: "ACP compaction" };
 
-const DAY_LABEL = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+const dayLabel = localeDate({ month: "short", day: "numeric", timeZone: "UTC" });
 
 interface SourceRow extends GainSourceTotals {
   source: GainSource;
@@ -214,7 +215,7 @@ export function GainRoute({ active, range }: GainRouteProps) {
             >
               <Chart
                 slots={series.buckets.length}
-                tickLabel={i => DAY_LABEL.format(series.buckets[i])}
+                tickLabel={i => dayLabel(series.buckets[i])}
                 series={chartSeries}
                 height={260}
                 formatTooltip={formatInteger}

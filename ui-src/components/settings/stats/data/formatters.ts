@@ -1,4 +1,4 @@
-import { format, formatDistanceToNow } from "@oh-my-pi/pi-utils/dates";
+import { localeDate } from "../../../../lib/locale";
 import { t } from "../../../../i18n";
 import type { MessageStats } from "../types";
 
@@ -70,12 +70,27 @@ export function formatTokensPerSecond(value: number | null): string {
   return value.toFixed(1);
 }
 
+const timestampFmt = localeDate({
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
 export function formatRelativeTime(timestamp: number): string {
-  return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
+  const s = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (s < 45) return t("settingsPage.stats.time.justNow");
+  const m = Math.round(s / 60);
+  if (m < 60) return t("settingsPage.stats.time.minutesAgo", { count: m });
+  const h = Math.round(m / 60);
+  if (h < 24) return t("settingsPage.stats.time.hoursAgo", { count: h });
+  return t("settingsPage.stats.time.daysAgo", { count: Math.round(h / 24) });
 }
 
 export function formatTimestamp(timestamp: number): string {
-  return format(new Date(timestamp), "MMM d, HH:mm:ss");
+  return timestampFmt(timestamp);
 }
 
 export function formatFolder(folder: string): string {

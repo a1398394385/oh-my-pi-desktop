@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
+import { appLocale } from "../../../lib/locale";
 import { DOUBLE_ESC_MS } from "../../../keys";
 import { pushInputHistory, recallHistory, resetHistoryCursor } from "../../composer/lexical/draft";
 import Icon from "../../../Icon";
@@ -300,7 +301,7 @@ function TopicList({
               </span>
               <span className="btw-meta">
                 {turns > 1 && <span className="btw-n">{t("right.btwTurnCount", { n: turns })}</span>}
-                <span>{new Date(topic.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                <span>{new Date(topic.updatedAt).toLocaleTimeString(appLocale(), { hour: "2-digit", minute: "2-digit" })}</span>
               </span>
             </button>
           );

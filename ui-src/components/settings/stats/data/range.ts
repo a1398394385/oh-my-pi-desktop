@@ -1,4 +1,4 @@
-import { format } from "@oh-my-pi/pi-utils/dates";
+import { localeDate } from "../../../../lib/locale";
 import { t } from "../../../../i18n";
 import type { TimeRange } from "../types";
 
@@ -37,14 +37,17 @@ export function rangeMeta(range: TimeRange): RangeMeta {
   };
 }
 
+const timeFmt = localeDate({ hour: "2-digit", minute: "2-digit", hour12: false });
+const dayTimeFmt = localeDate({ month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+const dayFmt = localeDate({ month: "short", day: "numeric" });
+
 export function formatBucket(timestamp: number, bucketMs: number): string {
-  if (bucketMs < DAY_MS) return format(new Date(timestamp), bucketMs < HOUR_MS ? "HH:mm" : "MMM d HH:mm");
-  return format(new Date(timestamp), "MMM d");
+  if (bucketMs < DAY_MS) return bucketMs < HOUR_MS ? timeFmt(timestamp) : dayTimeFmt(timestamp);
+  return dayFmt(timestamp);
 }
 
 export function formatTick(timestamp: number, bucketMs: number): string {
-  if (bucketMs < DAY_MS) return format(new Date(timestamp), "HH:mm");
-  return format(new Date(timestamp), "MMM d");
+  return bucketMs < DAY_MS ? timeFmt(timestamp) : dayFmt(timestamp);
 }
 
 export function bucketAxis(

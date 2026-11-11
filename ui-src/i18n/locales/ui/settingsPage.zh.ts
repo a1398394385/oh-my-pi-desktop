@@ -1486,6 +1486,12 @@ export const settingsPageZh = {
       navSections: "统计分区",
       timeRange: "时间范围",
     },
+    time: {
+      daysAgo: "{{count}} 天前",
+      hoursAgo: "{{count}} 小时前",
+      justNow: "刚刚",
+      minutesAgo: "{{count}} 分钟前",
+    },
     tools: {
       allTools: "全部工具",
       apiEquivalent: "API 等价",

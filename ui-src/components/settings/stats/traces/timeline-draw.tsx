@@ -1,5 +1,6 @@
 import type React from "react";
 import { effZoom } from "../../../../store";
+import { appLocale } from "../../../../lib/locale";
 import { formatDurationMs, formatInteger } from "../data/formatters";
 import type { TraceMarker, TraceSpan, TraceSpanKind, TraceTrack } from "../types";
 import { buildTicks, formatOffset, type TraceScale } from "./time-scale";
@@ -352,7 +353,7 @@ export function renderTooltip(hover: HoverState, traceStart: number, labels: Too
       <div className="traces-tooltip" style={style}>
         <div className="traces-tooltip-title">{marker.label}</div>
         <div className="muted stats-num">
-          {new Date(marker.time).toLocaleTimeString()} ({formatOffset(marker.time - traceStart)})
+          {new Date(marker.time).toLocaleTimeString(appLocale())} ({formatOffset(marker.time - traceStart)})
         </div>
       </div>
     );
@@ -363,7 +364,7 @@ export function renderTooltip(hover: HoverState, traceStart: number, labels: Too
     <div className="traces-tooltip" style={style}>
       <div className="traces-tooltip-title truncate">{span.label}</div>
       <div className="muted stats-num">
-        {formatDurationMs(span.end - span.start)} · {new Date(span.start).toLocaleTimeString()} (
+        {formatDurationMs(span.end - span.start)} · {new Date(span.start).toLocaleTimeString(appLocale())} (
         {formatOffset(span.start - traceStart)}){span.unterminated ? ` · ${labels.unterminated}` : ""}
       </div>
       {span.kind === "model" && (

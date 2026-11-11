@@ -4,6 +4,7 @@
 // frames (automations_list / automation_run_started / automation_preview) are
 // built from those types on the host side.
 import type { TFunction } from "i18next";
+import { localeDate } from "./locale";
 
 /** Repetition unit of a structured schedule rule (mirror of host AutomationUnit). */
 export type AutomationUnit = "minute" | "hourly" | "daily" | "weekly" | "monthly";
@@ -98,15 +99,17 @@ export function formatHM(hour: number, minute: number): string {
   return `${p2(hour)}:${p2(minute)}`;
 }
 
-/** Local wall-clock string for an epoch-ms timestamp (Intl, user's locale/timezone). */
+const localTimeFmt = localeDate({
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** Local wall-clock string for an epoch-ms timestamp (Intl, UI language/timezone). */
 export function formatLocalTime(ts: number): string {
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(ts));
+  return localTimeFmt(ts);
 }
 
 /** Local-timezone end-of-day epoch ms for a yyyy-mm-dd date input value. */

@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { t as ti } from "../../../../i18n";
+import { localeDate } from "../../../../lib/locale";
 import { Chart, type ChartSeries, Legend, useHiddenSeries } from "../charts";
 import { SERIES_COLORS } from "../data/colors";
 import { formatInteger, formatPercent, formatRelativeTime } from "../data/formatters";
@@ -45,7 +46,7 @@ const UTIL_STEPS = [
 const MAX_UTIL_SLOTS = 240;
 const MAX_HOLD_MS = 6 * HOUR_MS;
 
-const WINDOW_RANGE_FMT = new Intl.DateTimeFormat(undefined, {
+const windowRangeFmt = localeDate({
   month: "short",
   day: "numeric",
   hour: "2-digit",
@@ -218,8 +219,8 @@ export function WindowUtilizationCard({
         chart.buckets.length > 0
           ? t("settingsPage.stats.providers.utilDescRange", {
               window: windowLabel ?? t("settingsPage.stats.providers.colWindow"),
-              from: WINDOW_RANGE_FMT.format(new Date(chart.first)),
-              to: WINDOW_RANGE_FMT.format(new Date(chart.last)),
+              from: windowRangeFmt(chart.first),
+              to: windowRangeFmt(chart.last),
             })
           : t("settingsPage.stats.providers.utilDescEmpty")
       }

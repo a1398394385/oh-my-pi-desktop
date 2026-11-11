@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { appLocale } from "../../../../lib/locale";
 import { getSessions } from "../api";
 import {
   formatCompact,
@@ -84,7 +85,7 @@ export function TracesRoute({ active, session, onOpenSession }: TracesRouteProps
         header: t("settingsPage.stats.tracesRoute.colStarted"),
         align: "right",
         render: row => (
-          <span className="muted" title={new Date(row.startedAt).toLocaleString()}>
+          <span className="muted" title={new Date(row.startedAt).toLocaleString(appLocale())}>
             {formatRelativeTime(row.startedAt)}
           </span>
         ),

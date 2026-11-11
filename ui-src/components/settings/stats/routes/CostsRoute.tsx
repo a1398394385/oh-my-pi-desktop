@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { t as ti } from "../../../../i18n";
+import { localeDate } from "../../../../lib/locale";
 import { getCostDashboardStats } from "../api";
 import { Chart, type ChartSeries, Legend, ShareBar, useHiddenSeries } from "../charts";
 import { buildModelColorLookup, modelKey, OTHER_COLOR, SERIES_COLORS } from "../data/colors";
@@ -59,8 +60,8 @@ function componentLabel(key: keyof CostComponents): string {
   return ti(COMPONENT_LABEL_KEYS[key]);
 }
 
-const UTC_DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
-const UTC_DAY_LONG = new Intl.DateTimeFormat(undefined, {
+const utcDay = localeDate({ month: "short", day: "numeric", timeZone: "UTC" });
+const utcDayLong = localeDate({
   weekday: "short",
   month: "short",
   day: "numeric",
@@ -131,8 +132,8 @@ export function CostsRoute({ active, range }: CostsRouteProps) {
                 <div className="stack" style={{ gap: 12 }}>
                   <Chart
                     slots={view.buckets.length}
-                    tickLabel={i => UTC_DAY.format(view.buckets[i])}
-                    tooltipTitle={i => UTC_DAY_LONG.format(view.buckets[i])}
+                    tickLabel={i => utcDay(view.buckets[i])}
+                    tooltipTitle={i => utcDayLong(view.buckets[i])}
                     series={series}
                     hidden={hidden}
                     height={280}
