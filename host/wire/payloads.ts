@@ -780,6 +780,8 @@ export interface AgentAssetsPayload {
     global: { name: string; path: string; description: string }[];
     profile: { name: string; path: string; description: string }[];
     projects: { cwd: string; name: string; dir: string; agents?: { name: string; path: string; description: string }[] }[];
+    /** Agents compiled into the base package: read-only rows that only flip `task.disabledAgents` */
+    bundled: { name: string; description: string; disabled: boolean }[];
     globalDir: string;
     profileDir: string;
     profileName?: string;

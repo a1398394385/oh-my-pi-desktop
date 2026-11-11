@@ -1,8 +1,10 @@
 .ae-head .inp { width: 140px; flex: none; }
-/* subagents page: list + editor two-column layout */
 .agents-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 
-.agents-wrap { display: grid; grid-template-columns: minmax(280px, 1fr) 1.4fr; gap: 12px; align-items: start; margin-top: 12px; }
+/* subagents page: one full-width column so the agent list lines up with the settings cards
+   below it (the built-in rows carry base-provided descriptions and read badly squeezed into a
+   narrow track). The editor stacks underneath the list when a custom agent is opened. */
+.agents-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 12px; }
 
 .agent-editor { display: flex; flex-direction: column; min-height: 420px; }
 
@@ -18,6 +20,10 @@
 
 /* creation form window (AgentCreateWindow): new button pinned right of the scope bar */
 .agents-bar .skills-btn-new { margin-left: auto; }
+
+/* Built-in rows share the list with custom agents but carry a base-provided description,
+   which wraps into 5+ lines inside the narrow list column. One line keeps the list scannable. */
+.agents-builtin-row .srow-tx > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* tools checkbox grid: grid layout only (no own border/background) */
 .agent-form-tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; padding: 10px 12px; }

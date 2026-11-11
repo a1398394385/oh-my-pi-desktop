@@ -8,7 +8,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, pathBase } from "../../../store";
 import Icon from "../../../Icon";
-import { emptyRow, EditWindowHead, FormRow } from "../common";
+import { emptyRow, EditWindowHead, FormRow, Srow } from "../common";
+import { Switch } from "../../ui/switch";
 import ScopeSel from "../ScopeSel";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
@@ -131,6 +132,8 @@ function AgentCreateWindow({ scope, onScopeChange, profile, projects, onClose }:
     <EnabledModelPicker
       label={modelLabel}
       selectedId={model || undefined}
+      selClassName="sel-value"
+      menuClassName="menu model mp-role-menu sel-value-portal"
       pinnedRows={[{ key: "__default", label: inheritLabel, onPick: () => setModel("") }]}
       onPick={setModel}
     />
@@ -318,6 +321,18 @@ export default function AgentsPage() {
     send({ type: "asset_file_read", kind: "agent", path: m.path });
   };
 
+  // Built-in agents have no file to edit: the only affordance is the on/off switch,
+  // persisted as the base's `task.disabledAgents` list. Local state keeps the pill in
+  // sync immediately — the settings write never re-lists the assets.
+  const builtin = data?.bundled ?? [];
+  const [builtinOn, setBuiltinOn] = useState<Record<string, boolean> | null>(null);
+  const builtinState = builtinOn ?? Object.fromEntries(builtin.map((b) => [b.name, !b.disabled]));
+  const toggleBuiltin = (name: string, on: boolean) => {
+    const next = { ...builtinState, [name]: on };
+    setBuiltinOn(next);
+    send({ type: "set_setting", key: "task.disabledAgents", value: Object.keys(next).filter((n) => !next[n]) });
+  };
+
   const save = () => {
     if (!selPath) return;
     setStatus(t("settingsPage.shared.saving"));
@@ -348,12 +363,6 @@ export default function AgentsPage() {
           <Icon name="refresh" size={17} />
         </button>
       </div>
-      <div className="set-note">
-        <b>{t("settingsPage.agents.noteTitle")}</b>
-        <span>
-          {t("settingsPage.agents.noteBodyA")}<code>~/.omp/profiles/&lt;profile&gt;/agent/agents</code>{t("settingsPage.agents.noteBodyB")}<code>&lt;project&gt;/.omp/agents</code>{t("settingsPage.agents.noteBodyC")}
-        </span>
-      </div>
       <div className="agents-bar">
         <ScopeSel
           value={scope}
@@ -371,20 +380,27 @@ export default function AgentsPage() {
         <div className="set-card" id="agentsList">
           {!cur ? (
             emptyRow(t("common.loading"))
-          ) : cur.items.length === 0 ? (
+          ) : cur.items.length === 0 && builtin.length === 0 ? (
             emptyRow(t("settingsPage.shared.emptyNone"))
           ) : (
-            cur.items.map((m) => (
-              <div className="srow" key={m.path} style={{ cursor: "pointer" }} onClick={() => readItem(m)}>
-                <div className="srow-tx">
-                  <b>{m.name}</b>
-                  {(m.description || m.command || m.path) && <span>{m.description || m.command || m.path}</span>}
+            <>
+              {builtin.map((b) => (
+                <Srow key={b.name} cls="agents-builtin-row" title={<>{b.name}<span className="tag">{t("settingsPage.agents.builtinTag")}</span></>} desc={b.description} descTitle={b.description}>
+                  <Switch checked={builtinState[b.name]} onCheckedChange={(on) => toggleBuiltin(b.name, on)} />
+                </Srow>
+              ))}
+              {cur.items.map((m) => (
+                <div className="srow" key={m.path} style={{ cursor: "pointer" }} onClick={() => readItem(m)}>
+                  <div className="srow-tx">
+                    <b>{m.name}</b>
+                    {(m.description || m.command || m.path) && <span>{m.description || m.command || m.path}</span>}
+                  </div>
+                  <span className="ext-badges">
+                    <span className="tag">{cur.scope.startsWith("project:") ? t("settingsPage.agents.projectLevel") : t("settingsPage.agents.userLevel")}</span>
+                  </span>
                 </div>
-                <span className="ext-badges">
-                  <span className="tag">{cur.scope.startsWith("project:") ? t("settingsPage.agents.projectLevel") : t("settingsPage.agents.userLevel")}</span>
-                </span>
-              </div>
-            ))
+              ))}
+            </>
           )}
         </div>
         <div className={"set-card agent-editor" + (editorOpen ? "" : " hidden")} id="agentEditor">

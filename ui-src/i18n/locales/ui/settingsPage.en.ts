@@ -784,13 +784,9 @@ export const settingsPageEn = {
   },
   // ---- Subagents page (AgentsPage.tsx) ----
   agents: {
-    noteTitle: "Edit on-disk definitions",
-    // Three-part note; <code> path tags sit between them inline
-    noteBodyA: "Switch the scope at the top left, then click an item to read and edit the agent definition at that level (Markdown + YAML frontmatter); after saving, newly spawned subagents take effect immediately. Two directory levels: current profile ",
-    noteBodyB: " and project ",
-    noteBodyC: ". omp load priority: project > profile > built-in; built-in agents are packaged inside omp and not listed here.",
     projectLevel: "Project-level",
     userLevel: "User-level",
+    builtinTag: "Built-in",
     newPlaceholder: "New agent name",
     // Creation form window (AgentCreateWindow)
     form: {

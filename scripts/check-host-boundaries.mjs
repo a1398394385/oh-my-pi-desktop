@@ -552,6 +552,8 @@ const ALLOWED_EDGES = new Set([
   // table). Host consumers re-export the payload shapes from state/translate;
   // wire itself stays a leaf except for the type-only Automation borrow.
   "state.ts→wire/payloads.ts", "translate.ts→wire/payloads.ts",
+  // type-only: listAgentAssets is checked against the agent_assets frame shape
+  "assets.ts→wire/payloads.ts",
   "wire/frames-live.ts→automations/types.ts", // type-only: Automation/AutomationRun shapes
   "wire/frames-session.ts→wire/payloads.ts", "wire/frames-models.ts→wire/payloads.ts",
   "wire/frames-live.ts→wire/payloads.ts", "wire/frames-live.ts→wire/frames-models.ts",

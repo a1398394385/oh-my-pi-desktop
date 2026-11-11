@@ -20,6 +20,8 @@ import {
 } from "./asset-paths.ts";
 import { loadAllMcpScoped } from "./mcp-assets.ts";
 import { DESKTOP_EXTENSION_EVENTS, loadPluginsScoped, readHooksEnabled, readPluginsEnabled } from "./plugin-assets.ts";
+import { loadBundledAgents } from "@oh-my-pi/pi-coding-agent/task/agents";
+import type { AgentAssetsPayload } from "./wire/payloads.ts";
 
 async function listNamedDirs(dir: string): Promise<{ name: string; path: string }[]> {
   try {
@@ -274,20 +276,19 @@ export interface HookAssetItem {
 
 export async function listAgentAssets() {
   const memoriesDir = path.join(H.agentDir, "memories");
-  // Agent definitions are returned in two scopes: current profile / each desktop project
-  interface AssetListPayload {
-    global?: any[];
-    profile: any[];
-    projects: { cwd: string; name: string; dir: string; agents?: any[] }[];
-    globalDir?: string;
-    profileDir: string;
-    profileName?: string;
-  }
+  // Agent definitions are returned in two scopes: current profile / each desktop project.
+  // `bundled` are the agents compiled into the base package: no file on disk, so the page
+  // shows them read-only and only toggles `task.disabledAgents`.
+  type AssetListPayload = AgentAssetsPayload["agents"];
   const loadScopedAgents = async (): Promise<AssetListPayload> => {
+    const disabledAgents = new Set<string>((settingsGet(H.settings, "task.disabledAgents") ?? []) as string[]);
     const payload: AssetListPayload = {
+      global: [],
       profile: [],
       projects: [],
+      bundled: loadBundledAgents().map((a) => ({ name: a.name, description: a.description, disabled: disabledAgents.has(a.name) })),
       profileDir: path.join(H.agentDir, "agents"),
+      globalDir: path.join(H.agentDir, "agents"),
     };
     for (const r of assetRoots("agent")) {
       const items = [];
@@ -297,7 +298,6 @@ export async function listAgentAssets() {
       else payload.projects.push({ cwd: r.cwd!, name: path.basename(r.cwd!), dir: r.dir, agents: items });
     }
     payload.global = payload.profile;
-    payload.globalDir = payload.profileDir;
     payload.profileName = H.currentProfile;
     return payload;
   };

@@ -377,9 +377,11 @@ export function Sel(props: SelProps) {
 // right-aligned controls on the right; canonical row geometry with the row
 // hover off. `title` takes the <b> content (may embed .tag chips), `desc` the
 // <span> line, `children` the .srow-ctl content.
-export function Srow({ title, desc, cls, dataKey, children }: {
+export function Srow({ title, desc, descTitle, cls, dataKey, children }: {
   title: ReactNode;
   desc?: ReactNode;
+  /** Tooltip for `desc` when the row truncates it. */
+  descTitle?: string;
   /** Extra row classes (e.g. " disabled"). */
   cls?: string;
   /** Settings-search scroll hook (data-key attribute). */
@@ -390,7 +392,7 @@ export function Srow({ title, desc, cls, dataKey, children }: {
     <div className={"srow set-row" + (cls ? ` ${cls}` : "")} data-key={dataKey}>
       <div className="srow-tx">
         <b>{title}</b>
-        {desc != null && <span>{desc}</span>}
+        {desc != null && <span title={descTitle}>{desc}</span>}
       </div>
       <div className="srow-ctl">{children}</div>
     </div>

@@ -774,13 +774,9 @@ export const settingsPageZh = {
   },
   // ---- Subagents page (AgentsPage.tsx) ----
   agents: {
-    noteTitle: "编辑磁盘定义",
-    // Three-part note: <code> path tags sit between them (inline JSX code tags cannot go through one interpolated string)
-    noteBodyA: "左上角切换作用域后，点击条目读取并编辑该级 agent 定义（Markdown + YAML frontmatter），保存后新派生的子代理立即生效。两级目录：当前 Profile ",
-    noteBodyB: "、项目 ",
-    noteBodyC: "。omp 加载优先级：项目 &gt; Profile &gt; 内置；内置 agent 打包在 omp 内，不在此列。",
     projectLevel: "项目级",
     userLevel: "用户级",
+    builtinTag: "内置",
     newPlaceholder: "新 agent 名称",
     // Creation form window (AgentCreateWindow)
     form: {
