@@ -129,18 +129,38 @@ export function toggleRightPanel(): void {
 // width cuts long titles off, the hold shows them in full. Writes the same inline
 // --left-w the resize handle owns and puts the previous inline value back on
 // release — the persisted omp-w---left-w is never touched.
+//
+// The widening waits for a deliberate hold: a quick ⌘ tap (e.g. ⌘1 to jump) must
+// not move the layout under the pointer, so it only starts after HELD_WIDEN_DELAY_MS.
+const HELD_WIDEN_DELAY_MS = 650;
 let heldLeftW: string | null = null;
+let widenTimer: TimerHandle | undefined;
 
 export function widenSidebarForHints(on: boolean): void {
-  const root = document.documentElement;
   if (!on) {
-    if (heldLeftW === null) return;
-    if (heldLeftW) root.style.setProperty("--left-w", heldLeftW);
-    else root.style.removeProperty("--left-w");
-    heldLeftW = null;
+    clearTimeout(widenTimer);
+    widenTimer = undefined;
+    restoreSidebarWidth();
     return;
   }
+  clearTimeout(widenTimer);
+  widenTimer = setTimeout(() => {
+    widenTimer = undefined;
+    applyHeldSidebarWidth();
+  }, HELD_WIDEN_DELAY_MS);
+}
+
+function restoreSidebarWidth(): void {
+  if (heldLeftW === null) return;
+  const root = document.documentElement;
+  if (heldLeftW) root.style.setProperty("--left-w", heldLeftW);
+  else root.style.removeProperty("--left-w");
+  heldLeftW = null;
+}
+
+function applyHeldSidebarWidth(): void {
   if (heldLeftW !== null) return;
+  const root = document.documentElement;
   const sidebar = document.getElementById("sidebar");
   // A collapsed sidebar is off screen and its hidden width feeds the right panel's
   // split bonus (shell.css), so widening it would jump that panel instead.
