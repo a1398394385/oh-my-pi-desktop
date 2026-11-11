@@ -100,7 +100,13 @@ try {
   // below lets pathForOwnerSession resolve the tab's ownerSessionId to a jsonl
   // path, exactly as a live AgentSession would.
   const fakePath = "/smoke/owner-session.jsonl";
-  sessions.set(fakePath, { providerSessionId: "smoke-owner-1", path: fakePath } as unknown as PoolEntry);
+  sessions.set(fakePath, {
+    providerSessionId: "smoke-owner-1",
+    path: fakePath,
+    // pathForOwnerSession matches the eval-kernel owner id minted per
+    // AgentSession, not the provider session id.
+    session: { getEvalKernelOwnerId: () => "smoke-owner-1" },
+  } as unknown as PoolEntry);
   const kind: PuppeteerBrowserKind = { kind: "headless", headless: true };
   const browser = await acquireBrowser(kind, { cwd: agentDir });
   await acquireTab("main", browser, { timeoutMs: 60_000, url: "about:blank", ownerSessionId: "smoke-owner-1" });
@@ -163,6 +169,52 @@ try {
 
   } else {
     check("interactive click reaches the page", false, "page or geometry missing");
+  }
+
+  // 4b2. Keyboard: synthesized keys must reach the page's event chain
+  // (keydown + keypress + text), carry modifier bits, and IME commits still
+  // land through Input.insertText.
+  if (page0) {
+    await page0.setContent('<input id="k" style="font-size:20px">').catch(() => undefined);
+    await page0
+      .evaluate(() => {
+        const w = window as unknown as { __keys: string[]; __presses: number };
+        w.__keys = [];
+        w.__presses = 0;
+        document.addEventListener("keydown", (e) =>
+          w.__keys.push(`${e.key}:${e.ctrlKey ? 1 : 0}:${e.metaKey ? 1 : 0}:${e.shiftKey ? 1 : 0}`),
+        );
+        document.addEventListener("keypress", () => {
+          w.__presses += 1;
+        });
+        (document.getElementById("k") as HTMLInputElement).focus();
+      })
+      .catch(() => undefined);
+    mirror.browserMirrorInput({ name: "main", op: "key", action: "down", key: "a", text: "a", code: "KeyA", vk: 65, modifiers: 0 });
+    mirror.browserMirrorInput({ name: "main", op: "key", action: "up", key: "a", code: "KeyA", vk: 65, modifiers: 0 });
+    mirror.browserMirrorInput({ name: "main", op: "key", action: "down", key: "home", modifiers: 2 });
+    mirror.browserMirrorInput({ name: "main", op: "key", action: "up", key: "home", modifiers: 2 });
+    mirror.browserMirrorInput({ name: "main", op: "text", text: "你" });
+    await sleep(400);
+    const kb = await page0
+      .evaluate(() => {
+        const w = window as unknown as { __keys: string[]; __presses: number };
+        return {
+          value: (document.getElementById("k") as HTMLInputElement).value,
+          keys: w.__keys.join(","),
+          presses: w.__presses,
+        };
+      })
+      .catch(() => ({ value: "", keys: "", presses: 0 }));
+    check(
+      "keyboard: printable key inserts text and fires keydown/keypress",
+      kb.value.includes("a") && kb.keys.includes("a:0:0:0") && kb.presses > 0,
+      JSON.stringify(kb),
+    );
+    check("keyboard: Ctrl modifier bit reaches the page", kb.keys.includes("Home:1:0:0"), kb.keys);
+    check("keyboard: IME commit (insertText) lands", kb.value.includes("你"), JSON.stringify(kb.value));
+  } else {
+    check("keyboard: printable key inserts text and fires keydown/keypress", false, "page missing");
   }
 
   // 4c. Re-subscribing wider while attached must restart the cast in place

@@ -41,6 +41,11 @@ globalThis.Event = window.Event;
 globalThis.CustomEvent = window.CustomEvent;
 globalThis.MouseEvent = window.MouseEvent;
 globalThis.KeyboardEvent = window.KeyboardEvent;
+// DOM node constructors: app code narrows with `instanceof` (selection listeners, focus
+// checks), so the harness must expose the same globals as the other happy-dom smokes.
+globalThis.Node = window.Node;
+globalThis.Element = window.Element;
+globalThis.HTMLElement = window.HTMLElement;
 globalThis.getComputedStyle = window.getComputedStyle.bind(window);
 document.body.innerHTML = '<div id="root"></div>';
 
@@ -143,17 +148,54 @@ const view = $(".bpane-liveview") as HTMLElement | null;
 if (view && img) {
   view.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, cancelable: true, clientX: 300, clientY: 200, button: 0, detail: 1 }));
   view.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true, cancelable: true, clientX: 300, clientY: 200, button: 0, detail: 1 }));
-  view.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "a" }));
+  view.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "a", code: "KeyA" }));
   view.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" }));
+  view.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "v", code: "KeyV", metaKey: true }));
   await sleep(80);
 }
 const inputFrames = captured.filter((m) => m.type === "browser_input");
 const mouseDown = inputFrames.find((m) => m.op === "mouse" && m.action === "down");
-const textFrame = inputFrames.find((m) => m.op === "text");
+const printDown = inputFrames.find((m) => m.op === "key" && m.action === "down" && m.key === "a");
 const enterFrame = inputFrames.find((m) => m.op === "key" && m.key === "enter");
+const pasteDown = inputFrames.find((m) => m.op === "key" && m.action === "down" && m.key === "v");
 ok("input: mouse press posted with mapped page coords", mouseDown !== undefined && mouseDown.x === 600 && mouseDown.y === 400, JSON.stringify(mouseDown));
-ok("input: printable key posted as text op", textFrame !== undefined && textFrame.text === "a", JSON.stringify(textFrame));
+ok(
+  "input: printable key posted as keyDown with text (not insertText)",
+  printDown !== undefined && printDown.text === "a" && printDown.code === "KeyA" && printDown.modifiers === 0,
+  JSON.stringify(printDown),
+);
+ok("input: printable key posts a matching key up", inputFrames.some((m) => m.op === "key" && m.action === "up" && m.key === "a"));
 ok("input: Enter posted as key down/up pair", inputFrames.filter((m) => m.op === "key" && m.key === "enter").length >= 2, JSON.stringify(enterFrame));
+ok(
+  "input: ⌘ combo forwards CDP modifier bits (Meta=4)",
+  pasteDown !== undefined && pasteDown.modifiers === 4 && pasteDown.code === "KeyV",
+  JSON.stringify(pasteDown),
+);
+
+// ---- IME: a hidden textarea hosts the composition. Keystrokes during
+// composition are swallowed; the committed text leaves once as a text op. ----
+const ime = $(".bpane-ime") as HTMLTextAreaElement | null;
+ok("input: IME keyboard sink mounted over the still", !!ime);
+captured.length = 0;
+ime?.dispatchEvent(new window.CompositionEvent("compositionstart", { bubbles: true }));
+view?.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "n", code: "KeyN" }));
+await sleep(30);
+ok("input: composing keydowns are swallowed", captured.filter((m) => m.type === "browser_input").length === 0, JSON.stringify(captured));
+const commit = new window.CompositionEvent("compositionend", { bubbles: true });
+Object.defineProperty(commit, "data", { value: "你好" });
+ime?.dispatchEvent(commit);
+await sleep(30);
+const textFrames = captured.filter((m) => m.type === "browser_input" && m.op === "text");
+ok("input: IME commit posted once as a text op", textFrames.length === 1 && textFrames[0].text === "你好", JSON.stringify(textFrames));
+
+// ---- Mirror keys must not bubble to the app-wide document shortcuts
+// (Esc routes the tree page / aborts the session there). ----
+let docKeys = 0;
+const countDocKey = (): void => { docKeys++; };
+document.addEventListener("keydown", countDocKey);
+view?.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Escape" }));
+document.removeEventListener("keydown", countDocKey);
+ok("input: mirror keys do not reach document shortcuts", docKeys === 0, `document saw ${docKeys}`);
 
 // ---- Element picker: toolbar toggle -> hover probe -> click writes the block
 // into the composer and drops the page-side highlight ----

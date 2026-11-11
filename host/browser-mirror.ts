@@ -152,13 +152,15 @@ export function browserMirrorSelect(name: string): void {
 // session only, silently dropped otherwise (no attachment / other tab).
 
 // Special-key table: key name -> CDP key event fields. Printable text arrives
-// as op "text" (Input.insertText), not synthesized key events.
+// as op "key" with its text field (or op "text" for IME commits, which have no
+// key event of their own).
 const SPECIAL_KEYS: Record<string, { key: string; code: string; vk: number; text?: string }> = {
 	enter: { key: "Enter", code: "Enter", vk: 13, text: "\r" },
 	backspace: { key: "Backspace", code: "Backspace", vk: 8 },
 	tab: { key: "Tab", code: "Tab", vk: 9 },
 	escape: { key: "Escape", code: "Escape", vk: 27 },
 	delete: { key: "Delete", code: "Delete", vk: 46 },
+	insert: { key: "Insert", code: "Insert", vk: 45 },
 	arrowleft: { key: "ArrowLeft", code: "ArrowLeft", vk: 37 },
 	arrowup: { key: "ArrowUp", code: "ArrowUp", vk: 38 },
 	arrowright: { key: "ArrowRight", code: "ArrowRight", vk: 39 },
@@ -167,6 +169,18 @@ const SPECIAL_KEYS: Record<string, { key: string; code: string; vk: number; text
 	end: { key: "End", code: "End", vk: 35 },
 	pageup: { key: "PageUp", code: "PageUp", vk: 33 },
 	pagedown: { key: "PageDown", code: "PageDown", vk: 34 },
+	f1: { key: "F1", code: "F1", vk: 112 },
+	f2: { key: "F2", code: "F2", vk: 113 },
+	f3: { key: "F3", code: "F3", vk: 114 },
+	f4: { key: "F4", code: "F4", vk: 115 },
+	f5: { key: "F5", code: "F5", vk: 116 },
+	f6: { key: "F6", code: "F6", vk: 117 },
+	f7: { key: "F7", code: "F7", vk: 118 },
+	f8: { key: "F8", code: "F8", vk: 119 },
+	f9: { key: "F9", code: "F9", vk: 120 },
+	f10: { key: "F10", code: "F10", vk: 121 },
+	f11: { key: "F11", code: "F11", vk: 122 },
+	f12: { key: "F12", code: "F12", vk: 123 },
 };
 
 /** One UI input event, already mapped to page CSS coordinates by the browser page. */
@@ -181,7 +195,12 @@ export interface MirrorInput {
 	deltaX?: number;
 	deltaY?: number;
 	key?: string;
+	code?: string;
 	text?: string;
+	/** Windows virtual key code (UI e.keyCode) for printable keys. */
+	vk?: number;
+	/** CDP modifier bits: Alt=1, Ctrl=2, Meta=4, Shift=8. */
+	modifiers?: number;
 }
 
 export function browserMirrorInput(input: MirrorInput): void {
@@ -226,14 +245,27 @@ function dispatchInput(input: MirrorInput, cdp: CDPSession): void {
 		return;
 	}
 	if (input.op === "key") {
-		const special = SPECIAL_KEYS[(input.key ?? "").toLowerCase()];
-		if (!special) return;
-		const base = { key: special.key, code: special.code, windowsVirtualKeyCode: special.vk };
+		const name = input.key ?? "";
+		const special = SPECIAL_KEYS[name.toLowerCase()];
+		// Printable keys carry their own text; everything else must be a known
+		// special key, otherwise there is no meaningful CDP event to build.
+		if (!special && name.length !== 1) return;
+		const up = input.action === "up";
+		const text = special ? special.text : (input.text ?? name);
+		const vk = special?.vk ?? (Number(input.vk) || 0);
+		const base = {
+			key: special?.key ?? name,
+			code: special?.code ?? input.code ?? "",
+			windowsVirtualKeyCode: vk,
+			modifiers: Number(input.modifiers) || 0,
+		};
 		void cdp
 			.send("Input.dispatchKeyEvent", {
-				type: input.action === "up" ? "keyUp" : "keyDown",
+				// A key with text is a full "keyDown" (keydown + keypress + input);
+				// one without is "rawKeyDown" (keydown only, no char event).
+				type: up ? "keyUp" : text ? "keyDown" : "rawKeyDown",
 				...base,
-				...(input.action === "up" ? {} : { text: special.text }),
+				...(up || !text ? {} : { text, unmodifiedText: text }),
 			})
 			.catch(() => undefined);
 		return;

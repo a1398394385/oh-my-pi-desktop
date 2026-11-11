@@ -46,7 +46,10 @@ export const browserHandlers: Record<string, RpcHandler> = {
       deltaX: Number(msg.deltaX),
       deltaY: Number(msg.deltaY),
       key: typeof msg.key === "string" ? msg.key : undefined,
+      code: typeof msg.code === "string" ? msg.code : undefined,
       text: typeof msg.text === "string" ? msg.text : undefined,
+      vk: Number(msg.vk),
+      modifiers: Number(msg.modifiers),
     });
   },
 };

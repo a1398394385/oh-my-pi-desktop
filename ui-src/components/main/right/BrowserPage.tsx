@@ -45,7 +45,8 @@ export function displayBrowserUrl(href: string): string {
 const LOAD_TIMEOUT_MS = 20000;
 
 // e.key -> host special-key name (host/browser-mirror.ts SPECIAL_KEYS);
-// printable characters travel as op "text" instead.
+// printable characters travel as op "key" with their text, and IME commits
+// travel as op "text".
 export const SPECIAL_KEY_NAMES: Record<string, string> = {
   Enter: "enter",
   Backspace: "backspace",
@@ -60,6 +61,19 @@ export const SPECIAL_KEY_NAMES: Record<string, string> = {
   End: "end",
   PageUp: "pageup",
   PageDown: "pagedown",
+  Insert: "insert",
+  F1: "f1",
+  F2: "f2",
+  F3: "f3",
+  F4: "f4",
+  F5: "f5",
+  F6: "f6",
+  F7: "f7",
+  F8: "f8",
+  F9: "f9",
+  F10: "f10",
+  F11: "f11",
+  F12: "f12",
 };
 
 export async function openExternal(url: string) {

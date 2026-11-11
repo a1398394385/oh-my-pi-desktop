@@ -11,7 +11,11 @@
 // Empty state: the displayed session is not browsing (another session's tabs
 // are summarized as hidden) — a manual-mode jump is offered.
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import type {
+  CompositionEvent as ReactCompositionEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../../Icon";
 import { useAppStore, type TimerHandle, effZoom } from "../../../store";
@@ -47,6 +51,10 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
   const [picked, setPicked] = useState<BrowserPickedElement | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  // Hidden textarea under the still: the keyboard sink that gives IME a
+  // composition host (a plain div receives no composition events).
+  const imeRef = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
   const knownNames = useRef<Set<string> | null>(null);
   const resizeTimer = useRef<TimerHandle | undefined>(undefined);
   const lastMoveAt = useRef(0);
@@ -184,7 +192,7 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
 
   const onMouseDown = (e: ReactMouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    e.currentTarget.focus();
+    (imeRef.current ?? e.currentTarget).focus();
     if (picking) {
       commitPick();
       return;
@@ -226,22 +234,66 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
   }, [frame, viewTab, picking]);
 
   const onKeyDown = (e: ReactKeyboardEvent) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return; // app shortcuts pass through
+    // The mirror owns the keyboard while focused: keep every key from bubbling
+    // up to the app-wide document shortcuts (Esc routing, Shift+Tab thinking).
+    e.stopPropagation();
     if (picking) {
       e.preventDefault();
       if (e.key === "Escape") stopPicking();
       return;
     }
-    if (e.key.length === 1) {
+    // The IME owns keystrokes until it commits; forwarding the pinyin letters
+    // here would type them into the page and lose the composed result. 229 is
+    // the IME placeholder keydown WebKit fires before compositionstart.
+    if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
+    // CDP Input.dispatchKeyEvent modifier bits: Alt=1, Ctrl=2, Meta=4, Shift=8.
+    const modifiers = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
+    const special = SPECIAL_KEY_NAMES[e.key];
+    if (special) {
       e.preventDefault();
-      sendInput({ op: "text", text: e.key });
+      sendInput({ op: "key", action: "down", key: special, modifiers });
+      sendInput({ op: "key", action: "up", key: special, modifiers });
       return;
     }
-    const special = SPECIAL_KEY_NAMES[e.key];
-    if (!special) return;
-    e.preventDefault();
-    sendInput({ op: "key", action: "down", key: special });
-    sendInput({ op: "key", action: "up", key: special });
+    // Printable characters (and modifier combos like ⌘V/⌘A) travel as key
+    // events WITH text: `Input.insertText` only produces an `input` event, so
+    // page keydown/keypress shortcuts and combobox navigation never see them,
+    // and it is silently dropped without a focused editable element.
+    if (e.key.length === 1) {
+      e.preventDefault();
+      sendInput({
+        op: "key",
+        action: "down",
+        key: e.key,
+        text: e.key,
+        code: e.code,
+        vk: e.keyCode,
+        modifiers,
+      });
+      sendInput({ op: "key", action: "up", key: e.key, code: e.code, vk: e.keyCode, modifiers });
+    }
+  };
+
+  const onCompositionStart = (): void => {
+    composing.current = true;
+  };
+  // IME commit: the composed text has no key events of its own, so it goes out
+  // once as a text input (host: Input.insertText).
+  const onCompositionEnd = (e: ReactCompositionEvent<HTMLDivElement>): void => {
+    composing.current = false;
+    if (imeRef.current) imeRef.current.value = "";
+    if (e.data) sendInput({ op: "text", text: e.data });
+  };
+  // The sink must stay empty: text typed into it is forwarded (and prevented),
+  // composition text is cleared on commit, but never let leftovers accumulate.
+  const onImeInput = (): void => {
+    if (!composing.current && imeRef.current) imeRef.current.value = "";
+  };
+  // Losing focus mid-composition (click on the toolbar) must not leave the
+  // swallow flag armed for the next focus.
+  const onImeBlur = (): void => {
+    composing.current = false;
+    if (imeRef.current) imeRef.current.value = "";
   };
 
   // Not browsing in THIS session: empty state with a manual-mode jump. Other
@@ -316,23 +368,57 @@ export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; oth
       <div
         className={"bpane-view bpane-liveview" + (frame ? " interactive" : "") + (picking ? " picking" : "")}
         ref={boxRef}
-        tabIndex={frame ? 0 : -1}
+        style={{ position: "relative" }}
         title={frame ? (picking ? t("right.pickHint") : t("right.agentInteract")) : undefined}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
         onMouseMove={onMouseMove}
         onKeyDown={onKeyDown}
+        onCompositionStart={onCompositionStart}
+        onCompositionEnd={onCompositionEnd}
         onContextMenu={(e) => e.preventDefault()}
       >
         {frame ? (
-          <img
-            ref={imgRef}
-            className="bpane-live-img"
-            src={"data:image/jpeg;base64," + frame.data}
-            alt=""
-            draggable={false}
-            style={frame.w && frame.h ? { aspectRatio: `${frame.w} / ${frame.h}` } : undefined}
-          />
+          <>
+            <img
+              ref={imgRef}
+              className="bpane-live-img"
+              src={"data:image/jpeg;base64," + frame.data}
+              alt=""
+              draggable={false}
+              style={frame.w && frame.h ? { aspectRatio: `${frame.w} / ${frame.h}` } : undefined}
+            />
+            {/* Keyboard/IME sink over the still (transparent): a div is not an
+                editing host, so composition events need a real editable. Tab
+                focus and clicks land here, IME candidates anchor at its caret. */}
+            <textarea
+              ref={imeRef}
+              className="bpane-ime"
+              aria-label={t("right.agentInteract")}
+              autoCapitalize="off"
+              autoCorrect="off"
+              autoComplete="off"
+              spellCheck={false}
+              onInput={onImeInput}
+              onBlur={onImeBlur}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                margin: 0,
+                padding: 0,
+                border: 0,
+                resize: "none",
+                outline: "none",
+                background: "transparent",
+                color: "transparent",
+                caretColor: "transparent",
+                opacity: 0,
+                cursor: "inherit",
+              }}
+            />
+          </>
         ) : (
           <div className="bpane-empty">
             <span className="bpane-empty-ic"><Icon name="monitor" size={30} /></span>
