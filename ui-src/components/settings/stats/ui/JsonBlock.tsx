@@ -1,7 +1,7 @@
 import { Check, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SUCCESS_FLASH_MS } from "../../../main/sidebar/util";
+import { copyText, SUCCESS_FLASH_MS } from "../../../main/sidebar/util";
 
 export interface JsonBlockProps {
   data: unknown;
@@ -19,12 +19,10 @@ export function JsonBlock({ data, title = "JSON", initialCollapsed = false }: Js
   useEffect(() => () => window.clearTimeout(copyResetRef.current), []);
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(json);
-      setCopied(true);
-      window.clearTimeout(copyResetRef.current);
-      copyResetRef.current = window.setTimeout(() => setCopied(false), SUCCESS_FLASH_MS);
-    } catch {}
+    await copyText(json);
+    setCopied(true);
+    window.clearTimeout(copyResetRef.current);
+    copyResetRef.current = window.setTimeout(() => setCopied(false), SUCCESS_FLASH_MS);
   };
 
   return (

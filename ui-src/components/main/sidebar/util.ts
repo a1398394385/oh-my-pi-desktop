@@ -39,7 +39,11 @@ export function copyText(text: string): Promise<void> {
     ta.value = text;
     document.body.appendChild(ta);
     ta.select();
-    document.execCommand("copy");
+    try {
+      document.execCommand("copy");
+    } catch {
+      // Leave the failure to the caller's toast; a copy button must never throw.
+    }
     ta.remove();
   };
   if (!navigator.clipboard?.writeText) {

@@ -10,6 +10,7 @@ import Icon from "../../../Icon";
 import { confirmDialog, emptyRow, EditWindowHead, FormRow, Sel } from "../common";
 import SchemaRows from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import { copyText } from "../../main/sidebar/util";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
 import {
@@ -80,13 +81,9 @@ function McpLogDialog({
   const [copied, setCopied] = useState(false);
 
   const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1000);
-    } catch {
-      toast(ti("settingsPage.mcp.copyFailToast"));
-    }
+    await copyText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1000);
   };
 
   return (

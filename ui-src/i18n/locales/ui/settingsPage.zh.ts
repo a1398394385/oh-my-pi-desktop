@@ -449,7 +449,6 @@ export const settingsPageZh = {
   // ---- MCP page (McpPage.tsx) ----
   mcp: {
     logEmpty: "暂无详细日志信息",
-    copyFailToast: "复制失败，请手动选择内容复制",
     logTitle: "MCP 报错日志 · {{name}}",
     copyLog: "复制日志",
     dotDisabled: "已禁用",

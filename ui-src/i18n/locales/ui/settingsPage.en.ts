@@ -458,7 +458,6 @@ export const settingsPageEn = {
   // ---- MCP page (McpPage.tsx) ----
   mcp: {
     logEmpty: "No detailed log available",
-    copyFailToast: "Copy failed; please select and copy manually",
     logTitle: "MCP error log · {{name}}",
     copyLog: "Copy log",
     dotDisabled: "Disabled",

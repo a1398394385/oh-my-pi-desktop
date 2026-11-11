@@ -11,7 +11,7 @@ import Icon from "../../../Icon";
 import { useAppStore, invoke, toast, type TimerHandle } from "../../../store";
 import { t } from "../../../i18n";
 import { AgentBrowserView } from "./AgentBrowserView";
-import { SUCCESS_FLASH_MS } from "../sidebar/util";
+import { copyText, SUCCESS_FLASH_MS } from "../sidebar/util";
 
 // ---------- URL normalization (simplified embeddedBrowserHelpers.normalizeBrowserUrl) ----------
 // Without a scheme: localhost/loopback/intranet IPs/explicit port -> http, others -> https
@@ -276,8 +276,7 @@ function ManualBrowserView() {
                 disabled={!current}
                 onClick={() => {
                   if (!current) return;
-                  navigator.clipboard
-                    .writeText(current)
+                  copyText(current)
                     .then(() => {
                       setCopiedLink(true);
                       window.setTimeout(() => {

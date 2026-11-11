@@ -17,6 +17,7 @@ import { t } from "../../../i18n";
 import { registerTabCloseHook, terminalTabId } from "./tabs";
 import { registerSlotDisposer } from "../../../store/right";
 import { registerTermTabDisposer, cycleTermTab, termOwnerKey, forgetRightTermTab } from "./termTabs";
+import { copyText } from "../sidebar/util";
 
 // Host PTY id prefix; the rest is `scope:sessionPath:tabId`
 const PERSIST_KEY = "right-terminal";
@@ -238,12 +239,14 @@ function createTermSession(key: string, container: HTMLElement, scope: string, t
     }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && (e.key === "c" || e.key === "C") && term.hasSelection()) {
-      navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+      void copyText(term.getSelection());
       return false;
     }
     if (mod && (e.key === "v" || e.key === "V")) {
       e.preventDefault();
-      navigator.clipboard.readText().then((t) => term.paste(t)).catch(() => {});
+      // Paste has no execCommand fallback (clipboard reads are gated to secure contexts);
+      // remote http clients simply get no paste instead of a crash.
+      navigator.clipboard?.readText().then((t) => term.paste(t)).catch(() => {});
       return false;
     }
     return true;
