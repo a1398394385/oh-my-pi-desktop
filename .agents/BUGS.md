@@ -125,6 +125,13 @@
 | BUG-131 | ACP 压缩一轮之后 `context_status` 永远返回空清单——ACP 的 journal 取 `getEntries()`（全文件，含废弃兄弟分支），`annotateView` 的 64 条对齐窗口跨不过分支跳空，此后所有块退化成伪 id | 2026-11-09 |
 | BUG-132 | 套娃子代理（孙代）在 Agent Hub 永不出现——宿主只订 root 的 `eventBus`，孙代帧发在 `subagentEventBus` 上；磁盘回放也只扫一层且把 parent 硬编码成 Main | 2026-11-10 |
 | BUG-133 | 输入框、模型菜单、二级供应商菜单在滚动条出现时横向跳动——自定义 `::-webkit-scrollbar` 让滚动条占 9px 布局宽度 | 2026-11-10 |
+| BUG-134 | 日期/时间格式不跟随界面语言——`Intl`/`toLocale*` 全仓未传 locale，另有一批硬编码英文 | 2026-11-11 |
+| BUG-135 | 设置页窄窗口控件重叠/溢出——内容列 50vw 与 viewport 媒体查询两个坐标系打架 | 2026-11-11 |
+| BUG-136 | 内置浏览器镜像页键盘只通一半——IME/组合键/kd 事件全丢，冒出的按键还串到全局快捷键 | 2026-11-11 |
+| BUG-137 | 归档后台会话不回收右栏槽位，且欢迎槽被写脏（BUG-103 残留）——归档后再回欢迎页冒出旧标签 | 2026-11-11 |
+| BUG-138 | 点中栏横线跳到用户消息只在弯住时「看似置顶」——目标按 sticky 位移后的 rect 测量，落点插进本轮回复中间 | 2026-11-11 |
+| BUG-139 | 设置页下拉框随界面缩放纵向偏移——视觉像素直接写入布局坐标，缺少 zoom 换算 | 2026-11-11 |
+| BUG-140 | 设置页 Portal 内容下拉仍播放浮层动画——`#settings` 后代选择器覆盖不到 `<body>` | 2026-11-11 |
 ---
 
 ## 详情
@@ -1827,6 +1834,8 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **教训**：`hasUI: true` 在底座是双关的——宿主为审批门禁打开它，代价是「会话模型恢复失败静默回落」也一并打开。凡是宿主为了某个 UI 能力打开底座开关，都要顺带查它还有哪些副作用分支；「静默回落 + 不写回 journal」这类组合会长期潜伏，因为界面上只有一个模型名不对。
 
+**残留（2026-11-11 已补）**：上面修的是「启动窗口内目录未落地」，模型**确实下线/凭据失效**时仍走 `allowSessionModelFallback` 且界面零提示。现由 `awaitPersistedModelRefresh` 返回「刷新后仍不可解析的持久化模型」，`createSessionCore` 与 `session.model` 比对后经 `session_model` 帧的可选 `fallbackFrom`/`fallbackTo` 下发，`ModelFallbackNotice` 在消息区顶部显示可关闭警示条（同组合只提示一次，关闭后切走切回不再出现）；显式选模（branch/fork/btw/`OMP_DESKTOP_MODEL`）永不误报。
+
 ### BUG-126: 新会话发消息后立刻 Esc，会话变成死的（转圈、不可归档/逐出）
 
 **日期**：2026-11-04
@@ -1948,3 +1957,114 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：真机 dev 实例（WKWebView，dpr 1.25）Web Inspector 实测：探针 div 溢出前后 `clientWidth` 差 9（`classicBarCost=9`，证明滚动条占位）；`#input` 强制 `maxHeight:40px` 溢出后 `scrollbar-gutter:auto` 时 `clientWidth=681`、`stable` 时恒为 `690`（修复前正是 690→681 的跳动）。`CSS.supports('scrollbar-gutter','stable')` 为 true，`ui/dist` 构建产物含 5 处该声明。
 
 **教训**：全站统一自定义滚动条等于全站改用经典滚动条——任何 `overflow: auto` 且宽度会被内容改变影响的可滚容器，都必须自己预留 gutter；`scrollbar-gutter` 只对经典滚动条生效，所以这条在 overlay 环境测不出来，只能在真机 / WebView2 上复现。
+
+### BUG-134: 日期/时间格式不跟随界面语言——`Intl`/`toLocale*` 全仓未传 locale，另有一批硬编码英文
+
+**日期**：2026-11-11
+
+**现象**：「系统中文 + 界面 English」（或系统语言是日/德/法、界面回落 en）时，同一屏里能出现两种语言的日期：英文页面里的图表轴是「11月9日」，或中文页面里是「Nov 9」。远程端最典型——界面语言来自宿主 `ui.locale`，而 `Intl` 默认 locale 是手机自己的系统 locale，必然两轴不一致。
+
+**根因**：界面语言只经 i18next 传递（`ui-src/store/shapes.ts:61` 的 `uiPrefs.lang` → `ui-src/i18n/index.ts:detectLang`），全仓没有任何一处把界面语言喂给 `Intl`：`pickLang`（`GeneralPage.tsx:417-428`）只调 `setState` + `i18next.changeLanguage`。两条独立轴因此可以任意错位。第二根因是 `@oh-my-pi/pi-utils/dates` 的 `format`/`formatRelativeTime` 手写英文（`MONTHS`/`distanceWords`），无 locale 参数，统计页「about 1 hour ago」「Nov 9」恒英文——即使把 A 类全修也在。
+
+**未修（仅定位）**。A 类调用点：`BtwPage.tsx:303`、`lib/automations.ts:103`、`stats/routes/CostsRoute.tsx:62-69`、`GainRoute.tsx:32`、`ProvidersWindowUtilization.tsx:48-54`、`TracesRoute.tsx:87`、`traces/SpanDrawer.tsx:118`、`timeline-draw.tsx:355,366`、`shared/agent/subShared.ts:29`。B 类：`stats/data/formatters.ts:73-79`、`stats/data/range.ts:40-48`（`TimeChart` 轴）。
+
+**修复锚点**：新增 `ui-src/lib/locale.ts` 的 `appLocale()`（读 `uiPrefs.lang`）并逐点传入；4 处模块级 `Intl` 常量（`CostsRoute`/`GainRoute`/`ProvidersWindowUtilization`/`subShared`）必须改成按语言惰性创建——`<App key={lang}>` 只重挂载组件、不重跑模块顶层，否则切语言后仍停在启动 locale（表面修好、实则半修）。B 类换实现：按仓内约定新增 i18n key（仿 `sidebar.agoMin`），不要换成 `Intl.RelativeTimeFormat`（需确认 Tauri 最低 macOS 版本）。
+
+**待决**：`stats/data/formatters.ts:5` 的 `NUMBER_LOCALE="en-US"`（`formatInteger/formatCompact/formatCost`）是纯数字非语言混排，且与 `store/utils.ts:fmtTokens` 耦合；要不要跟产品对齐「中文用万/亿」需单独决策，本轮不动。
+
+**验证**：未实机验证；判定来自代码（全仓无 `Intl` locale 覆写）。真机复验：系统中文 + 界面切 English → 看自动化页与成本页图表轴是否出现中文月份；远程端用非 zh/en 系统 locale 的手机连同一宿主。
+
+**教训**：「界面语言」和「区域格式」是两个独立轴，i18n 库只管前者；任何 `Intl`/`toLocale*` 不显式传 locale 的地方，都等于把渲染结果交给运行时默认值。
+
+### BUG-135: 设置页窄窗口控件重叠/溢出——内容列 50vw 与 viewport 媒体查询两个坐标系打架
+
+**日期**：2026-11-11
+
+**现象**：桌面窗口拖到 700–900px（`tauri.conf.json:19` 最小宽 700）时，设置页「模型 → 模型管理」右栏被压成几十像素、角色模型胶囊溢出压到左侧供应商列；子代理页两列破出卡片并出现横向滚动条；MCP/技能页工具条的 240px 搜索框与作用域胶囊挤出右边界；切页时内容整体横跳 9px。
+
+**根因**：`#settings` 是 `grid: var(--setnav-w, 180px) 1fr`（`ui/css/settings/common.css:89-91`），内容列 `~/.set-page` 由 `max-width: min(50vw, …)`（`common.css:332-334`）封顶，**宽度随 viewport 走**；而设置域所有媒体查询也以 viewport 为键（`common.css:458` 1000px、`stats.css:257` 900px、`stats-pages.css:48` 1100px），断点比容器实际需要的晚约一倍（700px 窗口时内容列只有 350px）。设置页又完全不消费 store 的 `narrow`（`ui-src/store/layout.ts:42-51`，只有 App/Composer/MainHeader/RightPanel/Sidebar/SessionStatsBar/ProjGroup 消费），700–768px 这一档 `narrow=true` 但设置页仍按双栏渲染。修 BUG-133 时只覆盖了 composer 与模型菜单，设置页的长列表容器（`#setBody`、`.set-nav-scroll`、`.md-side`、`.md-main`）都没有 `scrollbar-gutter: stable`，同因复发。
+
+**未修（仅定位）**。具体破点：`settings/models.css:3` `.mp { grid-template-columns: 315px 1fr }`（700px 时右栏 ≈35px）、`settings/agents.css:5` `.agents-wrap { minmax(280px,1fr) 1.4fr }`、`settings/mcp.css:23-25`/`skills.css:31-33`/`extensions.css:39` 的 240px 搜索框、`settings/memory.css:23` 的 230px 侧栏、`global/controls.css:317-319` `.sel { flex: none }`（胶囊不收缩不截断）。
+
+**修复锚点**：`.mp` 首列改容器查询驱动的可折叠列、`.mp-role-sel` 加 `min-width:0` + ellipsis；`agents.css` 的 `minmax(280px,1fr)` → `minmax(0,1fr)`；给 `#setBody`/`.set-page` 加 `container-type: inline-size` 并把宽度断点改成 `@container`（主界面 composer 已是这个做法，`ui/css/main/composer.css:198-213`）；`Settings` 消费 `narrow` 在 700–768px 走单列；四个可滚容器补 `scrollbar-gutter: stable`。
+
+**验证**：未实机走查。复验步骤与量化断言：700/800/900px 三档打开上述三页，断言 `#setBody.scrollWidth > #setBody.clientWidth` 为假、`.set-page` 实际宽 ≈ min(50vw, …)、切换长短页时 `.set-page` 左边界不位移。
+
+**教训**：当容器宽度由 `vw` 决定而断点也用 `vw` 时，两者是同一个数，但容器还额外扛着导航列宽度——断点必须按**容器**而不是 viewport 写（`@container`），否则永远晚触发。
+
+### BUG-136: 内置浏览器镜像页键盘只通一半——IME/组合键/kd 事件全丢，冒出的按键还串到全局快捷键
+
+**日期**：2026-11-11
+
+**现象**：Agent 实时镜像页（右栏「Agent 浏览器」）里打字：只点画面不点输入框时完全没反应；点到页面输入框后字母能进，但页面 JS 的 keydown 监听不触发；中文输入法打的拼音被逐个当正文插入、组合结果丢失；⌘V/⌘A 无效；空格不能翻页；按 Esc/Shift+Tab 会去操作桌面端（切树页/切思考档/中止会话）。手动模式（真 `<iframe>`）键盘是原生透传，不受影响，只是地址栏回车后焦点仍留在输入框。
+
+**根因**：镜像画面是 `<img>`（`AgentBrowserView.tsx:325-331`），键盘只能走 CDP 合成：`onKeyDown`（`:228-245`）→ `browser_input` → `host/browser-mirror.ts:228-243`。四处断点：① 只看 `e.key.length === 1` 就当正文 `Input.insertText`——页面只收到 `input` 事件，收不到 keydown/keypress，且页面无聚焦可编辑元素时 `insertText` 直接丢弃；② `if (e.ctrlKey || e.metaKey || e.altKey) return;`（`:229`）整段丢弃组合键；③ 构造 `dispatchKeyEvent` 不带 `modifiers`（Alt=1/Ctrl=2/Meta=4/Shift=8），也未区分 `rawKeyDown`，`SPECIAL_KEYS` 只有 13 键（`:156-171`）；④ 无 `compositionstart/end`（全目录零命中），镜像容器只是 `<div tabIndex={0}>`，没有承接组合的隐藏 input；⑤ 按键事件冒泡到 document，`ui-src/keys.ts:672` 的全局路由不查 `defaultPrevented`。
+
+**未修（仅定位）**。`scripts/smoke-browser-mirror.ts` 真 Chromium 端到端只断言鼠标点击（`:126-160`），键盘链路无任何回归防线。
+
+**修复锚点**：`AgentBrowserView.tsx` 的 `onKeyDown` 加组合事件承接、组合中吞键、`stopPropagation()`、空格走 `op:"key"`；`host/browser-mirror.ts` 的 `dispatchInput` key 分支补 `modifiers` 与 `rawKeyDown` 并扩 `SPECIAL_KEYS`；`host/rpc/browser.ts` 的 `browser_input` 载荷加 `modifiers`（`host/wire/requests.ts` 同步）；`smoke-browser-mirror.ts` 增一条「往页面 input 里合成按键后断言 `input.value` 变化」。
+
+**验证**：未实机验证（WKWebView 下 IME 事件形态未打点）。复验步骤：让 Agent 打开带搜索框的站点 → 右栏镜像页分别测「不点输入框直接打字」「点输入框后打字」「中文输入法」「⌘V」「Esc」。
+
+**教训**：镜像页是「图片 + 合成事件」，它的键盘行为与真实浏览器的差距必须由端到端断言兜住；只测鼠标等于没测输入。
+
+### BUG-137: 归档后台会话不回收右栏槽位，且欢迎槽被写脏（BUG-103 残留）
+
+**日期**：2026-11-11
+
+**现象**：① 归档一个「后台已打开但非当前」的会话后，它的右栏槽位（标签布局、终端 PTY）不回收，之后点回该会话旧标签原样复活；② 在欢迎页先开过一个右栏标签（如 BTW）→ 点侧栏任一会话 → 归档/删除它 → 回到欢迎页时右栏又冒出那个 BTW 标签（BUG-103 同症状，内存态，重启即消）。
+
+**根因**：① `session_unloaded` 的当前会话分支会 `disposeRightSlot(path)`（`ui-src/store/wsHandlers/session.ts:145`），**非当前分支只删 `openSessions` 条目**（`:152-158`）；删除路径（`Sidebar.tsx:215`）两边都回收，归档路径不对称。② `activateSession` 里 `saveRightSlot(prev)`（`ui-src/store/session.ts:221`）在 `prev === null`（从欢迎页激活会话）时把当前实时投影写进 welcome 槽（`right.ts:221-222` 的 `key = path ?? WELCOME_SLOT`）；之后 `showWelcomeScreen()` → `restoreRightSlot(null)` 就恢复出那个标签。BUG-103 当时只修了 `restoreRightSlot(null)` 的创建分支与 welcome 行不落盘。③ 删除级联：`delete_session` 连父会话的 artifacts 目录一起删（含子 transcript），但子会话的池条目与 UI 槽位因路径不匹配而幸存 → 子代理页面继续开着、对着已删除的 transcript。归档同理不驱逐子代理池条目。
+
+**修复**：
+1. `ui-src/store/wsHandlers/session.ts` —— `session_unloaded` 的 `disposeRightSlot(path)` 上移到两个分支之前（仍在 `openSessions.has(path)` 守卫之后），后台已打开会话的槽位随归档/删除一起回收；LRU 逐出（`openSessions` 无此条目、只留槽位）继续保留面板记忆，守卫就是这条分界。
+2. `ui-src/store/right.ts` —— `saveRightSlot(null)` 直接返回，welcome 槽只由 `restoreRightSlot(null)` 的干净创建分支产生；`inherit = key !== WELCOME_SLOT` 的会话继承契约未动（会话首开仍继承当前布局，只是不再有「会话激活时把实时投影写进欢迎槽」这条路）。
+3. `host/rpc/session.ts` + `host/state.ts` —— 新增纯匹配 `subagentEntriesUnder(sessionPath)`（按 `<会话文件去掉 .jsonl>/` 前缀匹配 `isSubagent` 池条目，孙代一并命中）与 `evictSubagentEntries()`（释放 MCP → 退订 → 出池 → `broadcastSessionUnloaded` 其 path → dispose，全部 try/catch，失败不中断父会话收尾）。`delete_session` 在删 artifacts 目录前调用，`archive_session` 在 `on` 时调用（`entry?.path ?? p`；文件保留，只驱逐 + 广播）。
+4. `scripts/smoke-right-snapshots.ts` 步骤 5 的断言按新契约改写：`saveRightSlot(null)` 不再入槽，欢迎页恢复即干净面板。
+
+**验证**：`OMP_PROFILE=omp-desktop-test bun test scripts/pool-subagent-eviction.test.ts --pool=forks --poolOptions.forks.singleFork` → 3 pass（孙代命中、`parent` vs `parents` 前缀不误伤、非 `.jsonl` 地址零命中）；`scripts/session-unload-slot.test.ts` → 1 pass（已打开的后台会话被 `session_unloaded` 回收槽位；只留槽位的 LRU 会话不被回收）；`scripts/right-welcome-slot.test.ts` → 3 pass。未实机验证（含 `smoke-right-snapshots.ts`、`smoke-features.ts` 的归档/删除断言与真机三条复现路径）；`archive_session`/`delete_session` 都在远程 denylist 内，远程端不可达。
+
+**教训**：同一语义（会话消失）有「归档 / 删除 / LRU 逐出」三条路径，各自的槽位清理规则必须显式对齐——LRU 逐出**故意**保留槽位（恢复面板记忆），归档与删除则必须回收，三者不能靠默认值对齐。
+
+### BUG-138: 横线点击跳转落点插进本轮回复中间（sticky 位移被当成布局位置）
+
+**日期**：2026-11-11
+
+**现象**：中栏左侧用户消息横线，点第 N 条后不落到该消息（和它回复的开头），而是停在本轮内部：用户气泡被 `sticky` 夹住推到视口上方之外，本轮回复的开头反而跑到气泡上面，得往上滚才看得到。会话越长越明显。
+
+**根因**：`ui-src/components/chat/MsgRail.tsx` 的跳转目标 `topDoc` 用 `anchor.closest('.sticky-user-wrap')` 的 `getBoundingClientRect()` 换算（两处：重建写回与 sig 未变时的刷新分支）。`.sticky-user-wrap` 是 `position: sticky; top: 0`，被钉住或被本轮 `.turn-body` 包含块挤出时，rect 是**位移后**的视觉位置而非布局位置；换算出的 `topDoc` 因此比真实 turn 起点大一个位移量（实测偏差 122px），落点即插进本轮中间。
+
+**修复**：两处测量改取 `anchor.closest('.turn-section') ?? anchor` —— turn-section 不是 sticky，且用户气泡是其第一子节点、天然位置即 turn 起点（`items.tsx` 里 `.turn-body` 首子为 `.sticky-user-wrap`）。`pinEl`（粘性包裹层）仍保留给 `paintRailPins` 的钉住态高亮，语义不变。
+
+**验证**：`bun run check` 全绿（含 ui:typecheck）；`bun run dev:browser`（`OMP_PROFILE=omp-desktop-test`）+ Chromium 真机：把会话滚到底后点第 1 条横线，`scrollTop` 0、气泡 rect 顶 0px、回复起点 148px（修复前该 tick 的 topDoc 为 369 而 turn 起点是 0）；第 3 条落点 1396 = 该 turn 起点、气泡 0px，截图确认气泡与回复开头同时在视口内。
+
+**教训**：任何用 `getBoundingClientRect()` 换算滚动目标的代码，都不能拿 `position: sticky` 的元素当布局锚点——被钉住或被包含块挤出时 rect 已经偏移；要测非粘性祖先（或 offset 链）。`offsetTop` 同样不可靠（Chromium 下也含 sticky 位移）。
+
+### BUG-139: 设置页下拉框随界面缩放纵向偏移——视觉像素直接写入布局坐标
+
+**日期**：2026-11-11
+
+**现象**：设置页 `.sel` 下拉框在界面缩放大于 100% 时选中行偏上，小于 100% 时偏下，偏差随缩放幅度和选中项位置增大；100% 时对齐正常。
+
+**根因**：`anchorMenuToSelection()` 用 `getBoundingClientRect()` 量出选中行到菜单顶部的视觉像素距离，却直接写入 `#settings` 缩放子树内的 `menu.style.top`（布局像素），写入后又被 zoom 乘一次；顶部边界修正 `over` 也犯了同样的单位混用。
+
+**修复**：`ui-src/components/settings/common.tsx` 中选中行偏移和 `#setBody` 顶部边界修正都除以 `effZoom()` 后再写入 `style.top`；`Sel` 与 `ScopeSel` 共用此实现，无需分别修改。
+
+**验证**：真实 `dev:browser` 宿主与 Chromium 设置页实测终端字号下拉：修复前 80% 偏下 21.48px、150% 偏上 100.25px；修复后 60%/80%/100%/150%/200% 的选中行与触发器纵向误差为 0–0.016px。另将 Profile 下拉触发器滚到 `#setBody` 顶部验证边界分支，80%/100%/150% 下菜单顶与边界误差为 -0.016–0px，首行均保持可见。`bun run ui:typecheck && bun run ui:build` 通过。
+
+**教训**：在 CSS zoom 子树内混用 rect 与内联坐标时，必须明确视觉像素和布局像素的换算方向；边界修正使用第二组 rect 也不能漏掉同一换算。
+
+### BUG-140: 设置页 Portal 内容下拉仍播放浮层动画——`#settings` 后代选择器覆盖不到 `<body>`
+
+**日期**：2026-11-11
+
+**现象**：同属设置页内容型下拉，「终端字号」直接原地展开，「按仓库合并工作区」却执行 180ms 淡入与 6px 位移；Agent 与角色表单的模型级联菜单也保留浮层动画和阴影。
+
+**根因**：Radix `SelectContent` 与模型级联菜单都 Portal 到 `<body>`，不再是 `#settings` 后代，因此 `#settings [data-slot="select-content"]` 的 `animation: none` 实际选不中 Radix 菜单；模型级联菜单也没有把内容型语义传到 Portal 节点。
+
+**修复**：`ui/css/settings/common.css` 将 Radix 打开态覆盖改为不依赖 `#settings` 祖先的属性选择器，并新增 `.menu.open.sel-value-portal` 共享覆盖。Agent 与角色表单两个显示当前模型的调用点通过既有 `selClassName` / `menuClassName` 标记内容语义；新增模型、加入循环等动作菜单不标记，保留原浮层动效。
+
+**验证**：真实 `dev:browser`（`OMP_PROFILE=omp-desktop-dev-2`）与 Chromium 实测终端字号、按仓库合并工作区、Agent 模型菜单，三者均为 `animation-name: none`、`animation-duration: 0s`、`box-shadow: none`、`transform: none`；前两者选中行与触发器纵向误差分别为 0px 与 0.088px，三张稳定截图已目视确认。`bun run ui:build && bun run check` 全绿。
+
+**教训**：Portal 节点的样式契约必须随节点自身携带（属性或语义类），不能依赖渲染前的 DOM 祖先；新增 Portal 下拉时，检查计算样式比只检查源文件中的覆盖规则更可靠。
+
