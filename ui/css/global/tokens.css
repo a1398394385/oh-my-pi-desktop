@@ -55,7 +55,11 @@
   --hover-fill: var(--panel-2);
   /* Hover plate on the card face (--card/--bg: center/right/bottom columns).
      Deliberately flatter than the raised --panel-2 default used on --base faces. */
-  --card-hl:   #212121;
+  --card-hl:   #222222;
+  /* Right-panel tab strip: plate under the shown tab. A fixed step above the card face rather
+     than the raised --panel-2 — the tab strip sits on the card, and --panel-2 reads as a
+     floating chip there. Light theme reuses the raised plate (see the light block). */
+  --rtab-on:   #2E2E2E;
   /* File tab nav highlight (row hover plate + the filled search box on focus). The file tree
      rows sit directly on the card face, so their plate is a flat shade under the raised
      --panel-2 instead of above it. Light theme reuses the raised plate (see the light block). */
@@ -63,7 +67,7 @@
   /* Run file-change card: the row plate (fills the whole row — the list body's own padding keeps
      it off the card edge) and the action pills, which sit on the darker list face. */
   --rchg-row:     #1F1F1F;  /* hsl(0 0% 12%): the file list plate */
-  --rchg-hl:      #212121;  /* hsl(0 0% 13%) */
+  --rchg-hl:      #222222;  /* hsl(0 0% 13.3%) */
   --rchg-btn:     #292929;  /* hsl(0 0% 16%): action pills */
   --rchg-btn-hl:  #262626;  /* hsl(0 0% 15%) */
   --bg:        var(--card);

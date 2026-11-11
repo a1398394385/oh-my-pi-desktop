@@ -90,7 +90,7 @@
 hover 底板走 `--hover-fill`（定义在 `ui/css/global/tokens.css`，默认 `var(--panel-2)`）：
 
 1. **面上控件 = `--menu-hl`**：凡所在容器的底色是下拉底色（`--inset` / `--panel` / `--ctl-bg` 三者同值）——输入框、composer dock、下拉菜单、弹卡、输入类卡片——其上按钮（权限选择、computer use、模型选择、上下文明细环等）的 hover 底板必须是 `--menu-hl`，与该容器同属一个"档"。深色 `#363636`、浅色 `#F0F0F0`、青夜 `#56656E`；暖纸/珊瑚/深思在各自主题文件里取同族暖调值。
-2. **卡片面 = `--card-hl`**：底色是 `--card`/`--bg`（中/右/底栏卡片面、Git 页、设置正文卡等）的表面，hover 底板钉 `--hover-fill: var(--card-hl)`；深色 `#212121`，浅色继承 `--panel-2`（`#e8e8ec`）。
+2. **卡片面 = `--card-hl`**：底色是 `--card`/`--bg`（中/右/底栏卡片面、Git 页、设置正文卡等）的表面，hover 底板钉 `--hover-fill: var(--card-hl)`；深色 `#222222`，浅色继承 `--panel-2`（`#e8e8ec`）。
 3. **其余表面 = `--panel-2`**：`--base` 面（侧栏、窗口底）与 `--surface`  veil 面保持默认 `--hover-fill: var(--panel-2)`，用同一个变量的不同取值区分。
 4. **写法**：`:hover` 规则里用 `var(--hover-fill)`，不要直接写 `var(--panel-2)`；Tailwind 侧用 `hover:bg-hover-fill`（`@theme inline` 已映射 `--color-hover-fill`）。
 5. **作用域**：令牌按容器继承，所以给某个面声明 `--hover-fill: var(--menu-hl)` 时，其内部的子面必须自己显式声明（面用 `--menu-hl`，非面用 `var(--panel-2)`），否则会继承到不合适的档。`#pg-stats` 把内部 `--panel` 重定义为 `var(--panel-2)`，语义不同，已排除在统一之外。
