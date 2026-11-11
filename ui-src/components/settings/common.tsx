@@ -11,6 +11,7 @@ import { useAppStore, setBump, send, effZoom } from "../../store";
 import { t } from "../../i18n";
 import Icon from "../../Icon";
 import { claimDropdown, releaseDropdown } from "../../lib/dropdownExclusive";
+import { copyText } from "../main/sidebar/util";
 
 export { PROV_IC } from "../shared/models/providers";
 
@@ -69,10 +70,28 @@ export function confirmDialog({ title, message = "", confirmText, danger = false
 // Data source: loginBanner selector (store handles login_progress / login_done replies; null = hidden).
 export function LoginBanner() {
   const loginBanner = useAppStore((s) => s.loginBanner);
+  const loginUrl = useAppStore((s) => s.loginUrl);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setCopied(false), [loginUrl]);
   if (loginBanner == null) return null;
   return (
     <div className="login-banner" id="loginBanner">
       <span>{loginBanner}</span>
+      {loginUrl ? (
+        // Fallback for a browser that never opened (or a blocked auth host): the URL
+        // rides on the login_progress frame, so paste it into any browser by hand.
+        <button
+          type="button"
+          className="save-btn"
+          title={loginUrl}
+          onClick={() => {
+            copyText(loginUrl);
+            setCopied(true);
+          }}
+        >
+          {copied ? t("settingsPage.login.copied") : t("settingsPage.login.copyLink")}
+        </button>
+      ) : null}
       <button type="button" className="save-btn" onClick={() => send({ type: "provider_login_cancel" })}>
         {t("settingsPage.login.cancelLogin")}
       </button>

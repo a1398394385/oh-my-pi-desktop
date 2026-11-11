@@ -27,7 +27,11 @@ export const settingsHandlers = {
   },
   login_progress(msg) {
     if (msg.reqId !== useAppStore.getState().loginReqId) return;
-    useAppStore.setState((s) => ({ loginBanner: t("notify.loginProgress", { provider: msg.provider, message: msg.message }) }));
+    useAppStore.setState((s) => ({
+      loginBanner: t("notify.loginProgress", { provider: msg.provider, message: msg.message }),
+      // onAuth frames carry the URL; onProgress frames do not, so keep the last one
+      ...(msg.url ? { loginUrl: msg.url } : {}),
+    }));
   },
   login_prompt(msg) {
     if (msg.reqId !== useAppStore.getState().loginReqId) return;
@@ -36,12 +40,12 @@ export const settingsHandlers = {
   login_done(msg) {
     if (msg.reqId !== useAppStore.getState().loginReqId) return;
     if (msg.ok) {
-      useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null, mpAddView: false }));
+      useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginUrl: null, loginPromptData: null, mpAddView: false }));
     } else if (msg.cancelled) {
-      useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null }));
+      useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginUrl: null, loginPromptData: null }));
     } else {
       useAppStore.getState().toast(t("notify.loginFailed", { provider: msg.provider, message: msg.message }));
-      useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginPromptData: null }));
+      useAppStore.setState((s) => ({ loginBusy: false, loginBanner: null, loginUrl: null, loginPromptData: null }));
     }
   },
   provider_key_done(msg) {

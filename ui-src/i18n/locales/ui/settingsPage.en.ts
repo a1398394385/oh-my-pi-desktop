@@ -71,6 +71,8 @@ export const settingsPageEn = {
   // ---- Login banner + paste-code prompt (common.tsx) ----
   login: {
     cancelLogin: "Cancel login",
+    copyLink: "Copy link",
+    copied: "Copied",
     authPrompt: "Enter the authorization code:",
     authPlaceholder: "Paste the authorization code or the full callback URL",
   },

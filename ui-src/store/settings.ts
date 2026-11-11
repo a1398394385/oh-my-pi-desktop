@@ -63,6 +63,7 @@ export interface SettingsSlice {
   loginBusy: boolean;
   loginReqId: number;
   loginBanner: string | null; // OMP login progress banner text
+  loginUrl: string | null; // authorization URL of the current login, for the manual copy fallback
   loginPromptData: LoginPromptFrame | null; // login_prompt paste-code dialog data
   agentAssets: AgentAssetsPayload | null;
   pluginInstall: { spec: string; status: "running" | "ok" | "error"; message?: string } | null; // asset_plugin_install in flight / last result
@@ -114,6 +115,7 @@ export const createSettingsSlice: StateCreator<AppStore, [], [], SettingsSlice> 
   loginBusy: false,
   loginReqId: 0,
   loginBanner: null,
+  loginUrl: null,
   loginPromptData: null,
   agentAssets: null,
   pluginInstall: null,

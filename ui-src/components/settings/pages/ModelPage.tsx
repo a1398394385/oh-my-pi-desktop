@@ -496,7 +496,7 @@ function startProviderLogin(id: string) {
   }
   const reqId = useAppStore.getState().loginReqId + 1;
   // Old showLoginBanner("…starting login…"); React version keeps banner data in store.loginBanner, rendered by the component
-  setBump({ loginBusy: true, loginReqId: reqId, loginBanner: t("settingsPage.model.loginStarting", { id }) });
+  setBump({ loginBusy: true, loginReqId: reqId, loginBanner: t("settingsPage.model.loginStarting", { id }), loginUrl: null });
   send({ type: "provider_login", provider: id, reqId });
 }
 

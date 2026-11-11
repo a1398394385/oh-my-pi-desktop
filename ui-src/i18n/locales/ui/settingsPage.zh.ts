@@ -67,6 +67,8 @@ export const settingsPageZh = {
   // ---- Login banner + paste-code prompt (common.tsx) ----
   login: {
     cancelLogin: "取消登录",
+    copyLink: "复制授权链接",
+    copied: "已复制",
     authPrompt: "请输入授权码：",
     authPlaceholder: "粘贴授权码或完整回调 URL",
   },
