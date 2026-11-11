@@ -16,6 +16,7 @@ import { reloadAutomationScheduler, setAutomationNotify } from "./automations/sc
 import { refreshAllSessionLists } from "./rpc/session.ts";
 import { readUiLocale } from "./ui-config.ts";
 import { applyExternalBrowserSetting, readExternalBrowserEnabled } from "./browser-config.ts";
+import { syncProxyFetch } from "./proxy-fetch.ts";
 import { reconcileComputerDisplay } from "./computer-display.ts";
 import { warmKimiCu } from "./computer-mode.ts";
 import { hostI18n, initHostI18n } from "./i18n/host.ts";
@@ -43,23 +44,28 @@ export function readDesktopEnv(): DesktopEnv {
 }
 
 export function applyDesktopEnv(env: DesktopEnv) {
+  // PI_PROXY is what routes provider-bound bare fetches (OAuth login, token
+  // refresh, usage probes) through the desktop proxy — Bun's own fetch env
+  // vars do not reach those call sites. proxy-fetch.ts installs the wrapper;
+  // it must run after this so the value is in place.
   if (env.httpProxy) {
     process.env.HTTP_PROXY = env.httpProxy;
     process.env.HTTPS_PROXY = env.httpProxy;
     process.env.http_proxy = env.httpProxy;
     process.env.https_proxy = env.httpProxy;
+    process.env.PI_PROXY = env.httpProxy;
   } else {
     delete process.env.HTTP_PROXY;
     delete process.env.HTTPS_PROXY;
     delete process.env.http_proxy;
     delete process.env.https_proxy;
+    delete process.env.PI_PROXY;
   }
+  // Empty means "use the system default", not "clear the user's": deleting here
+  // silently routed local/LAN targets through the proxy for every other tool.
   if (env.noProxy) {
     process.env.NO_PROXY = env.noProxy;
     process.env.no_proxy = env.noProxy;
-  } else {
-    delete process.env.NO_PROXY;
-    delete process.env.no_proxy;
   }
   if (env.caCerts) process.env.NODE_EXTRA_CA_CERTS = env.caCerts;
   else delete process.env.NODE_EXTRA_CA_CERTS;
@@ -333,6 +339,9 @@ export async function applyProfile(profileName: string) {
   H.desktopEnvFilePresent = fs.existsSync(H.desktopEnvPath);
   H.desktopEnv = H.desktopEnvFilePresent ? readDesktopEnv() : defaultDesktopEnv();
   if (H.desktopEnvFilePresent) applyDesktopEnv(H.desktopEnv);
+  // Unconditional: a proxy in the shell env (PI_PROXY) must be honoured even when the
+  // desktop env file is absent. Idempotent, re-wrapped from the platform fetch.
+  syncProxyFetch();
 
   H.desktopProjectsPath = path.join(H.agentDir, "omp-desktop.json");
   H.desktopProjects = readDesktopProjects();

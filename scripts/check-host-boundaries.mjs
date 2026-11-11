@@ -323,6 +323,14 @@ const ALLOWED_EDGES = new Set([
   "profile.ts→browser-config.ts", "rpc/settings.ts→browser-config.ts",
   "browser-config.ts→state.ts", "browser-config.ts→bootstrap.ts",
   "frames.ts→browser-config.ts",
+  // Desktop proxy bridge: applyDesktopEnv writes PI_PROXY, then this leaf installs the
+  // SDK's global fetch wrapper (a no-op without PI_PROXY). Because the SDK binding must
+  // load after setProfile, the wrapper lives in bootstrap.ts; profile.ts installs it on
+  // every profile apply and rpc/settings.ts after set_desktop_env.
+  "profile.ts→proxy-fetch.ts", "rpc/settings.ts→proxy-fetch.ts", "proxy-fetch.ts→bootstrap.ts",
+  // Failure logging for the best-effort launcher (a swallowed spawn error left the OAuth
+  // banner claiming a browser it never opened).
+  "open-external.ts→stderr.ts",
   // Queued message domain: followUp/steering views, park staging plus send-now/requeue/drop.
   // rpc/session reuses visibleQueued for the eviction guard: the busy reason must
   // count exactly the rows the queue card renders, otherwise hidden queue items

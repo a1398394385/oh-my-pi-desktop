@@ -81,6 +81,9 @@ ensureThemeSync();
 
 export const { getSupportedEfforts } = await import("@oh-my-pi/pi-catalog/model-thinking");
 export const { getOAuthProviders } = await import("@oh-my-pi/pi-ai");
+// Global PI_PROXY wrapper: the SDK installs it only in its CLI entry, so provider-bound
+// bare fetches (OAuth login, token refresh, usage probes) would ignore the desktop proxy.
+export const { installGlobalProxyFetch, __resetGlobalProxyFetch } = await import("@oh-my-pi/pi-ai/utils/proxy");
 // Provider auth policy (KDL-compiled data): decides the login flow type (oauth-code/device-code/custom/api-key)
 export const { authPolicyFor } = await import("@oh-my-pi/pi-catalog/compat/auth");
 export const { createAgentSession, SessionManager, Settings, discoverAuthStorage, ModelRegistry, AgentRegistry, USER_INTERRUPT_LABEL, ensureThemeSync: ensureSdkThemeSync } =

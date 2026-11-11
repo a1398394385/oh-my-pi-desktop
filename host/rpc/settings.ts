@@ -38,6 +38,7 @@ import { writeAdvisorDefaultEnabled } from "../advisor-mode.ts";
 import { dispatchFromToolEnd } from "../plan-approve.ts";
 import { writeUiLocale, writeUiPrefs } from "../ui-config.ts";
 import { writeExternalBrowserEnabled } from "../browser-config.ts";
+import { syncProxyFetch } from "../proxy-fetch.ts";
 import { hostI18n, initHostI18n } from "../i18n/host.ts";
 import { handleListSessions } from "./session";
 import type { RpcHandler } from "./types";
@@ -348,6 +349,7 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     H.desktopEnv = next;
     H.desktopEnvFilePresent = true;
     applyDesktopEnv(next);
+    syncProxyFetch();
     // restartHint is a receipt for the requesting (local) end only; the snapshot itself must
     // still reach the other channel, whose copy would otherwise stay frozen
     pushSettings();
