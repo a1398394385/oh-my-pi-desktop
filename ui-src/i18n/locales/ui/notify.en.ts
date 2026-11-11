@@ -17,9 +17,9 @@ export const notifyEn = {
   remoteKeySubmit: "Connect",
   // Working-state text (store/session.ts)
   working: "Working…",
-  thinking: "Thinking…",
+  thinking: "Thinking",
   thinkingLabel: "Thinking",
-  thinkingDone: "Thinking · {{label}}",
+  thinkingDone: "{{label}}",
   thinkingTookSeconds: "took a few seconds",
   waiting: "Waiting for background work or a peer…",
   // Desktop notifications (store/session.ts, store/wsHandlers/stream.ts)

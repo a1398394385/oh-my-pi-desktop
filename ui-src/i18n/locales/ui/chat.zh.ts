@@ -45,12 +45,12 @@ export const chatZh = {
   noDiffContent: "（无差异内容）",
   noTextContent: "（无文本内容）",
   // ---- merged-group titles (plurals) ----
-  terminalCommands: "终端 · {{count}} 条命令",
-  deviceCalls: "设备 · {{dev}} · {{count}} 次调用",
-  changeFiles: "更改 · {{count}} 个文件",
-  changeFilesMultiple: "更改 · 多 个文件",
-  readFiles: "查阅 · {{count}} 个文件",
-  readFilesMultiple: "查阅 · 多 个文件",
+  terminalCommands: "{{count}} 条命令",
+  deviceCalls: "{{dev}} {{count}} 次调用",
+  changeFiles: "{{count}} 个文件",
+  changeFilesMultiple: "多个文件",
+  readFiles: "{{count}} 个文件",
+  readFilesMultiple: "多个文件",
   // ---- read-only merge block (ReadonlyGroup.tsx roSummaryText) ----
   roExplored: "探索了 ",
   roSep: "、",
@@ -88,7 +88,7 @@ export const chatZh = {
   totalUsage: "总消耗 {{usage}}",
   processLog: "过程记录（Token 与耗时显示在外观设置中开启）",
   // ---- thinking row (ThinkingRow.tsx) ----
-  thinkingFallback: "思考 · 持续了几秒",
+  thinkingFallback: "持续了几秒",
   // ---- context ring card (CtxCard.tsx) ----
   context: "上下文",
   ctxSystemTools: "系统工具",

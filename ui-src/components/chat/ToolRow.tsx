@@ -29,7 +29,7 @@ function CmdCard({ command, item, liftRef }: { command?: string; item: ToolItem;
 }
 // The row shows the intent and `command` becomes the tooltip + card body: measured over 45k
 // real calls, intents are 20 chars median while commands are 154 (p90 456) and get cut off.
-function CmdRow({ item, command, summary, iconLabel }: { item: ToolItem; command?: string; summary?: string; iconLabel?: string }) {
+function CmdRow({ item, command, summary }: { item: ToolItem; command?: string; summary?: string }) {
   const [, close, liftRef] = useLift();
   const toggle = () => {
     if (item.cmdExpanded) close(() => patchActiveItem(item, (it) => { it.cmdExpanded = false; }));
@@ -38,7 +38,7 @@ function CmdRow({ item, command, summary, iconLabel }: { item: ToolItem; command
   return (
     <>
       <div className="cmd" style={{ cursor: "pointer" }} onClick={toggle}>
-        <span className="c-ic"><Icon name="termBox" size={15} />{iconLabel}</span>
+        <span className="c-ic"><Icon name="termBox" size={15} /></span>
         <Ellip className="c-tx" title={command}>{summary || command || ""}</Ellip>
         {item.running && <Spin />}
         <span className={"ed-arrow" + (item.cmdExpanded ? " open" : "")}>
@@ -52,12 +52,7 @@ function CmdRow({ item, command, summary, iconLabel }: { item: ToolItem; command
 function renderCmd(item: ToolItem) {
   const command = item.args?.command || item.text || "";
   return (
-    <CmdRow
-      item={item}
-      command={command}
-      summary={item.intent || command}
-      iconLabel={item.name === "eval" ? t("chat.evalLabel") : t("chat.labelTerminal")}
-    />
+    <CmdRow item={item} command={command} summary={item.intent || command} />
   );
 }
 
@@ -70,7 +65,6 @@ function CmdRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onTog
   const command = sub.args?.command || sub.text || "";
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
-      <span className="lbl">{sub.name === "eval" ? t("chat.evalLabel") : t("chat.labelTerminal")}</span>
       <Ellip className="c-tx" title={command}>{sub.intent || command}</Ellip>
       {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
@@ -146,7 +140,7 @@ function hubSummary(args: NonNullable<ToolItem["args"]>) {
   return summary;
 }
 function renderHubTool(item: ToolItem) {
-  return <CmdRow item={item} command={hubSummary(item.args || {})} summary={item.intent} iconLabel={t("chat.labelBackground")} />;
+  return <CmdRow item={item} command={hubSummary(item.args || {})} summary={item.intent} />;
 }
 
 // ---------- Todo row ----------
@@ -156,7 +150,6 @@ function renderTodo(item: ToolItem) {
   return (
     <div className="act todo">
       <Icon name="todo" size={15} />
-      <span className="lbl">{t("chat.labelTodo")}</span>
       <Ellip className="td-tx" title={content}>{content}</Ellip>
       {td && (td.total ?? 0) > 0 && <span className="td-n">{`${td.done}/${td.total}`}</span>}
       {item.running && <Spin />}
@@ -419,9 +412,8 @@ function ExpandableRow({ item, iconName, label, summary, summaryTitle, noInput, 
   };
   return (
     <>
-      <div className="act read" style={{ cursor: "pointer" }} onClick={toggle}>
+      <div className="act read" style={{ cursor: "pointer" }} onClick={toggle} aria-label={label}>
         <Icon name={iconName} size={15} />
-        <span className="lbl">{label}</span>
         {count ? <span className="lbl-n">{`×${count}`}</span> : null}
         <Ellip className="path" title={summaryTitle || summary}>{summary}</Ellip>
         {item.running && <Spin />}
@@ -675,8 +667,12 @@ function deviceOpText(item: ToolItem) {
 function deviceSummary(item: ToolItem) {
   return [deviceNameOf(item.args?.path), deviceOpText(item)].filter(Boolean).join(" · ");
 }
+// A device call's expand-card head is its parsed params — except `agent://` writes, whose
+// content is an inter-agent message body (plain text, no JSON): that body is the call's
+// content, so the card shows it instead of the bare path.
 function renderDevice(item: ToolItem) {
   const params = deviceSummary(item) || item.text || "";
+  const body = deviceCmd(item) ? params : typeof item.args?.content === "string" ? item.args.content : params;
   return (
     <ExpandableRow
       item={item}
@@ -684,7 +680,7 @@ function renderDevice(item: ToolItem) {
       label={t("chat.labelDevice")}
       summary={item.intent || params}
       summaryTitle={params}
-      input={<ParamLine text={params} />}
+      input={<ParamLine text={body} />}
     />
   );
 }
@@ -697,7 +693,6 @@ function DeviceRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   const detail = deviceOpText(sub) || sub.args?.path || sub.text || "";
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
-      <span className="lbl">{t("chat.labelDevice")}</span>
       <Ellip className="c-tx" title={detail}>{sub.intent || detail}</Ellip>
       {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
@@ -722,7 +717,7 @@ function DeviceEntry({ sub }: { sub: ToolItem }) {
         <ContentCard
           item={sub}
           liftRef={liftRef}
-          input={<ParamLine text={deviceSummary(sub) || sub.text || ""} />}
+          input={<ParamLine text={deviceCmd(sub) ? deviceSummary(sub) || sub.text || "" : typeof sub.args?.content === "string" ? sub.args.content : deviceSummary(sub) || sub.text || ""} />}
         />
       )}
     </>

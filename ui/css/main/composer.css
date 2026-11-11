@@ -304,14 +304,13 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
 .chat-loading[hidden] { display: none; }
 
 /* display:flex would override the UA's [hidden]; declare it explicitly */
-/* Streaming status text (intent/thinking): follows the spinner, small dim, single-line truncation so wrapping never grows the flow */
-/* Streaming loading spinner (replicating ZCode ChatLoading / TurnChatLoadingSlot): last slot in the message flow, right above the input,
-   min-height 20px so its presence or absence never shifts height; lucide loader icon + 1s linear rotation, foreground --dim
-   (ZCode's text-foreground-subtle). Visibility is decided by Chat.jsx rendering per s.streaming */
+/* Streaming status text (intent/thinking): follows the activity icon, small dim, single-line truncation so wrapping never grows the flow */
+/* Streaming status row (replicating ZCode ChatLoading / TurnChatLoadingSlot): last slot in the message flow, right above the input,
+   min-height 20px so its presence or absence never shifts height; the activity glyph (thinking / running tool) is static, dim
+   (ZCode's text-foreground-subtle) — no spin, the glyph itself carries the state. Visibility is decided by ChatLoading per s.streaming */
 .chat-loading-icon {
   display: inline-flex;
   color: var(--dim);
-  animation: spin 1s linear infinite;
 }
 
 .chat-loading-icon svg { display: block; }

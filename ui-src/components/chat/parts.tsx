@@ -422,7 +422,6 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
       {item.details?.isDirectory ? (
         <div className={inGroup ? "chg-item" : "act read"}>
           <Icon name="folder" size={15} />
-          <span className="lbl">{t("chat.labelDirectory")}</span>
           {cleanPath ? <Ellip className="path" title={cleanPath}>{cleanPath}</Ellip> : item.text || "read"}
         </div>
       ) : (
@@ -432,7 +431,6 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         onClick={isImage ? () => openReadFileInSidebar(item, path || cleanPath) : canOpen ? toggle : undefined}
       >
         <Icon name="file" size={15} />
-        <span className="lbl">{t("chat.labelRead")}</span>
         <Ellip className="path" title={cleanPath}>{item.intent || cleanPath || item.text || "read"}</Ellip>
         {cleanPath && (
           <>

@@ -460,16 +460,23 @@
 /* Collapsed state (sealed): a thin line separates the summary row from the output below.Line drawn as background 20px above the box edge: the space below it stays inside the row's box, no bare margin band for cross-selection to paint. */
 .act.loop.sealed { padding-bottom: 30px; background: linear-gradient(var(--line-soft), var(--line-soft)) left bottom 20px / 100% 1px no-repeat; }
 
+/* Event-row glyphs carry the full text color: the icon is the row's only identifier now that the
+   row-head labels are gone. Expand chevrons keep their own dim color. */
+.act > .pi-ic:first-child,
+.act > .c-ic > .pi-ic,
+.act > .th-ic,
+.act > .tt-ic { color: var(--text); }
+
 .act svg { flex: none; }
 
 /* Thinking row */
-.act.think .th-ic { color: var(--faint); display: inline-flex; }
+.act.think .th-ic { color: var(--text); display: inline-flex; }
 
 .act.think .th-more { color: var(--faint); cursor: pointer; }
 
 /* TTSR injection row (TtsrRow.tsx): the thinking row's read-only treatment; the rule-name
    readout ellipsizes (full list on title) while the disclosure body reuses .think-body */
-.act.ttsr .tt-ic { color: var(--faint); display: inline-flex; }
+.act.ttsr .tt-ic { color: var(--text); display: inline-flex; }
 
 .act.ttsr .th-more { color: var(--faint); cursor: pointer; }
 
@@ -822,7 +829,7 @@
 .ask-opt.rec { color: var(--text); }
 
 .cmd .c-ic {
-  color: var(--faint); flex: none; font-family: var(--ui-font, var(--sans)); font-size: var(--code-fs, 12px);
+  color: var(--text); flex: none; font-family: var(--ui-font, var(--sans)); font-size: var(--code-fs, 12px);
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; /* gap matches the .act label spacing */
 }
 

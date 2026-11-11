@@ -70,7 +70,8 @@ export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: str
         onClick={expandable ? toggle : undefined}
       >
         <Icon name="think" size={15} className="th-ic" />
-        <span className="lbl">{item.text || t("chat.thinkingFallback")}</span>
+        {/* While thinking, the glyph alone is the row: the label adds nothing the icon does not say */}
+        {!item.streaming && <span className="lbl">{item.text || t("chat.thinkingFallback")}</span>}
         {expandable && (
           <span className={"th-more" + (open ? " open" : "")}>
             <Icon name="chevronRight" size={10} />

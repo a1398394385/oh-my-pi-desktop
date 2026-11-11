@@ -23,7 +23,9 @@
 }
 .rchg-head:hover { background: var(--surface); }
 .rchg-ic { flex: none; display: inline-flex; color: var(--faint); }
-.rchg-title { font-size: var(--ui-fs-md); color: var(--dim); }
+/* Same reading weight as a session-list title (.task .tt): full-strength text, regular weight —
+   the card header is a headline, --dim made it recede behind the stat chips beside it */
+.rchg-title { font-size: var(--ui-fs-md); color: var(--text); font-weight: 400; }
 .rchg-sum { display: inline-flex; gap: 6px; font-family: var(--mono); font-size: var(--code-fs); }
 .rchg-sum .add { color: var(--green-soft); }
 .rchg-sum .del { color: var(--red); }

@@ -109,7 +109,6 @@ export default memo(function EditRow({ item, streamText, streamDiff }: { item: T
     <>
       <div className="act edit" style={{ cursor: "pointer" }} onClick={toggle}>
         <Icon name="pencil" size={15} />
-        <span className="lbl">{(item.removed ?? 0) > 0 ? t("chat.editLabel") : t("chat.writeLabel")}</span>
         {path ? (
           <FileChip path={path} nameClass="ed-name" onNameClick={() => openFileDiffInSidebar(path)} />
         ) : (
@@ -136,7 +135,6 @@ function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   const path = files[0] || "";
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
-      <span className="lbl">{(sub.removed ?? 0) > 0 ? t("chat.editLabel") : t("chat.writeLabel")}</span>
       {files.length > 1 ? (
         // One event touching multiple files (apply_patch): file chips laid out on a single
         // line, overlong lines end with an ellipsis

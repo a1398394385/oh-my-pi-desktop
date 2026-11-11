@@ -19,9 +19,9 @@ export const notifyZh = {
   remoteKeySubmit: "连接",
   // Working-state text (store/session.ts)
   working: "正在处理…",
-  thinking: "思考中…",
+  thinking: "正在思考",
   thinkingLabel: "思考",
-  thinkingDone: "思考 · {{label}}",
+  thinkingDone: "{{label}}",
   thinkingTookSeconds: "持续了几秒",
   waiting: "等待后台任务或同伴消息…",
   // Desktop notifications (store/session.ts, store/wsHandlers/stream.ts)
