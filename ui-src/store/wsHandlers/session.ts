@@ -148,8 +148,11 @@ export const sessionHandlers = {
     }, 1000);
     const st = useAppStore.getState();
     if (!st.openSessions.has(path)) return;
+    // This client still holds the session (archive / delete), so its right-panel slot dies
+    // with it on BOTH branches — the sidebar delete path disposes the same way (idempotent).
+    // A session only LRU-evicted from openSessions keeps its slot by design, hence the guard.
+    disposeRightSlot(path);
     if (st.activePath === path) {
-      disposeRightSlot(path);
       useAppStore.setState((s) => {
         const openSessions = new Map(s.openSessions);
         openSessions.delete(path);

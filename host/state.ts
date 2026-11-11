@@ -222,6 +222,20 @@ export function broadcastSessionUnloaded(paths: Iterable<string>): void {
 }
 
 /**
+ * Pooled subagent entries whose transcript lives under `sessionPath`'s artifacts dir
+ * (`<session file minus .jsonl>/`, the directory handleLoadSession detects children by).
+ * Deleting/archiving a parent must take its descendants along: their paths sit one or more
+ * directories BELOW the parent's, so the path match every other RPC uses never sees them.
+ */
+export function subagentEntriesUnder(sessionPath: string, pool: Iterable<[string, PoolEntry]> = sessions): [string, PoolEntry][] {
+  if (!sessionPath.endsWith(".jsonl")) return [];
+  const dir = sessionPath.slice(0, -".jsonl".length) + path.sep;
+  const out: [string, PoolEntry][] = [];
+  for (const [key, e] of pool) if (e.isSubagent && e.path.startsWith(dir)) out.push([key, e]);
+  return out;
+}
+
+/**
  * Drop the whole pool for a profile switch: unsubscribe each entry and invalidate
  * every channel's slot. No dispose — these AgentSessions belong to the profile
  * being left behind (its registry/settings), and the base's wind-down would write

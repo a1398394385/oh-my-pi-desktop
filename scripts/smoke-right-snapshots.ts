@@ -70,15 +70,18 @@ restoreRightSlot("/kept");
 assert.equal(useAppStore.getState().fileView, null);
 console.log("✓ save 往返：投影入槽、半加载视图跳过");
 
-// ---- 5. welcome pseudo-slot: null path is one slot like any other; first open inherits
+// ---- 5. welcome pseudo-slot: null is never written (BUG-137: activation from the welcome
+// page passed null and stored that session's tabs); sessions still inherit the live layout
+// on first open, the welcome page always restores its own clean slot
 useAppStore.setState({ rightTabs: ["terminal"], rightTab: "terminal" });
 saveRightSlot(null);
 restoreRightSlot("/fresh");
 assert.deepEqual(useAppStore.getState().rightTabs, ["terminal"], "无槽首开继承当前布局");
 assert.equal(useAppStore.getState().selectedFile, null, "继承时清会话级详情");
 restoreRightSlot(null);
-assert.deepEqual(useAppStore.getState().rightTabs, ["terminal"], "welcome 槽恢复");
-console.log("✓ welcome 伪会话槽同构（null 即 welcome）");
+assert.deepEqual(useAppStore.getState().rightTabs, [], "welcome 槽拒写 null：恢复出干净面板");
+assert.equal(useAppStore.getState().rightCollapsed, true, "welcome 面板保持折叠");
+console.log("✓ welcome 伪会话槽：拒写 null，恢复即干净");
 
 // ---- 6. directed auto-open: a background session's browsing lands in ITS slot
 useAppStore.setState({ activePath: "/viewing", rightTabs: ["tree"], rightTab: "tree", rightCollapsed: false });

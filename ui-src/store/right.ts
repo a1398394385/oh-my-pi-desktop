@@ -217,9 +217,13 @@ function persistRightSlots(): void {
   }
 }
 
-/** Write the live projection into session `path`'s slot (null = the welcome pseudo-slot). */
+/** Write the live projection into session `path`'s slot. A null path is refused: the welcome
+ *  pseudo-slot is materialized ONLY by restoreRightSlot's clean branch — saving the live
+ *  projection there (activation from the welcome page passes null) captured that session's
+ *  tabs and made them resurface on the next welcome screen (BUG-137). */
 export function saveRightSlot(path: string | null): void {
-  const key = path ?? WELCOME_SLOT;
+  if (path === null) return;
+  const key = path;
   const st = useAppStore.getState();
   const disposers = rightSlots.get(key)?.disposers ?? new Set(); // slot update, not destruction: keep live disposers
   // Shared terminals belong to the project registry, not to this session: persisting them

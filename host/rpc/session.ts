@@ -6,7 +6,7 @@ import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
 import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry, lookupSetting } from "../bootstrap.ts";
 import { repoGroups } from "../repo-roots.ts";
-import { H, sessions, findPooledSession, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus, broadcastSessionUnloaded } from "../state.ts";
+import { H, sessions, findPooledSession, stampEvent, defaultWorkspaceDir, pushPoolSnapshot, eachUiWs, entryBus, broadcastSessionUnloaded, subagentEntriesUnder } from "../state.ts";
 import type { PoolEntry } from "../state.ts";
 import type { SessionListFrame } from "../wire/frames-session.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
@@ -303,6 +303,33 @@ async function evictPoolEntry(key: string, e: PoolEntry): Promise<void> {
   broadcastSessionUnloaded([e.path, ...e.previousPaths]);
 }
 
+/** Evict the pooled descendants of one session file (match: subagentEntriesUnder) — the
+    artifacts dir delete_session removes wholesale and the tree an archive retires. Without
+    this the child entry outlives its transcript (a subagent page stays open over a deleted
+    file) and its slot survives because the broadcast never carried its path. */
+async function evictSubagentEntries(sessionPath: string): Promise<void> {
+  for (const [key, e] of subagentEntriesUnder(sessionPath)) {
+    // Same release sequence as the parent's teardown; failures must not abort it.
+    try {
+      releaseMcpForSession(key, e);
+    } catch (err) {
+      safeStderr(`[host] subagent eviction release MCP failed: ${err}\n`);
+    }
+    try {
+      e.unsubscribe();
+    } catch (err) {
+      safeStderr(`[host] subagent eviction unsubscribe failed: ${err}\n`);
+    }
+    sessions.delete(key);
+    broadcastSessionUnloaded([e.path, ...(e.previousPaths ?? [])]);
+    try {
+      await e.session.dispose();
+    } catch (err) {
+      safeStderr(`[host] subagent eviction dispose failed: ${err}\n`);
+    }
+  }
+}
+
 // N2: idle LRU eviction. The pool only shrank via explicit RPCs, so ws churn
 // (frontend reload, remote disconnect) left detached-but-pooled entries
 // resident forever, and every pushPoolSnapshot walk grew with them. Teardown
@@ -540,6 +567,9 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // Automations bound to this session's transcript go away with it: their runs
     // would otherwise keep waking a target whose file no longer exists.
     retireAutomationsForPaths(knownPaths.size > 0 ? knownPaths : [p], "delete");
+    // The artifacts dir removal below takes every child transcript with it; their pooled
+    // entries and UI slots would otherwise survive over a gone file.
+    await evictSubagentEntries(p);
     try {
       await fs.promises.unlink(p);
     } catch (err: any) {
@@ -632,6 +662,10 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         eachUiWs(pushPoolSnapshot);
       }
     }
+    // Archiving retires the whole tree: a pooled child would keep its AgentSession resident
+    // and a subagent page would stay open over a transcript nothing lists any more. Files
+    // stay on disk (unarchiving revives the tree), so this only evicts + broadcasts.
+    if (on) await evictSubagentEntries(entry?.path ?? p);
     await refreshAllSessionLists(ws);
   },
   async add_project(ws, msg) {
