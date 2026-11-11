@@ -479,6 +479,10 @@ const ALLOWED_EDGES = new Set([
   "rpc/btw.ts→btw.ts", "rpc/btw.ts→bootstrap.ts", "rpc/btw.ts→state.ts",
   "rpc/btw.ts→session-lifecycle.ts", "rpc/btw.ts→stderr.ts", "rpc/btw.ts→rpc/types.ts",
   "rpc/index.ts→rpc/btw.ts",
+  // Promotion (btw_promote) graduates a topic into a real session: the transcript is
+  // built from the persisted entries (same source the load path uses) and the sidebar
+  // list is refreshed through the session domain's own push.
+  "rpc/btw.ts→translate-history.ts", "rpc/btw.ts→rpc/session.ts",
   // rpc/collab.ts: relay collab rooms over pooled sessions (statusLine seam fans live frames)
   "rpc/collab.ts→state.ts", "rpc/collab.ts→i18n/host.ts", "rpc/collab.ts→stderr.ts",
   "rpc/collab.ts→wire/frames-live.ts", "rpc/collab.ts→rpc/types.ts",

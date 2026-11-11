@@ -4,9 +4,11 @@
 import { getBtwLatestTurn, SessionManager } from "../bootstrap.ts";
 import { btwAsk, btwCancel, collectBtwHistory } from "../btw.ts";
 import { attachEntry, createSessionCore } from "../session-lifecycle.ts";
-import { sessions, stampEvent, type TranscriptItem } from "../state.ts";
+import { sessions, stampEvent } from "../state.ts";
 import { safeStderr } from "../stderr.ts";
 import { hostI18n } from "../i18n/host.ts";
+import { entriesToTranscript } from "../translate-history.ts";
+import { refreshAllSessionLists } from "./session.ts";
 import type { RpcHandler } from "./types";
 
 export const btwHandlers: Record<string, RpcHandler> = {
@@ -49,26 +51,30 @@ export const btwHandlers: Record<string, RpcHandler> = {
       input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     };
-    const transcript: TranscriptItem[] = [];
     for (const turn of turns) {
       const userMsg = {
-        role: "user", content: [{ type: "text", text: turn.question }], attribution: "agent", timestamp: turn.createdAt,
+        role: "user" as const, content: [{ type: "text" as const, text: turn.question }], attribution: "agent" as const, timestamp: turn.createdAt,
       };
       manager.appendMessage(userMsg);
-      transcript.push({ role: "user", text: turn.question });
       if (!turn.answer) continue;
       // Replay-shape assistant message (same construction the SDK uses when replaying saved
       // BTW answers): visible text only, zeroed usage, not a billed provider turn.
       const assistantMsg = {
-        role: "assistant", content: [{ type: "text", text: turn.answer }],
+        role: "assistant" as const, content: [{ type: "text" as const, text: turn.answer }],
         api: model.api, provider: model.provider, model: model.id, usage: zeroUsage,
-        stopReason: "stop", timestamp: turn.updatedAt,
+        stopReason: "stop" as const, timestamp: turn.updatedAt,
       };
       manager.appendMessage(assistantMsg);
-      transcript.push({ role: "assistant", text: turn.answer });
     }
     const title = String(msg.title ?? "").trim() || record.question;
     await manager.setSessionName(title, "user");
+    // Flush before announcing: the sidebar lists sessions from disk, and a later
+    // reopen rebuilds the transcript from that file.
+    await manager.flush();
+    // Build the transcript from the persisted entries (same source the load path
+    // uses), not by hand: the hand-built rows lack the entry ids / turn-final
+    // marks the renderer needs, so the chat column stayed empty.
+    const transcript = entriesToTranscript(manager.getBranch(), manager.getSessionFile() ?? undefined);
     const { sessionId: newId, entry, eventBus } = await createSessionCore(cwd, manager, transcript, source.session.model);
     attachEntry(ws, newId, entry, eventBus);
     ws.send(
@@ -85,6 +91,13 @@ export const btwHandlers: Record<string, RpcHandler> = {
         }),
       ),
     );
+    // The transcript rides the messages frame (the frontend rebuilds the chat
+    // column from it); it must land after session_created, otherwise the store
+    // has no slot for this session yet and drops the frame.
+    ws.send(JSON.stringify({ type: "messages", sessionId: newId, messages: transcript }));
+    // Sidebar refresh: without it the new session shows up only after the next
+    // list push (pool snapshot / reload).
+    await refreshAllSessionLists(ws);
     safeStderr(`[btw] promoted topic ${recordId} to session ${newId.slice(0, 8)}\n`);
   },
 };
