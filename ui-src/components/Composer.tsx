@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send } from "../store";
 import { bgJobsKey } from "../store/session";
 import { invoke } from "../store/ws";
+import { REMOTE } from "../remote";
 import { expandRightPanel } from "./main/right/tabs";
 import type { PromptAttachment } from "../types/frames";
 import { closeAllMenus, motionEnabled } from "../shell";
@@ -77,11 +78,9 @@ const BAR_STAGES = 7;
 
 // Remote-control browser client (spec §4.1): no Tauri bridge and not the
 // ?preview=1 ui:dev sample page; a ?ws= dev direct-connect is a local channel
-// instead (.has() form kept identical to ws.ts/layout.ts). The mic/STT path
+// instead (predicate shared via ui-src/remote.ts). The mic/STT path
 // needs a secure context, so remote never renders the voice button and
 // voiceMode reads as false.
-const REMOTE =
-  !invoke && !new URLSearchParams(location.search).has("preview") && !new URLSearchParams(location.search).has("ws");
 
 // Build the attachment payload sent along with the prompt (caller clears
 // pendingFiles after sending)

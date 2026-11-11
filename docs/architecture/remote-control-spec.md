@@ -108,6 +108,8 @@
 
 `App.tsx` 不挂 `<Settings/>`;侧边栏/头部的设置入口不渲染;`openSettings` 置为 no-op。host denylist 为兜底(§3.5),UI 隐藏只是体验层。
 
+**原生窗口装饰**:远程客户端是普通浏览器页面,拿不到宿主的原生窗口控件 —— macOS 红绿灯、Windows 最小化/最大化/关闭都不存在。因此 `REMOTE` 时:① Windows 客户端不渲染 `WindowControls`(右上角三枚按钮);② macOS 客户端不预留红绿灯左条带(`html[data-remote="true"]` 把 `--top-toggle-left` 收到 14px,与 Windows 几何一致),头部左侧内容贴到窗口边缘。
+
 ### 4.3 单栏布局(≤768px,响应式,不看 UA)
 
 导航模型对齐 ZCode 远程端(2026-10-17 改造,取代此前的底部三段 tab;右栏由浮动抽屉改为整页):

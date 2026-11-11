@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 // withGlobalTauri-injected window API (the frontend does not bundle @tauri-apps/api).
 // __TAURI__ global declaration lives in store/ws.ts (window typing: ./titlebar-window)
 import type { TauriWindow } from "../store/titlebar-window";
+import { REMOTE } from "../remote";
 
 function win(): TauriWindow {
   // Browser direct-debug (?preview=1, no Tauri injection): window controls are
@@ -71,6 +72,9 @@ export default function WindowControls() {
     }).then((fn) => { unlisten = fn; });
     return () => { unlisten?.(); };
   }, []);
+  // A remote client runs in a plain browser: no Tauri window API, so these three
+  // buttons are dead weight there (and a Windows-hosted remote would show them).
+  if (REMOTE) return null;
   return (
     <div className="win-controls">
       <button type="button" className="win-btn" title={t("misc.minimize")} onClick={() => void win().minimize()}>

@@ -12,6 +12,7 @@ import { warmupHighlighter } from "./lib/highlighter";
 import { resolveTheme } from "./theme-registry";
 import { landBrowserTabs, restoreRightSlot } from "./store/right";
 import { IS_MAC } from "./platform";
+import { REMOTE } from "./remote";
 import { emitBrowserFrame, emitBrowserPick } from "./store/browserMirror";
 import { syncAudioToPref } from "./components/chat/railAudio";
 import { openSessionByPath } from "./store/session";
@@ -33,6 +34,11 @@ import { addIncomingPaths } from "./lib/incoming-files";
 // Platform flag for CSS: the native traffic-light geometry (trafficLightPosition)
 // only exists on macOS, so layout pinned to it must not leak to Windows.
 document.documentElement.dataset.platform = IS_MAC ? "macos" : "windows";
+
+// Remote clients are plain browser pages: the macOS traffic lights are native
+// window chrome of the HOST and never reach a browser, so the top-left strip
+// reserved for them is dead space there (css/global/tokens.css shrinks it).
+if (REMOTE) document.documentElement.dataset.remote = "true";
 
 // Traffic lights disappear in native macOS fullscreen; resize covers both transitions.
 const nativeWindow = IS_MAC ? window.__TAURI__?.window?.getCurrentWindow() : undefined;

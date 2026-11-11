@@ -34,14 +34,10 @@ export interface LayoutSlice {
   setMobileCol(col: MobileCol): void;
 }
 
-// Remote-mode predicate (spec §4.1): outside the Tauri shell and not the ?preview=1 debug
-// page = a browser remote client; a ?ws= dev direct-connect is a local channel instead
-// (.has() form kept identical to ws.ts/Composer.tsx so an invalid port degrades the same
-// way in all three). This duplicate keeps App/slices free of a ws.ts import cycle.
-export const REMOTE =
-  !window.__TAURI__?.core?.invoke &&
-  !new URLSearchParams(location.search).has("preview") &&
-  !new URLSearchParams(location.search).has("ws");
+// Remote-mode predicate lives in ui-src/remote.ts (no store imports) so non-store
+// consumers can use it without an import cycle through store/index.ts.
+import { REMOTE } from "../remote";
+export { REMOTE };
 
 const narrowMql = window.matchMedia("(max-width: 768px)");
 // setBump (not bare set) so the listener update flows through the store's named write entry

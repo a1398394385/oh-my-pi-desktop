@@ -159,7 +159,11 @@
   --dz-card: rgba(48,48,50,.66);
 }
 
-html[data-platform="macos"][data-fullscreen="true"] {
+/* macOS drops the traffic lights in native fullscreen, and a remote browser client
+   never has them (they are native chrome of the HOST window). Either way the top-left
+   strip reserved for them is dead space, so collapse it to the Windows inset. */
+html[data-platform="macos"][data-fullscreen="true"],
+html[data-platform="macos"][data-remote="true"] {
   --top-toggle-left: calc(14px / var(--ui-zoom, 1));
 }
 

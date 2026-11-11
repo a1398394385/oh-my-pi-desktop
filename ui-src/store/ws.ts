@@ -222,10 +222,10 @@ export function devWsPort(): string | null {
 // there), and not a ?ws= dev direct-connect (a local-channel loopback where remote
 // affordances — hidden settings, no voice button, key entry — would be wrong). The remote
 // WS endpoint is this same origin's /ws gated by the access key.
-// The ?ws= check mirrors layout.ts/Composer.tsx (.has() form in all three so an invalid
-// port degrades identically everywhere: connect() falls through to the noHost surface).
-export const REMOTE =
-  !invoke && !new URLSearchParams(window.location.search).has("preview") && !new URLSearchParams(window.location.search).has("ws");
+// The predicate itself lives in ui-src/remote.ts (single source of truth, import-cycle
+// free); this re-export keeps the existing store/ws.ts import path working.
+import { REMOTE } from "../remote";
+export { REMOTE };
 
 const REMOTE_KEY_STORAGE = "omp-remote-key";
 
