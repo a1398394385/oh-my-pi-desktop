@@ -170,6 +170,7 @@ html[data-platform="macos"][data-fullscreen="true"] {
   --select:    #cfd0d4;
   --menu-hl:   #F0F0F0;
   --card-hl:   var(--panel-2);
+  --rtab-on:   var(--panel-2);
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);
