@@ -725,6 +725,11 @@ export interface SessionModelFrame {
   sessionId: string;
   model: string | null;
   thinking: string;
+  /** Resume substitution (BUG-125 residue): the persisted model no longer resolves
+   * (retired id / lost credentials) and the session runs on another one. Set only
+   * on the push right after session_created; live set_model / thinking pushes omit it. */
+  fallbackFrom?: string;
+  fallbackTo?: string;
 }
 
 /** Session thinking level reply (host/host.ts set_thinking) */

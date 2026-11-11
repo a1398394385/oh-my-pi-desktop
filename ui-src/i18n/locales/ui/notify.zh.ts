@@ -42,6 +42,9 @@ export const notifyZh = {
   forked: "已分叉出新会话",
   navigateFailed: "跳转失败",
   navigated: "已跳转到所选节点",
+  // Resume-model substitution notice (components/main/ModelFallbackNotice.tsx)
+  modelFallbackNotice: "原模型 {{from}} 不可用，已暂用 {{to}}。",
+  modelFallbackDismiss: "关闭提示",
   // Git operation toasts (store/wsHandlers/files.ts)
   changesDiscarded: "已丢弃更改",
   gitOpFailed: "git 操作失败",

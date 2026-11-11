@@ -21,6 +21,7 @@ import {
   pendingApprovals,
   pushCommandOutput,
   eachUiWs,
+  sendSessionState,
   type PoolEntry,
   type TranscriptItem,
 } from "./state.ts";
@@ -96,6 +97,32 @@ export { pushContext, countCacheBreaks } from "./session-snapshot.ts";
 // re-exported here only as an import (spawnSession / handleLoadSession use them).
 import { attachEntry, attachEntryCore, attachEntryUi } from "./session-entry-core.ts";
 export { attachEntry };
+
+// Model substitution recorded at creation: the persisted model no longer
+// resolves (retired id / dropped credentials) and the SDK resumed the
+// transcript on another one. Kept off the PoolEntry type — only the load paths
+// read it — and weak, so pool eviction releases it with the entry.
+const modelFallbacks = new WeakMap<PoolEntry, { from: string; to: string }>();
+
+/** Announce a resume-model substitution right after session_created: the banner
+ * names the model the session lost and the one it runs on now. Silent when the
+ * persisted model still resolves (no frame, no UI state). */
+function pushModelFallback(ws: { send(data: string): unknown }, sessionId: string, entry: PoolEntry): void {
+  const fb = modelFallbacks.get(entry);
+  if (!fb) return;
+  sendSessionState(
+    ws,
+    entry,
+    JSON.stringify({
+      type: "session_model",
+      sessionId,
+      model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
+      thinking: entry.session.configuredThinkingLevel?.() ?? "auto",
+      fallbackFrom: fb.from,
+      fallbackTo: fb.to,
+    }),
+  );
+}
 
 export async function createSessionCore(
   cwd: string,
@@ -189,8 +216,10 @@ export async function createSessionCore(
   // holder; a load hitting the pool reuses the same entry, and the unread
   // state lives with the entry
   const kaHolder: { entry?: PoolEntry } = {};
-  // Resume-model guard (BUG-125): see awaitPersistedModelRefresh.
-  await awaitPersistedModelRefresh(sessionManager);
+  // Resume-model guard (BUG-125): see awaitPersistedModelRefresh. A non-undefined
+  // result is a persisted model the catalog cannot resolve even after the wait —
+  // the SDK then resumes on its own fallback, and the load paths flag it.
+  const unresolvedPersistedModel = await awaitPersistedModelRefresh(sessionManager);
   const result = await createAgentSession({
     cwd,
     authStorage: H.authStorage,
@@ -292,6 +321,16 @@ export async function createSessionCore(
     hasUI: true, // The approval gate's fail-cold check goes through runner.hasUI(): without it, every approval-requiring tool errors out outright in non-yolo mode
   });
   const { session } = result;
+  // Model substitution at resume (BUG-125 residue): the persisted model never
+  // resolved, so the SDK restored this transcript on another one under
+  // allowSessionModelFallback (hasUI). Record the pair for the load paths — an
+  // explicit model (branch/fork/btw, OMP_DESKTOP_MODEL) is a user choice, never
+  // a fallback.
+  const actualModel = session.model ? `${session.model.provider}/${session.model.id}` : null;
+  const modelFallback =
+    unresolvedPersistedModel && actualModel && !initialModel && !H.modelOverride && unresolvedPersistedModel !== actualModel
+      ? { from: unresolvedPersistedModel, to: actualModel }
+      : undefined;
   // ACP runtime seams (spec §8 + T7): model_changed rebinds the tokenizer and
   // the window-derived lines; turn_end drives the §5.2/§5.3 failure-exit
   // judgment (ultimatum counting, forced-turn resolution — API-error turns
@@ -364,6 +403,7 @@ export async function createSessionCore(
     }),
   };
   kaHolder.entry = entry; // The keepalive isWanted closure takes effect (see the top of createSessionCore)
+  if (modelFallback) modelFallbacks.set(entry, modelFallback);
   entry.keepaliveSid = sessionId; // reportState pushes need the id; the closure predates its generation
   // (18.4.9) Subagent control registry: accumulates subagent snapshots from
   // the session's observability bus (created here, before any subagent can
@@ -584,6 +624,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     const frontendReloaded = !entry.uiSockets.has(ws);
     if (frontendReloaded) attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
     ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
+    pushModelFallback(ws, sessionId, entry); // Must land after session_created: the slot is replaced wholesale there
     await pushSessionSnapshot(ws, sessionId, entry, {
       mode: "reuse",
       sessionPath,
@@ -632,6 +673,7 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   entry.activeMs = sumRunDurationMs(branch);
   attachEntry(ws, sessionId, entry, eventBus);
   ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
+  pushModelFallback(ws, sessionId, entry); // After session_created; the rebuild branch is the main reopen path
   await pushSessionSnapshot(ws, sessionId, entry, { mode: "rebuild", sessionPath, entries: branch });
   safeStderr(hostI18n.t("errors.lifecycle.sessionLoaded", { sessionId: sessionId.slice(0, 8), cwd: entry.cwd, entries: transcript.length }));
 }

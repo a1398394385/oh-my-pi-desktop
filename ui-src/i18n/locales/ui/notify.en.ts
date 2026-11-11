@@ -40,6 +40,9 @@ export const notifyEn = {
   forked: "Forked to a new session",
   navigateFailed: "Navigation failed",
   navigated: "Navigated to the selected node",
+  // Resume-model substitution notice (components/main/ModelFallbackNotice.tsx)
+  modelFallbackNotice: "The model this session was saved with, {{from}}, is unavailable — continuing on {{to}}.",
+  modelFallbackDismiss: "Dismiss",
   // Git operation toasts (store/wsHandlers/files.ts)
   changesDiscarded: "Changes discarded",
   gitOpFailed: "git operation failed",

@@ -44,6 +44,13 @@ function applyForkReceipt(msg: { ok: boolean; error?: string; newPath?: string; 
   }, SUCCESS_FLASH_MS);
 }
 
+// session_created replaces the whole slot; the resume-model notice and its dismissal are
+// frontend-only state (the host re-pushes only when a substitution exists and cannot know
+// whether the user already closed it), so they survive the replace on a re-open.
+function carriedModelFallback(prev: OpenSession | undefined): Pick<OpenSession, "modelFallback" | "modelFallbackDismissed"> {
+  return prev ? { modelFallback: prev.modelFallback, modelFallbackDismissed: prev.modelFallbackDismissed } : {};
+}
+
 export const sessionHandlers = {
   pool_sessions(msg) {
     // Host pool residency snapshot (attach / release / list refresh): the sidebar's "active tasks"
@@ -223,6 +230,7 @@ export const sessionHandlers = {
       }
       return {
         openSessions: new Map(s.openSessions).set(msg.path, {
+          ...carriedModelFallback(s.openSessions.get(msg.path)),
           sessionId: msg.sessionId,
           cwd: msg.cwd,
           items: [],
@@ -369,6 +377,15 @@ export const sessionHandlers = {
     updateSession(msg.sessionId, (s) => {
       s.model = msg.model;
       if (msg.thinking) s.thinking = msg.thinking;
+      // Resume substitution (BUG-125 residue): keep the pair for the notice strip.
+      // Keyed by from+to, so a switch-back re-push of the same pair leaves a
+      // dismissed notice dismissed; a new pair replaces the old one.
+      if (msg.fallbackFrom && msg.fallbackTo) {
+        const cur = s.modelFallback;
+        if (!cur || cur.from !== msg.fallbackFrom || cur.to !== msg.fallbackTo) {
+          s.modelFallback = { from: msg.fallbackFrom, to: msg.fallbackTo };
+        }
+      }
     });
   },
   session_thinking(msg) {

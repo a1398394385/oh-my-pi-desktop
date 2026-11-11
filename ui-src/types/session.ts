@@ -386,6 +386,11 @@ export interface OpenSession {
   queued?: QueuedMessage[]; // landed from the queued frame's followUp
   steering?: QueuedMessage[]; // landed from the queued frame's steering
   externalWrite?: boolean; // the host detected writes from an external process
+  /** Resume substitution (session_model push after session_created): the persisted
+      model no longer resolves and the session runs on another one. */
+  modelFallback?: { from: string; to: string } | null;
+  /** `<from>\n<to>` of the pair the user closed: the same pair never re-opens the notice. */
+  modelFallbackDismissed?: string | null;
   autoResolved?: string; // effective resolved value when the thinking_level frame has configured === "auto"
   ctx?: { tokens: number; window: number; percent: number }; // landed from the context frame
   stats?: SessionStatsPayload; // landed from the session_stats frame

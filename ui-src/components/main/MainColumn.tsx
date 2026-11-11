@@ -20,6 +20,7 @@ import QueueCard from "../composer/QueueCard";
 import GoalCard from "../composer/GoalCard";
 import SessionNotice from "../composer/SessionNotice";
 import ConnBanner from "./ConnBanner";
+import ModelFallbackNotice from "./ModelFallbackNotice";
 
 export default function MainColumn() {
   const { t } = useTranslation();
@@ -181,7 +182,10 @@ export default function MainColumn() {
         ) : session && mainViewMode === "tree" ? (
           <MainSessionTree />
         ) : (
-          <MessagePage />
+          <>
+            <ModelFallbackNotice />
+            <MessagePage />
+          </>
         )}
         {!isCreatingNew && !automationsOpen && !hubOpen && !gitManage && (
           <>
