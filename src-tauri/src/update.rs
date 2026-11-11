@@ -15,8 +15,21 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
+
+use crate::ChildCell;
+
+/// Terminates the Bun host child, if still running. The shell only kills it from
+/// `RunEvent::Exit`, which is too late for a bundle swap: on Windows the host lives
+/// inside the install dir and its locked `omp-host.exe` makes the installer fail
+/// (the "update failed, reboot the machine" reports). Taking the handle here also
+/// keeps the Exit handler from reaping a stale child.
+fn kill_host(app: &AppHandle) {
+    if let Some(mut child) = app.state::<ChildCell>().inner().lock().unwrap().take() {
+        let _ = child.kill();
+    }
+}
 
 /// Progress event name (payload: [`UpdateProgress`]).
 const PROGRESS_EVENT: &str = "update-progress";
@@ -93,7 +106,10 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
     let update = updater
         .check()
         .await
-        .map_err(|e| format!("update-check-failed: {e}"))?
+        // Install-stage prefix: this fresh check runs because the manifest moved since
+        // update_check, and the user asked to install — a "check failed" toast would
+        // blame the wrong step.
+        .map_err(|e| format!("update-install-failed: {e}"))?
         .ok_or_else(|| "update-none-pending".to_string())?;
 
     // Running byte total lives here, not in the frontend: the plugin reports chunk
@@ -115,6 +131,11 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
                 );
             },
             move || {
+                // Bytes are on disk; the install starts next. Windows needs the host gone
+                // before the installer touches its directory (elsewhere the running exe is
+                // replaceable and the app stays usable until relaunch).
+                #[cfg(windows)]
+                kill_host(&finish_app);
                 let _ = finish_app.emit(
                     PROGRESS_EVENT,
                     UpdateProgress {
@@ -137,5 +158,8 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
 /// the running image is replaced.
 #[tauri::command]
 pub fn update_relaunch(app: AppHandle) {
-    app.restart();
+    // request_restart, not restart(): restart() on the main thread re-execs directly and
+    // never dispatches RunEvent::Exit, leaving the host running against the old bundle.
+    kill_host(&app);
+    app.request_restart();
 }

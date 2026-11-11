@@ -159,6 +159,19 @@ function UpdateRow() {
     };
   }, []);
 
+  // Host errors arrive as "<code>: <detail>". The code picks which step failed — an
+  // install that trips its own manifest re-check must not be reported as a failed
+  // check — and the detail stays as diagnostic text rather than the whole English blob.
+  const updateErrorText = (raw: unknown): string => {
+    const text = String(raw);
+    const code = text.split(":")[0];
+    const detail = text.slice(code.length).replace(/^:\s*/, "") || text;
+    const failedInstall = code.startsWith("update-install-failed") || code === "update-none-pending";
+    return failedInstall
+      ? t("settingsPage.general.updateInstallFailed", { error: detail })
+      : t("settingsPage.general.updateFailed", { error: detail });
+  };
+
   const check = async () => {
     if (!invoke) {
       toast(t("settingsPage.general.updateUnsupported"));
@@ -175,7 +188,7 @@ function UpdateRow() {
       if (!found.available) toast(t("settingsPage.general.updateUpToDate", { version: found.currentVersion }));
     } catch (err) {
       setPhase("idle");
-      toast(t("settingsPage.general.updateFailed", { error: String(err) }));
+      toast(updateErrorText(err));
     }
   };
 
@@ -193,7 +206,7 @@ function UpdateRow() {
       setPhase("installed");
     } catch (err) {
       setPhase(info?.available ? "available" : "idle");
-      toast(t("settingsPage.general.updateInstallFailed", { error: String(err) }));
+      toast(updateErrorText(err));
     }
   };
 
