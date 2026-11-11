@@ -639,10 +639,26 @@ export function requestApproval(
   if (deadline && deadline.ms > 0) {
     timer = setTimeout(() => {
       settle(deadline.answer);
-      ws.send(JSON.stringify(stampEvent({ type: "approval_resolved", requestId })));
+      pushApprovalResolved(ws, sessionId, requestId);
     }, deadline.ms);
   }
   return promise;
+}
+
+/** approval_resolved fan-out: the request frame is replayed to every UI that attaches
+ *  mid-approval (attachEntryUi), so the receipt must reach those UIs too — a card left
+ *  standing on the other channel answers an already-settled requestId and fails with
+ *  "approval not found". The answerer gets its own copy first. */
+function pushApprovalResolved(
+  ws: { send(data: string): unknown },
+  sessionId: string,
+  requestId: string,
+): void {
+  const data = JSON.stringify({ type: "approval_resolved", requestId });
+  ws.send(data);
+  const entry = sessions.get(sessionId);
+  if (!entry) return;
+  for (const w of entry.uiSockets) if (w !== ws) w.send(data);
 }
 
 /**
@@ -664,7 +680,7 @@ export function settleApprovalResponse(
   // resolve (session-lifecycle askDialog) parses the serialized
   // ExtensionAskDialogSubmitResult itself, so this stays pass-through.
   pending.resolve(typeof msg.answer === "string" ? msg.answer : undefined);
-  ws.send(JSON.stringify({ type: "approval_resolved", requestId: msg.requestId }));
+  pushApprovalResolved(ws, pending.sessionId, msg.requestId);
 }
 
 /** Send one session-state frame to the requesting socket AND every other UI attached to the
