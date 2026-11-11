@@ -187,6 +187,26 @@ svg { vertical-align: middle; }
 
 .menu .mh { font-size: var(--ui-fs-sm); color: var(--faint); padding: 5px 8px 2px; }
 
+/* Long sections of a dropdown (open-with app list, local/remote branch lists) get a fixed window
+   of --mi-scroll-rows rows: the rest scrolls inside instead of scrolling the whole menu, so the
+   actions below them stay reachable. Rows are pinned to 30px so the hint lines up with the last
+   one. The covered row is hidden rather than just painted over, so a click cannot land on a row
+   the user cannot see. */
+.mi-scroll-wrap { position: relative; }
+
+.mi-scroll { max-height: calc(var(--mi-scroll-rows, 4) * 30px); overflow-y: auto; }
+
+.mi-scroll .mi { height: 30px; }
+
+.mi-scroll .mi.covered { visibility: hidden; pointer-events: none; }
+
+.mi-scroll-hint {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--ctl-bg); color: var(--faint);
+  font-size: var(--ui-fs-sm); pointer-events: none;
+}
+
 /* Selected-option mark: gray ✓ pinned to the row's right end (order:1 + margin-left:auto outranks
    the label cell, which is the row's flexible child). One rule for every dropdown, so a new menu
    gets the same mark as the composer model picker without a local override. */

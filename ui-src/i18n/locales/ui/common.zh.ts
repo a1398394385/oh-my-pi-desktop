@@ -15,6 +15,7 @@ export const commonZh = {
   none: "（无）",
   failed: "失败",
   success: "成功",
+  scrollForMore: "向下滚动查看更多",
 };
 
 export default commonZh;

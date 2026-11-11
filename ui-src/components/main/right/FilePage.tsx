@@ -315,18 +315,20 @@ export function OpenWithMenu({ target, root, mdView, file, open, onClose, anchor
       ) : openApps.apps.length === 0 ? (
         <div className="mi empty">{t("right.noOpenApps")}</div>
       ) : (
-        openApps.apps.map((app) => (
-          <button type="button" key={app.id} className="mi" onClick={() => openIn(app.id)}>
-            <span className="mi-ic">
-              {app.iconDataUrl ? (
-                <img src={app.iconDataUrl} alt="" />
-              ) : (
-                <Icon name={app.kind ? FALLBACK_ICON[app.kind] : "code"} size={14} />
-              )}
-            </span>
-            {app.name}
-          </button>
-        ))
+        <MenuScrollList length={openApps.apps.length} rows={4} resetKey={open}>
+          {openApps.apps.map((app) => (
+            <button type="button" key={app.id} className="mi" onClick={() => openIn(app.id)}>
+              <span className="mi-ic">
+                {app.iconDataUrl ? (
+                  <img src={app.iconDataUrl} alt="" />
+                ) : (
+                  <Icon name={app.kind ? FALLBACK_ICON[app.kind] : "code"} size={14} />
+                )}
+              </span>
+              {app.name}
+            </button>
+          ))}
+        </MenuScrollList>
       )}
       <div className="sep" />
       {file && (

@@ -13,6 +13,7 @@ export const commonEn = {
   none: "(none)",
   failed: "Failed",
   success: "Success",
+  scrollForMore: "Scroll for more",
 };
 
 export default commonEn;

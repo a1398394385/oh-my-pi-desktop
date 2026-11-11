@@ -12,6 +12,10 @@ import { useTranslation } from "react-i18next";
 import { send } from "../../store";
 import { placeMenu } from "../../shell";
 import Icon from "../../Icon";
+import MenuScrollList from "../shared/MenuScrollList";
+
+/** Rows visible per branch list before it scrolls inside the menu (see MenuScrollList) */
+const BRANCH_ROWS = 5;
 
 interface BranchMenuProps {
   anchorRect: DOMRect;
@@ -53,37 +57,41 @@ export default function BranchMenu({ anchorRect, onClose, branches, remotes, cur
           anywhere and the checked-out state looks unset rather than intentional. */}
       {detached && <div className="mi" style={{ opacity: 0.7, cursor: "default" }}>{t("gitPage.detachedHead", { oid: current })}</div>}
       {detached && (branches.length > 0 || remotes.length > 0) && <div className="sep" />}
-      {branches.map((b) => (
-        <div
-          key={b}
-          className="mi"
-          onClick={() => {
-            if (b !== current) send({ type: "switch_git_branch", cwd, branch: b });
-            onClose();
-          }}
-        >
-          <span className="ck">{b === current ? "✓" : ""}</span>
-          {/* git-fork, same glyph as the branch-picker capsule: one branch icon family across the page */}
-          <Icon name="gitFork" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
-          {b}
-        </div>
-      ))}
+      <MenuScrollList length={branches.length} rows={BRANCH_ROWS}>
+        {branches.map((b) => (
+          <div
+            key={b}
+            className="mi"
+            onClick={() => {
+              if (b !== current) send({ type: "switch_git_branch", cwd, branch: b });
+              onClose();
+            }}
+          >
+            <span className="ck">{b === current ? "✓" : ""}</span>
+            {/* git-fork, same glyph as the branch-picker capsule: one branch icon family across the page */}
+            <Icon name="gitFork" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
+            {b}
+          </div>
+        ))}
+      </MenuScrollList>
       {/* Remote-tracking branches under a separator; picking one checks out a local tracking branch (host checkout --track) */}
       {remotes.length > 0 && <div className="sep" />}
-      {remotes.map((b) => (
-        <div
-          key={b}
-          className="mi"
-          onClick={() => {
-            if (b !== current) send({ type: "switch_git_branch", cwd, branch: b });
-            onClose();
-          }}
-        >
-          <span className="ck">{b === current ? "✓" : ""}</span>
-          <Icon name="gitFork" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
-          {b}
-        </div>
-      ))}
+      <MenuScrollList length={remotes.length} rows={BRANCH_ROWS}>
+        {remotes.map((b) => (
+          <div
+            key={b}
+            className="mi"
+            onClick={() => {
+              if (b !== current) send({ type: "switch_git_branch", cwd, branch: b });
+              onClose();
+            }}
+          >
+            <span className="ck">{b === current ? "✓" : ""}</span>
+            <Icon name="gitFork" size={15} className="mi-ic" style={{ color: "var(--dim)" }} />
+            {b}
+          </div>
+        ))}
+      </MenuScrollList>
     </div>
   ), document.body);
 }
