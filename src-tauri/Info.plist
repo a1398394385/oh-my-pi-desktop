@@ -7,5 +7,10 @@
        refused outright in packaged builds. -->
   <key>NSScreenCaptureUsageDescription</key>
   <string>omp 需要屏幕录制权限来读取系统正在播放的音频,驱动消息区音乐律动。不录屏、不存储音频。</string>
+  <!-- Dictation (host/voice.ts → native AudioCapture). Without this key macOS
+       refuses the microphone outright in packaged builds, and the only feedback
+       is a transient toast. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>omp 需要麦克风权限来把语音转成文字输入。仅在长按发送键说话时录音,不保存音频。</string>
 </dict>
 </plist>
