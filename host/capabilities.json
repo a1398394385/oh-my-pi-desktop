@@ -556,7 +556,7 @@
       "id": "set_branch_titles",
       "kind": "settings",
       "risk": "write",
-      "note": "实验页开关：写入 omp-desktop.json 的 sessionTitles.branchTitles（默认关）。开启后每条标题以 branchTitle custom entry 记入当前分支，切分支时把该分支自己的标题镜像到文件头（侧边栏随之切换），header 的 titleSource 改写为 user 以便绕开底座对 auto 的拒绝"
+      "note": "行为与交互页（会话标题组）开关：写入 omp-desktop.json 的 sessionTitles.branchTitles（默认关）。开启后每条标题以 branchTitle custom entry 记入当前分支，切分支时把该分支自己的标题镜像到文件头（侧边栏随之切换），header 的 titleSource 改写为 user 以便绕开底座对 auto 的拒绝"
     },
     {
       "id": "set_plugins_enabled",

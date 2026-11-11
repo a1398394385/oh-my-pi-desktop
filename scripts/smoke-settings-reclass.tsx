@@ -4,7 +4,7 @@
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-settings-reclass.tsx
 import { strict as assert } from "node:assert";
 
-const { PAGE_PLACEMENT, HIDDEN_KEYS, STATIC_KEY_PAGE_MAP, SPECIAL_KEY_PAGES, buildKeyToPageMap } = await import(
+const { PAGE_PLACEMENT, HIDDEN_KEYS, STATIC_KEY_PAGE_MAP, SPECIAL_KEY_PAGES, buildKeyToPageMap, getPageIdForKey } = await import(
   "../ui-src/components/settings/placement"
 );
 
@@ -51,6 +51,7 @@ const map = buildKeyToPageMap(schema);
 assert.equal(map.hideThinkingBlock, "pg-appearance", "隐藏思考块搜索落到外观页");
 assert.equal(map["extensionHandlers.toolCallTimeoutMs"], "pg-hooks", "钩子超时只在钩子页");
 assert.equal(map["collab.relayUrl"], "pg-services", "协作键搜索落到服务页");
+assert.equal(getPageIdForKey("ask.timeout", schema), "pg-interaction", "提问超时搜索落到行为与交互页");
 assert.equal(STATIC_KEY_PAGE_MAP["marketplace.autoUpdate"], undefined, "隐藏的市场开关不再进静态搜索表");
 assert.ok(HIDDEN_KEYS["marketplace.autoUpdate"], "市场开关仍在隐藏名单");
 
@@ -61,9 +62,9 @@ const uiFied: Record<string, string> = {
   "branchSummary.reserveTokens": "pg-context", "compaction.modelThresholdsEnabled": "pg-context",
   "retry.enabled": "pg-model", "retry.baseDelayMs": "pg-model",
   "providers.anthropic.slowMode": "pg-services",
-  "commit.cacheEnabled": "pg-general", "commit.cacheTtlDays": "pg-general",
-  "commit.mapReduceEnabled": "pg-general", "commit.mapReduceThreshold": "pg-general",
-  "commit.mapBatchTokenBudget": "pg-general", "commit.changelogMaxDiffChars": "pg-general",
+  "commit.cacheEnabled": "pg-developer", "commit.cacheTtlDays": "pg-developer",
+  "commit.mapReduceEnabled": "pg-developer", "commit.mapReduceThreshold": "pg-developer",
+  "commit.mapBatchTokenBudget": "pg-developer", "commit.changelogMaxDiffChars": "pg-developer",
   "shellPath": "pg-shell", "shellCommandPrefix": "pg-shell",
   "async.maxJobs": "pg-tools",
   "gc.compress": "pg-developer", "gc.compressAfterDays": "pg-developer",

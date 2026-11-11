@@ -1,13 +1,16 @@
 // Settings page: interaction (pg-interaction). Schema rows cover the agent-side groups; the
-// desktop alerts section below is app-level (uiPrefs) and drives the Rust shell's system
-// notification + alert sound, including the macOS notification-authorization row.
-import { useEffect, useState } from "react";
+// desktop alerts section is app-level (uiPrefs) and drives the Rust shell's system
+// notification + alert sound, including the macOS notification-authorization row. The
+// session-behavior rows (ask timeout / title refresh / auto-archive) moved here from the
+// general page.
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, toast } from "../../../store";
+import { useAppStore, send, toast } from "../../../store";
 import { invoke } from "../../../store/ws";
 import { saveUiPrefs } from "../../../appearance";
 import SchemaRows, { SchemaGroupTitle, SchemaRowsBare } from "../SchemaRows";
 import { PAGE_PLACEMENT } from "../placement";
+import { Sel, Srow, Toggle } from "../common";
 
 /** Play the alert sound once so the user hears what the toggle does (no-op outside Tauri). */
 function previewSound(): void {
@@ -97,6 +100,138 @@ function NotificationPermissionRow() {
 // page mapping is unaffected by the filter.
 const NOTIFY_SECTION = { from: "interaction/Notifications", excludeKeys: ["ask.timeout"] };
 
+// Ask timeout (omp ask.timeout): the base schema files it under the
+// Notifications group, but the desktop renders it by hand (free seconds input
+// + save) instead of the preset-value dropdown, so it is excluded from the
+// schema rows of that group and drawn here.
+function AskTimeoutRow() {
+  const { t } = useTranslation();
+  const value = useAppStore((s) => s.hostSettings?.values?.["ask.timeout"]);
+  const [text, setText] = useState(value != null ? String(value) : "");
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (document.activeElement !== inputRef.current) setText(value != null ? String(value) : "");
+  }, [value]);
+  return (
+    <Srow title={t("settingsPage.interaction.askTimeoutTitle")} desc={t("settingsPage.interaction.askTimeoutDesc")} dataKey="ask.timeout">
+      <input
+        className="inp"
+        style={{ width: 100, minWidth: 0 }}
+        type="number"
+        min="0"
+        step="1"
+        placeholder="0"
+        value={text}
+        ref={inputRef}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <button
+        className="save-btn"
+        onClick={() => {
+          const raw = parseFloat(text);
+          const secs = Number.isFinite(raw) && raw >= 0 ? raw : 0;
+          send({ type: "set_setting", key: "ask.timeout", value: secs });
+        }}
+      >
+        {t("common.save")}
+      </button>
+    </Srow>
+  );
+}
+
+// Session-behavior rows moved here from the general page: title refresh
+// (host/titles.ts) and auto-archive (host/auto-archive.ts). Both are app-level
+// settings the host reports in the settings frame, not schema rows.
+function SessionBehaviorSections() {
+  const { t } = useTranslation();
+  const hs = useAppStore((s) => s.hostSettings);
+  const titleRefreshKnown = typeof hs?.sessionTitleRefresh === "boolean";
+  const titleRefreshEnabled = titleRefreshKnown && !!hs?.sessionTitleRefresh;
+  const titleRefreshPrompts = hs?.sessionTitleRefreshPrompts ?? 1;
+  const titleRefreshOptions = hs?.sessionTitleRefreshOptions?.length ? hs.sessionTitleRefreshOptions : [1, 3, 5, 10];
+  const btKnown = typeof hs?.branchTitles === "boolean";
+  const btEnabled = btKnown && !!hs?.branchTitles;
+  const archiveKnown = typeof hs?.autoArchiveEnabled === "boolean";
+  const archiveEnabled = archiveKnown && !!hs?.autoArchiveEnabled;
+  const retentionDays = hs?.autoArchiveRetentionDays ?? 14;
+  const retentionOptions = hs?.autoArchiveRetentionOptions?.length ? hs.autoArchiveRetentionOptions : [7, 14, 30, 90];
+  return (
+    <>
+      <div className="set-group-tt">{t("settingsPage.interaction.groupTitleRefresh")}</div>
+      <div className="set-card">
+        <Srow
+          title={t("settingsPage.interaction.titleRefreshTitle")}
+          desc={t("settingsPage.interaction.titleRefreshDesc")}
+          dataKey="app.titleRefresh"
+        >
+          <Toggle
+            on={titleRefreshEnabled}
+            disabled={!titleRefreshKnown}
+            onChange={() => send({ type: "set_session_title_refresh", enabled: !titleRefreshEnabled })}
+          />
+        </Srow>
+        <Srow
+          title={t("settingsPage.interaction.titleRefreshEveryTitle")}
+          desc={t("settingsPage.interaction.titleRefreshEveryDesc")}
+          dataKey="app.titleRefreshEvery"
+        >
+          <Sel
+            label={t("settingsPage.interaction.titleRefreshEveryN", { n: titleRefreshPrompts })}
+            value={String(titleRefreshPrompts)}
+            options={titleRefreshOptions.map((n) => ({
+              v: String(n),
+              label: t("settingsPage.interaction.titleRefreshEveryN", { n }),
+              ck: n === titleRefreshPrompts ? "✓" : "",
+            }))}
+            onPick={(v) => send({ type: "set_session_title_refresh", prompts: Number(v) })}
+          />
+        </Srow>
+        <Srow
+          title={t("settingsPage.interaction.branchTitlesTitle")}
+          desc={t("settingsPage.interaction.branchTitlesDesc")}
+          dataKey="app.branchTitles"
+        >
+          <Toggle
+            on={btEnabled}
+            disabled={!btKnown}
+            onChange={() => send({ type: "set_branch_titles", enabled: !btEnabled })}
+          />
+        </Srow>
+      </div>
+      <div className="set-group-tt">{t("settingsPage.interaction.groupArchive")}</div>
+      <div className="set-card">
+        <Srow
+          title={t("settingsPage.interaction.archiveAutoTitle")}
+          desc={t("settingsPage.interaction.archiveAutoDesc")}
+          dataKey="app.autoArchive"
+        >
+          <Toggle
+            on={archiveEnabled}
+            disabled={!archiveKnown}
+            onChange={() => send({ type: "set_auto_archive", enabled: !archiveEnabled })}
+          />
+        </Srow>
+        <Srow
+          title={t("settingsPage.interaction.archiveRetentionTitle")}
+          desc={t("settingsPage.interaction.archiveRetentionDesc")}
+          dataKey="app.autoArchiveRetention"
+        >
+          <Sel
+            label={t("settingsPage.interaction.archiveRetentionDays", { days: retentionDays })}
+            value={String(retentionDays)}
+            options={retentionOptions.map((d) => ({
+              v: String(d),
+              label: t("settingsPage.interaction.archiveRetentionDays", { days: d }),
+              ck: d === retentionDays ? "✓" : "",
+            }))}
+            onPick={(v) => send({ type: "set_auto_archive", retentionDays: Number(v) })}
+          />
+        </Srow>
+      </div>
+    </>
+  );
+}
+
 function DesktopAlertsSection() {
   const { t } = useTranslation();
   const prefs = useAppStore((s) => s.uiPrefs);
@@ -111,6 +246,7 @@ function DesktopAlertsSection() {
       <SchemaGroupTitle sections={[NOTIFY_SECTION]} />
       <div className="set-card">
         <SchemaRowsBare sections={[NOTIFY_SECTION]} />
+        <AskTimeoutRow />
         <div className="srow set-row" data-key="app.notifyDesktop">
           <div className="srow-tx">
             <b>{t("settingsPage.alerts.desktopTitle")}</b>
@@ -161,6 +297,7 @@ export default function InteractionPage() {
       <SchemaRows sections={before} />
       <DesktopAlertsSection />
       <SchemaRows sections={after} />
+      <SessionBehaviorSections />
     </div>
   );
 }

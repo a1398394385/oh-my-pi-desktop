@@ -43,9 +43,6 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   ],
   "pg-general": [
     { from: "interaction/Startup & Updates" },
-    // ui-less commit.* keys adopted from the advanced page: they belong to the Git card
-    // (commit message generation), which previously had no rows for them.
-    { from: "interaction/Git", keys: ["commit.cacheEnabled", "commit.cacheTtlDays", "commit.mapReduceEnabled", "commit.mapReduceThreshold", "commit.mapBatchTokenBudget", "commit.changelogMaxDiffChars"] },
     { from: "interaction/Power" },
   ],
   "pg-memory": [
@@ -237,6 +234,10 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { titleZh: "自动 QA", titleEn: "Auto QA", keys: ["dev.autoqa", "dev.autoqaPush.endpoint", "dev.autoqaPush.token", "dev.autoqaConsent"] },
     { titleZh: "垃圾回收（GC）", titleEn: "Garbage collection", keys: ["gc.blobs", "gc.archive", "gc.wal", "gc.coldArchiveAfterDays", "gc.retainNewestGlobal", "gc.retainNewestPerCwd", "gc.stale", "gc.staleRetainNewest", "gc.staleRetainDays", "gc.compress", "gc.compressAfterDays"] },
     { titleZh: "压缩（底层）", titleEn: "Compaction (low-level)", keys: ["compaction.reserveTokens", "compaction.keepRecentTokens", "compaction.autoContinue", "compaction.remoteEndpoint", "compaction.v2RetainedMessageBudget"] },
+    // Git card moved off pg-general: the base group only carries git.enabled
+    // (hidden on desktop), so the visible rows are the ui-less commit.* keys
+    // adopted from the advanced page (commit message generation).
+    { from: "interaction/Git", keys: ["commit.cacheEnabled", "commit.cacheTtlDays", "commit.mapReduceEnabled", "commit.mapReduceThreshold", "commit.mapBatchTokenBudget", "commit.changelogMaxDiffChars"] },
   ],
   // pg-advanced: no static sections — grouped at runtime by the first path segment of keys lacking ui metadata (see AdvancedPage)
 };
@@ -270,7 +271,7 @@ export function expandSection(section: Section, schema: Record<string, SchemaDef
 // Keys excluded from expansion, or hardcoded-rendered on a specific settings page
 export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "hideThinkingBlock": "pg-appearance",
-  "ask.timeout": "pg-general",
+  "ask.timeout": "pg-interaction",
   "computer.enabled": "pg-computer",
   "computer.display": "pg-computer",
   "browser.enabled": "pg-computer",
@@ -426,9 +427,10 @@ export const HIDDEN_KEYS: Record<string, true> = {
 // Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests
 const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   "pg-general": [
-    "power.sleepPrevention", "startup.quiet", "ask.timeout",
+    "power.sleepPrevention", "startup.quiet",
   ],
   "pg-interaction": [
+    "ask.timeout",
     "steeringMode", "followUpMode", "interruptMode", "tui.vimMode",
     "tui.vimModeDisplay", "loop.mode", "loop.conditionTimeoutMs", "composer.recallClearedDrafts",
     "treeFilterMode", "autocompleteMaxVisible", "spelling.typoDetection",

@@ -291,7 +291,8 @@ export const settingsHandlers: Record<string, RpcHandler> = {
     pushSettings();
   },
   async set_branch_titles(ws, msg) {
-    // Experimental page switch: writes sessionTitles.branchTitles — journal each
+    // Settings-page switch (interaction page, session titles group): writes
+    // sessionTitles.branchTitles — journal each
     // title on the active branch (appendCustomEntry) and mirror the branch's own
     // title into the header on branch switch. Also switches the header write source
     // to "user", without which the base would refuse the second switch.

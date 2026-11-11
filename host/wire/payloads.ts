@@ -142,7 +142,7 @@ export type SettingsPayload = SettingsSnapshot & {
   sessionTitleRefreshOptions?: number[];
   // omp-desktop.json sessionTitles.branchTitles (host/titles.ts): journal
   // each title as a branchTitle custom entry on the active branch and mirror the
-  // branch's own title into the header on branch switch. Experimental page switch.
+  // branch's own title into the header on branch switch. Settings-page switch.
   branchTitles?: boolean;
   // omp-desktop.json autoArchive section (host/auto-archive.ts): the periodic
   // scan that archives sessions whose last activity predates the retention

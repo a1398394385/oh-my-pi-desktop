@@ -12,7 +12,7 @@ import { saveUiPrefs, saveUiLocale } from "../../../appearance";
 import i18next, { type AppLang } from "../../../i18n";
 import { IS_MAC } from "../../../platform";
 import { invoke } from "../../../store/ws";
-import { Sel, Srow, Toggle, useDropdownClose } from "../common";
+import { Sel, Srow, useDropdownClose } from "../common";
 import { formatBytes } from "../stats/data/formatters";
 import type { DesktopEnv } from "../../../types/frames";
 
@@ -335,34 +335,15 @@ export default function GeneralPage() {
   const proxyRef = useRef<HTMLInputElement>(null);
   const noProxyRef = useRef<HTMLInputElement>(null);
   const caRef = useRef<HTMLInputElement>(null);
-  const askRef = useRef<HTMLInputElement>(null);
   const [proxy, setProxy] = useState(env.httpProxy || "");
   const [noProxy, setNoProxy] = useState(env.noProxy || "");
   const [ca, setCa] = useState(env.caCerts || "");
-  const [askTimeout, setAskTimeout] = useState(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
-  // Auto-archive (host/auto-archive.ts): the switch and the retention window
-  // arrive in the host settings frame; both are unknown until that frame lands.
-  const archiveKnown = typeof hs?.autoArchiveEnabled === "boolean";
-  const archiveEnabled = archiveKnown && !!hs?.autoArchiveEnabled;
-  const retentionDays = hs?.autoArchiveRetentionDays ?? 14;
-  const retentionOptions = hs?.autoArchiveRetentionOptions?.length ? hs.autoArchiveRetentionOptions : [7, 14, 30, 90];
-  const retentionLabel = t("settingsPage.general.archiveRetentionDays", { days: retentionDays });
-  // Session-title refresh (host/titles.ts): judge-gated staleness
-  // checks every N operator prompts; both fields arrive in the host settings frame.
-  const titleRefreshKnown = typeof hs?.sessionTitleRefresh === "boolean";
-  const titleRefreshEnabled = titleRefreshKnown && !!hs?.sessionTitleRefresh;
-  const titleRefreshPrompts = hs?.sessionTitleRefreshPrompts ?? 1;
-  const titleRefreshOptions = hs?.sessionTitleRefreshOptions?.length ? hs.sessionTitleRefreshOptions : [1, 3, 5, 10];
-  const titleRefreshLabel = t("settingsPage.general.titleRefreshEveryN", { n: titleRefreshPrompts });
   // Refill after the host settings reply (never disturb focused inputs; the fill guard of the old applyHostSettings)
   useEffect(() => {
     const e2: DesktopEnv = hs?.desktopEnv ?? { httpProxy: "", noProxy: "", caCerts: "" };
     if (document.activeElement !== proxyRef.current) setProxy(e2.httpProxy || "");
     if (document.activeElement !== noProxyRef.current) setNoProxy(e2.noProxy || "");
     if (document.activeElement !== caRef.current) setCa(e2.caCerts || "");
-    if (document.activeElement !== askRef.current) {
-      setAskTimeout(hs?.values?.["ask.timeout"] ? String(hs.values["ask.timeout"]) : "");
-    }
   }, [hs]);
   const [terminalInherit, setTerminalInherit] = useState(
     useAppStore.getState().uiPrefs.terminalInheritProfile !== false
@@ -449,11 +430,6 @@ export default function GeneralPage() {
   const saveEnv = (field: string, val: string) => {
     const merged = { httpProxy: proxy, noProxy: noProxy, caCerts: ca, [field]: val };
     send({ type: "set_desktop_env", ...merged });
-  };
-  const saveAskTimeout = () => {
-    const raw = parseFloat(askTimeout);
-    const secs = Number.isFinite(raw) && raw >= 0 ? raw : 0;
-    send({ type: "set_setting", key: "ask.timeout", value: secs });
   };
 
   // ---------- Profile dropdown data (data contract: hostSettings.availableProfiles: string[]) ----------
@@ -583,77 +559,6 @@ export default function GeneralPage() {
             <button className="save-btn" id="caSave" onClick={() => saveEnv("caCerts", ca.trim())}>{t("common.save")}</button>
           </div>
         </div>
-      </div>
-      <div className="set-group-tt">{t("settingsPage.general.groupBehavior")}</div>
-      <div className="set-card">
-        <div className="srow">
-          <div className="srow-tx"><b>{t("settingsPage.general.askTimeoutTitle")}</b><span>{t("settingsPage.general.askTimeoutDesc")}</span></div>
-          <div className="srow-ctl">
-            <input className="inp" style={{ width: 100, minWidth: 0 }} id="askTimeoutInput" type="number" min="0" step="1" placeholder="0" value={askTimeout} ref={askRef}
-              onChange={(e) => setAskTimeout(e.target.value)} />
-            <button className="save-btn" id="askTimeoutSave" onClick={saveAskTimeout}>{t("common.save")}</button>
-          </div>
-        </div>
-      </div>
-      <div className="set-group-tt">{t("settingsPage.general.groupTitleRefresh")}</div>
-      <div className="set-card">
-        <Srow
-          title={t("settingsPage.general.titleRefreshTitle")}
-          desc={t("settingsPage.general.titleRefreshDesc")}
-          dataKey="app.titleRefresh"
-        >
-          <Toggle
-            on={titleRefreshEnabled}
-            disabled={!titleRefreshKnown}
-            onChange={() => send({ type: "set_session_title_refresh", enabled: !titleRefreshEnabled })}
-          />
-        </Srow>
-        <Srow
-          title={t("settingsPage.general.titleRefreshEveryTitle")}
-          desc={t("settingsPage.general.titleRefreshEveryDesc")}
-          dataKey="app.titleRefreshEvery"
-        >
-          <Sel
-            label={titleRefreshLabel}
-            value={String(titleRefreshPrompts)}
-            options={titleRefreshOptions.map((n) => ({
-              v: String(n),
-              label: t("settingsPage.general.titleRefreshEveryN", { n }),
-              ck: n === titleRefreshPrompts ? "✓" : "",
-            }))}
-            onPick={(v) => send({ type: "set_session_title_refresh", prompts: Number(v) })}
-          />
-        </Srow>
-      </div>
-      <div className="set-group-tt">{t("settingsPage.general.groupArchive")}</div>
-      <div className="set-card">
-        <Srow
-          title={t("settingsPage.general.archiveAutoTitle")}
-          desc={t("settingsPage.general.archiveAutoDesc")}
-          dataKey="app.autoArchive"
-        >
-          <Toggle
-            on={archiveEnabled}
-            disabled={!archiveKnown}
-            onChange={() => send({ type: "set_auto_archive", enabled: !archiveEnabled })}
-          />
-        </Srow>
-        <Srow
-          title={t("settingsPage.general.archiveRetentionTitle")}
-          desc={t("settingsPage.general.archiveRetentionDesc")}
-          dataKey="app.autoArchiveRetention"
-        >
-          <Sel
-            label={retentionLabel}
-            value={String(retentionDays)}
-            options={retentionOptions.map((d) => ({
-              v: String(d),
-              label: t("settingsPage.general.archiveRetentionDays", { days: d }),
-              ck: d === retentionDays ? "✓" : "",
-            }))}
-            onPick={(v) => send({ type: "set_auto_archive", retentionDays: Number(v) })}
-          />
-        </Srow>
       </div>
       {IS_MAC && <PermissionsCard />}
       <SchemaRows sections={PAGE_PLACEMENT["pg-general"]} />

@@ -196,8 +196,9 @@ export function useAllSettingsItems() {
       { key: "app.notifyDesktop", label: t("settingsPage.alerts.desktopTitle"), description: t("settingsPage.alerts.desktopDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
       { key: "app.notifySound", label: t("settingsPage.alerts.soundTitle"), description: t("settingsPage.alerts.soundDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
       { key: "app.notifyPermission", label: t("settingsPage.alerts.permTitle"), description: t("settingsPage.alerts.permGrantedDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
-      { key: "app.autoArchive", label: t("settingsPage.general.archiveAutoTitle"), description: t("settingsPage.general.archiveAutoDesc"), pageId: "pg-general", pageTitle: t("settingsPage.nav.general") },
-      { key: "app.autoArchiveRetention", label: t("settingsPage.general.archiveRetentionTitle"), description: t("settingsPage.general.archiveRetentionDesc"), pageId: "pg-general", pageTitle: t("settingsPage.nav.general") },
+      { key: "app.autoArchive", label: t("settingsPage.interaction.archiveAutoTitle"), description: t("settingsPage.interaction.archiveAutoDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
+      { key: "app.autoArchiveRetention", label: t("settingsPage.interaction.archiveRetentionTitle"), description: t("settingsPage.interaction.archiveRetentionDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
+      { key: "app.branchTitles", label: t("settingsPage.interaction.branchTitlesTitle"), description: t("settingsPage.interaction.branchTitlesDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
     );
     return items;
   }, [schema, t, settings]);
