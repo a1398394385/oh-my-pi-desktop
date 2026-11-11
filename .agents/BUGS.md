@@ -132,6 +132,12 @@
 | BUG-138 | 点中栏横线跳到用户消息只在弯住时「看似置顶」——目标按 sticky 位移后的 rect 测量，落点插进本轮回复中间 | 2026-11-11 |
 | BUG-139 | 设置页下拉框随界面缩放纵向偏移——视觉像素直接写入布局坐标，缺少 zoom 换算 | 2026-11-11 |
 | BUG-140 | 设置页 Portal 内容下拉仍播放浮层动画——`#settings` 后代选择器覆盖不到 `<body>` | 2026-11-11 |
+| BUG-141 | 桌面代理设置对登录/换 token 无效,且删除系统级 `NO_PROXY` | 2026-11-11 |
+| BUG-142 | 浏览器打不开时拿不到授权链接,`openExternal` 失败被吞 | 2026-11-11 |
+| BUG-143 | 更新安装未清理宿主、重启不派发 `Exit`、错误归因错步骤 | 2026-11-11 |
+| BUG-144 | 打包态缺 `NSMicrophoneUsageDescription`,麦克风静默被拒 | 2026-11-11 |
+| BUG-145 | 花名册聚合与统计页按帧重算——memo/缓存用引用做键 | 2026-11-11 |
+| BUG-146 | 子代理详情状态串行、截断无标记、点选遮挡、列宽与拖拽 | 2026-11-11 |
 ---
 
 ## 详情
@@ -2067,4 +2073,88 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：真实 `dev:browser`（`OMP_PROFILE=omp-desktop-dev-2`）与 Chromium 实测终端字号、按仓库合并工作区、Agent 模型菜单，三者均为 `animation-name: none`、`animation-duration: 0s`、`box-shadow: none`、`transform: none`；前两者选中行与触发器纵向误差分别为 0px 与 0.088px，三张稳定截图已目视确认。`bun run ui:build && bun run check` 全绿。
 
 **教训**：Portal 节点的样式契约必须随节点自身携带（属性或语义类），不能依赖渲染前的 DOM 祖先；新增 Portal 下拉时，检查计算样式比只检查源文件中的覆盖规则更可靠。
+
+### BUG-141: 桌面代理设置对登录/换 token 完全无效，且顺手删掉用户系统级 `NO_PROXY`
+
+**日期**：2026-11-11
+
+**现象**：设置页填了 HTTP 代理，模型流式请求走代理，但登录（浏览器授权后换 token）、凭据刷新、额度探针全部直连；国内网络下表现为「登录页能打开、回到应用一直失败」。同时清空「不走代理」栏后，宿主进程里原本存在的 `NO_PROXY` 被删除，本机与内网地址也被送往代理。
+
+**根因**：① 桌面只写 `HTTP_PROXY/HTTPS_PROXY`，而宿主用到的裸 `fetch`（`@oh-my-pi/pi-ai` 的 OAuth/额度/发现路径）只认 `PI_PROXY`；SDK 的 `installGlobalProxyFetch()` 仅在它自己的 CLI 入口调用，桌面宿主走 `host/host.ts`，全仓无调用点，两个变量之间没有任何桥接。② `applyDesktopEnv()` 的 else 分支无条件 `delete process.env.NO_PROXY/no_proxy`。
+
+**修复**：`host/profile.ts` 写 `HTTP_PROXY` 时同步写 `PI_PROXY`（空值一起清）；新增 `host/proxy-fetch.ts`（`syncProxyFetch()`，从平台原生 fetch 重新安装包装，可反复调用）；`applyProfile` 与 `set_desktop_env` 在写环境后调用它；SDK 绑定经 `host/bootstrap.ts` 动态导入（`setProfile` 必须先跑）。`NO_PROXY` 改为「有值才写，不删」。
+
+**验证**：临时探针（`OMP_PROFILE=omp-desktop-test`，bun 直接导入 `host/proxy-fetch.ts`）：未设 `PI_PROXY` 时 fetch 引用不变；设为 `http://127.0.0.1:1` 后引用改变且 `fetch("https://example.com")` 返回 `ECONNREFUSED`（证明确实走了代理）；清空后引用恢复为原生 fetch。`bun run check` 全绿。
+
+**教训**：两套代理变量并存时，必须有一条「谁写谁读」的显式桥接，并同步更新 `scripts/check-host-boundaries.mjs` 的依赖边；`process.env` 的删除分支只对自己写入的键可用，读来的系统配置不能顺手清。
+
+### BUG-142: 浏览器打不开时用户拿不到授权链接，`openExternal` 失败被完全吞掉
+
+**日期**：2026-11-11
+
+**现象**：登录横幅始终写着「已在浏览器中打开」，可浏览器没起来（或授权站点被网络拦截）时没有任何兜底：既没有可复制的 URL，也没有任何错误线索，只能干等 SDK 的 5 分钟超时。
+
+**根因**：① 宿主把授权 URL 放进了 `login_progress` 帧（`url` 字段），但 `ui-src/store/wsHandlers/settings.ts` 只取 `message`，`url` 直接丢弃，store 没有对应字段，横幅组件也无处渲染。② `host/open-external.ts` 的 `catch {}` 是空的，`Bun.spawn` 失败既不反馈也不留痕。
+
+**修复**：store 增 `loginUrl`（发起登录与 `login_done` 时清空，`onProgress` 帧不带 url 时保留上一次）；`LoginBanner` 在有链接时渲染「复制授权链接」按钮（复用 `copyText`，点击后 800ms 内显示「已复制」，按钮 `title` 带全文）；`openExternal` 的 catch 用 `safeStderr` 记一行。
+
+**验证**：`bun run ui:build` 后用 Chromium 打开 `?preview=1` 产物、经 `window.__dbg.useAppStore` 注入 `loginBanner/loginUrl`：横幅 296.6×41（x=491.7,y=741），按钮 74×23，文案为 `Copy link`/`Cancel login`；点击后 `navigator.clipboard.readText()` 返回完整授权 URL 且按钮变为 `Copied`；把 `loginUrl` 置空后只剩「取消登录」。截图已目视确认。
+
+**教训**：宿主已经在帧里给出的信息，前端丢弃等于没实现；「已代为打开浏览器」这类对外部环境的假设必须留一条人工兜底路径。
+
+### BUG-143: 更新安装碰运气——宿主没被清理、重启不走 Exit、错误归因到错的步骤
+
+**日期**：2026-11-11
+
+**现象**：更新后偶尔需要重启整机才能完成安装；有时提示「检查更新失败」但用户点的是「下载并安装」；失败 toast 里全是 Rust 原始英文串。
+
+**根因**：① 宿主子进程只在 `RunEvent::Exit` 里被杀（`src-tauri/src/lib.rs`），而 Windows 安装器要替换的资源目录里正躺着运行中的 `omp-host.exe`；插件在 Windows 上 `std::process::exit(0)`，`Exit` 根本不派发。② `update_relaunch` 用 `app.restart()`：主线程分支直接 re-exec，不派发 `RunEvent::Exit`，`child.kill()` 不执行（只剩宿主自己的 2s ppid 看门狗兜底）。③ `update_install` 内部的二次 `check()` 复用了 `update-check-failed` 前缀；前端把整串英文塞进 toast。
+
+**修复**：`update.rs` 新增 `kill_host()`（取走 `ChildCell` 并 kill）；Windows 在下载完成回调里（安装前一刻）调用，`update_relaunch` 改为先 `kill_host` 再 `app.request_restart()`（保证 `Exit` 派发）；安装阶段的二次 check 改用 `update-install-failed` 前缀；`GeneralPage` 的 `updateErrorText()` 按错误码选择「检查失败/安装失败」文案，只把 code 之后的 detail 作为诊断串。
+
+**验证**：`cargo check` 通过（`src-tauri`）；`bun run check` 全绿。错误码映射未做端到端实跑（需一个会失败的更新端点），仅静态审查。
+
+**教训**：更新这类跨进程替换，清理顺序必须是显式的，不能依赖事件回调的时序；平台差异（Windows 安装器独占文件、插件自行退出）要写在修法里而不是注释里。
+
+### BUG-144: 打包态麦克风被系统直接拒绝——`Info.plist` 缺用途说明
+
+**日期**：2026-11-11
+
+**现象**：打包版长按发送键听写，麦克风永远失败；唯一反馈是一条 2.2 秒的 toast，无授权引导，也没有跳转系统设置的入口。
+
+**根因**：`src-tauri/Info.plist` 只有 `NSScreenCaptureUsageDescription`，缺 `NSMicrophoneUsageDescription`。macOS 对缺键的应用直接拒绝麦克风，连授权弹窗都不给（与屏幕录制同一类问题）。听写采集走底座原生 `AudioCapture`，宿主进程没有任何权限 UI。
+
+**修复**：`Info.plist` 补 `NSMicrophoneUsageDescription` 及中文说明（仅在长按说话时录音、不保存音频）。
+
+**验证**：`info.plist` 键已加；打包态实际授权流程未在本轮验证（需签名打包 + 真机首次授权），且 TCC 归属进程究竟是 Tauri 外壳还是宿主子进程尚未确认——若归属宿主，键需要落到宿主侧。
+
+**教训**：任何走系统权限的采集能力，先查 `Info.plist` 键与失败可见性；缺键的失败形态是「静默拒绝」，没有明确报错可循。
+
+### BUG-145: 子代理头部聚合与统计页在流式期间按帧重算——memo/缓存都用引用做键
+
+**日期**：2026-11-11
+
+**现象**：① Agent Hub 花名册顶部的用量总计与状态计数随任意会话写入（~10Hz 的 delta 帧）重算重绘，与子代理是否变化无关；② 统计页（overview/trace/gain/acp）在 live 版本每次 bump 时重新请求并整页重渲染，即使载荷一模一样。
+
+**根因**：① `subRoster.tsx` 的 `RosterHead` 两个 `useMemo` 依赖整个 `s`（`OpenSession` 对象），而 `updateSession` 每次写入都换新引用；同文件 `useRosterRows` 早已给出正确范式（用量签名字符串）。② `stats/data/query.ts` 用 `data === shownBefore` 判断「内容未变」，但 `api.ts` 每次 `res.json()` 都是新对象，短路永不成立；同时 `lastFetchAt` 在 in-flight 去重判断之前就刷新，被去重挡下的调用也会推迟下一次 live 刷新。
+
+**修复**：花名册改为 `usageSig`（id/streaming/status/成本/时长/请求/工具/token）驱动两个 memo；统计页把「内容未变」改为 `JSON.stringify` 比较，`lastFetchAt` 移到真正发起请求之后。
+
+**验证**：`bun run check`（含 `ui:typecheck`）全绿。未做 10Hz 流式下的帧计时实测（需真实长会话 + 性能面板），属静态推理范围内的等价改写。
+
+**教训**：任何以 React 对象引用为 memo 依赖的地方，先确认该对象是否被不可变更新整体替换；把 `Date.now()` 写入节流时间戳的位置必须放在「确实发出了请求」之后，否则去重路径会污染节流。
+
+### BUG-146: 子代理详情/花名册的展示细节——状态串行、截断无标记、点选卡片遮挡、列宽与拖拽
+
+**日期**：2026-11-11
+
+**现象**：① 从一个子代理切到另一个，详情的「预览/源码」开关沿用上一个子代理的选择；② 任务文本被 300/80 字符硬切却无省略号，看不到被截；③ 子代理 id 被 ellipsis 截断后无法读到全文；④ 右栏详情打开时页面被两个独立 1s 定时器各重绘一次；⑤ 镜像视图点选网页元素时，DevTools 高亮卡直接画在页面里，挡住要点的内容；⑥ 中栏最窄只能拖到 480px；⑦ 全局搜索面板条目可拖出原生文本幽灵。
+
+**根因**：① `HubDetail` 两处调用点都没带 `key`，切换子代理时 React 按位置复用实例，内部 `useState` 保留；② `slice()` 后未加 `…` 也无 `title`（宿主侧结果截断是带 `\n…` 的，两处口径不一致）；③ `.hub-detail-id` 有 ellipsis 但无 `title`；④ `SubagentPage` 的 `useRosterTick(s)` 与详情自身的 `useTick` 同时生效；⑤ `host/browser-mirror.ts` 的 `Overlay.highlightNode` 开了 `showInfo/showStyles`；⑥ `ui-src/shell.ts` 的 `Math.max(480, …)`；⑦ `.palette-item` 未设 `user-select: none`（全局 dragover 守卫只拦 `Files`）。
+
+**修复**：两处 `<HubDetail key={subagentId}>`；两处截断补 `…` 与 `title`；`.hub-detail-id` 补 `title`；详情打开时不跑花名册 tick；高亮只保留外框（信息早已随 `browser_pick` 回传 UI）；列宽下限降为 360（composer 的 260px 仍是地板）；`.palette-item` 加 `user-select: none`。
+
+**验证**：`bun run check`、`bun run ui:build` 全绿；横幅类 UI 已在 Chromium 预览态实测（见 BUG-142）。子代理详情切换、点选遮挡与列宽拖拽未做真机目视验证（需真实子代理会话与镜像页）。
+
+**教训**：可复用的详情组件在「同一位置渲染不同实体」时必须由调用方传 `key`；对用户可见的截断一律带省略号与 `title`，两条路径的口径要统一。
 
