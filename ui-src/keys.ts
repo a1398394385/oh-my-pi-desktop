@@ -55,7 +55,9 @@ function handleEsc(): boolean | undefined {
     closeAllMenus(); // close open popups first (composer menus / settings dropdowns)
     return false;
   }
-  if (document.querySelector(".lp-mask")) {
+  // [data-modal] = the image lightbox: it has its own Esc handler (window-level, runs
+  // after this one) and must not fall through to the abort/clear routing behind it
+  if (document.querySelector(".lp-mask, [data-modal]")) {
     return false; // modal dialogs like the tree-jump confirmation close first
   }
 
