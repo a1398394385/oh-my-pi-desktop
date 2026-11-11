@@ -88,9 +88,9 @@
 | assets.ts(12) | `asset_file_write` `asset_file_create` `asset_skill_toggle` `asset_plugin_toggle` `asset_skill_delete` `toggle_extension_item` `toggle_extension_provider` `toggle_extension_user_source` `set_mcp_server_enabled` `save_mcp_server` `delete_mcp_server` |
 | automations.ts(4) | `automations_create` `automations_update` `automations_delete` `automations_toggle` |
 | ssh.ts(3) | `ssh_save_host` `ssh_remove_host` `add_remote_workspace` |
-| session.ts(12) | `set_session_pinned` `archive_session` `set_project_expanded` `add_project` `remove_project` `reorder_projects` `delete_session` `rename_session` `compact_session` `branch_session` `fork_session` `edit_resend` |
+| session.ts(10) | `set_session_pinned` `archive_session` `set_project_expanded` `add_project` `remove_project` `reorder_projects` `delete_session` `rename_session` `compact_session` `fork_session` |
 
-**明确放行(远程会话能力所需,边界项)**:`create_session` `load_session` `mark_seen` `navigate_tree`;`git_*` / `bash_exec` / `terminal_*` / `open_folder` / `open_with` / `stt_*` / `browser_*` / `ui_error` 等会话与本机能力不在表(见 §1 非目标)。
+**明确放行(远程会话能力所需,边界项)**:`create_session` `load_session` `mark_seen` `navigate_tree` `branch_session` `edit_resend`;`git_*` / `bash_exec` / `terminal_*` / `open_folder` / `open_with` / `stt_*` / `browser_*` / `ui_error` 等会话与本机能力不在表(见 §1 非目标)。`branch_session`(新会话文件)与 `edit_resend`(navigateTree + prompt,旧路径留作兄弟分支)只追加、不改写不销毁既有历史,与 `prompt` / `create_session` 同一判定口径。
 
 **表外特例 `reload_settings`**:仅从磁盘重读模型设置到内存并回推 models/settings 帧,无任何持久化副作用,且是 UI 打开会话的标准伴随调用(`openSessionByPath` 每次发)——列入表会让远程端点开任意会话即弹 "remote read-only"(BUG-078),故放行。
 

@@ -17,7 +17,7 @@ import { safeStderr } from "./stderr.ts";
 export const REMOTE_DEFAULT_PORT = 16800;
 
 // Write-side RPC denied for remote (ws.data.remote) connections — spec §3.5
-// full 61-item circle (settings/models/provider-wizard/login/assets/
+// full write-domain circle (settings/models/provider-wizard/login/assets/
 // automations/ssh/session write domains). Keep in sync with new write RPCs.
 // reload_settings stays OUT: it only re-reads model settings from disk into
 // memory (no persistence) and the UI sends it when opening any session.
@@ -49,10 +49,12 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "automations_create", "automations_update", "automations_delete", "automations_toggle",
   // ssh.ts (3)
   "ssh_save_host", "ssh_remove_host", "add_remote_workspace",
-  // session.ts (12)
+  // session.ts (10)
   "set_session_pinned", "archive_session", "set_project_expanded", "add_project", "remove_project",
-  "reorder_projects", "delete_session", "rename_session", "compact_session", "branch_session", "fork_session",
-  "edit_resend",
+  "reorder_projects", "delete_session", "rename_session", "compact_session", "fork_session",
+  // branch_session and edit_resend stay OUT: both only append (a new session file, or a
+  // sibling branch) and never rewrite or destroy existing history, so they sit on the same
+  // footing as the already-allowed prompt / navigate_tree / create_session.
   // Extension link handlers run arbitrary extension code (they may write): a remote viewer
   // must not be able to trigger them.
   "link_activate",

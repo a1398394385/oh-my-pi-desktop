@@ -126,8 +126,9 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   // the bubble (once consumed, pending clears and it becomes an ordinary historical message)
   const delivery = item.automation;
   const cls = item.pending ? "user-bubble pending" : delivery ? "user-bubble delivery" : "user-bubble";
-  // Remote clients hide the edit entry point entirely (edit_resend is denylisted there)
-  const showEditBtn = !item.pending && !item.automation && !REMOTE && !editing;
+  // Edit stays available on remote clients: edit_resend only appends a sibling branch
+  // (see REMOTE_WRITE_DENYLIST), so it is not a read-only violation
+  const showEditBtn = !item.pending && !item.automation && !editing;
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls}>
