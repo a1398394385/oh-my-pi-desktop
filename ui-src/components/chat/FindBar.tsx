@@ -8,6 +8,7 @@ import type { RefObject } from "react";
 import type { ChatItem, LoopItem } from "./chat-types";
 import { useAppStore } from "../../store/index";
 import { isJunkPlaceholder } from "../../store/session";
+import { stripQuote } from "../../lib/conversation-quote";
 import { t } from "../../i18n";
 import { patchActiveItem } from "./parts";
 import Icon from "../../Icon";
@@ -27,7 +28,7 @@ function buildFindIndex(s: { items: ChatItem[] }): FindMatch[] {
       const key = pfx + i;
       if (it.role === "user" || it.role === "assistant") {
         if (it.role === "assistant" && isJunkPlaceholder(it.text)) return;
-        if (it.text) out.push({ key, text: it.text });
+        if (it.text) out.push({ key, text: it.role === "user" ? stripQuote(it.text) : it.text });
       } else if (it.role === "thinking") {
         if (it.thinking) out.push({ key, text: it.thinking });
       }

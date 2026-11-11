@@ -178,7 +178,7 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
           Sits above Recent activity per the hub layout contract. */}
       {st !== "running" && sub.result ? (
         <MdSec label={t("right.hubResult")} view={mdResult} onView={setMdResult} t={t}>
-          <div className="hub-box hub-box-scroll">
+          <div className="hub-box hub-box-scroll" data-annot-agent={sub.agent}>
             {mdResult ? <MdSurface className="md-body md-surface hub-task-md" text={sub.result} /> : <div className="hub-src">{sub.result}</div>}
           </div>
         </MdSec>

@@ -7,6 +7,8 @@
 // and attachments and clears its editor state only when this returns true.
 import { useAppStore } from "../../store";
 import { bubbleImages, dispatchPrompt, updateSession } from "../../store/session";
+import { takeAnnotations } from "../../store/annotations";
+import { buildQuotePrefix } from "../../lib/conversation-quote";
 import { t } from "../../i18n";
 import type { PromptAttachment } from "../../types/frames";
 import { isBashMode } from "./trigger";
@@ -60,10 +62,17 @@ export function sendComposerPrompt(input: { raw: string; files: PromptAttachment
     return true;
   }
 
+  // Selection annotations ride as a text prefix (host unchanged); slash commands are
+  // consumed locally, so they never take the block and pending notes stay for the next
+  // real prompt. The full text is what the host stores and echoes back (queue/steer
+  // matching), so every display surface strips the block (lib/conversation-quote).
+  const notes = text.startsWith("/") ? [] : takeAnnotations();
+  const prompt = notes.length > 0 ? buildQuotePrefix(notes) + text : text;
+
   // Creating-new state: store the draft in pendingNewPrompt; the store sends it
   // after the session_created receipt
   if (st.isCreatingNew || !s) {
-    useAppStore.setState({ pendingNewPrompt: { text, files: input.files } });
+    useAppStore.setState({ pendingNewPrompt: { text: prompt, files: input.files } });
     requestCreateSession();
     return true;
   }
@@ -78,16 +87,16 @@ export function sendComposerPrompt(input: { raw: string; files: PromptAttachment
     updateSession(s.sessionId, (next) => {
       if (input.steer) {
         next.steering = next.steering ?? [];
-        next.steering.push({ text });
+        next.steering.push({ text: prompt });
         next.items.push({
           role: "user",
-          text,
+          text: prompt,
           pending: "steer",
           ...(bubbleImagesOf(input.files)),
         });
       } else {
         next.queued = next.queued ?? [];
-        next.queued.push({ text, ...bubbleImagesOf(input.files) });
+        next.queued.push({ text: prompt, ...bubbleImagesOf(input.files) });
       }
     });
     // The wire dispatch was dropped when the old Composer pipeline sank into
@@ -97,10 +106,10 @@ export function sendComposerPrompt(input: { raw: string; files: PromptAttachment
     // no steer_consumed ever coming (the vanished-message bug). The base
     // routes by its own streaming state: queued while streaming, a plain new
     // turn when the run already ended.
-    st.send({ type: "prompt", sessionId: s.sessionId, text, files: input.files, ...(input.steer ? { steer: true } : {}) });
+    st.send({ type: "prompt", sessionId: s.sessionId, text: prompt, files: input.files, ...(input.steer ? { steer: true } : {}) });
   } else {
     // Single optimistic run-start write (startLocalRun) + prompt dispatch
-    dispatchPrompt(s.sessionId, text, input.files, input.steer);
+    dispatchPrompt(s.sessionId, prompt, input.files, input.steer);
   }
   // Sidebar time = user-message time: stamp the list row now (steer/queued sends count
   // too); the runEnd session_list refresh later carries the authoritative end time.

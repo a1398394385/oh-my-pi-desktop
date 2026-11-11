@@ -1,0 +1,137 @@
+/* Selection annotation: the floating comment pill next to selected assistant text,
+   the comment card it opens, and the aggregated pending-annotation chip above the
+   composer. The pill is the one reverse-video surface here (--quote-bar-*), so it
+   stands off highlighted text in both themes; everything else reuses the standard
+   popover/chip surfaces. */
+
+.annot-fab {
+  position: fixed; left: 0; top: 0; z-index: 520;
+  display: inline-flex; align-items: center;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--quote-bar-bg);
+}
+
+.annot-fab-act {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 9px;
+  border: 0; border-radius: 999px;
+  background: none; color: var(--quote-bar-fg);
+  font-family: inherit; font-size: var(--ui-fs-sm);
+  cursor: pointer;
+}
+
+.annot-fab-act:hover,
+.annot-fab-act:focus-visible { background: var(--quote-bar-hl); outline: none; }
+
+.annot-fab-act .pi-ic svg { display: block; }
+
+/* Comment card: replaces the pill once the action is clicked */
+.annot-card {
+  position: fixed; left: 0; top: 0; z-index: 520;
+  width: 380px; max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.annot-card-t { font-size: var(--ui-fs-base); color: var(--text); }
+
+.annot-quote-row {
+  display: flex; align-items: flex-start; gap: 4px;
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: var(--panel-2);
+  color: var(--dim); font-size: var(--ui-fs-sm);
+}
+
+.annot-qm { flex: none; color: var(--faint); line-height: 1.4; }
+
+.annot-quote-text {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  line-height: 1.4;
+}
+
+.annot-ta {
+  width: 100%; box-sizing: border-box;
+  min-height: 76px; max-height: 200px; resize: none;
+  padding: 8px 10px;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text); font-family: inherit; font-size: var(--ui-fs-base);
+  line-height: 1.5;
+  outline: none;
+}
+
+.annot-ta::placeholder { color: var(--faint); }
+.annot-ta:focus { border-color: var(--accent); }
+
+.annot-foot { display: flex; align-items: center; gap: 8px; }
+.annot-hint { color: var(--faint); font-size: var(--ui-fs-xs); }
+.annot-foot .sp { flex: 1; }
+
+.annot-btn {
+  border: 0; border-radius: 7px;
+  padding: 5px 10px;
+  background: var(--panel-3); color: var(--dim);
+  font-family: inherit; font-size: var(--ui-fs-sm);
+  cursor: pointer;
+  transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), opacity var(--dur-snap) var(--swift);
+}
+
+.annot-btn:hover { background: var(--hover-fill); color: var(--text); }
+
+.annot-btn.primary { background: var(--accent); color: var(--white); }
+.annot-btn.primary:hover { background: var(--accent); color: var(--white); opacity: .8; }
+
+/* Pending-annotation chip: same shell as .atchip, slightly wider text budget */
+.annot-chip { max-width: 260px; cursor: default; }
+.annot-chip:hover { background: var(--menu-hl); }
+.annot-chip:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+.annot-chip-n {
+  flex: none; min-width: 15px; padding: 0 4px;
+  border-radius: 999px;
+  background: var(--panel-3); color: var(--dim);
+  font-size: var(--ui-fs-xs); line-height: 15px; text-align: center;
+}
+
+/* Hover card: the quoted text + comment of every pending note */
+.annot-chip-pop {
+  position: fixed; left: 0; top: 0; z-index: 520;
+  width: 320px; max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 10px;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.annot-chip-list { display: flex; flex-direction: column; gap: 10px; max-height: 200px; overflow-y: auto; }
+.annot-chip-item { display: flex; flex-direction: column; gap: 4px; }
+
+.annot-chip-quote { display: flex; align-items: flex-start; gap: 4px; color: var(--dim); font-size: var(--ui-fs-sm); }
+
+.annot-chip-text {
+  flex: 1; min-width: 0;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; line-height: 1.4;
+}
+
+.annot-chip-x {
+  flex: none; width: 16px; height: 16px; padding: 0;
+  border: 0; border-radius: 4px; background: none;
+  color: var(--faint); font-size: 12px; line-height: 1; cursor: pointer;
+}
+
+.annot-chip-x:hover { background: var(--hover-fill); color: var(--text); }
+
+.annot-chip-comment { color: var(--text); font-size: var(--ui-fs-sm); line-height: 1.5; white-space: pre-wrap; padding-left: 12px; }
+
+.annot-chip-count { color: var(--faint); font-size: var(--ui-fs-xs); }

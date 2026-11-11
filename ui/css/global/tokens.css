@@ -125,6 +125,11 @@
   /* Floating surfaces (dropdown menus, popovers, dialogs, tooltips) share the
      input-field surface: dark #2B2B2B. Every dropdown must reuse --ctl-bg. */
   --ctl-bg: var(--inset);
+  /* Selection annotation pill (text selected in assistant output): deliberately
+     reverse-video on both themes so it stands off the highlighted text. */
+  --quote-bar-bg: #1c1c1e;
+  --quote-bar-fg: #f2f2f4;
+  --quote-bar-hl: #34343a;
   /* Motion discipline: two curves (spring/swift), reused site-wide */
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
   --swift:  cubic-bezier(0.16, 1, 0.3, 1);

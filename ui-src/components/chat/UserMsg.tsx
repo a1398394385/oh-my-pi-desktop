@@ -2,11 +2,11 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import type { OpenSession, UserItem } from "../../types/session";
 import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
-import { REMOTE } from "../../store/layout";
 import { useCopyFeedback } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { atMentions } from "../../lib/at-mentions";
+import { stripQuote } from "../../lib/conversation-quote";
 import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
 import { t } from "../../i18n";
@@ -51,12 +51,14 @@ function PendingActs({ item }: { item: UserItem }) {
 // pending is a captured mutation snapshot (T2): applySteerConsumed flips it in place
 export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?: string; pending?: UserItem["pending"]; branch?: ReactNode }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [draft, setDraft] = useState(item.text);
+  // Annotations ride in the sent prompt text; the bubble shows the user's own words only
+  const body = stripQuote(item.text);
+  const [draft, setDraft] = useState(body);
   const { copied, copy } = useCopyFeedback();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const images = item.images ?? [];
   // @file mentions the base auto-read: chips on top, tokens stripped from the text
-  const mention = atMentions(item.text, item.attachments);
+  const mention = atMentions(body, item.attachments);
   const lightboxList = images.map((img, i) => ({
     src: img.data.startsWith("data:") ? img.data : `data:${img.mimeType || "image/png"};base64,${img.data}`,
     name: t("chat.imageN", { n: i + 1 }),
@@ -210,7 +212,7 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
         ) : null}
         {item.pending ? <PendingActs item={item} /> : null}
       </div>
-      {branch || showEditBtn || (item.text && !editing) || editing ? (
+      {branch || showEditBtn || (body && !editing) || editing ? (
         <div className="ub-actions">
           {branch}
           {showEditBtn ? (
@@ -221,14 +223,14 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
               onClick={(e) => {
                 e.stopPropagation();
                 if (!canEdit || !item.entryId) return;
-                setDraft(item.text);
+                setDraft(body);
                 useAppStore.setState({ editingEntryId: item.entryId });
               }}
             >
               <Icon name="pencil" size={13} />
             </button>
           ) : null}
-          {item.text && !editing ? (
+          {body && !editing ? (
             <button
               className="ub-copy q-btn"
               title={t("chat.copyMsg")}

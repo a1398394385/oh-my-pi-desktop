@@ -28,6 +28,7 @@ import TtsrRow from "./TtsrRow";
 import BranchSwitcher from "./BranchSwitcher";
 import type { BranchNavInfo, BranchRenderCtx } from "./branch-nav";
 import { t } from "../../i18n";
+import { stripQuote } from "../../lib/conversation-quote";
 
 // Ambient branch-pager context for the current top-level render pass (a
 // railEntries-style side channel): nested renderItems calls (loop groups,
@@ -64,7 +65,7 @@ function withBranchPager(node: ReactElement, item: AssistantItem, key: string): 
 // order as the former appendChatItem's push)
 function appendItem(item: ChatItem, key: string, railEntries: RailEntry[]): ReactElement | null {
   if (item.role === "user") {
-    railEntries.push({ key, role: "user", text: item.text });
+    railEntries.push({ key, role: "user", text: stripQuote(item.text) });
     // pending rides along as a captured scalar: applySteerConsumed mutates it in place,
     // so memo cannot rely on the item reference alone (same pattern as the tool row below)
     return <UserMsg item={item} fk={key} key={key} pending={item.pending} branch={makeBranchPager(item, key)} />;

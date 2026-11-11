@@ -10,6 +10,7 @@ import { useAppStore } from "./index";
 import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, GitOperationState, GitStatusFile, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
 import type { UserItem } from "../types/session";
+import type { PendingAnnotation } from "./annotations";
 import { activeOpen } from "./session";
 import { getSupportedThinkingForModel, modelDefaultThinking } from "./models";
 import { saveRightSlot, restoreRightSlot } from "./right";
@@ -49,6 +50,10 @@ export interface UiSlice {
   newSessionComputerMode: boolean; // computer-use intent for the next session (consumed by create_session; the host opts the fresh session in and confirms via the computer_mode frame)
   newSessionDirty: boolean;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
+  /** Pending conversation annotations per session path (store/annotations.ts): the
+   *  composer shows one aggregated chip; the send path turns them into a
+   *  <conversation_quote> prompt prefix and clears the entry. */
+  annotations: Record<string, PendingAnnotation[]>;
   // Git branch chip in the main-column header (MainHeader): branches of the ACTIVE session's
   // cwd, landed from the same git_branches frame as the new-session picker (cwd-routed)
   headerGit: { cwd: string; isGit: boolean; current: string | null; branches: string[]; remotes: string[]; detached: boolean } | null;
@@ -212,6 +217,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   newSessionComputerMode: false,
   newSessionDirty: false,
   pendingFiles: [],
+  annotations: {},
   fileSeq: 0,
   animateGdKids: false,
   animateThinkBody: false,

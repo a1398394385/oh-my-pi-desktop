@@ -71,6 +71,15 @@ export const composerEn = {
   paletteAdd: "Add",
   // prompt_dropped handler: the submit was cancelled before it reached the agent
   cancelledBeforeSend: "Cancelled — message restored to the input",
+  // SelectionAnnotate.tsx / AnnotationChips.tsx: selection comments over assistant output
+  annotateAction: "Comment",
+  annotateTitle: "Add comment · Comment optional",
+  annotatePlaceholder: "Write a comment (optional) — sent with the quoted text",
+  annotateHint: "Optional · Shift + ↵ for a new line",
+  annotateAdd: "Add comment ↵",
+  annotateCount_one: "{{count}} comment",
+  annotateCount_other: "{{count}} comments",
+  annotateClear: "Remove all comments",
 };
 
 export default composerEn;

@@ -18,6 +18,7 @@ import BootSplash from "./components/BootSplash";
 import KickedScreen from "./components/main/KickedScreen";
 import SearchPalette from "./components/shared/SearchPalette";
 import CollabDialog from "./components/main/CollabDialog";
+import SelectionAnnotate from "./components/chat/SelectionAnnotate";
 import { REMOTE } from "./store/layout";
 
 function Toast() {
@@ -84,6 +85,8 @@ export default function App() {
       <CollabDialog />
       {/* Takeover outranks every page: the stale app underneath stays mounted but blocked */}
       {kickedByOther && <KickedScreen />}
+      {/* Selection comments over assistant output (portals its pill/card to body) */}
+      <SelectionAnnotate />
       <BootSplash />
       <Toast />
     </>

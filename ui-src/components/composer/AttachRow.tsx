@@ -6,9 +6,14 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump } from "../../store";
+import { type PendingAnnotation } from "../../store/annotations";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import ImageLightbox from "../chat/ImageLightbox";
+import AnnotationChips from "./AnnotationChips";
+
+// Stable empty reference: a fresh [] in the selector would re-render every store write
+const NO_ANNOTATIONS: PendingAnnotation[] = [];
 
 // A pending attachment (structural subset of a pendingFiles element; see
 // types/session for the full shape)
@@ -17,14 +22,16 @@ type PendingFile = { id: number; name?: string; kind: string; mime?: string; dat
 export default function AttachRow() {
   const { t } = useTranslation();
   const pendingFiles = useAppStore((st) => st.pendingFiles);
+  const annotations = useAppStore((st) => st.annotations[st.activePath ?? ""] ?? NO_ANNOTATIONS);
   const [zoom, setZoom] = useState<number | null>(null);
-  if (pendingFiles.length === 0) return null;
+  if (pendingFiles.length === 0 && annotations.length === 0) return null;
   const images = pendingFiles.filter((f: PendingFile) => f.kind === "image");
   const srcOf = (f: PendingFile) => `data:${f.mime || "image/png"};base64,${f.data}`;
   const remove = (f: PendingFile) =>
     setBump({ pendingFiles: pendingFiles.filter((it: PendingFile) => it.id !== f.id) });
   return (
     <div className="attach-row" id="attachRow">
+      {annotations.length > 0 && <AnnotationChips list={annotations} />}
       {pendingFiles.map((f: PendingFile) =>
         f.kind === "image" ? (
           <span className="at-thumb" key={f.id} title={f.name}>

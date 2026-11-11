@@ -19,6 +19,8 @@ import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
 import { emitBrowserFrame, emitBrowserPick } from "../browserMirror";
 import { feedTtsDelta, flushTts, playTtsClip, speakNow, stopTts } from "../../lib/speechOut";
+import { splitQuote } from "../../lib/conversation-quote";
+import { restoreAnnotations } from "../annotations";
 import type { HandlerSlice } from "./types";
 
 // Deduplicate tool-row file lists (used by the tool_update branch of subagent_event)
@@ -259,7 +261,10 @@ export const streamHandlers = {
     });
     const st = useAppStore.getState();
     if (pathOfSessionId(msg.sessionId, st.openSessions) === st.activePath) {
-      st.setComposerValue(msg.text, msg.images ?? []);
+      // The annotation block goes back to the chip (pending notes), not the input box
+      const { body, notes } = splitQuote(msg.text);
+      if (notes.length > 0) restoreAnnotations(notes);
+      st.setComposerValue(body, msg.images ?? []);
     }
     st.toast(t("composer.cancelledBeforeSend"));
   },

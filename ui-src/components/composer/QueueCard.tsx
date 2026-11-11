@@ -19,6 +19,7 @@ import type { UserItem } from "../../types/session";
 import Icon from "../../Icon";
 import ImageLightbox, { type LightboxImage } from "../chat/ImageLightbox";
 import { armMarquee } from "../shared/models/marquee";
+import { stripQuote } from "../../lib/conversation-quote";
 
 // Horizontal scrollable queue text: wheel converts to horizontal scroll (React's
 // onWheel is passive at the root, so it rides a manual listener, same recipe as
@@ -62,6 +63,7 @@ export default function QueueCard() {
   return (
     <div className="queue-card" id="queueCard">
       {items.map((m, i) => {
+        const body = stripQuote(m.text || "");
         const item: UserItem = {
           role: "user",
           text: m.text || "",
@@ -122,7 +124,7 @@ export default function QueueCard() {
                 <Icon name="image" size={14} />
               </button>
             ))}
-            <QcText text={m.text || t("composer.noText")} />
+            <QcText text={body || t("composer.noText")} />
             <button
               className="q-btn"
               title={t("composer.sendNow")}

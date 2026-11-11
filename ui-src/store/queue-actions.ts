@@ -3,6 +3,8 @@
 // requeue — shared by UserMsg's bubble action group and QueueCard. Pure store state +
 import { useAppStore } from "./index";
 import { updateSession } from "./session";
+import { restoreAnnotations } from "./annotations";
+import { splitQuote } from "../lib/conversation-quote";
 import type { HostRequest } from "../types/frames";
 import type { OpenSession, SessionItem } from "../types/session";
 
@@ -40,7 +42,10 @@ export function dropQueueMsg(s: OpenSession, item: SessionItem, index?: number):
 export function editQueueMsg(s: OpenSession, item: SessionItem, index?: number): void {
   const i = index ?? queueIndexOf(s.queued, item.text);
   const images = (i >= 0 ? s.queued?.[i]?.images : undefined) ?? (item.role === "user" ? item.images : undefined);
-  useAppStore.getState().setComposerValue(item.text ?? "", images);
+  // The annotation block goes back to the chip; only the user's own words enter the input
+  const { body, notes } = splitQuote(item.text ?? "");
+  if (notes.length > 0) restoreAnnotations(notes);
+  useAppStore.getState().setComposerValue(body, images);
   dropQueueMsg(s, item, index);
 }
 

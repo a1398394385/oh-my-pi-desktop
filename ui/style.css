@@ -35,6 +35,7 @@
 @import "./css/main/composer.css";
 @import "./css/main/composer-menus.css";
 @import "./css/main/composer-bash.css";
+@import "./css/main/chat/annotate.css";
 @import "./css/shared/model-picker.css";
 @import "./css/shared/search-palette.css";
 @import "./css/main/chat/streamdown.css";
