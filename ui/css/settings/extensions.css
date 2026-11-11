@@ -1,9 +1,11 @@
 /* ---- extension center (pg-extensions) ---- */
-.ext-bar-primary { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+/* Both halves wrap: the scope pill half and the action half (toggle + refresh + 240px search)
+   each move onto their own line in a narrow content column instead of overrunning the page. */
+.ext-bar-primary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
 
 .ext-scope-wrap { display: flex; align-items: center; gap: 12px; min-width: 0; }
 
-.ext-bar-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; flex-shrink: 0; }
+.ext-bar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-left: auto; min-width: 0; }
 
 .ext-prov-pills { flex: 1 1 100%; min-width: 0; }
 
@@ -36,7 +38,7 @@
 .ext-divider { color: var(--line-strong); font-size: var(--ui-fs-sm); user-select: none; }
 
 /* search box = the .inp language: --bg base + --line-soft border + r9 + blue focus glow */
-.ext-search-wrap { position: relative; display: flex; align-items: center; width: 240px; }
+.ext-search-wrap { position: relative; display: flex; align-items: center; width: 240px; min-width: 0; }
 
 .ext-search-icon { position: absolute; left: 10px; color: var(--faint); pointer-events: none; display: inline-flex; align-items: center; }
 

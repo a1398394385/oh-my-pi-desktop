@@ -20,7 +20,7 @@
 
 .mem-expand .mem-body { border-top: 0; }
 
-.md-side { width: 230px; flex: none; border-right: 1px solid var(--line-soft); overflow: auto; padding: 6px; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ }
+.md-side { width: 230px; flex: none; border-right: 1px solid var(--line-soft); overflow: auto; padding: 6px; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ scrollbar-gutter: stable; /* custom webkit scrollbars take layout width (BUG-133) */ }
 
 .md-it, .md-grp { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: var(--ui-fs-sm); color: var(--dim); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: none; }
 
@@ -36,7 +36,7 @@
 
 .md-grp .cnt { margin-left: auto; font-size: var(--ui-fs-xs); color: var(--faint); flex: none; }
 
-.md-main { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; font-size: var(--ui-fs-base); line-height: 1.7; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ }
+.md-main { flex: 1; min-width: 0; overflow: auto; padding: 12px 14px; font-size: var(--ui-fs-base); line-height: 1.7; overscroll-behavior: contain; /* embedded in the settings scroll flow, stops the scroll chain */ scrollbar-gutter: stable; /* custom webkit scrollbars take layout width (BUG-133) */ }
 
 .md-main h1, .md-main h2, .md-main h3, .md-main h4 { margin: 14px 0 6px; font-weight: 600; line-height: 1.4; }
 

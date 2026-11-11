@@ -1,6 +1,17 @@
 :is([data-theme="light"], [data-theme-mode="light"]) .srow.mp-role-row:hover { background: none; }
 
-.mp { display: grid; grid-template-columns: 315px 1fr; }
+/* Provider list + detail. The detail track is minmax(0,…) so a wide control can never widen the
+   card past the page; the fixed list column can't do that on its own, so below the width the two
+   need together (315px list + a usable detail) the grid stacks instead of squeezing the detail
+   into a few dozen pixels. Keyed to the page container (capped at 50vw); the stacked rules sit
+   below, after the .mp-l declaration they adjust. */
+.mp { display: grid; grid-template-columns: 315px minmax(0, 1fr); }
+
+/* Role-row pill: the widest control in the row, and the row's control column is only as wide as
+   the detail column allows — let the label truncate rather than push the pill over the list. */
+.mp .sel.mp-role-sel { min-width: 0; flex-shrink: 1; }
+.mp .sel.mp-role-sel > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-role-row .srow-ctl { min-width: 0; }
 
 .pv { display: flex; align-items: center; gap: 8px; padding: 10px 13px; border-radius: 8px; color: var(--dim); cursor: pointer; font-size: var(--ui-fs-base); min-width: 0; }
 
@@ -27,6 +38,13 @@
 .mp-role-row:not(:has(.skill-trash-btn)):not(:has(.mp-role-clear)) .srow-ctl { padding-right: 28px; }
 .mp-l { background: var(--tint-black-180); border-right: 1px solid var(--line-soft); padding: 8px; border-radius: var(--r-card) 0 0 var(--r-card); min-height: 280px; display: flex; flex-direction: column; gap: 4px; }
 :is([data-theme="light"], [data-theme-mode="light"]) .mp-l { background: var(--tint-black-40); }
+
+/* stacked .mp (see the grid above): the list becomes the card's top band */
+@container (max-width: 560px) {
+  .mp { grid-template-columns: minmax(0, 1fr); }
+  .mp-l { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line-soft); border-radius: var(--r-card) var(--r-card) 0 0; }
+}
+
 .pv .pv-ic { width: 16px; text-align: center; flex: none; }
 
 /* Provider logo: one fixed 16px box everywhere (list rows, add-provider cards, detail heads).

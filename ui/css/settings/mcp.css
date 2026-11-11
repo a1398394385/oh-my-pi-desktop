@@ -2,11 +2,13 @@
 
 .mcp-tt { font-size: calc(var(--ui-fs) * 1.75); font-weight: 500; color: var(--text); }
 
-/* first row: scope pill + stats + search box */
+/* first row: scope pill + stats + search box. The bar wraps: in a narrow content column the search
+   field moves onto its own line instead of being pushed past the page edge by the scope pill. */
 .mcp-bar-primary {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -15,6 +17,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .mcp-search-wrap {
@@ -22,6 +25,7 @@
   display: flex;
   align-items: center;
   width: 240px;
+  min-width: 0;
 }
 
 .mcp-search-icon {

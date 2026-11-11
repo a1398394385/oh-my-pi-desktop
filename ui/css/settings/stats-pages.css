@@ -44,9 +44,19 @@
 }
 
 /* Upstream collapses the detail grid on narrow viewports; the desktop shell
-   keeps the same two-column split, so the rule stays meaningful here. */
+   keeps the same two-column split, so the rule stays meaningful here.
+   Settings page: also keyed to the content column, which is capped at 50vw — 550px is the page
+   width at the 1100px window where this fires. Portal overlays stay viewport-keyed (no content
+   column, and their root cannot host a container query: it wraps fixed overlays). */
 @media (max-width: 1100px) {
 	:is(#pg-stats, .stats-scope) .models-detail {
+		grid-template-columns: minmax(0, 1fr);
+		padding-left: 16px;
+	}
+}
+
+@container (max-width: 550px) {
+	#pg-stats .models-detail {
 		grid-template-columns: minmax(0, 1fr);
 		padding-left: 16px;
 	}

@@ -9,11 +9,14 @@
 /* skills master toggle off: the rest of the page grays out and blocks interaction (same "enable the master toggle first" semantics as the hooks page; the master toggle card sits outside the container and is unaffected) */
 .skills-off-dim { opacity: .45; pointer-events: none; }
 
-/* toolbar aligned with the MCP page: first row scope pill + search box, second row installed count + actions */
+/* toolbar aligned with the MCP page: first row scope pill + search box, second row installed count + actions.
+   The bar wraps so a narrow content column moves the search field to its own line instead of
+   letting the scope pill push it past the page edge. */
 .skills-bar-primary {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-top: 28px; /* same gap the old .set-group-tt kept above the toolbar */
   margin-bottom: 16px;
@@ -23,6 +26,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .skills-search-wrap {
@@ -30,6 +34,7 @@
   display: flex;
   align-items: center;
   width: 240px;
+  min-width: 0;
 }
 
 .skills-search-icon {

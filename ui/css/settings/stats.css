@@ -254,6 +254,19 @@
   grid-template-columns: 2fr 1fr;
 }
 
+/* Collapse by the content column's width as well: the stats page is a .set-page capped at 50vw,
+   so a viewport-keyed breakpoint fires about twice too late. 450px is the page width at a 900px
+   window, i.e. where the viewport rule used to fire. */
+@container (max-width: 450px) {
+  #pg-stats .grid-2,
+  #pg-stats .grid-main-side {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Portal overlays (Drawer / Modal / trace tooltip) render under <body> with no content column to
+   query, and their root cannot be a container either — it wraps `position: fixed` overlays, which
+   layout containment would re-anchor. They stay keyed to the viewport they cover. */
 @media (max-width: 900px) {
   :is(#pg-stats, .stats-scope) .grid-2,
   :is(#pg-stats, .stats-scope) .grid-main-side {

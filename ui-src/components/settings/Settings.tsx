@@ -209,6 +209,9 @@ export default function Settings() {
   const settingsOpen = useAppStore((s) => s.settingsOpen);
   const settingsPage = useAppStore((s) => s.settingsPage);
   const hostSettings = useAppStore((s) => s.hostSettings);
+  // ≤768px: the overlay shows the nav as a top bar and the body full width (#settings.set-narrow
+  // in ui/css/settings/common.css) instead of the 180px nav + 50vw content column.
+  const narrow = useAppStore((s) => s.narrow);
   const [searchQuery, setSearchQuery] = useState("");
   const setBodyRef = useRef<HTMLDivElement | null>(null);
   const settingsRef = useRef<HTMLDivElement | null>(null);
@@ -352,7 +355,7 @@ export default function Settings() {
   const profileName = (hostSettings && hostSettings.activeProfile) || "default";
 
   return (
-    <div id="settings" ref={settingsRef} className={settingsOpen ? "" : "hidden"}>
+    <div id="settings" ref={settingsRef} className={`${settingsOpen ? "" : "hidden"}${narrow ? " set-narrow" : ""}`.trim()}>
       {/* OMP login-in-progress banner + paste-code dialog: mounted at the shell root so page switches or logging in on any settings page don't interrupt it (old version mounted globally on document.body) */}
       <LoginBanner />
       <LoginPrompt />
