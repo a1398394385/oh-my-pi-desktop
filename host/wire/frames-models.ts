@@ -252,6 +252,8 @@ export interface EditorInfo {
   /** "sys:<bundle path>" on macOS (Launch Services), an allow-list id / "finder" / "explorer" otherwise */
   id: string;
   name: string;
+  /** Launch Services' default handler for the queried path (macOS only) */
+  isDefault?: boolean;
   /** Absent for system file associations: their category is only known once opened */
   kind?: "editor" | "terminal" | "fileManager";
   /** PNG data URL of the installed app's icon; absent when the icon cannot be resolved */

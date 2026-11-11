@@ -17,7 +17,8 @@ import type { EditorInfo } from "../../../types/frames";
 import type { FileViewState } from "../../../types/session";
 import { IMAGE_EXTS } from "../../chat/util";
 import MdSurface from "../../chat/MdSurface";
-import { SUCCESS_FLASH_MS } from "../sidebar/util";
+import { copyText, SUCCESS_FLASH_MS } from "../sidebar/util";
+import MenuScrollList from "../../shared/MenuScrollList";
 
 const FILE_VIEW_MAX_LINES = 800; // display window for over-long whole files: start at the request range's first line when present, otherwise from the top
 
@@ -228,13 +229,15 @@ const FALLBACK_ICON: Record<NonNullable<EditorInfo["kind"]>, string> = {
 /** Open-with popover for one path: the Launch Services app list plus path / markdown actions.
  *  Portalled to body (row containers crop with overflow:hidden) and anchored to `anchor`, so any
  *  card that owns a trigger button can reuse it. */
-export function OpenWithMenu({ target, root, mdView, file, open, onClose, anchor }: {
+export function OpenWithMenu({ target, root, mdView, file, open, prefetch, onClose, anchor }: {
   target: string;
   root: string;
   mdView?: { preview: boolean; previewable: boolean; onPick: (v: boolean) => void };
   /** An opened file (not a directory): adds reveal + save-as */
   file?: boolean;
   open: boolean;
+  /** Query the list while the menu is closed (a trigger that shows the default handler's icon) */
+  prefetch?: boolean;
   onClose: () => void;
   anchor: { current: HTMLElement | null };
 }) {
@@ -246,8 +249,8 @@ export function OpenWithMenu({ target, root, mdView, file, open, onClose, anchor
   // Associations are per file type and can change outside the app, so every open re-queries;
   // a reply for another path means this menu is still waiting
   useEffect(() => {
-    if (open) send({ type: "list_open_apps", path: target });
-  }, [open, target]);
+    if (open || prefetch) send({ type: "list_open_apps", path: target });
+  }, [open, prefetch, target]);
   // Measured placement, right edge on the trigger, viewport-clamped (same recipe as the
   // automations .auto-sel-menu).
   useLayoutEffect(() => {
@@ -278,8 +281,7 @@ export function OpenWithMenu({ target, root, mdView, file, open, onClose, anchor
   };
   const copyPath = (text: string) => {
     // The icon swap needs the menu to stay open, so the close waits out the flash window.
-    navigator.clipboard
-      .writeText(text)
+    copyText(text)
       .then(() => {
         setCopiedPath(text);
         window.setTimeout(() => {
@@ -412,21 +414,41 @@ function FileMoreMenu({ target, root, mdView, file, trigger = "dots" }: {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement | null>(null);
+  const wrapRef = useRef<HTMLSpanElement | null>(null);
+  const openApps = useAppStore((s) => s.openApps);
+  // Launch Services' default handler for this path (macOS; the Windows allow-list has no default)
+  const defApp = openApps?.path === target ? openApps.apps.find((a) => a.isDefault) : undefined;
   return (
     <div className="fv-more-wrap">
       {trigger === "open" ? (
-        <button
-          type="button"
-          className="fv-open-btn"
-          ref={btnRef}
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen((v) => !v);
-          }}
-        >
-          {t("right.open")}
-          <Icon name="chevronDown" size={12} />
-        </button>
+        <span className="fv-open" ref={wrapRef}>
+          <button
+            type="button"
+            className="fv-open-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              // No default handler yet (list still loading, or a platform without one): the label
+              // side falls back to opening the menu instead of doing nothing
+              if (defApp) send({ type: "open_with", editorId: defApp.id, path: target });
+              else setOpen(true);
+            }}
+          >
+            {defApp?.iconDataUrl ? <img className="fv-open-ic" src={defApp.iconDataUrl} alt="" /> : null}
+            {t("right.open")}
+          </button>
+          <button
+            type="button"
+            className="fv-open-chev"
+            aria-label={t("right.openWithTitle")}
+            aria-expanded={open}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen((v) => !v);
+            }}
+          >
+            <Icon name="chevronDown" size={12} />
+          </button>
+        </span>
       ) : (
         <button
           type="button"
@@ -441,7 +463,16 @@ function FileMoreMenu({ target, root, mdView, file, trigger = "dots" }: {
           <Icon name="dots" size={15} />
         </button>
       )}
-      <OpenWithMenu target={target} root={root} mdView={mdView} file={file} open={open} onClose={() => setOpen(false)} anchor={btnRef} />
+      <OpenWithMenu
+        target={target}
+        root={root}
+        mdView={mdView}
+        file={file}
+        open={open}
+        prefetch={trigger === "open"}
+        onClose={() => setOpen(false)}
+        anchor={trigger === "open" ? wrapRef : btnRef}
+      />
     </div>
   );
 }

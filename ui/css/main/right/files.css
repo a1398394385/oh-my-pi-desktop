@@ -36,19 +36,37 @@
    nowrap only keeps a long app name from breaking mid-row */
 .fv-menu .mi { white-space: nowrap; }
 
-/* Combined "Open" trigger: label + caret in one bordered pill (the title bar's only file action) */
-.fv-open-btn {
-  display: inline-flex; align-items: center; gap: 4px;
-  /* Base size + 26px height match the neighboring .icon-btn: at the path's 11.44px the CJK label
-     reads a size small, and a 20px pill looks like a lesser control than the icon buttons. */
-  height: 26px; padding: 0 8px 0 10px; border: 1px solid var(--line); border-radius: 7px;
-  background: var(--ctl-bg); color: var(--text); font: inherit; font-size: var(--ui-fs-base);
-  line-height: 1; cursor: pointer; white-space: nowrap;
+/* Combined "Open" trigger: the label side launches the default handler (its icon leads), the
+   caret opens the menu; each side takes its own hover plate, so the pill never lights up as one
+   block. Same height as the file tab's icon buttons + 2px (the extra height seats the 14px app
+   icon without crowding the 11.44px label). */
+.fv-open {
+  display: inline-flex; align-items: stretch;
+  height: 28px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--ctl-bg); overflow: hidden;
 }
 
-.fv-open-btn:hover { background: var(--hover-fill); }
+.fv-open-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 100%; padding: 0 7px 0 9px;
+  border: 0; background: none; color: var(--text);
+  font: inherit; font-size: var(--ui-fs-base); line-height: 1;
+  cursor: pointer; white-space: nowrap;
+}
 
-.fv-open-btn .pi-ic { color: var(--dim); }
+.fv-open-chev {
+  display: inline-flex; align-items: center;
+  padding: 0 5px; border: 0; border-left: 1px solid var(--line);
+  background: none; color: var(--dim); cursor: pointer;
+}
+
+.fv-open-btn:hover, .fv-open-chev:hover { background: var(--hover-fill); }
+
+.fv-open-chev:hover { color: var(--text); }
+
+.fv-open-btn .pi-ic, .fv-open-chev .pi-ic { color: var(--dim); }
+
+.fv-open-ic { width: 14px; height: 14px; object-fit: contain; border-radius: 3px; }
 
 /* Active-mode mark in the markdown group: gray check pinned to the row's right edge (the
    generic .ck glyph is green, which reads as "enabled" rather than "current") */
@@ -76,11 +94,12 @@
 /* title bar (ZCode parity): the open file's path relative to the project root on the left
    (the tab label while no file is open), the file actions + file-navigation toggle on the right;
    the bottom divider separates it from the panes below and spans the full card width.
-   Height must leave air around the 26px icon buttons, otherwise their hover plate reaches the divider. */
+   Height must leave air around the 28px open pill / 26px icon buttons, otherwise their hover
+   plate reaches the divider. */
 .fp-title {
   flex: none;
   display: flex; align-items: center; gap: 6px;
-  height: 34px; padding: 0 8px;
+  height: 38px; padding: 0 8px;
   border-bottom: 1px solid var(--line);
 }
 

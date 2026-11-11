@@ -34,6 +34,8 @@ interface EditorDef {
 export interface EditorInfo {
   id: string;
   name: string;
+  /** Launch Services' default handler for this path; the UI opens it from the menu trigger itself */
+  isDefault?: boolean;
   /** Absent for system file associations: their category is only known once opened */
   kind?: EditorKind;
   /** PNG data URL of the real app icon; absent when the icon cannot be resolved (UI falls back) */
@@ -404,7 +406,12 @@ export async function getFileOpenTargets(target: string): Promise<EditorInfo[]> 
   });
   return apps.map((app) => {
     const iconDataUrl = getAppIconDataUrl(app.key);
-    return { id: `${SYS_APP_PREFIX}${app.key}`, name: app.name, ...(iconDataUrl ? { iconDataUrl } : {}) };
+    return {
+      id: `${SYS_APP_PREFIX}${app.key}`,
+      name: app.name,
+      ...(app.isDefault ? { isDefault: true } : {}),
+      ...(iconDataUrl ? { iconDataUrl } : {}),
+    };
   });
 }
 
