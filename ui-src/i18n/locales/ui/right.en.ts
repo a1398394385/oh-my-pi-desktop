@@ -46,6 +46,7 @@ export const rightEn = {
     REVERT: "A revert is in progress — staging and committing still work, the rest is locked.",
   },
   bgDone: "Done",
+  bgFailed: "Failed",
   bgRunning: "Running",
   bgStopped: "Stopped",
   noBgCommands: "No background commands in this session",

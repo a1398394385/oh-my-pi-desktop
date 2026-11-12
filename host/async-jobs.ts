@@ -5,6 +5,9 @@
 import { stampEvent, type PoolEntry } from "./state.ts";
 import type { JobWidgetView } from "@oh-my-pi/pi-tui/tools/job-widget";
 
+/** Mirror of the base AsyncJob.status union: failure and cancellation are not "done". */
+type BgJobStatus = "running" | "completed" | "failed" | "cancelled";
+
 /** One bg_jobs frame row: snapshot identity enriched with live inspection data
  *  (command/cwd only exist on process-backed jobs; pids are live only while running). */
 export interface BgJobRow {
@@ -15,6 +18,7 @@ export interface BgJobRow {
 	cwd: string | null;
 	pids: number[];
 	exitCode: number | null;
+	status: BgJobStatus;
 	running: boolean;
 	// One-line "what it does / when it ends" from the base's job-widget authoring
 	// (AsyncJobSnapshotItem.caption; unset with async.widgets off).
@@ -32,7 +36,7 @@ export interface BgJobRow {
 export function bgJobsPayload(session: PoolEntry["session"]): BgJobRow[] {
 	const snapshot = session.getAsyncJobSnapshot?.();
 	if (!snapshot) return [];
-	const rows = new Map<string, { id: string; status?: string; type?: string; label?: string; caption?: string }>();
+	const rows = new Map<string, { id: string; status: BgJobStatus; type?: string; label?: string; caption?: string }>();
 	for (const job of [...(snapshot.running ?? []), ...(snapshot.recent ?? [])]) rows.set(job.id, job);
 	// One call builds the id→view map for the whole frame; the base returns [] with
 	// widgets off or no registry, so every row then gets null.
@@ -47,6 +51,7 @@ export function bgJobsPayload(session: PoolEntry["session"]): BgJobRow[] {
 			cwd: inspected?.cwd ?? null,
 			pids: Array.isArray(inspected?.pids) ? inspected.pids : [],
 			exitCode: typeof inspected?.exitCode === "number" ? inspected.exitCode : null,
+			status: job.status,
 			running: job.status === "running",
 			caption: typeof job.caption === "string" && job.caption ? job.caption : null,
 			widget: widgets.get(job.id) ?? null,

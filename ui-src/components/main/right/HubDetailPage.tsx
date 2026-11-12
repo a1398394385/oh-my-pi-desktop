@@ -258,11 +258,20 @@ export function HubDetail({ sub, t, sessionId, subagentId }: { sub: SubagentStat
                       ) : null}
                     </span>
                     <span className="hub-bg-st text-faint">
+                      {/* A settled row shows its exit code when the process reported one;
+                          otherwise (task/eval rows, cancelled/parked processes) the base
+                          status says whether it failed — right.* carries the shared labels. */}
                       {j.running
                         ? j.type === "bash"
                           ? t("hubExt.bgPids", { n: j.pids.length })
                           : t("hubExt.bgRunning")
-                        : t("hubExt.bgExit", { code: j.exitCode ?? "—" })}
+                        : j.exitCode !== null
+                          ? t("hubExt.bgExit", { code: j.exitCode })
+                          : j.status === "failed"
+                            ? t("right.bgFailed")
+                            : j.status === "cancelled"
+                              ? t("right.bgStopped")
+                              : t("right.bgDone")}
                     </span>
                     {cancellable ? (
                       <button

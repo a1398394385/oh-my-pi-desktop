@@ -175,7 +175,14 @@ function getBgTasksForSession(
       args: {},
       output: "",
       running: job.running,
-      statusText: job.running ? t("right.bgRunning") : t("right.bgDone"),
+      // Settled rows split by base status: a failed or cancelled job is not "done".
+      statusText: job.running
+        ? t("right.bgRunning")
+        : job.status === "failed"
+          ? t("right.bgFailed")
+          : job.status === "cancelled"
+            ? t("right.bgStopped")
+            : t("right.bgDone"),
       cwd: job.cwd || s.cwd,
       timeIndex: baseIndex + jobIndex,
       caption: job.caption ?? null,

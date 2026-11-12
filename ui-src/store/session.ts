@@ -76,6 +76,8 @@ export interface BgJobEntry {
   cwd: string | null;
   pids: number[];
   exitCode: number | null;
+  /** Base job status: failure and cancellation are not "done" */
+  status: "running" | "completed" | "failed" | "cancelled";
   running: boolean;
   /** Base-authored one-liner on what the job does and when it ends (null with widgets off) */
   caption: string | null;

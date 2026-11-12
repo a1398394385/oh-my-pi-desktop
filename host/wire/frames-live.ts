@@ -128,6 +128,7 @@ export interface BgJobsFrame {
     cwd: string | null;
     pids: number[]; // live pids while running, empty once settled
     exitCode: number | null; // null while running or when the body reported none
+    status: "running" | "completed" | "failed" | "cancelled"; // base AsyncJob.status, verbatim: failure and cancellation are not "done"
     running: boolean;
     caption: string | null; // base-authored one-liner (null with async.widgets off)
     widget: JobWidgetView | null; // live view while running; null for settled rows

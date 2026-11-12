@@ -46,6 +46,7 @@ export const rightZh = {
     REVERT: "回滚进行中 —— 暂存与提交仍可用，其余操作已锁定。",
   },
   bgDone: "已完成",
+  bgFailed: "失败",
   bgRunning: "运行中",
   bgStopped: "已停止",
   noBgCommands: "当前会话暂无后台命令",
