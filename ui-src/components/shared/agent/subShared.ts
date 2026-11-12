@@ -74,26 +74,56 @@ export function currentProgress(sub: SubagentState): string {
   return u?.lastIntent ?? "";
 }
 
-// Roster status ordering (running first), matching the TUI Agent Hub's STATUS_ORDER
-export const STATUS_ORDER: Record<string, number> = { started: 0, running: 0, completed: 1, failed: 2, aborted: 3 };
+// Statuses the base emits, in two vocabularies: lifecycle frames (started|completed|failed|
+// aborted) and progress frames (pending|running|completed|failed|aborted).
+export type SubStatus = "started" | "pending" | "running" | "completed" | "failed" | "aborted";
+
+// Display groups shared by the roster pills, the header counts and the hub detail head.
+// "unknown" is a status neither vocabulary knows (a newer base state) and must never pose
+// as running.
+export type StGroup = "running" | "completed" | "failed" | "aborted" | "unknown";
+
+// One row per status: roster sort weight (running first, as the TUI Agent Hub orders them) and
+// display group. Every consumer reads this table, so the ordering and the pills cannot drift
+// apart; a status added above without a row fails the build.
+const ST_ROWS: Record<SubStatus, { order: number; group: StGroup }> = {
+  started: { order: 0, group: "running" },
+  pending: { order: 0, group: "running" },
+  running: { order: 0, group: "running" },
+  completed: { order: 1, group: "completed" },
+  failed: { order: 2, group: "failed" },
+  aborted: { order: 3, group: "aborted" },
+};
+// Widened for lookup by the raw frame status, which leaves SubStatus once the base adds a state.
+const ST_TABLE: Record<string, { order: number; group: StGroup }> = ST_ROWS;
+const ST_UNKNOWN = { order: 4, group: "unknown" as const };
+
 export function subStatus(sub: SubagentState): string {
   return sub.streaming ? "running" : sub.status;
 }
 
-// Display groups shared by the roster pills and the header counts: "started" (lifecycle
-// register, before the first progress heartbeat) renders under running, matching STATUS_ORDER.
-export type StGroup = "running" | "completed" | "failed" | "aborted";
-export const ST_GROUPS: readonly StGroup[] = ["running", "completed", "failed", "aborted"];
-export const ST_GROUP: Record<string, StGroup> = {
-  started: "running",
-  running: "running",
-  completed: "completed",
-  failed: "failed",
-  aborted: "aborted",
-};
-export const ST_KEY: Record<StGroup, string> = {
+// Sort weight + display group for a status value. Unknown values get their own group and the
+// tail order instead of being silently reported as running.
+export function stInfo(status: string): { order: number; group: StGroup } {
+  return ST_TABLE[status] ?? ST_UNKNOWN;
+}
+
+export const ST_KEY: Record<Exclude<StGroup, "unknown">, string> = {
   running: "right.subStRunning",
   completed: "right.subStCompleted",
   failed: "right.subStFailed",
   aborted: "right.subStAborted",
 };
+
+// Chip/pill key for a status: its display group, or the raw status token when the group is
+// unknown (a state this build has no copy for, so the token is the honest label).
+export function stKeyOf(status: string): string {
+  const { group } = stInfo(status);
+  return group === "unknown" ? status : group;
+}
+
+// Label for a stKeyOf/stInfo group key: the group copy, else the key itself.
+export function stLabel(key: string, t: SegT): string {
+  const copy = (ST_KEY as Record<string, string | undefined>)[key];
+  return copy ? t(copy) : key;
+}

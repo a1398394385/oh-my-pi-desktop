@@ -8,7 +8,7 @@ import { useAppStore, fmtTokens, fmtDurationMs, openSessionByPath } from "../../
 import { expandRightPanel } from "../../main/right/tabs";
 import { SubControls } from "./SubControls";
 import { SubStatusPill } from "./SubStatusPill";
-import { modelShort, tokenTotal, usageSegments, timeSegments, STATUS_ORDER, ST_GROUP, ST_GROUPS, ST_KEY, subStatus, currentProgress, type SegT, type StGroup } from "./subShared";
+import { modelShort, tokenTotal, usageSegments, timeSegments, stInfo, stKeyOf, stLabel, subStatus, currentProgress, type SegT } from "./subShared";
 import type { SubagentState } from "../../../types/session";
 
 // The subset of the open-session snapshot the roster reads; both surfaces pass the live
@@ -38,11 +38,11 @@ type SubEntry = [string, SubagentState];
 export type Row = { id: string; sub: SubagentState; depth: number; prefix: string; last: boolean };
 
 // Project the subagent map into display rows: status order first (running → completed →
-// failed → aborted), registration order within one status; tree mode nests children under
+// failed → aborted → unknown), registration order within one status; tree mode nests children under
 // their parent by display-name lookup (parent ids are not persisted, names are).
 export function buildRows(subs: SubEntry[], mode: "flat" | "tree"): Row[] {
   const sorted = [...subs].sort(
-    (a, b) => (STATUS_ORDER[subStatus(a[1])] ?? 9) - (STATUS_ORDER[subStatus(b[1])] ?? 9),
+    (a, b) => stInfo(subStatus(a[1])).order - stInfo(subStatus(b[1])).order,
   ); // stable sort keeps registration (Map insertion) order within one status
   if (mode === "flat") return sorted.map(([id, sub]) => ({ id, sub, depth: 0, prefix: "", last: false }));
   const byName = new Map<string, SubEntry>();
@@ -119,15 +119,18 @@ export function RosterHead({ s }: { s: RosterSession }) {
     return { cost, dur, reqs, tools, tok, measured, timed, total: s.subagents.size };
   }, [usageSig]);
 
-  // Grouped and ordered like the roster (running → completed → failed → aborted), so the
-  // header never reshuffles as statuses arrive and reads in the pills' color language.
+  // Grouped and ordered like the roster (running → completed → failed → aborted → unknown),
+  // so the header never reshuffles as statuses arrive and reads in the pills' color language.
+  // Unknown statuses count under their own raw token instead of posing as running.
   const statusCounts = useMemo(() => {
-    const c: Partial<Record<StGroup, number>> = {};
+    const c = new Map<string, number>();
     for (const [, sub] of s.subagents) {
-      const g = ST_GROUP[subStatus(sub)] ?? "running";
-      c[g] = (c[g] ?? 0) + 1;
+      const key = stKeyOf(subStatus(sub));
+      c.set(key, (c.get(key) ?? 0) + 1);
     }
-    return ST_GROUPS.flatMap((g) => (c[g] ? [[g, c[g]] as const] : []));
+    // Group keys rank like their statuses (a group is named after its status); unknown tokens
+    // all share the tail rank and fall back to alphabetical order.
+    return [...c.keys()].sort((a, b) => stInfo(a).order - stInfo(b).order || a.localeCompare(b)).map((k) => [k, c.get(k)!] as const);
   }, [usageSig]);
 
   return (
@@ -151,8 +154,8 @@ export function RosterHead({ s }: { s: RosterSession }) {
           {t("right.hubTree")}
         </button>
         {statusCounts.map(([st, n]) => (
-          <span className={"hub-st st-" + st} key={st}>
-            {n} {t(ST_KEY[st])}
+          <span className={"hub-st st-" + stInfo(st).group} key={st}>
+            {n} {stLabel(st, t)}
           </span>
         ))}
       </div>
