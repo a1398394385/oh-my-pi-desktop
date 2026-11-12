@@ -36,10 +36,15 @@ export const worktreeEn = {
   },
 
   code: {
-    not_a_repo: "Not a git repository",
     invalid_name: "Invalid worktree name",
+    missing_base: "No base folder to create the worktree from",
+    not_a_repo: "Not a git repository",
+    worktree_create_failed: "Could not create the worktree",
+    missing_path: "No worktree path given",
+    status_failed: "Could not read the worktree state",
     not_a_worktree: "Not a git worktree",
     worktree_dirty: "Worktree has uncommitted changes",
+    worktree_remove_failed: "Could not remove the worktree",
   },
 };
 

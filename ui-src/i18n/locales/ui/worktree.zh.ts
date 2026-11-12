@@ -36,10 +36,15 @@ export const worktreeZhCn = {
   },
 
   code: {
-    not_a_repo: "不是 git 仓库",
     invalid_name: "worktree 名称不合法",
+    missing_base: "缺少用于创建 worktree 的基础目录",
+    not_a_repo: "不是 git 仓库",
+    worktree_create_failed: "无法创建 worktree",
+    missing_path: "缺少 worktree 路径",
+    status_failed: "无法读取 worktree 状态",
     not_a_worktree: "不是 git worktree",
     worktree_dirty: "worktree 存在未提交改动",
+    worktree_remove_failed: "无法移除 worktree",
   },
 };
 

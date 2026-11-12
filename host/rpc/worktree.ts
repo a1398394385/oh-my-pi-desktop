@@ -91,6 +91,28 @@ function reqIdOf(msg: Record<string, unknown>): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Every failure code these RPCs can emit; the UI maps each one to localized
+ * copy, so a new literal here must also gain a `worktree.code.<code>` key.
+ */
+export const WORKTREE_ERROR_CODES = [
+  "invalid_name",
+  "missing_base",
+  "not_a_repo",
+  "worktree_create_failed",
+  "missing_path",
+  "status_failed",
+  "not_a_worktree",
+  "worktree_dirty",
+  "worktree_remove_failed",
+] as const;
+export type WorktreeErrorCode = (typeof WORKTREE_ERROR_CODES)[number];
+
+/** One ok:false frame; `code` is the union, so a bare typo cannot slip past typecheck. */
+function failFrame(type: string, reqId: number, code: WorktreeErrorCode, error: string, extra: Record<string, unknown> = {}): string {
+  return JSON.stringify({ type, reqId, ok: false, code, error, ...extra });
+}
+
 export const worktreeHandlers: Record<string, RpcHandler> = {
   // Create a worktree + branch. name (free text, slugified) + baseRef ("HEAD" |
   // "default") + baseCwd (the repo to branch from — the UI passes the active
@@ -101,17 +123,17 @@ export const worktreeHandlers: Record<string, RpcHandler> = {
     const rawName = String(msg.name ?? "");
     const name = slugifyName(rawName);
     if (!name || !NAME_PATTERN.test(name)) {
-      ws.send(JSON.stringify({ type: "worktree_created", reqId, ok: false, code: "invalid_name", error: `Invalid worktree name "${rawName}" — use 1-41 chars of [a-z0-9-] after slugify` }));
+      ws.send(failFrame("worktree_created", reqId, "invalid_name", `Invalid worktree name "${rawName}" — use 1-41 chars of [a-z0-9-] after slugify`));
       return;
     }
     const baseCwd = typeof msg.baseCwd === "string" && msg.baseCwd ? msg.baseCwd : "";
     if (!baseCwd) {
-      ws.send(JSON.stringify({ type: "worktree_created", reqId, ok: false, code: "missing_base", error: "worktree_create requires baseCwd" }));
+      ws.send(failFrame("worktree_created", reqId, "missing_base", "worktree_create requires baseCwd"));
       return;
     }
     const primaryRoot = await primaryRootOf(baseCwd);
     if (!primaryRoot) {
-      ws.send(JSON.stringify({ type: "worktree_created", reqId, ok: false, code: "not_a_repo", error: `Not a git repository: ${baseCwd}` }));
+      ws.send(failFrame("worktree_created", reqId, "not_a_repo", `Not a git repository: ${baseCwd}`));
       return;
     }
     const startPoint = msg.baseRef === "default" ? await defaultBranchRef(primaryRoot) : "HEAD";
@@ -133,19 +155,19 @@ export const worktreeHandlers: Record<string, RpcHandler> = {
       // cleanly (the next suffix or a retry must not trip over a half ref).
       const mk = await git(["branch", branch, startPoint], primaryRoot);
       if (!mk.ok) {
-        ws.send(JSON.stringify({ type: "worktree_created", reqId, ok: false, code: "worktree_create_failed", error: `git branch failed: ${mk.stderr.trim() || mk.stdout.trim()}` }));
+        ws.send(failFrame("worktree_created", reqId, "worktree_create_failed", `git branch failed: ${mk.stderr.trim() || mk.stdout.trim()}`));
         return;
       }
       const add = await git(["worktree", "add", path, branch], primaryRoot);
       if (!add.ok) {
         await git(["branch", "-D", branch], primaryRoot); // roll back the orphaned ref, best-effort
-        ws.send(JSON.stringify({ type: "worktree_created", reqId, ok: false, code: "worktree_create_failed", error: `git worktree add failed: ${add.stderr.trim() || add.stdout.trim()}` }));
+        ws.send(failFrame("worktree_created", reqId, "worktree_create_failed", `git worktree add failed: ${add.stderr.trim() || add.stdout.trim()}`));
         return;
       }
       ws.send(JSON.stringify({ type: "worktree_created", reqId, ok: true, path, branch, baseCwd: primaryRoot }));
       return;
     }
-    ws.send(JSON.stringify({ type: "worktree_created", reqId, ok: false, code: "worktree_create_failed", error: `No available worktree name after ${MAX_SUFFIX} attempts` }));
+    ws.send(failFrame("worktree_created", reqId, "worktree_create_failed", `No available worktree name after ${MAX_SUFFIX} attempts`));
   },
 
   // Live status probe for the remove flow: does the path still exist, is it a
@@ -156,7 +178,7 @@ export const worktreeHandlers: Record<string, RpcHandler> = {
     const path = typeof msg.path === "string" && msg.path ? msg.path : "";
     const base = { type: "worktree_status_result", reqId, path };
     if (!path) {
-      ws.send(JSON.stringify({ ...base, ok: false, code: "missing_path", error: "worktree_status requires path" }));
+      ws.send(failFrame("worktree_status_result", reqId, "missing_path", "worktree_status requires path", { path }));
       return;
     }
     const exists = await fs
@@ -175,7 +197,7 @@ export const worktreeHandlers: Record<string, RpcHandler> = {
     const branch = branchR.ok ? branchR.stdout.trim() || null : null;
     const counts = await statusCounts(path);
     if (!counts) {
-      ws.send(JSON.stringify({ ...base, ok: false, code: "status_failed", error: "git status failed", exists, isRepo, branch, dirty: false, staged: 0, unstaged: 0, untracked: 0 }));
+      ws.send(failFrame("worktree_status_result", reqId, "status_failed", "git status failed", { path, exists, isRepo, branch, dirty: false, staged: 0, unstaged: 0, untracked: 0 }));
       return;
     }
     ws.send(JSON.stringify({ ...base, ok: true, exists, isRepo, branch, dirty: counts.staged + counts.unstaged + counts.untracked > 0, ...counts }));
@@ -191,24 +213,24 @@ export const worktreeHandlers: Record<string, RpcHandler> = {
     const force = msg.force === true;
     const base = { type: "worktree_removed", reqId, path };
     if (!path) {
-      ws.send(JSON.stringify({ ...base, ok: false, code: "missing_path", error: "worktree_remove requires path" }));
+      ws.send(failFrame("worktree_removed", reqId, "missing_path", "worktree_remove requires path", { path }));
       return;
     }
     const primaryRoot = await primaryRootOf(path);
     if (!primaryRoot) {
-      ws.send(JSON.stringify({ ...base, ok: false, code: "not_a_worktree", error: `Not inside a git worktree: ${path}` }));
+      ws.send(failFrame("worktree_removed", reqId, "not_a_worktree", `Not inside a git worktree: ${path}`, { path }));
       return;
     }
     if (!force) {
       const counts = await statusCounts(path);
       if (counts && counts.staged + counts.unstaged + counts.untracked > 0) {
-        ws.send(JSON.stringify({ ...base, ok: false, code: "worktree_dirty", error: "Worktree has uncommitted changes", ...counts }));
+        ws.send(failFrame("worktree_removed", reqId, "worktree_dirty", "Worktree has uncommitted changes", { path, ...counts }));
         return;
       }
     }
     const rm = await git(["worktree", "remove", ...(force ? ["--force"] : []), path], primaryRoot);
     if (!rm.ok) {
-      ws.send(JSON.stringify({ ...base, ok: false, code: "worktree_remove_failed", error: `git worktree remove failed: ${rm.stderr.trim() || rm.stdout.trim()}` }));
+      ws.send(failFrame("worktree_removed", reqId, "worktree_remove_failed", `git worktree remove failed: ${rm.stderr.trim() || rm.stdout.trim()}`, { path }));
       return;
     }
     await git(["worktree", "prune"], primaryRoot); // drop stale administrative entries, best-effort

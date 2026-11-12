@@ -25,13 +25,19 @@ function slugify(name: string): string {
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,40}$/;
 const labelStyle = { fontSize: "var(--ui-fs-sm)", color: "var(--dim)", marginBottom: "6px", display: "block" } as const;
 
-// Localized label for the host's stable error codes; the raw host error (paths,
-// git stderr) is appended for the detail the labels don't carry.
+// Localized label for the host's stable error codes (host/rpc/worktree.ts
+// WORKTREE_ERROR_CODES — every one must appear here); the raw host error
+// (paths, git stderr) is appended for the detail the labels don't carry.
 const CODE_KEY: Record<string, string> = {
-  not_a_repo: "worktree.code.not_a_repo",
   invalid_name: "worktree.code.invalid_name",
+  missing_base: "worktree.code.missing_base",
+  not_a_repo: "worktree.code.not_a_repo",
+  worktree_create_failed: "worktree.code.worktree_create_failed",
+  missing_path: "worktree.code.missing_path",
+  status_failed: "worktree.code.status_failed",
   not_a_worktree: "worktree.code.not_a_worktree",
   worktree_dirty: "worktree.code.worktree_dirty",
+  worktree_remove_failed: "worktree.code.worktree_remove_failed",
 };
 
 export function worktreeErrorText(t: (key: string, opts?: Record<string, unknown>) => string, code: string | undefined, error: string | undefined, fallback: string): string {
