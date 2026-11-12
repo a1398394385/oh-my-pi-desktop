@@ -83,6 +83,15 @@ function parseGoalSubcommand(args: string): { sub: GoalSubcommand | undefined; r
   return { sub: undefined, rest: trimmed };
 }
 
+/**
+ * Both accounting statuses are live goals (base isAccountingStatus): a
+ * `budget-limited` goal keeps `enabled`, only its continuation stops, so it
+ * still owns the session and may be replaced/paused/rescued by budget.
+ */
+function isLiveGoal(state: GoalStateLike | undefined): state is GoalStateLike {
+  return state?.enabled === true && (state.goal.status === "active" || state.goal.status === "budget-limited");
+}
+
 /** Validate and restore a goal record from persisted modeData (aligned with TUI #goalFromModeData). */
 function goalFromModeData(modeData: { goal?: unknown } | undefined): GoalLike | undefined {
   const goal = modeData?.goal;
@@ -213,7 +222,7 @@ export class GoalController {
         return null;
     }
     const state = s.getGoalModeState();
-    if (state?.enabled && state.goal.status === "active") {
+    if (isLiveGoal(state)) {
       if (rest) {
         this.#output(hostI18n.t("flows.goal.activeUpdateHint"));
         return null;
@@ -360,7 +369,7 @@ export class GoalController {
       return null;
     }
     const state = this.#session.getGoalModeState();
-    if (state?.enabled && state.goal.status === "active") return await this.#replaceFromObjective(objective);
+    if (isLiveGoal(state)) return await this.#replaceFromObjective(objective);
     return await this.#startFromObjective(objective);
   }
 
@@ -392,7 +401,7 @@ export class GoalController {
 
   async #pause(): Promise<void> {
     const state = this.#session.getGoalModeState();
-    if (!state?.enabled || state.goal.status !== "active") {
+    if (!isLiveGoal(state)) {
       this.#output(hostI18n.t("flows.goal.nothingToPause"));
       return;
     }
@@ -432,7 +441,7 @@ export class GoalController {
   async #budget(rest: string): Promise<void> {
     const s = this.#session;
     const state = s.getGoalModeState();
-    if (!state?.enabled || state.goal.status !== "active") {
+    if (!isLiveGoal(state)) {
       this.#output(hostI18n.t(this.#pausedState() ? "flows.goal.budgetPausedHint" : "flows.goal.budgetNoActive"));
       return;
     }
