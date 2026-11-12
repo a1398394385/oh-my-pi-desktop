@@ -2,9 +2,17 @@
 // Usage: OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun scripts/smoke-subagent.ts
 // Frame semantics (after the BUG-007 fix): one turn_end per model round, and the lifecycle frame may arrive later than the first round frame --
 // assertions filter by the runEnd=true final frame (same as smoke-sendnow); in-round frames are waited on, not judged.
+import type { SubagentLifecyclePayload } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
+
+// Base life cycle vocabulary, forwarded verbatim by the host. An unknown value means the base
+// renamed a state and this smoke would be asserting on frames the app no longer understands.
+type LifecycleStatus = SubagentLifecyclePayload["status"];
+const LIFECYCLE_STATUSES: Record<LifecycleStatus, true> = { started: true, completed: true, failed: true, aborted: true };
+const isLifecycleStatus = (s: unknown): s is LifecycleStatus =>
+  typeof s === "string" && Object.hasOwn(LIFECYCLE_STATUSES, s);
 
 let child: ReturnType<typeof spawn> | null = null;
 let createdFile: string | null = null;
@@ -55,10 +63,12 @@ ws.onmessage = (ev) => {
       );
       break;
     case "subagent_lifecycle":
+      if (!isLifecycleStatus(msg.status)) fail(`未知的子代理生命周期状态 ${String(msg.status)}`);
+      // The run this smoke induces must succeed: failed/aborted used to slip through as "passed"
+      if (msg.status !== "started" && msg.status !== "completed") fail(`子代理终态为 ${msg.status}（冒烟要求 completed）`);
       state.lifecycle++;
       console.log(`lifecycle: ${msg.agent} → ${msg.status}（${msg.description?.slice(0, 40)}）`);
       if (typeof msg.sessionFile === "string") state.sessionFile = msg.sessionFile;
-      if (msg.status === "started") state.events = state.events; // keep
       break;
     case "subagent_progress":
       if (typeof msg.sessionFile === "string") state.sessionFile = msg.sessionFile;

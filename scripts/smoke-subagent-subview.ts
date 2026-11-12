@@ -3,12 +3,22 @@
 // long tool runs, which emit no progress events — and the terminal lifecycle must clear it again.
 // The subagent store state is driven through the real frontend store against a real host.
 // Run: bun run smoke:subagent-subview  (OMP_DESKTOP_MODEL=<provider/model> to override the model)
+import type { SubagentLifecyclePayload } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 import { smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { rm } from "node:fs/promises";
 import { Window } from "happy-dom";
 import type { HostFrame } from "../ui-src/types/frames";
+
+// Base life cycle vocabulary, forwarded verbatim by the host: an unknown value or a terminal
+// state other than "completed" must fail loudly here, not surface as a 120s timeout.
+type LifecycleStatus = SubagentLifecyclePayload["status"];
+const LIFECYCLE_STATUSES: Record<LifecycleStatus, true> = { started: true, completed: true, failed: true, aborted: true };
+const isLifecycleStatus = (s: unknown): s is LifecycleStatus =>
+  typeof s === "string" && Object.hasOwn(LIFECYCLE_STATUSES, s);
+const STARTED: LifecycleStatus = "started";
+const COMPLETED: LifecycleStatus = "completed";
 
 let child: ChildProcess | null = null;
 let createdFile: string | null = null;
@@ -21,8 +31,10 @@ function fail(msg: string): never {
 }
 
 // ---- happy-dom environment so the frontend store can be imported headlessly ----
-const win = new Window({ url: "http://localhost/index.html" });
+// ?preview=1: a desktop-like client, not a remote browser (same as scripts/ui-smoke-env.ts)
+const win = new Window({ url: "http://localhost/index.html?preview=1" });
 globalThis.window = win as unknown as Window & typeof globalThis;
+globalThis.location = win.location;
 globalThis.document = win.document as unknown as Document;
 globalThis.localStorage = win.localStorage;
 globalThis.navigator = win.navigator as unknown as Navigator;
@@ -109,8 +121,10 @@ ws.onmessage = (ev) => {
     return;
   }
   if (msg.type === "subagent_lifecycle") {
+    if (!isLifecycleStatus(msg.status)) fail(`未知的子代理生命周期状态 ${String(msg.status)}`);
+    if (msg.status !== STARTED && msg.status !== COMPLETED) fail(`子代理终态为 ${msg.status}（冒烟要求 completed）`);
     const sessionFile = typeof msg.sessionFile === "string" ? msg.sessionFile : null;
-    if (msg.status === "started" && sessionFile && !childPath) {
+    if (msg.status === STARTED && sessionFile && !childPath) {
       childPath = sessionFile;
       // Enter the page mid-run, i.e. while the child sits inside its long `sleep` tool call —
       // the case where no progress event (and thus no lighting frame) is produced.
@@ -128,7 +142,7 @@ ws.onmessage = (ev) => {
         }, 3000);
       }, 10_000);
     }
-    if (msg.status === "completed" && litChecked) {
+    if (msg.status === COMPLETED && litChecked) {
       // Terminal lifecycle must retract the running state on the opened child view
       setTimeout(() => {
         const v = childView();

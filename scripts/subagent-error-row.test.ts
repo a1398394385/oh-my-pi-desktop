@@ -6,6 +6,7 @@
 // Run: OMP_PROFILE=omp-desktop-test bun test --pool=forks --poolOptions.forks.singleFork scripts/subagent-error-row.test.ts
 import "./dom-stub";
 import { afterAll, describe, expect, test } from "bun:test";
+import type { SubagentLifecyclePayload } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 import { useAppStore } from "../ui-src/store";
 import { frameHandlers } from "../ui-src/store/wsHandlers";
 import fs from "node:fs";
@@ -13,6 +14,13 @@ import os from "node:os";
 import path from "node:path";
 import { translateSubagentEvent } from "../host/translate";
 import { replaySubagentHistory } from "../host/subagent-view";
+
+// Base life cycle vocabulary (host forwards it verbatim): binding the literals to the union keeps
+// a renamed state a tsc error, not a silently vacuous `toBe`.
+type LifecycleStatus = SubagentLifecyclePayload["status"];
+const STARTED: LifecycleStatus = "started";
+const FAILED: LifecycleStatus = "failed";
+const ABORTED: LifecycleStatus = "aborted";
 
 describe("subagent message_end", () => {
   test("a failed child message becomes an error row", () => {
@@ -54,9 +62,43 @@ describe("subagent history replay", () => {
     const frames: Array<Record<string, unknown>> = [];
     replaySubagentHistory({ send: (raw: string) => frames.push(JSON.parse(raw)) }, sessionFile, "sess-1", false);
     const lifecycle = frames.find((f) => f.type === "subagent_lifecycle");
-    expect(lifecycle?.status).toBe("failed");
+    expect(lifecycle?.status).toBe(FAILED);
     expect(lifecycle?.error).toBe("rate limited (429)");
     expect(lifecycle?.result).toBeUndefined(); // no text was produced
+  });
+
+  // A user-stopped child: the base records stopReason "aborted" (plus a generic "Request was
+  // aborted" errorMessage), which is a stop the user asked for — not a failure. The replayed row
+  // must say so, carry no error section, and keep the partial answer that reached the chat.
+  test("an aborted child's replayed frame says aborted, without an error", () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "omp-subagent-abort-"));
+    const parent = path.join(d, "parent.jsonl");
+    fs.writeFileSync(parent, "");
+    const artDir = path.join(d, "parent");
+    fs.mkdirSync(artDir, { recursive: true });
+    const childFile = path.join(artDir, "Worker.jsonl");
+    fs.writeFileSync(
+      childFile,
+      [
+        { type: "session", timestamp: "2026-10-30T00:00:00.000Z", parentSession: parent },
+        { type: "message", timestamp: "2026-10-30T00:00:01.000Z", message: { role: "user", content: "go" } },
+        {
+          type: "message",
+          timestamp: "2026-10-30T00:00:02.000Z",
+          message: { role: "assistant", stopReason: "aborted", errorMessage: "Request was aborted", content: "half" },
+        },
+      ].map((l) => JSON.stringify(l)).join("\n") + "\n",
+    );
+    const old = new Date(Date.now() - 120_000);
+    fs.utimesSync(childFile, old, old);
+
+    const frames: Array<Record<string, unknown>> = [];
+    replaySubagentHistory({ send: (raw: string) => frames.push(JSON.parse(raw)) }, parent, "sess-abort", false);
+    fs.rmSync(d, { recursive: true, force: true });
+    const lifecycle = frames.find((f) => f.type === "subagent_lifecycle");
+    expect(lifecycle?.status).toBe(ABORTED);
+    expect(lifecycle?.error).toBeUndefined();
+    expect(lifecycle?.result).toBe("half");
   });
 });
 
@@ -79,7 +121,7 @@ describe("subagent error state", () => {
             assistantDraft: "",
             streaming: false,
             subagents: new Map([
-              ["sub-1", { agent: "Verifier", description: "", status: "started", text: "", tools: [], streaming: true }],
+              ["sub-1", { agent: "Verifier", description: "", status: STARTED, text: "", tools: [], streaming: true }],
             ]),
           },
         ],
@@ -90,10 +132,10 @@ describe("subagent error state", () => {
     frame.subagent_event({ type: "subagent_event", sessionId: sid, subagentId: "sub-1", kind: "error", text: "HTTP 429" });
     expect(useAppStore.getState().openSessions.get(SLOT)!.subagents.get("sub-1")!.error).toBe("HTTP 429");
     // Terminal lifecycle carries the same reason on the cold-load path
-    frame.subagent_lifecycle({ type: "subagent_lifecycle", sessionId: sid, subagentId: "sub-1", agent: "Verifier", description: "", status: "failed", error: "rate limited" });
+    frame.subagent_lifecycle({ type: "subagent_lifecycle", sessionId: sid, subagentId: "sub-1", agent: "Verifier", description: "", status: FAILED, error: "rate limited" });
     expect(useAppStore.getState().openSessions.get(SLOT)!.subagents.get("sub-1")!.error).toBe("rate limited");
     // A wake re-run over the same id must not keep the previous run's failure text
-    frame.subagent_lifecycle({ type: "subagent_lifecycle", sessionId: sid, subagentId: "sub-1", agent: "Verifier", description: "", status: "started" });
+    frame.subagent_lifecycle({ type: "subagent_lifecycle", sessionId: sid, subagentId: "sub-1", agent: "Verifier", description: "", status: STARTED });
     expect(useAppStore.getState().openSessions.get(SLOT)!.subagents.get("sub-1")!.error).toBeUndefined();
   });
 });

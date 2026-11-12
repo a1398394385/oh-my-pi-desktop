@@ -4,13 +4,27 @@
 // ended. createSubagentView seeds those rows from the live registry instead.
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/subagent-roster-seed.test.ts
 import { describe, expect, test } from "bun:test";
+import type { SubagentLifecyclePayload, SubagentProgressPayload } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 import { createSubagentView } from "../host/subagent-view.ts";
 import type { PoolEntry } from "../host/state.ts";
+
+// The registry's own status vocabulary (base AgentProgress, seen through the progress payload
+// the host forwards). Seeding keys off it, so the map below must stay exhaustive: a new base
+// status becomes a tsc error here instead of a silently unclassified row.
+type ProgressStatus = SubagentProgressPayload["progress"]["status"];
+type LifecycleStatus = SubagentLifecyclePayload["status"];
+const SEEDS_IN_FLIGHT: Record<ProgressStatus, boolean> = {
+  pending: true,
+  running: true,
+  completed: false, // terminal rows come from the disk replay
+  failed: false,
+  aborted: false,
+};
 
 interface Frame {
   type: string;
   subagentId?: string;
-  status?: string;
+  status?: LifecycleStatus;
   name?: string;
   sessionFile?: string;
   registeredAt?: number;
@@ -31,7 +45,7 @@ function attach(snapshots: unknown[]): Frame[] {
   return frames;
 }
 
-const snapshot = (over: Record<string, unknown>) => ({
+const snapshot = (over: { id?: string; status?: ProgressStatus } = {}) => ({
   id: "sa1",
   index: 0,
   agent: "scout",
@@ -44,7 +58,7 @@ const snapshot = (over: Record<string, unknown>) => ({
 
 describe("subagent roster seeding on attach", () => {
   test("a mid-run subscriber gets the in-flight subagent as a started row", () => {
-    const frames = attach([snapshot({})]);
+    const frames = attach([snapshot()]);
     expect(frames).toHaveLength(1);
     const [row] = frames;
     expect(row.type).toBe("subagent_lifecycle");
@@ -56,12 +70,18 @@ describe("subagent roster seeding on attach", () => {
     expect(Date.now() - (row.registeredAt ?? 0)).toBeGreaterThanOrEqual(12_000);
   });
 
-  test("pending counts as in flight too", () => {
-    expect(attach([snapshot({ status: "pending" })]).map((r) => r.status)).toEqual(["started"]);
+  test("only in-flight statuses seed a started row; terminal ones wait for the disk replay", () => {
+    for (const [status, inFlight] of Object.entries(SEEDS_IN_FLIGHT) as [ProgressStatus, boolean][]) {
+      const rows = attach([snapshot({ status })]);
+      expect({ status, seeded: rows.length }).toEqual({ status, seeded: inFlight ? 1 : 0 });
+      if (inFlight) expect(rows[0].status).toBe("started");
+    }
   });
 
-  test("finished subagents are left to the disk replay", () => {
-    expect(attach([snapshot({ status: "completed" }), snapshot({ id: "sa2", status: "failed" })])).toEqual([]);
+  test("terminal rows of every kind stay unseeded in one batch", () => {
+    expect(
+      attach([snapshot({ status: "completed" }), snapshot({ id: "sa2", status: "failed" }), snapshot({ id: "sa3", status: "aborted" })]),
+    ).toEqual([]);
   });
 
   test("no registry (rebuilt session) seeds nothing", () => {

@@ -5,8 +5,13 @@
 // and blank the spinner state of a call that already ended).
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/task-spawn-details.test.ts
 import { describe, expect, test } from "bun:test";
+import type { SubagentProgressPayload } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 import { createSmokeWindow } from "./ui-smoke-env.ts";
 import type { OpenSession, ToolItem } from "../ui-src/types/session";
+
+// Base progress vocabulary (host forwards task details verbatim): `satisfies` binds every status
+// literal below to the union, so a renamed state is a tsc error instead of an unmatched row.
+type ProgressStatus = SubagentProgressPayload["progress"]["status"];
 
 // happy-dom globals must exist before the store modules evaluate (same pattern as
 // smoke-dual-channel-store.ts), hence the dynamic imports below
@@ -17,7 +22,13 @@ const { translateEvent } = await import("../host/translate.ts");
 
 const SID = "task-details-1";
 const PATH = "/tmp/task-details/session-a.jsonl";
-const DETAILS = { progress: [{ id: "RustCrates", agent: "scout", status: "running", resolvedModel: "minimax-code-cn/MiniMax-M3.1-Flash:medium" }] };
+const DETAILS = {
+  progress: [
+    { id: "RustCrates", agent: "scout", status: "running" satisfies ProgressStatus, resolvedModel: "minimax-code-cn/MiniMax-M3.1-Flash:medium" },
+    // A row that already ended (user abort) must ride through untouched, like any other state
+    { id: "DocsPass", agent: "scout", status: "aborted" satisfies ProgressStatus },
+  ],
+};
 
 // The details-only branch runs before any entry bookkeeping, so an empty entry is enough
 const entry = {} as never;
@@ -62,7 +73,7 @@ describe("tool_details frame in the store", () => {
           toolCallId: "c1",
           running: false,
           cmdExpanded: true,
-          details: { progress: [{ id: "CliEntry", agent: "scout", status: "pending" }] },
+          details: { progress: [{ id: "CliEntry", agent: "scout", status: "pending" satisfies ProgressStatus }] },
         },
       ],
       assistantDraft: "",

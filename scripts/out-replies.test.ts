@@ -3,8 +3,13 @@
 // store must refresh the card without sealing it (a terminal tool_update still folds it).
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/out-replies.test.ts --pool=forks --poolOptions.forks.singleFork
 import { describe, expect, test } from "bun:test";
+import type { SubagentProgressPayload } from "@oh-my-pi/pi-tui/overlays/session-observer-registry";
 import { createSmokeWindow } from "./ui-smoke-env.ts";
 import type { ChatItem, OpenSession, ToolItem } from "../ui-src/types/session";
+
+// Task details are forwarded verbatim; binding the row status to the base union keeps a renamed
+// state a tsc error rather than an unmatched fixture.
+type ProgressStatus = SubagentProgressPayload["progress"]["status"];
 
 // happy-dom globals must exist before the store modules evaluate, so these imports cannot be
 // static (same pattern as task-spawn-details.test.ts)
@@ -51,7 +56,7 @@ describe("tool_execution_update → out:// replies", () => {
   });
 
   test("task updates keep the details-only frame", () => {
-    const details = { progress: [{ id: "Shell", agent: "scout", status: "running" }] };
+    const details = { progress: [{ id: "Shell", agent: "scout", status: "running" satisfies ProgressStatus }] };
     expect(update("task", details)).toEqual({ kind: "tool_details", name: "task", toolCallId: "c1", details });
   });
 
