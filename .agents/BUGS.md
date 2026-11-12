@@ -138,6 +138,20 @@
 | BUG-144 | 打包态缺 `NSMicrophoneUsageDescription`,麦克风静默被拒 | 2026-11-11 |
 | BUG-145 | 花名册聚合与统计页按帧重算——memo/缓存用引用做键 | 2026-11-11 |
 | BUG-146 | 子代理详情状态串行、截断无标记、点选遮挡、列宽与拖拽 | 2026-11-11 |
+| BUG-147 | Schema 下拉随缩放偏移并变宽——Radix 固定偏移与 Portal 宽度双重缩放 | 2026-11-12 |
+| BUG-148 | `/goal` 在预算耗尽后行为错乱——`budget-limited` 被当成「无目标」 | 2026-11-12 |
+| BUG-149 | ACP 压缩拒绝码声明与实现漂移——发出的码不在声明 union 内 | 2026-11-12 |
+| BUG-150 | 侧边聊天终态无区分——取消/中断的提问与「从未回答」同形 | 2026-11-12 |
+| BUG-151 | 后台任务失败/取消被显示成「已完成」——四态塌成一个布尔 | 2026-11-12 |
+| BUG-152 | 目标预算耗尽在 UI 上不可见——卡片只认 `enabled` | 2026-11-12 |
+| BUG-153 | worktree 9 个错误码只有 4 个有文案——其余落进通用失败 | 2026-11-12 |
+| BUG-154 | `host/` 不在任何 tsc 项目内——状态字面量漂移无人看守 | 2026-11-12 |
+| BUG-155 | 通知授权状态用 if/else 链兜底——未知状态被伪装成「未询问」 | 2026-11-12 |
+| BUG-156 | i18n 门禁对动态 key 视而不见——新增状态渲染原始 key | 2026-11-12 |
+| BUG-157 | 子代理状态两套平行表——未知状态被谎报成「运行中」 | 2026-11-12 |
+| BUG-158 | MCP 连接状态四套词表——「未知」在 UI 上显示成绿色「就绪」 | 2026-11-12 |
+| BUG-159 | 自动化状态三套词表 + `lifecycle:"failed"` 死状态 | 2026-11-12 |
+| BUG-160 | 冒烟脚本用裸字面量断言状态——拼错不报错且零覆盖 | 2026-11-12 |
 ---
 
 ## 详情
@@ -2158,3 +2172,203 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **教训**：可复用的详情组件在「同一位置渲染不同实体」时必须由调用方传 `key`；对用户可见的截断一律带省略号与 `title`，两条路径的口径要统一。
 
+### BUG-147: Schema 下拉随缩放偏移并变宽——Radix 固定偏移与 Portal 宽度双重缩放
+
+**日期**：2026-11-12
+
+**现象**：「按仓库合并工作区」与「终端字号」只统一了动效，没有统一几何。前者在 60%/80%/150%/200% 下选中行分别偏 -27.828/-13.313/+34.219/+70.203px；150%/200% 下菜单宽度分别为触发器的 1.5/2 倍，后者始终对齐。
+
+**根因**：`SchemaSel` 独立使用 Radix Portal，`sideOffset=-(38+idx*32)` 把布局常量当视觉像素，未乘界面缩放；同时菜单的 `min-w-(--radix-select-trigger-width)` 已取得缩放后的触发器宽度，Portal content 又应用一次 `zoom`，大缩放下宽度被重复放大。共享 `Sel` 的 `anchorMenuToSelection` 已有正确换算，两条实现并存才是回归来源。
+
+**修复**：`SchemaRows.tsx` 的 `SchemaSel` 改用共享 `Sel` 与 `SelOption`，保留 number/boolean/default 阈值转换，按当前值生成选中勾；删除 Radix 固定偏移、隐藏宽度网格及空值 sentinel。`docs/systems/ui-conventions.md` 明确 Schema 选项下拉不得另造定位骨架。
+
+**验证**：`bun run ui:typecheck`、`bun run ui:build`、`bun run check` 全绿。真实 `ui/dist` + host + Chromium 在 60%/80%/100%/150%/200% 下实测两个下拉：选中行误差 0–0.015625px，菜单与打开态触发器宽度差不超过 0.453125px，均无动画、无阴影、无 Portal，150% 展开截图已目视确认；实际切换 `session.worktreeScope` 并恢复为 `repo`，宿主回发标签正确。
+
+**教训**：统一交互必须复用同一个测量与定位实现，不能只复制 CSS 动效；涉及 Portal/zoom 时禁止用固定像素常量推测选中行位置。
+
+
+### BUG-148: `/goal` 在预算耗尽后行为错乱——`budget-limited` 被当成「无目标」
+
+**日期**：2026-11-12
+
+**现象**：goal 达到 token 预算后，底座把状态翻成 `budget-limited`（`enabled` 仍为 true，只停自动续跑）。桌面端只认 `active`，于是：① `/goal set <新目标>` 走进「无活动目标」分支，底座 `createGoal` 抛内部错误「cannot create a new goal because this session already has a goal」，而不是按 TUI 语义替换；② `/goal pause` 报「无进行中目标」，实际可以暂停；③ `/goal budget <N>` 报「无活动目标」——唯一能把 goal 救回 `active` 的通道被堵死；④ 裸 `/goal` 打出用法帮助，不报当前仍有一个活着但预算耗尽的目标。
+
+**根因**：`host/goal.ts` 的四处判据都写成 `status === "active"`，而底座 `isAccountingStatus`（`pi-coding-agent/src/goals/runtime.ts`）把 `active` 与 `budget-limited` 并列，两者都是活目标。
+
+**修复**：新增 `isLiveGoal(state)`＝`enabled && (status === "active" || status === "budget-limited")`，替换 `/goal` 裸命令、`#handleSet`、`#pause`、`#budget` 四处判据。`schedule()`/`#fireContinuation` 不动——底座语义就是 `budget-limited` 停止自动续跑。`host/mode-state.ts`、`host/mode-control.ts` 实测无需改：两者都从 `enabled` 推导，budget-limited 的 `enabled` 恒为 true，投影本就正确。
+
+**验证**：新增 `scripts/goal-budget-limited.test.ts`（用真实底座 `GoalRuntime` 造出 budget-limited 态再驱动桌面 `GoalController`），修复前 `2 pass / 4 fail`，修复后 `6 pass / 0 fail`。`bun run check`、`bun run ui:build` 全绿。未做真机 `/goal` 端到端（需真实模型触发预算耗尽）。
+
+**教训**：外部状态机的「活跃」判据要跟底座的 accounting 口径对齐，不能按字面取单一值；审计给出的推测结论（本例中的 `mode-state.ts` 误报）必须先复现再改。
+
+### BUG-149: ACP 压缩拒绝码声明与实现漂移——发出的码不在声明 union 内
+
+**日期**：2026-11-12
+
+**现象**：`host/acp-compress.ts` 的 `CompressRejection.code` union 声明 `"below-min-compress"`，代码实际发出的却是 `"below-l1"`（活跃区未过 L1 阈值的拒绝）。声明里的 `"below-min-compress"` 零发出方、零消费方；实际发出的 `"below-l1"` 不在 union 内，任何按声明 union 做穷举的消费方永远匹配不到该拒绝。
+
+**根因**：拒绝码只有类型声明、没有运行期真源，字面量拼错不会在编译期暴露；而 `host/` 不在任何 tsc 项目内（根 `tsconfig.json` 只 include `ui-src`），`bun run check` 的 `ui:typecheck` 覆盖不到 host，这类漂移可以长期存活。
+
+**修复**：新增 `export const COMPRESS_REJECTION_CODES`（`as const` 运行时数组），`CompressRejection["code"]` 改为 `(typeof COMPRESS_REJECTION_CODES)[number]`，删死成员 `"below-min-compress"`、补真实存在的 `"below-l1"`。其余 8 个码逐一核对发出点（`degraded` 129、`no-manifest` 148、`manifest-consumed` 154、`hallucinated-keep` 183、`over-target` 198、`empty-summary` 207、`summary-over-budget` 244、`nothing-to-compress` 262），一一对应无遗漏。
+
+**验证**：新增 `scripts/acp-compress-rejection.test.ts`（9 个用例双向比对「发出集合 == 声明集合」并断言 L1 边界行为），修复前因缺 `COMPRESS_REJECTION_CODES` 报 export 错误、补齐后 11 pass / 0 fail。修复前用独立 tsconfig 对 `host/acp-compress.ts` 做真实类型检查得 `TS2322: Type '"below-l1"' is not assignable`，修复后 exit 0。`scripts/smoke-acp-tool.ts`、`smoke-acp-strong.ts`、`smoke-acp-pull.ts` 三个既有冒烟全绿（它们本来就断言 `below-l1`，说明对外契约一直是它）。
+
+**教训**：字符串枚举光有 type 不够——要有运行期真源数组并让 type 从它推导，否则「声明」与「发出」可以无限漂移；host 无类型门禁时，这类断言比对测试是唯一兜底。
+
+### BUG-150: 侧边聊天终态无区分——取消/中断的提问与「从未回答」同形
+
+**日期**：2026-11-12
+
+**现象**：侧边聊天（/btw）里被用户取消的回答、因应用退出而中断的回答，在 UI 上都显示成「（无回答）」，与一个从未得到回答的提问完全同形，用户无法分辨是哪种情况。
+
+**根因**：`ui-src/components/main/right/BtwPage.tsx` 的空答占位只区分 `running`（显示「正在回答…」）与 `error`（单独一行错误文本），其余状态（`cancelled` / `interrupted` / `complete` 但空答）全部落进同一个 `right.btwEmptyAnswer`。
+
+**修复**：新增并导出纯函数 `turnStatusKey(turn)`：`running→right.btwWaiting`、`cancelled→right.btwCancelled`、`interrupted→right.btwInterrupted`、其余→`right.btwEmptyAnswer`；`Turn` 的占位改用 `t(turnStatusKey(turn))`。i18n 新增 `btwCancelled` / `btwInterrupted` 两个 key（zh/en 成对）。
+
+**验证**：新增 `scripts/btw-terminal-state.test.ts`，3 pass / 0 fail（磁盘 `running` 记录经桌面读路径变成 `interrupted`、三种终态原样往返、5 个状态各自映射到不同文案 key）。`bun run ui:typecheck`、`bun scripts/check-i18n-keys.ts`、`bun run check` 全绿。
+
+**审计修正**：本次调查曾推断「宿主崩溃后磁盘残留 `running` 会让 `btw_promote` 永久阻塞」。**该结论不成立**——底座 `BtwHistoryStore.open()` 的恢复视图会把磁盘上的 `running` 投影成 `interrupted`（`pi-coding-agent/src/session/btw-history.ts` 的 `snapshotRecord(..., true)`），而桌面每次 `collectBtwHistory` 都重新 `openStore`，故 promote 门禁不会被残留状态卡住。host 侧零改动，回归测试已钉住该行为。
+
+**教训**：审计从「某处没处理状态」推出「用户被永久阻塞」时，必须先确认上游是否已经做了状态归一（恢复视图/兜底分支）；真正的缺陷往往在下游的呈现层，而不是上游的判定层。
+
+### BUG-151: 后台任务失败/取消被显示成「已完成」——四态塌成一个布尔
+
+**日期**：2026-11-12
+
+**现象**：右栏「后台命令」里失败、取消、正常完成的任务全显示「已完成」。底座异步任务有四态（`running | completed | failed | cancelled`），桌面端 `host/async-jobs.ts` 的 `bgJobsPayload()` 只输出 `running: job.status === "running"` 一个布尔，帧契约里也只有这个布尔。`HubDetailPage` 靠 `exitCode` 区分，但 eval / task 类任务没有 exitCode，失败彻底不可见。
+
+**根因**：底座状态在 host 侧被降维成布尔，帧契约继承了这个降维，UI 拿不到真值。
+
+**修复**：帧的 `BgJobsFrame.jobs[]` 增加 `status` 字段（底座四态 union，非 `string`），`host/async-jobs.ts` 与 `ui-src/store/session.ts` 同步；UI 按状态选文案（失败→新增 `right.bgFailed`，取消→复用 `right.bgStopped`，其余→`right.bgDone`），有 exitCode 的行仍以退出码为准。
+
+**验证**：新增 `scripts/bg-jobs-status.test.ts`（假 session 构造四态快照），修复前 1 fail，修复后 2 pass。`bun run check` 全绿。
+
+**教训**：布尔投影不是状态压缩——它把「失败」和「取消」和「完成」压成同一个不可逆的假值；凡是多态要穿过帧契约，帧里必须带状态本身。
+
+### BUG-152: 目标预算耗尽在 UI 上不可见——卡片只认 `enabled`
+
+**日期**：2026-11-12
+
+**现象**：`/goal` 的目标达到 token 预算后，底座把状态翻成 `budget-limited`（`enabled` 仍为 true，只停自动续跑）。桌面 UI 的目标卡 `ui-src/components/composer/GoalCard.tsx` 只用 `paused = !g.enabled` 区分「暂停」与「进行中」，于是预算耗尽、实际已停摆的目标与正常目标长得一模一样，用户不知道要 `/goal budget <N>` 解卡。
+
+**根因**：UI 用「是否 enabled」这一个布尔近似 goal 的五态生命周期。
+
+**修复**：卡片读 `g.status === "budget-limited"` 渲染独立的「预算耗尽」标记与 tooltip（含解卡指引），不复用「暂停」语义；新增 `composer.goalBudgetStalled` / `composer.goalBudgetHint` 一对 zh/en key。
+
+**验证**：新增 `scripts/goal-card-budget.test.ts`（happy-dom 真实挂载读渲染文本），修复前 1 fail，修复后 3 pass。`bun scripts/check-i18n-keys.ts` 通过。
+
+**教训**：布尔近似状态必然漏掉「仍然活着但已失去资源」这一类——它是「enabled」与「active」之间的真实中间态。
+
+### BUG-153: worktree 9 个错误码只有 4 个有文案——其余落进通用失败
+
+**日期**：2026-11-12
+
+**现象**：创建 worktree 失败时，用户拿到的是无信息量的「创建失败」。真正的原因（「不是 git 仓库」「缺少基础目录」「路径不存在」）拿不到。
+
+**根因**：`host/rpc/worktree.ts` 发出 9 个错误码，每个都是裸字面量、无 union 约束；UI 侧 `WorktreeCreateDialog.tsx` 的 `CODE_KEY` 只映射 4 个，其余走 fallback 文案。
+
+**修复**：host 侧导出 `WORKTREE_ERROR_CODES` 与 `WorktreeErrorCode` union，12 处失败帧统一经 `failFrame()` 发出；UI 的 `CODE_KEY` 补到 9 条全集，缺的五条文案在 `worktree.{en,zh}.ts` 成对新增（写「发生了什么」，不复述码名）。
+
+**验证**：新增 `scripts/worktree-error-copy.test.ts`（真实 handler + 临时 git 仓库驱动 8 条可达分支，9 码 × zh/en 文案覆盖），修复前 1 fail，修复后 2 pass / 56 断言。
+
+**教训**：错误码是契约：发出端不声明 union、消费端不覆盖全集，两边都无从发现缺口。
+
+### BUG-154: `host/` 不在任何 tsc 项目内——状态字面量漂移无人看守
+
+**日期**：2026-11-12
+
+**现象**：`host/acp-compress.ts` 里 `code: "below-l1"` 不在自己声明的 `CompressRejection.code` union 内，这种错误在主干上长期存活。根 `tsconfig.json` 的 `include` 只有 `ui-src`，`bun run check` 的 `ui:typecheck` 覆盖不到 host。
+
+**根因**：类型检查只覆盖了 UI 一侧；host 里所有状态 union 与字面量比较都没有编译期约束。
+
+**修复**：新增 `tsconfig.host.json`（开 `allowImportingTsExtensions`，`types: []`），纳入「状态词汇核心」——`host/wire/**`、`host/acp-compress.ts` 及若干零错误的 ACP / 自动化 / 会话模式状态文件；`package.json` 新增 `host:typecheck` 并接入 `check` 链。扩档判据（该文件及其整个导入闭包在本项目下零错误、不得压制错误硬塞）写进配置注释。
+
+**验证**：`bunx tsc -p tsconfig.host.json` exit 0；负向对照（给 union 赋 `"bogus-code"`）报 TS2322。`bun run check` 全绿。
+
+**遗留**：全量 host 仍有约 130 个类型错误（29 个是 Bun 全局类——本机 `node_modules/bun-types` 缺 `.d.ts`、`@types/bun` 未安装），需按判据逐档收紧，不是本条能一次做完的事。
+
+**教训**：类型门禁的覆盖面决定了漂移能不能被发现；只覆盖一半的仓库等于把另一半放在没有守门人的走廊里。
+
+### BUG-155: 通知授权状态用 if/else 链兜底——未知状态被伪装成「未询问」
+
+**日期**：2026-11-12
+
+**现象**：macOS 的通知授权状态有 5 个值，桌面端只认 3 个，其余落到 else 兜底 —— 报成 `"notDetermined"`，UI 于是引导用户「去系统设置重新授权一个其实已授权的应用」。同一个 `send()` 只放行 `Authorized`/`Provisional`，被漏掉的状态会直接报「通知已关闭」。
+
+**根因**：`src-tauri/src/notify.rs` 的 `status_name()` 是 if/else 链，不是穷尽 match；`src-tauri/src/**/*.rs` 全目录零 `enum`，所有状态都是 `String` 字面量。
+
+**修复**：新增 `NotificationPermission` enum，`from_status()` 用 match 穷尽 5 个 `UNAuthorizationStatus` 关联常量、`_ => Unknown` 兜底（未来新值 fail-closed，绝不伪装成 notDetermined）；`as_str()` 穷尽映射，`allows_delivery()` 与映射同源；`send()` 改用该 enum 判定。
+
+**验证**：`cargo test --lib` 11 passed（含新增的 5 值 + 未知值映射测试，显式断言未知值不等于 `"notDetermined"`）；`cargo check` 通过。
+
+**教训**：else 兜底是状态机的静默失真器——它让「未知」变成一个具体且错误的已知值，用户与维护者都看不出差异。
+
+### BUG-156: i18n 门禁对动态 key 视而不见——新增状态渲染原始 key
+
+**日期**：2026-11-12
+
+**现象**：仓库有 33 处用模板字符串拼出的 i18n key，门禁脚本自己写着「dynamic keys are skipped」，全部跳过检查。新增一个状态值 → 拼出的 key 不存在 → UI 显示原始 key 字符串（如 `settingsPage.automations.status_xxx`），而门禁全绿；`as any` 还顺手关掉了 tsc 的报错。
+
+**根因**：门禁只覆盖能静态解析的 key，动态 key 既无类型检查也无存在性检查。
+
+**修复**：`scripts/check-i18n-keys.ts` 增加第三类检查——运行时拼 key（模板字面量 + 字符串拼接）必须显式登记到 `scripts/i18n-dynamic-keys.json`（含文件、前缀、为何无法静态化），未登记即失败；登记项与实际调用不匹配也失败；行号漂移只告警。提供 `--update` 重建基线，与 `comment-language` / `settings-copy` 的惯例一致。现存 27 处已登记。
+
+**验证**：临时插入未登记的动态 key → 门禁报「未登记的动态 key: 文件:行(前缀)」并 exit 1；撤销后通过（2789 调用点 / 2680 key 两包一致，27 处登记全命中）。
+
+**教训**：门禁跳过的那一类不是不存在的问题，只是暂时没人看；把它变成「必须显式登记并说明理由」，就等于给每一处开了许可证。
+
+### BUG-157: 子代理状态两套平行表——未知状态被谎报成「运行中」
+
+**日期**：2026-11-12
+
+**现象**：底座给子代理新增一个状态（例如 `paused`），UI 会把它显示成「运行中」并永远转圈；排序还掉到最后。
+
+**根因**：`ui-src/components/shared/agent/subShared.ts` 同时维护 `STATUS_ORDER`（排序）与 `ST_GROUP`（展示分组）两张硬编码字面量表，消费点各自兜底 `?? "running"` / `?? 9`。两表可各自漂移，底座真实存在的 `pending` 甚至掉到 order 9。
+
+**修复**：合并为单一真源 `ST_ROWS: Record<SubStatus, {order, group}>`（`Record` 字面量即穷举门禁：union 加成员而无行则编译失败）；新增 `stInfo()` 查表，未知值落 `ST_UNKNOWN`（order 4 + 独立 `unknown` 分组），不再谎报 running；`stKeyOf()` / `stLabel()` 把「未知如何展示」收敛到一处。消费点改为读表。
+
+**验证**：新增 `scripts/subagent-status-table.test.ts`（状态→分组、状态→排序权重、实际行序、streaming 覆盖），修复前 1 pass / 5 fail，修复后 6 pass / 21 断言。`bun run ui:typecheck` 通过。
+
+**教训**：兜底值会替系统撒谎——`?? "running"` 不是防御，是把未知伪装成最常见的状态；诚实的兜底要有一张自己的分组和排序位。
+
+### BUG-158: MCP 连接状态四套词表——「未知」在 UI 上显示成绿色「就绪」
+
+**日期**：2026-11-12
+
+**现象**：MCP 服务器「启用但未探测」时（状态 `unknown`），设置页的状态点是**绿色**「就绪」——与真正连上的服务器同色。同一概念在仓库里还有另外三套词表（挂载三态 / 探测二态 / 帧层 `ok|error`），消费方按任一套假设都会错位；MCP sharing mode 的三个字面量被重复声明 8 处。
+
+**根因**：`dotState()` 对未知状态落进最后的兜底分支并返回绿色 `cls: "ok"`；四套词表各自声明，谁也不知道别的存在。
+
+**修复**：在 `host/wire/payloads.ts` 建立唯一权威 `McpServerStatus`（六态，逐态注释语义）与三个 `Extract` 子集（mount / health / asset），host 各模块与 wire 全部改为引用它；删除 `host/mcp-assets.ts` 里探测后不可达的 `else { s.status = "connected" }`（把「未探测」冒充「已连接」的来源）；`McpSharingMode` 由 `host/mcp-pool.ts` 独家定义，消费方（`state.ts` / `profile.ts` / `mcp-assets.ts`）删掉重复字面量；UI 的 `dotState()` 对未知/未探测返回 `bg-dim` + 新文案 `settingsPage.mcp.dotUnknown`（原 `dotReady` 已无引用，替换掉）。
+
+**验证**：新增 `scripts/mcp-status-vocab.test.ts`（未知态不再是 `ok` 点、四态映射正确、帧原值落进 store），修复前 3 pass / 1 fail，修复后 4 pass；类型层面用临时 probe 验证 store 的 `mcpTestResults.status` 不再宽化成 `string`（修复前 TS2322，修复后 exit 0）。`scripts/check-host-boundaries.mjs` 需登记 7 条类型专用边（620 条边全部成立）。
+
+**教训**：一概念的 N 套词表必然错位；权威集合要放在跨端共享的契约层（`host/wire/`），而不是任一实现模块里。
+
+### BUG-159: 自动化状态三套词表 + `lifecycle:"failed"` 死状态
+
+**日期**：2026-11-12
+
+**现象**：自动化卡片与编辑器芯片对同一自动化给出可能不同的状态（两处各抄一份推导逻辑，且空白 `lastError` 在列表页判 active、在编辑页判 failed）。`AutomationLifecycle` 声明了 `"failed"`，但**全仓没有任何一处赋值**，UI 那个分支永远不成立。
+
+**根因**：UI 自造第三套 `StatusKind`（含宿主不存在的 `paused`）并把推导逻辑抄了两遍；宿主 `settleRun` 的状态参数是手写的内联 union 子集而非引用；`lifecycle:"failed"` 是一个从未被赋予的死状态。
+
+**修复**：B6 选 (b)——删除 `AutomationLifecycle` 的 `"failed"`（失败语义完整落在 `AutomationRun.status` + `lastError` 上；让它可达需要新造「不可自愈失败」判据，会与「失败不改 lifecycle、下个 slot 重试」的既有契约冲突）；`settleRun` 状态参数改为 `Exclude<AutomationRunStatus, "running" | "skipped">`，`delivery.ts` 用带类型的常量比较；UI 新增唯一投影 `automationStatusKind()` 放在 `ui-src/lib/automations.ts`，两处共用；运行态文案改 `RUN_STATUS_LABEL_KEY` 穷举表（复用既有 4 个 key），新增 run status 变成编译错误而非原始 key。
+
+**验证**：新增 `scripts/automations-status.test.ts`（共享投影 + 每个 run status 的文案 key 解析），修复前 10 fail（函数不存在），修复后 10 pass / 14 断言。`bun run ui:typecheck` 与 `bunx tsc -p tsconfig.host.json` 通过。
+
+**教训**：声明了一个从不赋值的状态，比不声明更糟——它让 UI 写出一条永不成立的分支，看起来像是有处理。
+
+### BUG-160: 冒烟脚本用裸字面量断言状态——拼错不报错且零覆盖
+
+**日期**：2026-11-12
+
+**现象**：冒烟与测试脚本用 `x.state === "active"` 这类裸字面量断言状态，与宿主真实 union 没有类型连接：宿主改个名字，脚本编译期不报错、运行期静默失配。更糟的是若干状态**零覆盖**——扩展的 `"shadowed"`、子代理的 `"aborted"` 没有任何断言，等于没测。
+
+**根因**：脚本层与宿主层各写各的字面量，没有 import 关系。
+
+**修复**：脚本改为 `import type` 宿主（/底座）的真实 union，用 `satisfies` / 显式类型把断言绑到 union（拼错即编译错误），并补齐零覆盖分支（扩展三态不变量：active 无 reason、disabled 必有 reason、shadowed 必带 `shadowedBy`；子代理 aborted 的不种子与回放断言）；`smoke-subagent.ts` 补终态守卫（此前 failed/aborted 会打印「通过」）。
+
+**验证**：临时把状态字面量改成 `"shadowd"` / `"abortd"` / `"runing"`，tsc 分别报 TS2561 / TS2551 / TS1360；恢复后 `probe-extensions.ts` 实跑输出「状态分布: { active: 94, disabled: 9, shadowed: 34 }」并断言三态不变量成立。四个测试文件 4+5+5+17 = 31 断言全绿。
+
+**教训**：测试里的字面量也是漂移源——把它绑到生产 union 上，一次改名就能让所有相关测试同时变红。
