@@ -150,6 +150,13 @@ export function createAcpProjectionExtension(
 		on(event: "auto_compaction_end", handler: () => void): void;
 		on(event: "session_compact", handler: (ev: unknown, ctx: AcpExtensionCtx) => void): void;
 		on(
+			event: "tool_call",
+			handler: (
+				ev: { toolName: string },
+				ctx: AcpExtensionCtx,
+			) => { block?: boolean; reason?: string } | undefined | void,
+		): void;
+		on(
 			event: "session_before_compact",
 			handler: (
 				ev: SessionBeforeCompactEvent,
@@ -174,6 +181,17 @@ export function createAcpProjectionExtension(
 		pi.on("session_before_compact", (ev, ctx) => {
 			if (!base || !isOwner(ctx)) return undefined;
 			return takeoverBaseCompaction(ev, { ...base, state });
+		});
+		// Level-3 forced round (spec §5.2): tool_choice pins compress_context,
+		// but faces exist that ignore the pin (spec's compatibility findings) —
+		// every other tool call is blocked host-side with an error that points
+		// the model back at the pinned call, so the turn cannot drift away.
+		pi.on("tool_call", (ev, ctx) => {
+			if (!isOwner(ctx) || ev.toolName === "compress_context" || !state.forcedRoundActive()) return undefined;
+			return {
+				block: true,
+				reason: "Level-3 forced round: only compress_context is allowed on this turn. Call compress_context now with keep (bN short ids from the manifest in the context_status return above) and a summary covering every block you are not keeping.",
+			};
 		});
 		pi.on("context", (ev, ctx) => {
 			if (!isOwner(ctx)) {

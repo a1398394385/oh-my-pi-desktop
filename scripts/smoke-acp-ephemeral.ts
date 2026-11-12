@@ -138,12 +138,17 @@ function ephemeralText(fx: Fixture): string {
 	// Exactly at L3: L2 tier text + normal compression (no ultimatum, no strong).
 	assert.deepEqual(computeRoundPlan(3_000, p), { tier: "L2", method: "normal", pendingStrong: false });
 	assert.deepEqual(computeRoundPlan(3_001, p), { tier: "L3", method: "strong", pendingStrong: false });
-	// The ephemeral reports tier and method together (acceptance 19).
+	// The ephemeral reports tier and method together (acceptance 19) — but only
+	// from L2 on: v11 keeps the whole L1..L2 band silent.
 	const mid = makeFixture({ ...p, target: 10_000 }, [30, 30, 30, 30, 30, 30, 30, 30]);
 	mid.state.projectView(mid.view);
-	assert.match(ephemeralText(mid), /\[compress-hint\] tier=L[12] compress=normal /);
-	assert.ok(!/^b\d+ \| \d+ \| /m.test(ephemeralText(mid)), "v10: the ephemeral carries no manifest lines");
-	assert.match(ephemeralText(mid), /call the context_status tool/, "the ephemeral points at context_status");
+	assert.equal(mid.state.roundStatus?.tier, "L1");
+	assert.ok(!JSON.stringify(mid.state.lastProjected).includes("[compress-hint]"), "v11: the L1..L2 band stays silent; the model owns the timing");
+	const l2mid = makeFixture({ ...p, target: 10_000 }, [30, 30, 30, 30, 30, 30, 30, 30, 30]);
+	l2mid.state.projectView(l2mid.view);
+	assert.match(ephemeralText(l2mid), /\[compress-hint\] tier=L2 compress=normal /);
+	assert.ok(!/^b\d+ \| \d+ \| /m.test(ephemeralText(l2mid)), "v10: the ephemeral carries no manifest lines");
+	assert.match(ephemeralText(l2mid), /call the context_status tool/, "the ephemeral points at context_status");
 	const hot = makeFixture({ ...p, target: 10_000 }, [60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60, 60]);
 	hot.state.projectView(hot.view);
 	assert.match(ephemeralText(hot), /\[compress-hint\] tier=L3 compress=strong /, "past L3 the method flips to strong");
@@ -251,7 +256,7 @@ function ephemeralText(fx: Fixture): string {
 // --- C: acceptance 12 — post-injection arrivals stay out of the current manifest ----------
 
 {
-	const fx = makeFixture({ l1: 1_000, l2: 2_000, l3: 3_000, target: 10_000, ...NO_TAIL }, [20, 20, 20, 20]);
+	const fx = makeFixture({ l1: 500, l2: 1_000, l3: 2_000, target: 10_000, ...NO_TAIL }, [20, 20, 20, 20]);
 	fx.state.projectView(fx.view);
 	const manifestIds = fx.state.roundStatus!.manifestIds;
 	// A block that settles after the injection (new journal entry mid-round).
@@ -338,24 +343,25 @@ function ephemeralText(fx: Fixture): string {
 
 {
 	const pM = { l1: 1_000, l2: 2_000, l3: 3_000, ...NO_TAIL, milestoneSteps: 10 } as const;
-	// Pure ladder: 10 equal sub-lines between L1 and L3, strict at both ends.
-	assert.equal(milestoneFor(1_000, pM), 0);
-	assert.equal(milestoneFor(1_001, pM), 1);
-	assert.equal(milestoneFor(1_199, pM), 1);
-	assert.equal(milestoneFor(1_201, pM), 2);
-	assert.equal(milestoneFor(2_000, pM), 5);
+	// Pure ladder (v11): 10 equal sub-lines between L2 and L3, strict at both
+	// ends; the whole L1..L2 band is silent.
+	assert.equal(milestoneFor(2_000, pM), 0);
+	assert.equal(milestoneFor(2_001, pM), 1);
+	assert.equal(milestoneFor(2_099, pM), 1);
+	assert.equal(milestoneFor(2_101, pM), 2);
+	assert.equal(milestoneFor(2_500, pM), 5);
 	assert.equal(milestoneFor(2_950, pM), 10);
 	assert.equal(milestoneFor(3_001, pM), 10, "past L3 the ultimatum line stays crossed; the armed-force machine owns the wire");
 
 	// milestoneSteps is configurable: 4 sub-lines over the same span, and 0
 	// silences the whole segment; the rendered row denominator follows suit.
 	const p4 = { ...pM, milestoneSteps: 4 };
-	assert.equal(milestoneFor(1_500, p4), 1);
+	assert.equal(milestoneFor(2_250, p4), 1);
 	assert.equal(milestoneFor(3_001, p4), 4, "saturation follows the configured step count");
-	assert.equal(milestoneFor(1_500, { ...p4, milestoneSteps: 0 }), 0, "steps 0 = segment silent");
-	const fx4 = makeFixture({ ...p4, target: 10_000 }, [30, 30, 30, 30, 30]);
+	assert.equal(milestoneFor(2_250, { ...p4, milestoneSteps: 0 }), 0, "steps 0 = segment silent");
+	const fx4 = makeFixture({ ...p4, target: 10_000 }, [30, 30, 30, 30, 30, 30, 30, 30, 30]);
 	fx4.state.projectView(fx4.view);
-	assert.equal(fx4.state.roundStatus!.tier, "L1");
+	assert.equal(fx4.state.roundStatus!.tier, "L2");
 	assert.match(textOf(fx4.state.lastProjected.at(-1)!), /milestone=\d+\/4/, "the row denominator tracks milestoneSteps");
 
 	/** Appends one ~120-token user block to the journal and the view. */
@@ -383,24 +389,34 @@ function ephemeralText(fx: Fixture): string {
 	assert.equal(fx.state.roundStatus!.tier, "none");
 	assert.equal(delivered(fx), null, "nothing injected below L1");
 
-	// Climb into the L1 segment: the first crossed line fires once…
-	// (each block counts exactly 86 glm5 tokens: 3x86 + 9x86 = 1032 -> line 1)
-	grow(fx, 9);
+	// Climb through the whole L1..L2 band (each block counts exactly 86 glm5
+	// tokens): v11 stays silent there end to end.
+	grow(fx, 9); // 12x86 = 1032 -> L1
 	fx.state.projectView(fx.view);
 	assert.equal(fx.state.roundStatus!.tier, "L1");
+	assert.ok(!JSON.stringify(fx.state.lastProjected).includes("[compress-hint]"), "the L1..L2 band stays silent; the model owns the timing");
+	grow(fx, 11); // 23x86 = 1978: still inside L1
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "L1");
+	assert.equal(delivered(fx), null, "no injection anywhere in the L1..L2 band");
+
+	// Cross into L2 (+1 block = 2064 -> line 1): fires once…
+	grow(fx, 1);
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "L2");
 	const first = delivered(fx);
 	assert.ok(first !== null && first >= 1, `first crossing injects a milestone (got ${first})`);
 	assert.equal(first, milestoneFor(fx.state.roundStatus!.activeTokens, pM), "delivered line matches the measured zone");
 	const row = textOf(fx.state.lastProjected.at(-1)!);
-	assert.match(row, /\[compress-hint\] tier=L1 compress=normal /);
+	assert.match(row, /\[compress-hint\] tier=L2 compress=normal /);
 	assert.match(row, /call the context_status tool/, "the milestone line still points at context_status");
 	// …and the SAME state never re-injects: the next request rides bare.
 	fx.state.projectView(fx.view);
 	assert.equal(delivered(fx), null, "no repeat injection at an unchanged milestone");
 
 	// Jump several sub-lines in one request: exactly one injection, no backfill.
-	// (+5x86 = 1462 -> line 3 over a 200-token span; line 2 skipped in between)
-	grow(fx, 5);
+	// (+7x86 = 2666 -> line 7 over a 600-token span; lines 3-6 skipped)
+	grow(fx, 7);
 	fx.state.projectView(fx.view);
 	const jumped = delivered(fx);
 	assert.ok(jumped !== null && jumped > first + 1, `a multi-line jump delivers one milestone, skipping lines (got ${jumped})`);
@@ -408,27 +424,27 @@ function ephemeralText(fx: Fixture): string {
 	fx.state.projectView(fx.view);
 	assert.equal(delivered(fx), null, "still quiet after the skipped jump");
 
-	// Drop below L1: the cursor resets, so the next climb re-warns from a low line.
-	while (fx.view.length > 3) {
+	// Drop back into L1: the cursor resets, so the next climb re-warns from line 1.
+	while (fx.view.length > 23) {
 		fx.view.pop();
 		fx.entries.pop();
 	}
 	fx.state.projectView(fx.view);
-	assert.equal(fx.state.roundStatus!.tier, "none");
-	grow(fx, 9);
+	assert.equal(fx.state.roundStatus!.tier, "L1");
+	grow(fx, 1);
 	fx.state.projectView(fx.view);
 	const again = delivered(fx);
-	assert.ok(again !== null && again < jumped, `reset re-warns from a low line (got ${again})`);
+	assert.ok(again !== null && again === first, `reset re-warns from the first line (got ${again})`);
 
-	// L2 and L3 no longer stand per request either: each tier's line fires once
-	// and then stays silent. Climb one block at a time and count what lands.
+	// L2 and L3 lines each fire once and then stay silent. Climb one block at
+	// a time and count what lands (the strengthened L2 wording is the tell).
 	let l2Hits = 0;
 	let l3Hits = 0;
 	for (let i = 0; i < 80; i++) {
 		grow(fx, 1);
 		fx.state.projectView(fx.view);
 		const tail = textOf(fx.state.lastProjected.at(-1)!);
-		if (/milestone=/.test(tail) && /prioritize compression/.test(tail)) l2Hits++;
+		if (/milestone=/.test(tail) && /Do not start new work/.test(tail)) l2Hits++;
 		if (/milestone=/.test(tail) && /Final notice \(L3\)/.test(tail)) l3Hits++;
 		if (fx.state.roundStatus!.tier === "L3" && l3Hits > 0) break;
 	}
@@ -437,7 +453,7 @@ function ephemeralText(fx: Fixture): string {
 	assert.equal(l3Hits, 1, `the ultimatum rides the L2→L3 crossing exactly once (got ${l3Hits})`);
 	fx.state.projectView(fx.view);
 	assert.equal(delivered(fx), null, "L3 stays silent afterwards; the armed-force machine owns the wire");
-	console.log(`ok: M tier milestones — lines ${first}/${jumped}/${again} fire once each, skips never backfill, reset on drop; L2 hit ${l2Hits}×, L3 ultimatum ${l3Hits}×, then silent`);
+	console.log(`ok: M tier milestones — L1..L2 band silent, lines ${first}/${jumped}/${again} fire once each, no backfill, reset on drop; L2 hit ${l2Hits}×, L3 ultimatum ${l3Hits}×, then silent`);
 }
 
 // --- F: end-to-end — real manifest drives a full compress round (T3 scenario, no supply) --
@@ -463,7 +479,7 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 				if (!statusResult) return { content: [{ type: "toolCall", name: "context_status", arguments: {} }] as const };
 				const statusText = resultText(statusResult.content);
 				assert.ok(statusText.startsWith("[context-status]"), "the context_status result carries the dashboard");
-				assert.match(statusText, /tier=L1 compress=normal/, "the tool result reports tier + method");
+				assert.match(statusText, /tier=L2 compress=normal/, "the tool result reports tier + method");
 				const ids = statusText
 					.split("\n")
 					.filter((l) => /^b\d+ \| \d+ \| /.test(l))
@@ -484,8 +500,9 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	});
 	const sessionManager = SessionManager.create(cwdE2E);
 	const settings = Settings.isolated({ "compaction.enabled": false });
-	// Tiers tuned so: reminder-only first call and the single big turn stay
-	// under L1; two big turns cross it; folding turn one drops back below.
+	// Tiers tuned so: the reminder-only first call and the single big turn stay
+	// under L1; two big turns cross into L2 (the first injecting tier, v11);
+	// folding turn one drops back below.
 	const e2eParams: Partial<AcpParams> = { l1: 3_000, l2: 6_000, l3: 9_000, minCompress: 0, target: 100_000, tailTurns: 2, tailTokens: 0 };
 	const state = new AcpRuntimeState({
 		countTokens,
@@ -526,11 +543,11 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 
 	await ask(turnText("task one", 220), 1); // ~2K tokens: still tier none
 	assert.ok(!wireHasStatus(mock.calls.at(-1)!), "no ephemeral while the active zone is under L1");
-	await ask(turnText("task two", 220), 2); // past L1: ephemeral appears
-	assert.ok(wireHasStatus(mock.calls.at(-1)!), "ephemeral on the wire once a tier is active");
+	await ask(turnText("task two", 480), 2); // past L2: the first milestone appears (v11)
+	assert.ok(wireHasStatus(mock.calls.at(-1)!), "ephemeral on the wire once L2 is crossed");
 	const statusMsg = mock.calls.at(-1)!.context.messages.at(-1)!;
 	assert.ok(textOf(statusMsg as { role: string; content: unknown }).startsWith("[compress-hint]"), "ephemeral is the LAST request message");
-	assert.match(textOf(statusMsg as { role: string; content: unknown }), /tier=L1 compress=normal/);
+	assert.match(textOf(statusMsg as { role: string; content: unknown }), /tier=L2 compress=normal/);
 
 	await ask("The context is large; compress it now.", 3);
 	assert.ok(compressedOnce, "the model consumed the real generated manifest");
@@ -608,7 +625,10 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 // --- G: tokenizer rebind (spec §8, T3 leftover) --------------------------------------------
 
 {
-	const probe = "context compression probe. ".repeat(400);
+	// The multibyte tail keeps the two counters apart: the plain-ASCII probe
+	// happened to count identically under glm5 and the byte-estimate fallback
+	// (both 1601), which voided the not-equal assert below.
+	const probe = "context compression probe. ".repeat(400) + "emoji 🚀 utf8 飞书 multibyte tail — ñ ünïcode stretch. ";
 	// makeFixture sizes are repeat counts; the exact probe text is grafted on after.
 	const fx = makeFixture({ l1: 10, l2: 20, l3: 30, target: 10_000, ...NO_TAIL }, [1]);
 	const first = fx.entries[0].message as UserMessage; // fixture-built user message, string content

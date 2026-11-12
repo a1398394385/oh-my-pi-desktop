@@ -133,12 +133,12 @@ export function planCompression(
 	}
 	const activeBlocks = snapshot.active.reduce((n, b) => n + b.tokens, 0);
 	const activeTokens = Math.round(activeBlocks * snapshot.ratio);
-	if (activeTokens < p.minCompress) {
+	if (computeTier(activeTokens, p) === "none") {
 		return {
 			reject: {
 				ok: false,
-				code: "below-min-compress",
-				error: `Active zone is ${activeTokens} tokens, below minCompress ${p.minCompress}; compress_context is unavailable until more context accumulates.`,
+				code: "below-l1",
+				error: `Active zone is ${activeTokens} tokens, at or below the L1 activation line ${p.l1}; the context is too small to compress — compress_context returns once the active zone grows past L1.`,
 			},
 		};
 	}

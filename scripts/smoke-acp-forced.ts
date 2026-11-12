@@ -476,6 +476,61 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	console.log("ok: D e2e — ultimatum ignored -> named tool_choice on the next request -> forced strong compress persisted; sequence advanced");
 }
 
+// --- D2: e2e forced round blocks every other tool host-side (v11 tool_call gate) -----------
+
+{
+	const cwd = mkdtempSync(join(tmpdir(), "acp-t7-d2-"));
+	const e2e = await makeE2ESession(cwd, {
+		params: E2E_PARAMS,
+		contextWindow: E2E_WINDOW,
+		handler: (call) => {
+			const toolChoice = call.options?.toolChoice;
+			if (isForcedChoice(toolChoice)) {
+				// A face that ignores the pin: the model reaches for another tool.
+				return { content: [{ type: "toolCall", name: "read", arguments: { path: "notes.txt" } }] };
+			}
+			if (toolChoice === "none") return { content: ["turn recorded."] };
+			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[compress-hint]"));
+			const text = lastUser ? textOf(lastUser as { content: unknown }) : "";
+			if (text.includes("[compress-hint]")) return { content: ["not compressing yet."] };
+			return { content: ["turn recorded."] };
+		},
+	});
+
+	await e2e.session.prompt(bulkTurn("task one"));
+	await waitFor("ultimatum on the wire", () => e2e.calls.length >= 1 && JSON.stringify(e2e.calls[0].context.messages).includes("Final notice"));
+	await e2e.session.prompt("continue");
+	// The blocked read must land as an error toolResult pointing back at the
+	// pinned call — the host gate, not the provider, is the last line.
+	await waitFor("blocked read toolResult", () =>
+		e2e.sessionManager.getEntries().some(
+			(e) =>
+				e.type === "message" &&
+				(e as { message?: { role?: string; toolName?: string } }).message?.role === "toolResult" &&
+				(e as { message?: { toolName?: string } }).message?.toolName === "read",
+		),
+	);
+	const blocked = e2e.sessionManager
+		.getEntries()
+		.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
+		.map((e) => e.message as AgentMessage)
+		.find((m): m is Extract<AgentMessage, { role: "toolResult" }> => m.role === "toolResult" && m.toolName === "read")!;
+	assert.equal(blocked.isError, true, "the non-compress call on a forced round is an error");
+	assert.match(textOf(blocked as never as { content: unknown }), /only compress_context is allowed on this turn/, "the error points back at the pinned call");
+	// No compress happened this turn: the forced round ends without success and
+	// the session degrades (E covers the aftermath; here we just confirm it).
+	await waitFor("degrade after the blocked force", () => e2e.state.degraded);
+	await e2e.session.dispose();
+	await e2e.sessionManager.close();
+	rmSync(e2e.sessionDir, { recursive: true, force: true });
+	try {
+		rmSync(cwd, { recursive: true, force: true });
+	} catch {
+		// Windows lock window; the temp dir is disposable
+	}
+	console.log("ok: D2 e2e — forced round blocked a non-compress tool host-side with a redirect error; force unanswered degrades");
+}
+
 // --- E: e2e degrade after an ignored force (acceptance 5 degrade half) ---------------------
 
 {

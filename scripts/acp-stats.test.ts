@@ -173,7 +173,8 @@ describe("runtime telemetry recording", () => {
       countMessages: () => 0,
       sink: { appendCustomEntry: (_type: string, data: AcpSummaryData) => (writes.push(data), "s1") },
       getEntries: () => entries,
-      params: { minCompress: 0 },
+      // v11: the L1 floor gates both tools; keep the small fixture past it.
+      params: { minCompress: 0, l1: 10, l2: 100_000, l3: 200_000 },
     });
     state.projectView(view);
     const pulled = state.status();

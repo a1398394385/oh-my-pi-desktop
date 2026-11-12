@@ -132,7 +132,7 @@ describe("branch-scoped ACP rebuild", () => {
 		const branch = [...shared, ...active];
 		const view = branch.map((e) => messages.get(e.id) as AgentMessage);
 
-		const params = { minCompress: 0, tailTurns: 0, tailTokens: 0, tailUserMessages: 0 };
+		const params = { minCompress: 0, l1: 10, tailTurns: 0, tailTokens: 0, tailUserMessages: 0 };
 		const manifestLines = (journal: readonly SessionEntry[]) => {
 			const state = new AcpRuntimeState({
 				countTokens,

@@ -64,18 +64,19 @@ export function computeTier(activeTokens: number, p: AcpParams = ACP_DEFAULT_PAR
 }
 
 /**
- * Milestone index (1..steps) of the L1..L3 active zone: the k-th line sits at
- * l1 + k·(l3−l1)/steps and fires once, when the zone first crosses it (skipped
- * lines are never backfilled). 0 at or below L1 (silent tier). Past L3 the
- * index saturates at `steps`: the ultimatum line stays crossed, so the L3 text
- * is delivered once and the armed-force machine owns the rest (a per-request
- * ultimatum would be noise the model learns to ignore). steps = 0 keeps the
- * whole segment silent; an l3<=l1 config makes it unreachable.
+ * Milestone index (1..steps) of the L2..L3 band: the k-th line sits at
+ * l2 + k·(l3−l2)/steps and fires once, when the zone first crosses it (skipped
+ * lines are never backfilled). 0 at or below L2 — the L1..L2 band stays silent
+ * (v11: only the L2..L3 climb is worth a reminder; below L2 the model owns the
+ * timing undisturbed). Past L3 the index saturates at `steps`: the ultimatum
+ * line stays crossed, so the L3 text is delivered once and the armed-force
+ * machine owns the rest. steps = 0 keeps the whole segment silent; an l3<=l2
+ * config makes it unreachable.
  */
 export function milestoneFor(activeTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): number {
-	if (activeTokens <= p.l1 || p.milestoneSteps <= 0 || p.l3 <= p.l1) return 0;
+	if (activeTokens <= p.l2 || p.milestoneSteps <= 0 || p.l3 <= p.l2) return 0;
 	if (activeTokens > p.l3) return p.milestoneSteps;
-	return Math.min(p.milestoneSteps, Math.ceil(((activeTokens - p.l1) * p.milestoneSteps) / (p.l3 - p.l1)));
+	return Math.min(p.milestoneSteps, Math.ceil(((activeTokens - p.l2) * p.milestoneSteps) / (p.l3 - p.l2)));
 }
 
 /** The §5.2 two-dimensional decision table as the single implementation. */

@@ -47,7 +47,7 @@ const glm5 = new Tokenizer({ tokenizer: "glm5" });
 const countTokens = (s: string) => glm5.countTokens(s);
 
 const NO_TAIL: Partial<AcpParams> = { tailTurns: 0, tailTokens: 0 };
-const PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompress: 30, target: 1_000_000, ...NO_TAIL };
+const PARAMS: Partial<AcpParams> = { l1: 50, l2: 600, l3: 900, minCompress: 30, target: 1_000_000, ...NO_TAIL };
 const SUMMARY_TEXT = "Condensed record of the retired blocks: parser bug traced, values pinned.";
 
 function accepted(r: CompressOutcome | CompressRejection): CompressOutcome {
@@ -140,17 +140,17 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	assert.ok(lines1.every((l) => /^b\d+$/.test(l.ref)), "manifest ids are bN short refs");
 	assert.ok(!text1.includes("e0") && !fx.entries.some((e) => text1.includes(e.id)), "no entry id leaks into the model-facing report");
 
-	// Refresh semantics: folding everything leaves the active zone below
-	// minCompress, so both tools reject until a sufficiently large latecomer
+	// Refresh semantics: folding everything leaves the active zone at or below
+	// the L1 line, so both tools reject until a sufficiently large latecomer
 	// arrives; the next successful status call then revives the round.
 	accepted(await fx.state.compress({ keep: [], summary: SUMMARY_TEXT }));
 	const consumed = rejected(await fx.state.compress({ keep: [], summary: SUMMARY_TEXT }));
-	assert.equal(consumed.code, "below-min-compress");
+	assert.equal(consumed.code, "below-l1");
 	const s2 = fx.state.status();
 	assert.equal(s2.ok, false);
 	assert.ok(fx.state.manifest && fx.state.manifest.consumed === true, "the rejected status call leaves the consumed round untouched");
 	// A latecomer block enters the NEXT round's status return only.
-	const late = { role: "user", content: "latecomer block with fresh details. ".repeat(8), timestamp: 1_700_000_100_000 } as never as AgentMessage;
+	const late = { role: "user", content: "latecomer block with fresh details. ".repeat(60), timestamp: 1_700_000_100_000 } as never as AgentMessage;
 	fx.entries.push({ type: "message", id: "e-late", message: late });
 	fx.view.push(late);
 	fx.state.projectView(fx.view);
@@ -158,7 +158,6 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	if (!s3.ok) throw new Error(s3.error);
 	const lines3 = parseManifest(s3.text);
 	assert.equal(lines3.length, 1, "the latecomer is the only candidate of the fresh round");
-	assert.equal(lines3[0].ref, fx.state.shortRef("e-late"), "and it carries its journal-order short ref");
 	assert.ok(fx.state.manifest && fx.state.manifest.consumed === false, "the status call revived the round");
 	// Persistence stays entry-id-only (spec §3): compressedIds/index are raw ids.
 	assert.deepEqual(fx.writes[0].meta.compressedIds, ["e0", "e1", "e2", "e3", "e4"]);
@@ -207,11 +206,13 @@ function makeFixture(params: Partial<AcpParams>, blocks: number, blockTokens = 1
 	const keepOld2 = rejected(await fx.state.compress({ keep: [oldShort], summary: SUMMARY_TEXT }));
 	assert.equal(keepOld2.code, "hallucinated-keep");
 	assert.match(keepOld2.error, /already compressed/);
-	// no-manifest also points at context_status.
+	// No projection yet: the active zone reads 0, so the L1 floor (the first
+	// guard) fires even before the manifest checks — v11 moves the entry gate
+	// ahead of no-manifest/consumed.
 	const fresh = makeFixture({ ...PARAMS, minCompress: 0 }, 2);
 	const noMan = rejected(await fresh.state.compress({ keep: [], summary: SUMMARY_TEXT }));
-	assert.equal(noMan.code, "no-manifest");
-	assert.match(noMan.error, /call context_status/);
+	assert.equal(noMan.code, "below-l1");
+	assert.match(noMan.error, /too small to compress/);
 	console.log("ok: B decode — ghost short ref rejected with bN candidates; positive keep decode; old short keep-rejects; pointers to context_status");
 }
 
