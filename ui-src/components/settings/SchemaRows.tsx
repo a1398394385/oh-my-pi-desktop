@@ -14,7 +14,7 @@ import { SETTINGS_ZH, OPTS_ZH, GROUPS_ZH } from "../../i18n/locales/settings-zh-
 import { SETTINGS_EN, OPTS_EN, GROUPS_EN } from "../../i18n/locales/settings-en";
 import { expandSection, type Section, type SchemaDef } from "./placement";
 import { Switch } from "../ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Sel, type SelOption } from "./common";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 
@@ -28,12 +28,6 @@ const TYPE_LABEL_KEYS: Record<string, string> = {
   array: "settingsPage.schema.typeArray",
   record: "settingsPage.schema.typeRecord",
 };
-
-// Dropdown option shape (v matches SchemaSel's selected value and onPick callback)
-interface SelOption {
-  v: string;
-  label: string;
-}
 
 /** Resolve the available option list of a setting from the schema and omp source code */
 function resolveSettingOptions(k: string, def: SchemaDef, opts: Record<string, Record<string, string>>): SelOption[] {
@@ -73,7 +67,7 @@ interface SchemaSelProps {
   onPick: (v: unknown) => void;
 }
 
-// Dropdown: Radix Select (trigger capsule / popover .menu visuals carried by the primitives); send on pick
+// Dropdown: shared settings selector; send on pick
 function SchemaSel({ settingKey, settingType, current, options, onPick }: SchemaSelProps) {
   const lang = useAppStore((s) => s.uiPrefs.lang);
   // Special compatibility for compaction.thresholdPercent and compaction.thresholdTokens: values of -1 or "" map to "default"
@@ -84,8 +78,7 @@ function SchemaSel({ settingKey, settingType, current, options, onPick }: Schema
   const curStr = isDefaultThreshold ? "default" : String(current ?? "");
   const sel = options.find((o) => String(o.v) === curStr);
 
-  const handlePick = (pickedValue: string) => {
-    const rawVal = pickedValue === "__empty__" ? "" : pickedValue;
+  const handlePick = (rawVal: string) => {
     if (settingKey === "compaction.thresholdPercent" || settingKey === "compaction.thresholdTokens") {
       if (rawVal === "default") {
         onPick(-1);
@@ -102,35 +95,14 @@ function SchemaSel({ settingKey, settingType, current, options, onPick }: Schema
     }
   };
 
-  const selectedValue = sel ? (sel.v || "__empty__") : "";
-  // In-place expansion, same treatment as .sel (see anchorMenuToSelection): lift the popover by
-  // trigger height + menu border/padding + the selected row's offset so that row lands on the trigger.
-  // 32px rows and the 6px vertical inset come from the #settings grid in common.css; collisions stay
-  // ignored on purpose — the settings body scrolls, so a popover taller than the viewport is fine.
-  const idx = Math.max(0, options.findIndex((o) => (o.v || "") === curStr));
-
+  const selectedValue = sel?.v ?? null;
   return (
-    <Select value={selectedValue} onValueChange={handlePick}>
-      <SelectTrigger>
-        {/* Hidden grid twins reserve the widest option, so the first open cannot resize the trigger. */}
-        <span className="grid">
-          <span className="col-start-1 row-start-1 whitespace-nowrap"><SelectValue placeholder={sel ? sel.label : curStr || t("settingsPage.schema.selectPlaceholder")} /></span>
-          {options.map((o) => (
-            <span key={o.v || "__empty__"} aria-hidden="true" className="invisible col-start-1 row-start-1 whitespace-nowrap">{o.label}</span>
-          ))}
-        </span>
-      </SelectTrigger>
-      <SelectContent sideOffset={-(38 + idx * 32)} avoidCollisions={false}>
-        {options.map((o) => {
-          const itemVal = o.v || "__empty__";
-          return (
-            <SelectItem key={itemVal} value={itemVal}>
-              {o.label}
-            </SelectItem>
-          );
-        })}
-      </SelectContent>
-    </Select>
+    <Sel
+      label={sel ? sel.label : curStr || t("settingsPage.schema.selectPlaceholder")}
+      value={selectedValue}
+      options={options.map((o) => ({ ...o, ck: o.v === selectedValue ? "✓" : "" }))}
+      onPick={handlePick}
+    />
   );
 }
 
