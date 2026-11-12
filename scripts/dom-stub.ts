@@ -27,6 +27,9 @@ globalThis.navigator = { language: "zh-CN", userAgent: "bun-test" } as unknown a
 globalThis.document = {
   querySelectorAll: () => [],
   querySelector: () => null,
+  // Focused by default: notifyDesktop bails out when the user is looking at the session, so
+  // tests that drive turn_end never reach the desktop-notification branch.
+  hasFocus: () => true,
   documentElement: { style: {}, setAttribute: () => {} },
   body: { classList: { add: () => {}, remove: () => {}, toggle: () => {} }, style: {} },
   addEventListener: () => {},

@@ -88,6 +88,7 @@ export const chatZh = {
   totalUsage: "总消耗 {{usage}}",
   processLog: "过程记录（Token 与耗时显示在外观设置中开启）",
   // ---- thinking row (ThinkingRow.tsx) ----
+  thinkingNow: "思考中",
   thinkingFallback: "持续了几秒",
   // ---- context ring card (CtxCard.tsx) ----
   context: "上下文",

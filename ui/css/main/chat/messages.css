@@ -467,8 +467,6 @@
 /* Thinking row */
 .act.think .th-ic { color: var(--text); display: inline-flex; }
 
-.act.think .th-more { color: var(--faint); cursor: pointer; }
-
 /* TTSR injection row (TtsrRow.tsx): the thinking row's read-only treatment; the rule-name
    readout ellipsizes (full list on title) while the disclosure body reuses .think-body */
 .act.ttsr .tt-ic { color: var(--text); display: inline-flex; }
@@ -527,7 +525,7 @@
 .act.edit .del, .chg-item .del, .act.change .del { color: var(--red); opacity: .9; font-weight: 500; }
 
 /* Minimal arrow appearing after the row tail on whole-row hover (shared by edit/terminal rows), 6px from the label content (aligned with thinking rows) */
-.act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow, .act.ro .ed-arrow {
+.act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow, .act.ro .ed-arrow, .act.think .ed-arrow {
   color: var(--faint); opacity: 0; transition: opacity var(--dur-snap) var(--swift); flex: none;
   display: inline-flex; align-items: center;
 }
@@ -535,7 +533,7 @@
 .cmd .ed-arrow { margin-left: -2px; }
 
 /* container gap 8px, net 6px */
-.act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow, .act.ro:hover .ed-arrow { opacity: 1; }
+.act.edit:hover .ed-arrow, .cmd:hover .ed-arrow, .act.change:hover .ed-arrow, .chg-item:hover .ed-arrow, .act.read:hover .ed-arrow, .act.mcp:hover .ed-arrow, .act.ro:hover .ed-arrow, .act.think:hover .ed-arrow { opacity: 1; }
 
 /* On expand the same chevron rotates 90° in place to point down — no icon swap, no size change, no jump */
 .ed-arrow svg { transition: transform var(--dur-base) var(--swift); }

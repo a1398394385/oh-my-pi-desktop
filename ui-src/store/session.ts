@@ -307,12 +307,16 @@ export function clearBranchingMarks(items: SessionItem[]): void {
 
 // Turn teardown / host restart: reset tool items still marked running. Interrupted and error paths
 // may never see a tool_update; without the reset the row keeps an eternal spinner (same purpose as
-// hostInstanceReset clearing "ghost spinners")
+// hostInstanceReset clearing "ghost spinners"). Streaming thinking items are settled here too: a
+// run that aborts inside the thinking phase never gets the closing `thinking` frame, and a stale
+// streaming block keeps the status row's thinking icon (and its dead tail text) alive into the
+// next turn.
 function clearRunningTools(s: OpenSession): void {
   const walk = (list: SessionItem[] | undefined): void => {
     for (const it of list || []) {
       if (it.role === "loop") walk(it.items);
       else if (it.role === "tool" && it.running) it.running = false;
+      else if (it.role === "thinking" && it.streaming) it.streaming = false;
     }
   };
   walk(s.items);
@@ -662,6 +666,11 @@ export function applyEvent(msg: EventFrame): void {
       }
       s.assistantDraft = "";
       if (msg.phase === "start") {
+        // A new thinking phase means the previous block is over even if its closing frame never
+        // arrived (provider error mid-thought): leaving it streaming keeps the status row on that
+        // dead block's icon and tail text, and steals the next phase's deltas (they append to the
+        // last streaming thinking item).
+        for (const it of s.items) if (it.role === "thinking" && it.streaming) it.streaming = false;
         s.workingText = t("notify.thinking");
         s.items.push({ role: "thinking", text: t("notify.thinkingLabel"), thinking: "", streaming: true, expanded: st.uiPrefs.showThinking || opensProcessBlocks() });
       } else {

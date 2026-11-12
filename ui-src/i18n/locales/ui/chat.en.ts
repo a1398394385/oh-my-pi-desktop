@@ -101,6 +101,7 @@ export const chatEn = {
   totalUsage: "Total usage {{usage}}",
   processLog: "Process log (enable token/time in Appearance settings)",
   // ---- thinking row (ThinkingRow.tsx) ----
+  thinkingNow: "Thinking…",
   thinkingFallback: "took a few seconds",
   // ---- context ring card (CtxCard.tsx) ----
   context: "Context",

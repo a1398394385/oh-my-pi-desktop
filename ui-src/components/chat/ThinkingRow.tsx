@@ -70,11 +70,11 @@ export default function ThinkingRow({ item, fk }: { item: ThinkRowItem; fk?: str
         onClick={expandable ? toggle : undefined}
       >
         <Icon name="think" size={15} className="th-ic" />
-        {/* While thinking, the glyph alone is the row: the label adds nothing the icon does not say */}
-        {!item.streaming && <span className="lbl">{item.text || t("chat.thinkingFallback")}</span>}
+        {/* Live label while the thought streams ("thinking…"), replaced by the duration label once it ends */}
+        <span className="lbl">{item.streaming ? t("chat.thinkingNow") : item.text || t("chat.thinkingFallback")}</span>
         {expandable && (
-          <span className={"th-more" + (open ? " open" : "")}>
-            <Icon name="chevronRight" size={10} />
+          <span className={"ed-arrow" + (open ? " open" : "")}>
+            <Icon name="chevronRight" />
           </span>
         )}
       </div>

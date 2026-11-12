@@ -12,7 +12,7 @@ import type { ChatItem } from "../ui-src/types/session";
 };
 const { initI18n } = await import("../ui-src/i18n");
 initI18n("zh-CN");
-const { liveActivity, thoughtTail } = await import("../ui-src/components/chat/ChatLoading");
+const { liveActivity, thoughtWindow } = await import("../ui-src/components/chat/ChatLoading");
 
 function think(thinking: string, streaming: boolean): ChatItem {
   return { role: "thinking", text: "思考", thinking, streaming };
@@ -34,16 +34,18 @@ describe("liveActivity", () => {
   });
 });
 
-describe("thoughtTail", () => {
-  test("keeps the newest words, collapses whitespace, caps the length", () => {
+describe("thoughtWindow", () => {
+  test("keeps the newest words of the painted prefix, collapses whitespace, caps the length", () => {
     const head = "头".repeat(300);
-    const tail = thoughtTail(`${head}\n  最末尾\n的想法 `);
+    const thought = `${head}\n  最末尾\n的想法 `;
+    const tail = thoughtWindow(thought, thought.length);
     expect(tail).toContain("最末尾 的想法");
     expect(tail).not.toContain(head);
-    expect(tail.length).toBe(160);
+    expect(tail.length).toBeLessThanOrEqual(160);
   });
 
-  test("empty thinking renders nothing", () => {
-    expect(thoughtTail("   ")).toBe("");
+  test("paints only the prefix the progress has reached", () => {
+    expect(thoughtWindow("一二三四五六", 2)).toBe("一二");
+    expect(thoughtWindow("   ", 3)).toBe(" ");
   });
 });
