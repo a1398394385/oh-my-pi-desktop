@@ -839,6 +839,13 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* Intent text reads at one tone on every row: the read/search row's --faint. .cmd and .chg-item
+   inherit --dim, which made terminal/change intents look heavier than the rows above them.
+   Icons (.c-ic, .tt-ic, .th-ic), counts and arrows keep their own tone. */
+.cmd .c-tx,
+.chg-item .c-tx,
+.chg-item .path { color: var(--faint); }
+
 /* Two-part JS truncation "..." structure: native text-overflow:ellipsis hugs the preceding text; this adds a 3px gap (e-dot only shows when e-tx is clipped, see ellipsizable in tool-rows.js) */
 .e-wrap { display: inline-flex; min-width: 0; overflow: hidden; }
 
