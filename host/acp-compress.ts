@@ -40,19 +40,23 @@ export interface CompressOutcome {
 	warning?: string;
 }
 
+/** Every rejection code, as a runtime value so the union below cannot drift from what is emitted. */
+export const COMPRESS_REJECTION_CODES = [
+	"degraded",
+	"below-l1",
+	"no-manifest",
+	"manifest-consumed",
+	"hallucinated-keep",
+	"over-target",
+	"empty-summary",
+	"summary-over-budget",
+	"nothing-to-compress",
+] as const;
+
 /** compress_context rejection; any rejection leaves zero side effects and does not consume the manifest. */
 export interface CompressRejection {
 	ok: false;
-	code:
-		| "degraded"
-		| "below-min-compress"
-		| "no-manifest"
-		| "manifest-consumed"
-		| "hallucinated-keep"
-		| "over-target"
-		| "empty-summary"
-		| "summary-over-budget"
-		| "nothing-to-compress";
+	code: (typeof COMPRESS_REJECTION_CODES)[number];
 	error: string;
 	validCandidates?: string[];
 }
