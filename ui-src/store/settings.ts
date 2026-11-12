@@ -23,6 +23,7 @@ import type {
   SshTestResultFrame,
   RemoteWorkspaceAddedFrame,
   SshDirsFrame,
+  McpServerTestedFrame,
 } from "../types/frames";
 import type { Automation, AutomationRun } from "../lib/automations";
 import type { MemoryDetailState } from "../types/session";
@@ -82,7 +83,7 @@ export interface SettingsSlice {
   sshTestResult: (Omit<SshTestResultFrame, "type"> & { ts: number }) | null; // latest connectivity probe (ts correlates replies)
   remoteWorkspaceAdded: (Omit<RemoteWorkspaceAddedFrame, "type"> & { ts: number }) | null; // latest add_remote_workspace reply (dialog closes itself on ok)
   sshDirs: (Omit<SshDirsFrame, "type"> & { ts: number }) | null; // latest ssh_list_dirs reply (path matches the picker's current base)
-  mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // per-server MCP test results
+  mcpTestResults: Record<string, Omit<McpServerTestedFrame, "type" | "name"> & { ts: number }>; // per-server MCP test results (frame status stays "ok" | "error")
   memoryDetail: MemoryDetailState; // landed from the memory_file frame
   automations: Automation[]; // automations_list snapshot (host/rpc/automations.ts; empty until the first reply)
   automationRuns: Record<string, AutomationRun[]>; // runs history keyed by automation id (≤10 each, newest first)

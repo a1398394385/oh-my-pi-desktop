@@ -17,6 +17,7 @@ import { hostI18n } from "./i18n/host.ts";
 // import surface (translate/session-lifecycle/rpc domains) stays untouched.
 // The wire version is the field superset (adds role "error" + the `intent` field).
 import type { TranscriptItem, TurnUsage, AdvisorNote } from "./wire/payloads.ts";
+import type { McpSharingMode } from "./mcp-pool.ts";
 import type { AssistantMessageLike } from "./assistant-text.ts";
 export type { TranscriptItem, TurnUsage, AdvisorNote };
 export type PoolEntry = {
@@ -459,7 +460,7 @@ export type DesktopProjects = {
   expandedProjects: string[];
   pinnedSessions: string[];
   archivedSessions: string[];
-  mcpSharing?: Record<string, "session" | "project" | "global">;
+  mcpSharing?: Record<string, McpSharingMode>;
 };
 export type DesktopEnv = { httpProxy: string; noProxy: string; caCerts: string };
 

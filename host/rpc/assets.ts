@@ -291,8 +291,9 @@ export const assetsHandlers: Record<string, RpcHandler> = {
     if (!name) throw new Error(hostI18n.t("errors.param.missingMcpName"));
     mcpHealthCache.delete(name);
     const probe = await probeMcpServerHealth(msg.server || { name });
-    // probeMcpServerHealth returns "connected"/"error"; the frontend contract for
-    // this reply is "ok"/"error" (McpServerTestedFrame consumers + smoke-mcp-sharing)
+    // probeMcpServerHealth reports the shared MCP health vocabulary ("connected"/"error"); the
+    // mcp_server_tested frame keeps its historical "ok"/"error" wording (UI toasts and
+    // scripts/smoke-mcp-sharing.ts assert it). This ternary is the one explicit translation.
     ws.send(JSON.stringify({ type: "mcp_server_tested", name, status: probe.status === "connected" ? "ok" : "error", error: probe.error, log: probe.log }));
   },
   async mcp_detach(ws, msg) {

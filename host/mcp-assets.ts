@@ -17,6 +17,8 @@ import {
 import { getMcpSharingConfig } from "./profile.ts";
 import { safeStderr } from "./stderr.ts";
 import { validDesktopProjects, nearestProjectOmpDir, mcpCandidates } from "./asset-paths.ts";
+import type { McpAssetStatus, McpHealthStatus } from "./wire/payloads.ts";
+import type { McpSharingMode } from "./mcp-pool.ts";
 
 // MCP health probe cache (avoids re-connecting within 60s). This used to live
 // inside the listAgentAssets function body, which left server-layer
@@ -24,7 +26,7 @@ import { validDesktopProjects, nearestProjectOmpDir, mcpCandidates } from "./ass
 // hoisted to module level during the split.
 export const mcpHealthCache = new Map<
   string,
-  { status: "connected" | "error"; error?: string; log?: string; timestamp: number }
+  { status: McpHealthStatus; error?: string; log?: string; timestamp: number }
 >();
 
 async function probeStdioMcp(server: {
@@ -32,7 +34,7 @@ async function probeStdioMcp(server: {
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
-}, timeoutMs = 5000): Promise<{ status: "connected" | "error"; error?: string; log?: string }> {
+}, timeoutMs = 5000): Promise<{ status: McpHealthStatus; error?: string; log?: string }> {
   const cmd = server.command?.trim();
   if (!cmd) {
     return {
@@ -223,7 +225,7 @@ export async function probeMcpServerHealth(server: {
   headers?: Record<string, string>;
   env?: Record<string, string>;
   cwd?: string;
-}): Promise<{ status: "connected" | "error"; error?: string; log?: string }> {
+}): Promise<{ status: McpHealthStatus; error?: string; log?: string }> {
   const cached = mcpHealthCache.get(server.name);
   if (cached && Date.now() - cached.timestamp < 60_000) {
     return { status: cached.status, error: cached.error, log: cached.log };
@@ -301,10 +303,10 @@ export interface McpServerAsset {
   };
   scope: string; // "profile" | `project:${cwd}`
   projectName?: string;
-  status: "connected" | "error" | "disabled" | "unknown";
+  status: McpAssetStatus;
   error?: string;
   log?: string;
-  sharing?: "session" | "project" | "global";
+  sharing?: McpSharingMode;
   /** Config file belongs to a plugin package or another tool: the UI keeps the toggle, never the editor */
   readOnly: boolean;
 }
@@ -328,7 +330,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
 
   const allServersMap = new Map<string, McpServerAsset>();
   const rawFileCache = new Map<string, any>();
-  const readRawSharing = async (filePath?: string, serverName?: string): Promise<"session" | "project" | "global" | undefined> => {
+  const readRawSharing = async (filePath?: string, serverName?: string): Promise<McpSharingMode | undefined> => {
     if (!filePath || !serverName) return undefined;
     const desktopSharing = getMcpSharingConfig(filePath, serverName);
     if (desktopSharing) return desktopSharing;
@@ -362,7 +364,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
       const filePath = s._source?.path ?? userMcpPath;
       const fileSharing = await readRawSharing(filePath, s.name);
       const rawSharing = fileSharing ?? s.sharing ?? (s as any)._config?.sharing;
-      const sharing: "session" | "project" | "global" =
+      const sharing: McpSharingMode =
         (rawSharing === "global" || rawSharing === "project") ? rawSharing : "session";
       allServersMap.set(serverKey("profile", s.name), {
         name: s.name,
@@ -399,7 +401,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
         const transport = (cfg.type ?? (cfg.command ? "stdio" : cfg.url ? "http" : "stdio")) as "stdio" | "http" | "sse";
         const enabled = isServerEnabled(name, cfg.enabled);
         const rawSharing = getMcpSharingConfig(userMcpPath, name) ?? cfg.sharing;
-        const sharing: "session" | "project" | "global" =
+        const sharing: McpSharingMode =
           (rawSharing === "global" || rawSharing === "project") ? rawSharing : "session";
         const uKey = serverKey("profile", name);
         const existing = allServersMap.get(uKey);
@@ -457,7 +459,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
         const filePath = s._source?.path ?? projMcpFile;
         const fileSharing = await readRawSharing(filePath, s.name);
         const rawSharing = fileSharing ?? s.sharing ?? (s as any)._config?.sharing;
-        const sharing: "session" | "project" | "global" =
+        const sharing: McpSharingMode =
           rawSharing === "project" ? "project" : "session"; // rule 2: global forbidden inside a project; rule 1: default session
         const item: McpServerAsset = {
           name: s.name,
@@ -497,7 +499,7 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
           const transport = (cfg.type ?? (cfg.command ? "stdio" : cfg.url ? "http" : "stdio")) as "stdio" | "http" | "sse";
           const enabled = isServerEnabled(name, cfg.enabled);
           const rawSharing = getMcpSharingConfig(projMcpFile, name) ?? cfg.sharing;
-          const sharing: "session" | "project" | "global" =
+          const sharing: McpSharingMode =
             rawSharing === "project" ? "project" : "session";
           const pKey = serverKey(projScope, name);
           const existing = allServersMap.get(pKey);
@@ -552,13 +554,9 @@ export async function loadAllMcpScoped(options?: { probe?: boolean }) {
     await Promise.all(
       enabledServers.map(async (s) => {
         const probe = await probeMcpServerHealth(s);
-        if (probe) {
-          s.status = probe.status;
-          s.error = probe.error;
-          s.log = probe.log;
-        } else {
-          s.status = "connected";
-        }
+        s.status = probe.status;
+        s.error = probe.error;
+        s.log = probe.log;
       })
     );
   }

@@ -16,6 +16,7 @@ import { H } from "./state.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
 
+/** MCP connection-sharing level: session-private (default), project-wide or process-global. */
 export type McpSharingMode = "session" | "project" | "global";
 
 export interface SharedMcpConnection {

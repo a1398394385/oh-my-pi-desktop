@@ -467,7 +467,7 @@ export const settingsPageEn = {
     dotDisabled: "Disabled",
     dotRunning: "Running / connected",
     dotError: "Connection error",
-    dotReady: "Ready",
+    dotUnknown: "Not tested",
     viewConfig: "Click to view or edit the config",
     badgeGlobal: "Shared globally",
     badgeProjectShared: "Shared in project",

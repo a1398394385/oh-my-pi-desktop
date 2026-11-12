@@ -14,6 +14,7 @@ import type {
   KeepaliveStatusFrame,
   LimitsResultFrame,
   LoginPromptFrame,
+  McpServerTestedFrame,
   ModelCatalogEntry,
   ModelRoleEntry,
   AllProviderEntry,
@@ -528,7 +529,7 @@ export interface AppState {
   assetFileSaved: { kind: string; at: number } | null; // landed from asset_file_saved (reference change drives the "saved" indicator)
   assetSaved: { kind: string; at: number } | null; // same as above, consumed by the agents page
   assetErr: { kind: string; message: string; at: number } | null; // landed when the error frame carries kind
-  mcpTestResults: Record<string, { status: string; error?: string; log?: string; ts: number }>; // per-server MCP test results: name -> { status, error?, log?, ts }
+  mcpTestResults: Record<string, Omit<McpServerTestedFrame, "type" | "name"> & { ts: number }>; // per-server MCP test results: name -> { status, error?, log?, ts }
   memoryDetail: MemoryDetailState; // landed from the memory_file frame
   // ---- ringpop popover transient data (hover context-ring detail card; discard-on-leave, cleared and re-requested on the next hover) ----
   ctxDetail: ContextDetailFrame | null;

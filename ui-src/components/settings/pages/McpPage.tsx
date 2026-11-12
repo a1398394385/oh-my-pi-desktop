@@ -13,6 +13,7 @@ import { PAGE_PLACEMENT } from "../placement";
 import { copyText } from "../../main/sidebar/util";
 import { ExtSourceTag, useExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
+import type { McpAssetStatus, McpServerTestedFrame } from "../../../types/frames";
 import {
   Dialog,
   DialogClose,
@@ -39,7 +40,7 @@ interface McpSource {
 interface McpServer {
   name: string;
   enabled: boolean;
-  status?: string; // connected / error / other ready states
+  status?: McpAssetStatus; // enabled rows start as "unknown" until a health probe lands
   error?: string;
   log?: string;
   transport?: string; // stdio / http / sse
@@ -58,12 +59,7 @@ interface McpServer {
 }
 
 // Test result entry (mcpTestResults[name], landed from the mcp_server_tested reply)
-interface McpTestResult {
-  ts: number;
-  status: string; // "ok" or other failure states
-  error?: string;
-  log?: string;
-}
+type McpTestResult = Omit<McpServerTestedFrame, "type" | "name"> & { ts: number };
 
 // MCP error log dialog (aligned with the app-wide Radix Dialog style)
 function McpLogDialog({
@@ -201,12 +197,13 @@ function getScopedMcpServers(scope: string): McpServer[] {
   return allServers.filter((s) => s.scope === scope);
 }
 
-// Status dot style and title
-function dotState(s: McpServer): { cls: string; title: string } {
+// Status dot style and title. Unknown / not-yet-probed states get a neutral dot: the green
+// "running" claim is reserved for a confirmed connection. Exported for the vocabulary test.
+export function dotState(s: Pick<McpServer, "enabled" | "status">): { cls: string; title: string } {
   if (!s.enabled) return { cls: "off", title: ti("settingsPage.mcp.dotDisabled") };
   if (s.status === "connected") return { cls: "ok", title: ti("settingsPage.mcp.dotRunning") };
   if (s.status === "error") return { cls: "err", title: ti("settingsPage.mcp.dotError") };
-  return { cls: "ok", title: ti("settingsPage.mcp.dotReady") };
+  return { cls: "bg-dim", title: ti("settingsPage.mcp.dotUnknown") };
 }
 
 // Unique key of a row: same-name servers across sources distinguished by source.path

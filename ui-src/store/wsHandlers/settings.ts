@@ -3,7 +3,7 @@
 // store/ws.ts onMessage.
 import { useAppStore } from "../index";
 import { t } from "../../i18n";
-import type { ManualProbeCatalogMatch, McpAssetsPayload } from "../../types/frames";
+import type { ManualProbeCatalogMatch, McpAssetsPayload, McpAssetStatus } from "../../types/frames";
 import type { HandlerSlice } from "./types";
 
 export const settingsHandlers = {
@@ -157,13 +157,16 @@ export const settingsHandlers = {
     // Moved over from the old handleMcpServerTested: land the test result + sync the row status dot (+ failure toast on probe error; the dot covers success)
     useAppStore.setState((st) => {
       // Per-field shape of the mcp section follows the base scan function (frames.ts TODO); only test-related fields of the servers array are read here
-      const mcp = st.agentAssets?.mcp as { servers?: { name: string; status?: string; error?: string; log?: string }[] } | undefined;
+      const mcp = st.agentAssets?.mcp as { servers?: { name: string; status?: McpAssetStatus; error?: string; log?: string }[] } | undefined;
       const servers = mcp?.servers;
       const srv = servers?.find((x) => x.name === msg.name);
       const mcpTestResults = { ...st.mcpTestResults, [msg.name]: { status: msg.status, error: msg.error, log: msg.log, ts: Date.now() } };
       if (!srv || !servers || !mcp) return { mcpTestResults };
+      // The frame's "ok"/"error" is the UI-side counterpart of the host health probe: this is the
+      // one place a test result becomes an asset-row connection state.
+      const rowStatus: McpAssetStatus = msg.status === "ok" ? "connected" : "error";
       const nextServers = servers.map((x) =>
-        x === srv ? { ...x, status: msg.status === "ok" ? "connected" : "error", error: msg.error, log: msg.log } : x,
+        x === srv ? { ...x, status: rowStatus, error: msg.error, log: msg.log } : x,
       );
       return {
         mcpTestResults,

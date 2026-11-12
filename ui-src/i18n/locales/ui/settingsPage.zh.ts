@@ -458,7 +458,7 @@ export const settingsPageZh = {
     dotDisabled: "已禁用",
     dotRunning: "运行中 / 已连接",
     dotError: "连接异常",
-    dotReady: "就绪",
+    dotUnknown: "未检测",
     viewConfig: "点击查看或编辑配置",
     badgeGlobal: "全局共享",
     badgeProjectShared: "项目共享",

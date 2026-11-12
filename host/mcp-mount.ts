@@ -29,10 +29,11 @@ import { builtinServerAsset } from "./mcp-builtin.ts";
 import { H, stampEvent, type PoolEntry } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
 import { hostI18n } from "./i18n/host.ts";
+import type { McpMountStatus } from "./wire/payloads.ts";
 
 /** Registry entry shape (structure-compatible with capabilities.ts McpRuntimeStatus) */
 interface MountedStatus {
-  servers: { name: string; status: "connected" | "connecting" | "disconnected" }[];
+  servers: { name: string; status: McpMountStatus }[];
   tools: number;
 }
 
@@ -60,7 +61,7 @@ function flattenMounts(mounts: Map<string, ServerMount>): McpToolInstance[] {
 }
 
 /** Replace/insert one server's registry row and recompute the tool count from the live surface */
-function upsertRegistry(sessionId: string, name: string, status: "connected" | "disconnected"): void {
+function upsertRegistry(sessionId: string, name: string, status: McpMountStatus): void {
   const mounts = sessionMounts.get(sessionId);
   const servers = (mountedRegistry.get(sessionId)?.servers ?? []).filter((s) => s.name !== name);
   servers.push({ name, status });

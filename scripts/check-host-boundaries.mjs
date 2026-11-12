@@ -148,8 +148,11 @@ const ALLOWED_EDGES = new Set([
   // state.ts's PoolEntry holds the controller instance (goal.ts depends only on its own narrow interface, one-way downward)
   "main.ts→goal.ts", "state.ts→goal.ts",
   // (REF_TAG_RE was inlined into translate.ts at the T10 prototype retirement)
-  // Shared MCP connection pool: main.ts drives lifecycle and RPC, depends on bootstrap's connectToServer and state
+  // Shared MCP connection pool: main.ts drives lifecycle and RPC, depends on bootstrap's connectToServer and state.
+  // state/profile/mcp-assets borrow the one sharing-mode vocabulary from mcp-pool (type-only imports:
+  // erased at runtime, so the mcp-pool→state runtime edge stays acyclic and no second literal union regrows).
   "main.ts→mcp-pool.ts", "mcp-pool.ts→bootstrap.ts", "mcp-pool.ts→state.ts",
+  "state.ts→mcp-pool.ts", "profile.ts→mcp-pool.ts", "mcp-assets.ts→mcp-pool.ts",
   // Session-bound MCP mounting (pool-lifecycle boundaries): mcp-mount owns the
   // per-session tool-surface mounts; it computes visibility from assets' scan,
   // acquires from the pool, and reads/stamps state. Consumers: session-lifecycle
@@ -626,6 +629,11 @@ const ALLOWED_EDGES = new Set([
   "asset-paths.ts→settings-compat.ts",
   "mcp-assets.ts→i18n/host.ts", "mcp-assets.ts→state.ts", "mcp-assets.ts→bootstrap.ts",
   "mcp-assets.ts→profile.ts", "mcp-assets.ts→stderr.ts", "mcp-assets.ts→asset-paths.ts",
+  // One MCP connection-state vocabulary (McpServerStatus + its mount/health/asset subsets) lives in
+  // wire/payloads.ts; these are type-only borrows, so no host module re-declares the status literals
+  // and no runtime edge is added (wire stays a leaf; the UI already consumes this contract).
+  "capabilities.ts→wire/payloads.ts", "mcp-assets.ts→wire/payloads.ts",
+  "mcp-mount.ts→wire/payloads.ts", "rpc/assets.ts→wire/payloads.ts",
   "plugin-assets.ts→state.ts", "plugin-assets.ts→bootstrap.ts",
   "plugin-assets.ts→desktop-json.ts", "plugin-assets.ts→asset-paths.ts",
   "frames.ts→plugin-assets.ts", "session-lifecycle.ts→plugin-assets.ts",

@@ -8,18 +8,19 @@
 import { H, type PoolEntry } from "./state.ts";
 import { getLspStatus, createSessionMemoryRuntimeContext } from "./bootstrap.ts";
 import { mcpMountedSnapshot } from "./mcp-mount.ts";
+import type { McpMountStatus } from "./wire/payloads.ts";
 
 /** Narrow structural view of MCPManager the snapshot reads (the SDK manager satisfies it) */
 interface McpManagerView {
   getAllServerNames(): string[];
-  getConnectionStatus(name: string): "connected" | "connecting" | "disconnected";
+  getConnectionStatus(name: string): McpMountStatus;
   getTools(): unknown[];
 }
 
 /** Per-server MCP connection status (getConnectionStatus tri-state) */
 export interface McpServerStatusEntry {
   name: string;
-  status: "connected" | "connecting" | "disconnected";
+  status: McpMountStatus;
 }
 
 /** Process-global MCP runtime view (the capabilities_mcp incremental frame body) */

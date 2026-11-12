@@ -683,6 +683,24 @@ export interface ContextDetailStats {
 
 /** agent_assets frame payload (host/assets.ts listAgentAssets; section elements keep their on-disk scan shape) */
 // TODO(narrowing pass): per-field shape of the skills section is decided by the internal scan in assets.ts; unknown for now (McpPage/SkillsPage narrow it on actual reads)
+/**
+ * The one MCP connection-state vocabulary shared by the host modules, this wire contract and the UI.
+ *   connected    — live connection (mount registry) or a successful health probe
+ *   connecting   — connection/mount in flight
+ *   disconnected — mount released
+ *   error        — connect or probe failed
+ *   disabled     — the user switch for this server is off
+ *   unknown      — enabled but not probed yet (session-mount path, or before the first probe)
+ */
+export type McpServerStatus = "connected" | "connecting" | "disconnected" | "error" | "disabled" | "unknown";
+
+/** Subset the mount registry and connection-status queries report. */
+export type McpMountStatus = Extract<McpServerStatus, "connected" | "connecting" | "disconnected">;
+/** Subset a health probe reports. */
+export type McpHealthStatus = Extract<McpServerStatus, "connected" | "error">;
+/** Subset an asset row can carry. */
+export type McpAssetStatus = Extract<McpServerStatus, "connected" | "error" | "disabled" | "unknown">;
+
 /** MCP assets payload (host/assets.ts; servers elements are host McpServerItem, scopes are scope groupings) */
 export interface McpAssetsPayload {
   servers: {
@@ -700,7 +718,7 @@ export interface McpAssetsPayload {
     readOnly: boolean;
     scope: string; // "profile" | `project:${cwd}`
     projectName?: string;
-    status: "connected" | "error" | "disabled" | "unknown";
+    status: McpAssetStatus;
     error?: string;
   }[];
   scopes: { id: string; name: string; count: number; dir?: string; cwd?: string }[];

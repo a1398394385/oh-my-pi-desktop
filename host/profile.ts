@@ -24,6 +24,7 @@ import { settingsGet } from "./settings-compat.ts";
 import { readDesktopJson, readDesktopSection, writeDesktopSection, writeDesktopSections } from "./desktop-json.ts";
 import type * as BunFfi from "bun:ffi";
 import { safeStderr } from "./stderr.ts";
+import type { McpSharingMode } from "./mcp-pool.ts";
 
 // ---------- desktop env (desktop-env.json under agentDir: proxy / CA certs) ----------
 export function defaultDesktopEnv(): DesktopEnv {
@@ -76,7 +77,7 @@ export function readDesktopProjects(): DesktopProjects {
   try {
     const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
     const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
-    const mcpSharing: Record<string, "session" | "project" | "global"> = {};
+    const mcpSharing: Record<string, McpSharingMode> = {};
     if (raw.mcpSharing && typeof raw.mcpSharing === "object") {
       for (const [k, v] of Object.entries<any>(raw.mcpSharing)) {
         if (v === "session" || v === "project" || v === "global") {
@@ -111,7 +112,7 @@ export function computeMcpSharingKey(sourcePath: string, name: string): string {
   return `${path.resolve(sourcePath)}::${name.trim()}`;
 }
 
-export function getMcpSharingConfig(sourcePath?: string, name?: string): "session" | "project" | "global" | undefined {
+export function getMcpSharingConfig(sourcePath?: string, name?: string): McpSharingMode | undefined {
   if (!sourcePath || !name) return undefined;
   const key = computeMcpSharingKey(sourcePath, name);
   const val = H.desktopProjects?.mcpSharing?.[key];
@@ -119,7 +120,7 @@ export function getMcpSharingConfig(sourcePath?: string, name?: string): "sessio
   return undefined;
 }
 
-export async function setMcpSharingConfig(sourcePath: string, name: string, mode: "session" | "project" | "global" | null): Promise<void> {
+export async function setMcpSharingConfig(sourcePath: string, name: string, mode: McpSharingMode | null): Promise<void> {
   if (!H.desktopProjects.mcpSharing) H.desktopProjects.mcpSharing = {};
   const key = computeMcpSharingKey(sourcePath, name);
   if (!mode || mode === "session") {
