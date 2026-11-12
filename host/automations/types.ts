@@ -33,7 +33,12 @@ export interface ScheduleRule {
   monthDays?: number[];
 }
 
-export type AutomationLifecycle = "active" | "completed" | "failed";
+/**
+ * Definition-level lifecycle. Failure is a run outcome (`AutomationRun.status` plus
+ * `Automation.lastError`), never a lifecycle: a failed run leaves a recurring task
+ * active and the next slot simply retries.
+ */
+export type AutomationLifecycle = "active" | "completed";
 
 /**
  * Delivery target of a session-run automation: instead of spawning a fresh

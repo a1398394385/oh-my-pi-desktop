@@ -17,6 +17,7 @@ import { readAutomations, trimRuns, writeAutomations } from "./store.ts";
 import {
   type Automation,
   type AutomationRun,
+  type AutomationRunStatus,
   type AutomationsFile,
   type SpawnFn,
   type SpawnOutcome,
@@ -88,7 +89,7 @@ function pushRun(state: AutomationsFile, run: AutomationRun): void {
 function settleRun(
   automationId: string,
   run: AutomationRun,
-  status: "succeeded" | "failed",
+  status: Exclude<AutomationRunStatus, "running" | "skipped">,
   error: string | undefined,
   flags: { setLastError?: boolean; clearLastError?: boolean } = {},
 ): void {

@@ -12,14 +12,13 @@ import { SEARCH_FLASH_MS } from "../../settings/Settings";
 import Icon from "../../../Icon";
 import { confirmDialog } from "../../settings/common";
 import {
+  automationStatusKind,
   describeAutomation,
   formatLocalTime,
   type Automation,
 } from "../../../lib/automations";
 import { AutomationEditView } from "./AutomationEditView";
 
-/** Display status of one card (zcode resolveAutomationStatusKind mapped onto our fields). */
-type StatusKind = "active" | "paused" | "completed" | "failed";
 type StatusFilter = "all" | "active" | "completed" | "failed";
 
 const STATUS_FILTERS: readonly StatusFilter[] = ["all", "active", "completed", "failed"];
@@ -29,14 +28,6 @@ const FILTER_LABELS: Record<StatusFilter, string> = {
   completed: "autoList.filterCompleted",
   failed: "autoList.filterFailed",
 };
-
-/** Card status: failure first (failed lifecycle or a lastError), then terminal, then paused. */
-function statusKind(a: Automation): StatusKind {
-  if (a.lifecycle === "failed" || a.lastError?.trim()) return "failed";
-  if (a.lifecycle === "completed") return "completed";
-  if (!a.enabled) return "paused";
-  return "active";
-}
 
 /** Relative next-run time: ≤30d future → "in 2h" style; beyond → absolute local time. */
 const MONTH_MS = 30 * 24 * 3_600_000;
@@ -198,7 +189,7 @@ export default function AutomationsPage() {
   }
 
   const visible = useMemo(
-    () => (statusFilter === "all" ? automations : automations.filter((a) => statusKind(a) === statusFilter)),
+    () => (statusFilter === "all" ? automations : automations.filter((a) => automationStatusKind(a) === statusFilter)),
     [automations, statusFilter],
   );
 
@@ -261,7 +252,7 @@ export default function AutomationsPage() {
       ) : (
         <div className="al-grid">
           {visible.map((a) => {
-            const status = statusKind(a);
+            const status = automationStatusKind(a);
             const failed = status === "failed";
             const scheduleText = describeAutomation(a, t);
             const next = nextRunLabel(a.nextRunAt, now, t);

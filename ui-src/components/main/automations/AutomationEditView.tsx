@@ -10,12 +10,14 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send, openSessionByPath, pathBase, fmtDurationMs } from "../../../store";
 import Icon from "../../../Icon";
 import {
+  automationStatusKind,
   describeSchedule,
   describeCronExpr,
   formatLocalTime,
   isPlausibleCronExpr,
   endDateToMs,
   msToEndDate,
+  RUN_STATUS_LABEL_KEY,
   type Automation,
   type AutomationRun,
   type AutomationUnit,
@@ -175,16 +177,9 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
   const runsCurrentPage = Math.min(runsPage, runsTotalPages);
   const pagedRuns = runs.slice((runsCurrentPage - 1) * RUNS_PAGE_SIZE, runsCurrentPage * RUNS_PAGE_SIZE);
 
-  // Status chip kind: lastError wins, then terminal lifecycle, then enabled state.
-  const stKind = !shown
-    ? null
-    : shown.lastError || shown.lifecycle === "failed"
-      ? "failed"
-      : shown.lifecycle === "completed"
-        ? "completed"
-        : shown.enabled
-          ? "active"
-          : "paused";
+  // Status chip kind: shared projection with the list card (lastError wins, then terminal
+  // lifecycle, then enabled state).
+  const stKind = shown ? automationStatusKind(shown) : null;
   const stLabel =
     stKind === "failed"
       ? t("settingsPage.automations.status_failed")
@@ -498,7 +493,7 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
                       <td>
                         <span className={"aued-run-st st-" + r.status} title={r.status === "failed" ? (r.error ?? t("autoEdit.runsErrorUnavailable")) : undefined}>
                           <i className="aued-dot" />
-                          {t(`settingsPage.automations.status_${r.status}`)}
+                          {t(RUN_STATUS_LABEL_KEY[r.status])}
                         </span>
                       </td>
                       <td className="aued-run-dim">{fmtDurationMs(r.updatedAt - r.createdAt)}</td>

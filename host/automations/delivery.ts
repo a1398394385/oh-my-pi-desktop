@@ -7,7 +7,11 @@
 // runs ledger in automations.json is the only surviving record, so the same module derives
 // a prompt → marker index for one session file (deliveryMarkersForSession).
 import { readAutomations } from "./store.ts";
-import { AUTOMATION_DELIVERY_CUSTOM_TYPE } from "./types.ts";
+import { AUTOMATION_DELIVERY_CUSTOM_TYPE, type AutomationRunStatus } from "./types.ts";
+
+/** Only a succeeded run proves the prompt reached the target session. Typed against
+ *  the run union so a vocabulary change is a compile error, not a silent miss. */
+const RUN_SUCCEEDED: AutomationRunStatus = "succeeded";
 
 export interface DeliveryMarker {
   id: string;
@@ -45,7 +49,7 @@ export function deliveryMarkersForSession(sessionPath: string): Map<string, Deli
   const { automations, runs } = readAutomations();
   const out = new Map<string, DeliveryMarker>();
   for (const [automationId, list] of Object.entries(runs)) {
-    if (!list.some((r) => r.sessionPath === sessionPath && r.status === "succeeded")) continue;
+    if (!list.some((r) => r.sessionPath === sessionPath && r.status === RUN_SUCCEEDED)) continue;
     const automation = automations.find((a) => a.id === automationId);
     const prompt = automation?.prompt.trim();
     if (!automation || !prompt || out.has(prompt)) continue;

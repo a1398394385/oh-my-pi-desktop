@@ -25,7 +25,8 @@ export interface ScheduleRule {
   monthDays?: number[];
 }
 
-export type AutomationLifecycle = "active" | "completed" | "failed";
+/** Mirror of host AutomationLifecycle: failure is a run outcome, not a lifecycle. */
+export type AutomationLifecycle = "active" | "completed";
 
 /** One scheduled-task definition plus its scheduling state (mirror of host Automation). */
 export interface Automation {
@@ -72,6 +73,28 @@ export interface AutomationRun {
   createdAt: number;
   updatedAt: number;
 }
+
+/** Display status of a card or the editor chip: the host lifecycle plus two UI-only
+ *  projections — "paused" (enabled=false, the host keeps the lifecycle active) and
+ *  "failed" (lastError from the run ledger). */
+export type AutomationStatusKind = AutomationLifecycle | "paused" | "failed";
+
+/** The one status projection both the list card and the editor chip render. */
+export function automationStatusKind(a: Automation): AutomationStatusKind {
+  if (a.lastError?.trim()) return "failed";
+  if (a.lifecycle === "completed") return "completed";
+  if (!a.enabled) return "paused";
+  return "active";
+}
+
+/** i18n key per run status: a new host status becomes a compile error here instead of
+ *  the raw key string the old template lookup would have painted. */
+export const RUN_STATUS_LABEL_KEY: Record<AutomationRunStatus, string> = {
+  running: "settingsPage.automations.status_running",
+  succeeded: "settingsPage.automations.status_succeeded",
+  failed: "settingsPage.automations.status_failed",
+  skipped: "settingsPage.automations.status_skipped",
+};
 
 /** Wire shape submitted by the UI editor for a schedule (create/update/preview). */
 export type AutomationScheduleInput =
