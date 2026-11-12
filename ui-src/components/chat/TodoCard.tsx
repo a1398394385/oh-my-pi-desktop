@@ -45,7 +45,7 @@ function TodoRow({ t }: { t: TodoTask }) {
       title={t.details || undefined}
     >
       <i className={st === "completed" ? "ck" : st === "in_progress" ? "ar" : "ci"}>
-        {st === "completed" ? "✓" : st === "in_progress" ? "→" : st === "blocked" ? "⊘" : "○"}
+        {st === "completed" ? <Icon name="circleCheck" /> : st === "in_progress" ? "→" : st === "blocked" ? "⊘" : <Icon name="circle" />}
       </i>
       {st === "completed" ? <s className={mounted.current ? "strike" : undefined}>{text}</s> : <span>{text}</span>}
     </div>

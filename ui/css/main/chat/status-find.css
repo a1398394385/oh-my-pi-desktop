@@ -43,6 +43,10 @@
 
 .todo .ck { color: var(--green); font-style: normal; flex: none; }
 
+/* Pending/completed markers are svg icons (circle / circle-check): a flex box keeps them
+   vertically centered in the row instead of sitting on the text baseline */
+.todo .ck, .todo .ci { display: inline-flex; align-items: center; }
+
 .todo .ar { color: var(--text); font-style: normal; flex: none; }
 
 .todo .ci { color: var(--faint); font-style: normal; flex: none; }
