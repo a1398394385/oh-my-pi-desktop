@@ -169,6 +169,8 @@ export const rightZh = {
   btwTurnCount: "{{n}} 轮",
   btwEmptyAnswer: "（无回答）",
   btwWaiting: "正在回答…",
+  btwCancelled: "（已取消回答）",
+  btwInterrupted: "（应用退出，回答中断）",
   btwPhNew: "问一个侧边问题…",
   btwPhFollowUp: "继续追问…",
   btwSend: "发送",

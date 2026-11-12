@@ -170,6 +170,8 @@ export const rightEn = {
   btwTurnCount: "{{n}} turns",
   btwEmptyAnswer: "(no answer)",
   btwWaiting: "Answering…",
+  btwCancelled: "(answer cancelled)",
+  btwInterrupted: "(app exited — answer interrupted)",
   btwPhNew: "Ask a side question…",
   btwPhFollowUp: "Follow up…",
   btwSend: "Send",

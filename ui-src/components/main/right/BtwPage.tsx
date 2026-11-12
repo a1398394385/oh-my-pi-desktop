@@ -23,6 +23,20 @@ function topicTitle(topic: BtwRecord): string {
   return firstLine.length > 120 ? firstLine.slice(0, 120) + "…" : firstLine;
 }
 
+/** Placeholder for an answer-less turn: a crash or a user stop must not read as "no answer". */
+export function turnStatusKey(turn: Pick<BtwTurn, "status">): string {
+  switch (turn.status) {
+    case "running":
+      return "right.btwWaiting";
+    case "cancelled":
+      return "right.btwCancelled";
+    case "interrupted":
+      return "right.btwInterrupted";
+    default:
+      return "right.btwEmptyAnswer";
+  }
+}
+
 /** One shared draft: switching topics or sessions starts from a clean composer. */
 function Composer({
   placeholder,
@@ -202,7 +216,7 @@ function Turn({ turn, sessionId, hotkey }: { turn: BtwTurn; sessionId: string; h
           {parts?.after.trim() && <MdSurface className="btw-a md-body md-surface" text={parts.after} />}
         </>
       ) : (
-        <div className="btw-wait">{turn.status === "running" ? t("right.btwWaiting") : t("right.btwEmptyAnswer")}</div>
+        <div className="btw-wait">{t(turnStatusKey(turn))}</div>
       )}
       {turn.status === "error" && <div className="btw-err">{turn.error}</div>}
     </div>
