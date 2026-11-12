@@ -1,0 +1,25 @@
+// Host typecheck, tier 1: the self-contained state/ACP/wire vocabulary.
+// The root tsconfig only covers ui-src, so host/ was outside every tsc project.
+// Expansion rule: a host file joins this project only when it and its whole import
+// closure typecheck with zero errors here. Never suppress errors to force a file in;
+// narrow the include instead and record why.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [],
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "host/wire/**/*.ts",
+    "host/acp-compress.ts",
+    "host/acp-fingerprint.ts",
+    "host/acp-persist.ts",
+    "host/acp-plan.ts",
+    "host/acp-projection.ts",
+    "host/acp-refs.ts",
+    "host/automations/cron.ts",
+    "host/automations/types.ts",
+    "host/mode-state.ts",
+    "host/rpc/types.ts"
+  ]
+}
