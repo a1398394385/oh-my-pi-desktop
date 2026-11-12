@@ -177,9 +177,10 @@ pub fn play_alert_sound() {
 }
 
 /// Frontend call: current notification authorization, for the settings page row.
-/// "authorized" | "provisional" | "denied" | "notDetermined" | "unavailable" (no app bundle:
-/// the dev binary cannot use the notification center) | "unsupported" (platform without an
-/// authorization model, e.g. Windows).
+/// "authorized" | "provisional" | "denied" | "notDetermined" | "unknown" | "unavailable" (no
+/// app bundle: the dev binary cannot use the notification center) | "unsupported" (platform
+/// without an authorization model, e.g. Windows). macOS ephemeral authorization can post
+/// notifications, so it is reported as "authorized" rather than as a separate state.
 #[tauri::command]
 pub async fn notification_permission_status() -> String {
     #[cfg(target_os = "macos")]
@@ -291,6 +292,53 @@ mod mac {
         (!path.is_empty()).then_some(path)
     }
 
+    /// macOS notification authorization, as the app models it. The enum makes the
+    /// five `UNAuthorizationStatus` values explicit; `Unknown` keeps a status added by
+    /// a newer macOS from being reported as undecided, which would send the user to
+    /// System Settings to re-grant notifications to an app that already has them.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub enum NotificationPermission {
+        NotDetermined,
+        Denied,
+        Authorized,
+        Provisional,
+        Ephemeral,
+        Unknown,
+    }
+
+    impl NotificationPermission {
+        pub fn from_status(status: UNAuthorizationStatus) -> Self {
+            match status {
+                UNAuthorizationStatus::NotDetermined => Self::NotDetermined,
+                UNAuthorizationStatus::Denied => Self::Denied,
+                UNAuthorizationStatus::Authorized => Self::Authorized,
+                UNAuthorizationStatus::Provisional => Self::Provisional,
+                UNAuthorizationStatus::Ephemeral => Self::Ephemeral,
+                // Compiler stops here for any status added to objc2; a newer macOS may
+                // still report a value the bindings do not know yet, so fail closed.
+                _ => Self::Unknown,
+            }
+        }
+
+        /// Settings-page row vocabulary. Ephemeral (temporary grant, App Clip only but
+        /// possible on paper) can post notifications, so it reports as authorized — an
+        /// extra string would land on the UI's "unknown" copy for a working app.
+        pub fn as_str(self) -> &'static str {
+            match self {
+                Self::NotDetermined => "notDetermined",
+                Self::Denied => "denied",
+                Self::Authorized | Self::Ephemeral => "authorized",
+                Self::Provisional => "provisional",
+                Self::Unknown => "unknown",
+            }
+        }
+
+        /// Whether `send` may post in this state. `Unknown` fails closed.
+        pub fn allows_delivery(self) -> bool {
+            matches!(self, Self::Authorized | Self::Provisional | Self::Ephemeral)
+        }
+    }
+
     /// Settings-page row state (see the command docs for the vocabulary).
     pub fn permission_status() -> String {
         if NSBundle::mainBundle().bundleIdentifier().is_none() {
@@ -325,16 +373,8 @@ mod mac {
         }
     }
 
-    fn status_name(status: UNAuthorizationStatus) -> &'static str {
-        if status == UNAuthorizationStatus::Authorized {
-            "authorized"
-        } else if status == UNAuthorizationStatus::Provisional {
-            "provisional"
-        } else if status == UNAuthorizationStatus::Denied {
-            "denied"
-        } else {
-            "notDetermined"
-        }
+    pub fn status_name(status: UNAuthorizationStatus) -> &'static str {
+        NotificationPermission::from_status(status).as_str()
     }
 
     pub fn send(title: &str, body: &str, path: Option<&str>) -> Result<(), String> {
@@ -343,12 +383,12 @@ mod mac {
             return Err("no app bundle: macOS notifications need an installed .app".into());
         }
         let center = UNUserNotificationCenter::currentNotificationCenter();
-        let status = status(&center)?;
-        if status == UNAuthorizationStatus::NotDetermined {
+        let permission = NotificationPermission::from_status(status(&center)?);
+        if permission == NotificationPermission::NotDetermined {
             request_authorization(&center);
             return Err("notification permission requested: approve it in System Settings ▸ Notifications".into());
         }
-        if status != UNAuthorizationStatus::Authorized && status != UNAuthorizationStatus::Provisional {
+        if !permission.allows_delivery() {
             return Err("macOS notifications are turned off for this app (System Settings ▸ Notifications)".into());
         }
         post(&center, title, body, path)
@@ -618,3 +658,34 @@ mod tests {
         assert_eq!(super::mac::permission_status(), "unavailable");
     }
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod permission_tests {
+    /// Every status the system can report has its own string and its own delivery
+    /// decision; an unlisted one must not be papered over as undecided (the UI would
+    /// tell a working app to re-grant notifications in System Settings).
+    #[test]
+    fn every_authorization_status_maps_to_its_own_name() {
+        use objc2_user_notifications::UNAuthorizationStatus as S;
+        let cases = [
+            (S::NotDetermined, "notDetermined", false),
+            (S::Denied, "denied", false),
+            (S::Authorized, "authorized", true),
+            (S::Provisional, "provisional", true),
+            (S::Ephemeral, "authorized", true),
+            (S(99), "unknown", false),
+        ];
+        for (status, name, deliverable) in cases {
+            assert_eq!(super::mac::status_name(status), name, "{status:?}");
+            assert_eq!(
+                super::mac::NotificationPermission::from_status(status).allows_delivery(),
+                deliverable,
+                "{status:?}"
+            );
+        }
+        // "notDetermined" is the one string the UI turns into "grant notifications"
+        // advice, so an unknown status must never fall back to it.
+        assert_ne!(super::mac::status_name(S(99)), "notDetermined");
+    }
+}
+
