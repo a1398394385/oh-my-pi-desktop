@@ -479,13 +479,12 @@ export const sessionHandlers = {
   },
   session_edited(msg) {
     // Edit-resend receipt: both outcomes consume the send-time stash
-    // (pendingEditText, set by the UserMsg edit box) and invalidate the entry
+    // (pendingEditText, set by the composer's edit submit) and invalidate the entry
     // tree like session_navigated on success — ok forked a sibling branch, a
     // failure can still land after a partial navigate; the tree page refetches
-    // lazily on next render. Success keeps no store state (the sending
-    // component already collapsed its edit box); failure restores the stashed
-    // text/images into the composer so the edit is never silently lost (same
-    // backfill as editQueueMsg).
+    // lazily on next render. Success keeps no store state (the composer already
+    // left edit mode); failure restores the stashed text/images into the composer
+    // so the edit is never silently lost (same backfill as editQueueMsg).
     useAppStore.setState({ entryTree: null });
     const stash = useAppStore.getState().pendingEditText;
     useAppStore.setState({ pendingEditText: null });

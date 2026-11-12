@@ -80,7 +80,9 @@ export const composerZh = {
   annotateHint: "留空也可添加 · Shift + ↵ 换行",
   annotateAdd: "添加注释 ↵",
   annotateCount: "{{count}} 条注释",
-  annotateClear: "移除全部注释",
+  // SelectionAnnotate.tsx / AnnotationChips.tsx: file / diff pane selections
+  attachSelection: "附加到对话",
+  quoteBlocks: "选中的文本块 {{count}}",
 };
 
 export default composerZh;

@@ -314,19 +314,14 @@
 .ub-actions .q-btn:disabled, .bsw-actions .q-btn:disabled { opacity: .45; cursor: default; }
 .ub-actions .q-btn:disabled:hover, .bsw-actions .q-btn:disabled:hover { background: none; color: var(--faint); }
 
-/* In-place edit box (UserMsg.tsx editing state): the bubble's text row swaps to a
-   textarea + send button; image thumbnails above stay read-only. min-width keeps the
-   fit-content bubble from collapsing around the textarea's intrinsic width. */
-.ub-edit { display: flex; align-items: flex-end; gap: 6px; min-width: 220px; }
-.ub-edit textarea {
-  flex: 1; min-width: 0; resize: none;
-  background: var(--card); --hover-fill: var(--card-hl); color: var(--text);
-  border: 1px solid var(--line); border-radius: var(--r-sm);
-  padding: 6px 8px; line-height: 1.55;
+/* Editing marker in place of the edit button (the editor lives in the composer, see
+   Composer.tsx): the label replaces the icon-only button and stays visible, since the
+   pointer/keyboard are down in the input box while the row is shown */
+.ub-actions.show { opacity: 1; pointer-events: auto; }
+.ub-edit-now {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: var(--faint); font-size: var(--ui-fs-sm); white-space: nowrap;
 }
-.ub-edit textarea:focus { outline: none; border-color: var(--accent); }
-.ub-edit .q-btn:disabled { opacity: .35; cursor: default; }
-.ub-edit .q-btn:disabled:hover { background: none; color: var(--faint); }
 
 .act {
   color: var(--dim); font-size: var(--ui-fs-base); margin: 16px 0;

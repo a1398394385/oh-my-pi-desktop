@@ -3,6 +3,9 @@
 // selection; it opens a small card with the quoted excerpt and an optional
 // comment. Submitting stores a pending note (store/annotations) that the
 // composer renders as a chip and the send path prepends to the prompt.
+// In the file / diff panes the same pill attaches the selection instead: no
+// comment card, the note carries the absolute path and line span of the text
+// (the pane tags its rows with data-annot-file / data-line).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
@@ -15,12 +18,17 @@ import { addAnnotation } from "../../store/annotations";
 // Only assistant output is annotatable: message bubbles (streaming tail included)
 // and the subagent detail's submitted report (HubDetail tags its result box).
 const ANNOTATABLE = "#stream .msg.assistant, .hub-box[data-annot-agent]";
+// Code panes (file tab, git / run diff) mark their scroller with the absolute
+// path and every row with its displayed line number.
+const CODE_ROOT = "[data-annot-file]";
 const GAP = 8;
 const EDGE = 8;
 
 interface Target {
   text: string;
   agent?: string;
+  file?: string;
+  lines?: string;
   /** Live range: the pill follows its text when the stream scrolls. */
   range: Range;
 }
@@ -32,16 +40,44 @@ function annotatableRoot(node: Node | null): HTMLElement | null {
   return el.closest<HTMLElement>(ANNOTATABLE);
 }
 
+function codeRoot(node: Node | null): HTMLElement | null {
+  const el = node instanceof Element ? node : (node?.parentElement ?? null);
+  if (!el || !el.isConnected) return null;
+  return el.closest<HTMLElement>(CODE_ROOT);
+}
+
+function lineAt(node: Node | null): number | null {
+  const el = node instanceof Element ? node : (node?.parentElement ?? null);
+  const row = el?.closest<HTMLElement>("[data-line]");
+  const n = row ? Number(row.dataset.line) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+// Rows without a number (a diff's removed side, a hole in a read range) fall back
+// to whichever end does carry one; no number at all leaves the span out.
+function lineSpan(range: Range): string | undefined {
+  const a = lineAt(range.startContainer);
+  const b = lineAt(range.endContainer);
+  if (a == null) return b == null ? undefined : String(b);
+  return b == null || b === a ? String(a) : `${a}-${b}`;
+}
+
 function readTarget(): Target | null {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+  const text = sel.toString().trim();
+  if (!text) return null;
+  const range = sel.getRangeAt(0);
   // Both ends must sit in the same annotatable body: a cross-bubble selection has
   // no single owner, so it offers nothing.
   const root = annotatableRoot(sel.anchorNode);
-  if (!root || root !== annotatableRoot(sel.focusNode)) return null;
-  const text = sel.toString().trim();
-  if (!text) return null;
-  return { text, agent: root.dataset.annotAgent || undefined, range: sel.getRangeAt(0) };
+  if (root && root === annotatableRoot(sel.focusNode))
+    return { text, agent: root.dataset.annotAgent || undefined, range };
+  const pane = codeRoot(sel.anchorNode);
+  if (!pane || pane !== codeRoot(sel.focusNode)) return null;
+  const file = pane.dataset.annotFile;
+  if (!file) return null;
+  return { text, file, lines: lineSpan(range), range };
 }
 
 export default function SelectionAnnotate() {
@@ -153,7 +189,12 @@ export default function SelectionAnnotate() {
   const submit = () => {
     const tg = targetRef.current;
     if (!tg) return;
-    addAnnotation({ text: tg.text, comment: comment.trim(), ...(tg.agent ? { agent: tg.agent } : {}) });
+    addAnnotation({
+      text: tg.text,
+      comment: comment.trim(),
+      ...(tg.agent ? { agent: tg.agent } : {}),
+      ...(tg.file ? { file: tg.file, lines: tg.lines } : {}),
+    });
     close();
   };
 
@@ -196,10 +237,17 @@ export default function SelectionAnnotate() {
       </div>
     ) : target ? (
       <div className="annot-fab" ref={boxRef} onMouseDown={(e) => e.preventDefault()}>
-        <button type="button" className="annot-fab-act" onClick={() => setEditing(true)}>
-          <Icon name="comment" size={13} />
-          {t("composer.annotateAction")}
-        </button>
+        {target.file ? (
+          <button type="button" className="annot-fab-act" onClick={submit}>
+            <Icon name="comment" size={13} />
+            {t("composer.attachSelection")}
+          </button>
+        ) : (
+          <button type="button" className="annot-fab-act" onClick={() => setEditing(true)}>
+            <Icon name="comment" size={13} />
+            {t("composer.annotateAction")}
+          </button>
+        )}
       </div>
     ) : null,
     document.body,

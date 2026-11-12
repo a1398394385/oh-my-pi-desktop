@@ -9,16 +9,25 @@ export interface QuoteNote {
   comment: string;
   /** Subagent name when the quoted text came from a subagent's output. */
   agent?: string;
+  /** Absolute path when the quote was taken from the file / diff pane. */
+  file?: string;
+  /** New-side line span in the file ("12" or "12-18"); absent when unknown. */
+  lines?: string;
 }
 
 const OPEN = "<conversation_quote>\n";
 const CLOSE = "\n</conversation_quote>\n\n";
 
 /** Prompt prefix for the pending notes ("" when there are none). Field order and
- *  shape are part of the contract: text, comment, optional agent. */
+ *  shape are part of the contract: text, comment, optional agent / file + lines. */
 export function buildQuotePrefix(notes: QuoteNote[]): string {
   if (notes.length === 0) return "";
-  const rows = notes.map((n) => ({ text: n.text, comment: n.comment, ...(n.agent ? { agent: n.agent } : {}) }));
+  const rows = notes.map((n) => ({
+    text: n.text,
+    comment: n.comment,
+    ...(n.agent ? { agent: n.agent } : {}),
+    ...(n.file ? { file: n.file, ...(n.lines ? { lines: n.lines } : {}) } : {}),
+  }));
   return OPEN + JSON.stringify(rows) + CLOSE;
 }
 
@@ -26,6 +35,8 @@ interface RawNote {
   text?: unknown;
   comment?: unknown;
   agent?: unknown;
+  file?: unknown;
+  lines?: unknown;
 }
 
 /** Split a sent prompt back into the user body and its quote block. */
@@ -43,6 +54,9 @@ export function splitQuote(text: string): { body: string; notes: QuoteNote[] } {
           text: r.text as string,
           comment: typeof r.comment === "string" ? r.comment : "",
           ...(typeof r.agent === "string" && r.agent ? { agent: r.agent } : {}),
+          ...(typeof r.file === "string" && r.file
+            ? { file: r.file, ...(typeof r.lines === "string" && r.lines ? { lines: r.lines } : {}) }
+            : {}),
         }));
     }
   } catch {

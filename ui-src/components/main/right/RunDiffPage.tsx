@@ -16,7 +16,7 @@ export default function RunDiffPage() {
           {view ? dir + name : t("right.tabRunDiff")}
         </div>
       </div>
-      <div className="rb-scroll">
+      <div className="rb-scroll" data-annot-file={view?.path}>
         {!view ? (
           <div className="py-3 text-faint text-ui-base">{t("right.noDiffContent")}</div>
         ) : view.loading ? (

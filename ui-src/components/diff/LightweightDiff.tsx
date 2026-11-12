@@ -99,6 +99,7 @@ export default function LightweightDiff({
           return (
             <div
               key={i}
+              data-line={row.no}
               className={"ldiff-row ldiff-" + row.kind + (pickable ? " ldiff-pick" : "") + (isSel ? " ldiff-row-sel" : "")}
               onClick={pickable && newNo !== null ? (e) => onToggleLine?.(newNo, e.shiftKey) : undefined}
             >

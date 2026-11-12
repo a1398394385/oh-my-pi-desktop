@@ -218,10 +218,11 @@ export function activateSession(path: string): void {
     return;
   }
   const prev = st0.activePath;
-  // In-place message editing never survives a session switch (cancel-on-switch spec)
+  // Composer-side message editing never survives a session switch (cancel-on-switch
+  // spec): the edit state goes, the slot's parked draft stays parked for its next load
   if (prev !== path) {
     saveRightSlot(prev); // same-path re-activation: neither save nor restore
-    if (st0.editingEntryId !== null) useAppStore.setState({ editingEntryId: null });
+    if (st0.editingEntry !== null) useAppStore.setState({ editingEntry: null });
   }
   useAppStore.setState((st) => {
     const cur = st.openSessions.get(path);

@@ -1,12 +1,17 @@
-// Pending annotation chip above the composer: one aggregated pill (comment icon +
-// the first quoted snippet + a count when there are several), mirroring the
-// attachment chips in AttachRow. Hover/focus shows the quoted text and comment of
-// every pending note; × clears them all, per-row × drops just that note.
+// Pending annotation chips above the composer: one aggregated pill per kind —
+// text quoted from the file / diff pane ("N selected blocks"), and selection
+// comments over assistant output (first snippet + a count when there are
+// several), mirroring the attachment chips in AttachRow. Hover/focus shows the
+// quoted text and comment of every pending note; × clears that kind, per-row ×
+// drops just that note.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { placeMenu } from "../../shell";
-import { clearAnnotations, removeAnnotation, type PendingAnnotation } from "../../store/annotations";
+import { removeAnnotation, type PendingAnnotation } from "../../store/annotations";
+import type { QuoteNote } from "../../lib/conversation-quote";
+import { pathBase } from "../../store/utils";
+import { fileTypeIcon } from "../../../ui/icons";
 import Icon from "../../Icon";
 
 // Clearance from the chip to its hover card: 6px read as touching the composer card's
@@ -15,6 +20,57 @@ const GAP = 10;
 const EDGE = 8;
 
 export default function AnnotationChips({ list }: { list: PendingAnnotation[] }) {
+  const { t } = useTranslation();
+  // File-pane quotes carry their path, output comments do not: two chips so neither
+  // kind hides the other's count.
+  const blocks = list.filter((a) => a.file);
+  const notes = list.filter((a) => !a.file);
+  return (
+    <>
+      {blocks.length > 0 && (
+        <Chip
+          list={blocks}
+          icon={fileTypeIcon(blocks[0].file!)}
+          label={t("composer.quoteBlocks", { count: blocks.length })}
+          footer={t("composer.quoteBlocks", { count: blocks.length })}
+          onRemove={(a) => removeAnnotation(a.id)}
+          onClear={() => blocks.forEach((a) => removeAnnotation(a.id))}
+        />
+      )}
+      {notes.length > 0 && (
+        <Chip
+          list={notes}
+          icon="comment"
+          label={notes[0].text}
+          footer={t("composer.annotateCount", { count: notes.length })}
+          count={notes.length > 1 ? notes.length : undefined}
+          onRemove={(a) => removeAnnotation(a.id)}
+          onClear={() => notes.forEach((a) => removeAnnotation(a.id))}
+        />
+      )}
+    </>
+  );
+}
+
+/** One aggregated pill + its hover card. `onRemove` / `onClear` are optional:
+ *  a sent bubble shows the same card read-only, without the × controls. */
+export function Chip<T extends QuoteNote>({
+  list,
+  icon,
+  label,
+  footer,
+  count,
+  onRemove,
+  onClear,
+}: {
+  list: readonly T[];
+  icon: string;
+  label: string;
+  footer?: string;
+  count?: number;
+  onRemove?: (note: T) => void;
+  onClear?: () => void;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const chipRef = useRef<HTMLSpanElement | null>(null);
@@ -43,7 +99,6 @@ export default function AnnotationChips({ list }: { list: PendingAnnotation[] })
     placeMenu(pop, left, top);
   });
 
-  if (list.length === 0) return null;
   return (
     <>
       <span
@@ -59,15 +114,17 @@ export default function AnnotationChips({ list }: { list: PendingAnnotation[] })
         onBlur={scheduleClose}
       >
         <span className="at-ic">
-          <Icon name="comment" />
+          <Icon name={icon} />
         </span>
-        <span className="at-name" title={list[0].text}>
-          {list[0].text}
+        <span className="at-name" title={label}>
+          {label}
         </span>
-        {list.length > 1 ? <span className="annot-chip-n">{list.length}</span> : null}
-        <button type="button" className="atchip-x" title={t("composer.annotateClear")} onClick={clearAnnotations}>
-          ×
-        </button>
+        {count ? <span className="annot-chip-n">{count}</span> : null}
+        {onClear ? (
+          <button type="button" className="atchip-x" title={t("common.delete")} onClick={onClear}>
+            ×
+          </button>
+        ) : null}
       </span>
       {open &&
         createPortal(
@@ -80,25 +137,28 @@ export default function AnnotationChips({ list }: { list: PendingAnnotation[] })
             onFocus={cancelClose}
           >
             <div className="annot-chip-list">
-              {list.map((a) => (
-                <div className="annot-chip-item" key={a.id}>
+              {list.map((a, i) => (
+                <div className="annot-chip-item" key={i}>
+                  {a.file ? (
+                    <div className="annot-chip-src" title={a.file}>
+                      {pathBase(a.file)}
+                      {a.lines ? ":" + a.lines : ""}
+                    </div>
+                  ) : null}
                   <div className="annot-chip-quote">
                     <span className="annot-qm">“</span>
                     <span className="annot-chip-text">{a.text}</span>
-                    <button
-                      type="button"
-                      className="annot-chip-x"
-                      title={t("common.delete")}
-                      onClick={() => removeAnnotation(a.id)}
-                    >
-                      ×
-                    </button>
+                    {onRemove ? (
+                      <button type="button" className="annot-chip-x" title={t("common.delete")} onClick={() => onRemove(a)}>
+                        ×
+                      </button>
+                    ) : null}
                   </div>
                   {a.comment ? <div className="annot-chip-comment">{a.comment}</div> : null}
                 </div>
               ))}
             </div>
-            <div className="annot-chip-count">{t("composer.annotateCount", { count: list.length })}</div>
+            {footer ? <div className="annot-chip-count">{footer}</div> : null}
           </div>,
           document.body,
         )}

@@ -81,7 +81,10 @@ export const composerEn = {
   annotateAdd: "Add comment ↵",
   annotateCount_one: "{{count}} comment",
   annotateCount_other: "{{count}} comments",
-  annotateClear: "Remove all comments",
+  // SelectionAnnotate.tsx / AnnotationChips.tsx: file / diff pane selections
+  attachSelection: "Attach to chat",
+  quoteBlocks_one: "{{count}} selected block",
+  quoteBlocks_other: "{{count}} selected blocks",
 };
 
 export default composerEn;

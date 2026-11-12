@@ -1,15 +1,16 @@
-import { memo, useEffect, useRef, useState } from "react";
-import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import { memo, useState } from "react";
+import type { ReactNode } from "react";
 import type { OpenSession, UserItem } from "../../types/session";
 import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
 import { useCopyFeedback } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { atMentions } from "../../lib/at-mentions";
-import { stripQuote } from "../../lib/conversation-quote";
+import { splitQuote } from "../../lib/conversation-quote";
 import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
 import { t } from "../../i18n";
+import { Chip } from "../composer/AnnotationChips";
 
 // Left-side action group of a pending-consumption bubble: queued state (send now / edit /
 // delete) | steer state (edit / requeue to top)
@@ -51,11 +52,11 @@ function PendingActs({ item }: { item: UserItem }) {
 // pending is a captured mutation snapshot (T2): applySteerConsumed flips it in place
 export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?: string; pending?: UserItem["pending"]; branch?: ReactNode }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  // Annotations ride in the sent prompt text; the bubble shows the user's own words only
-  const body = stripQuote(item.text);
-  const [draft, setDraft] = useState(body);
+  // Annotations ride in the sent prompt text: the bubble shows the user's own words
+  // plus the blocks quoted from a file / diff pane (their path and line span)
+  const { body, notes } = splitQuote(item.text);
+  const blocks = notes.filter((n) => n.file);
   const { copied, copy } = useCopyFeedback();
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
   const images = item.images ?? [];
   // @file mentions the base auto-read: chips on top, tokens stripped from the text
   const mention = atMentions(body, item.attachments);
@@ -66,63 +67,12 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
 
   const sessionId = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.sessionId : undefined));
   const streaming = useAppStore((st) => !!((st.activePath ? st.openSessions.get(st.activePath) : undefined)?.streaming));
-  const editing = useAppStore((st) => st.editingEntryId !== null && st.editingEntryId === item.entryId);
+  // Editing happens in the composer (Composer.tsx), not in the bubble: the bubble only
+  // carries the "editing below" marker so the two stay visually linked
+  const editing = useAppStore((st) => st.editingEntry !== null && st.editingEntry.entryId === item.entryId);
   // Grayed rather than hidden while unavailable (entryId not yet backfilled / session
   // streaming), same policy as TurnActs' canFork, so the hover row does not jump
   const canEdit = !item.pending && !item.automation && !!item.entryId && !!sessionId && !streaming;
-  const canSend = draft.trim() !== "" || images.length > 0;
-
-  // Enter the edit state with the caret at the end (a plain autoFocus can park it at the start)
-  useEffect(() => {
-    if (!editing) return;
-    const ta = taRef.current;
-    if (ta) {
-      ta.focus();
-      ta.setSelectionRange(ta.value.length, ta.value.length);
-    }
-  }, [editing]);
-
-  // Focus entering the main composer cancels the edit: the in-place box only owns the
-  // keyboard until the user goes back to the input
-  useEffect(() => {
-    if (!editing) return;
-    const onFocusIn = (ev: FocusEvent) => {
-      if (ev.target instanceof HTMLElement && ev.target.closest("#composer")) {
-        useAppStore.setState({ editingEntryId: null });
-      }
-    };
-    document.addEventListener("focusin", onFocusIn);
-    return () => document.removeEventListener("focusin", onFocusIn);
-  }, [editing]);
-
-  const sendEdit = () => {
-    if (!canEdit || !item.entryId || !sessionId) return;
-    const text = draft.trim();
-    // Stash the payload: the session_edited failure landing restores it into the
-    // composer, so the edited text is never silently lost
-    useAppStore.setState({ editingEntryId: null, pendingEditText: { sessionId, text, images: item.images ?? null } });
-    useAppStore.getState().send({ type: "edit_resend", sessionId, entryId: item.entryId, text, images: item.images ?? [] });
-  };
-
-  const onTaKeyDown = (ev: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    // The global shortcut router (Esc abort route / hub gestures) must not see keys typed here
-    ev.stopPropagation();
-    if (ev.key === "Escape") {
-      ev.preventDefault();
-      useAppStore.setState({ editingEntryId: null });
-      return;
-    }
-    if (ev.key !== "Enter" || ev.shiftKey) return;
-    // WebKit marks the candidate-commit Enter keyCode 229 with isComposing already
-    // false (BUG-031; the composer's ComposerPlugin carries the field evidence).
-    if (ev.nativeEvent.isComposing || ev.nativeEvent.keyCode === 229) {
-      ev.preventDefault();
-      return;
-    }
-    if (!canSend) return;
-    ev.preventDefault();
-    sendEdit();
-  };
 
   // Queued/steer pending-consumption message: hover shows the action group to the left of
   // the bubble (once consumed, pending clears and it becomes an ordinary historical message)
@@ -130,10 +80,19 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   const cls = item.pending ? "user-bubble pending" : delivery ? "user-bubble delivery" : "user-bubble";
   // Edit stays available on remote clients: edit_resend only appends a sibling branch
   // (see REMOTE_WRITE_DENYLIST), so it is not a read-only violation
-  const showEditBtn = !item.pending && !item.automation && !editing;
+  const showEditBtn = !item.pending && !item.automation;
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls}>
+        {blocks.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            <Chip
+              list={blocks}
+              icon={fileTypeIcon(blocks[0].file!)}
+              label={t("composer.quoteBlocks", { count: blocks.length })}
+            />
+          </div>
+        )}
         {images.length > 0 && (
           <div className="user-msg-images mb-2 flex flex-wrap gap-2">
             {images.map((img, idx) => {
@@ -193,44 +152,34 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
             <Icon name="chevronRight" size={12} className="ud-go" />
           </button>
         ) : null}
-        {editing ? (
-          <div className="ub-edit">
-            <textarea
-              ref={taRef}
-              value={draft}
-              rows={Math.max(2, Math.min(10, draft.split("\n").length))}
-              aria-label={t("chat.editResend")}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={onTaKeyDown}
-            />
-            <button className="q-btn" title={t("chat.editResendSend")} disabled={!canSend} onClick={sendEdit}>
-              <Icon name="upload" size={15} />
-            </button>
-          </div>
-        ) : mention.text ? (
-          <FadeBox className="user-msg-text whitespace-pre-wrap">{mention.text}</FadeBox>
-        ) : null}
+        {mention.text ? <FadeBox className="user-msg-text whitespace-pre-wrap">{mention.text}</FadeBox> : null}
         {item.pending ? <PendingActs item={item} /> : null}
       </div>
-      {branch || showEditBtn || (body && !editing) || editing ? (
-        <div className="ub-actions">
+      {branch || showEditBtn || body ? (
+        <div className={"ub-actions" + (editing ? " show" : "")}>
           {branch}
           {showEditBtn ? (
-            <button
-              className="ub-edit-btn q-btn"
-              title={canEdit ? t("chat.editResend") : item.entryId ? t("chat.editWhileStreaming") : t("chat.editAfterSaved")}
-              disabled={!canEdit}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!canEdit || !item.entryId) return;
-                setDraft(body);
-                useAppStore.setState({ editingEntryId: item.entryId });
-              }}
-            >
-              <Icon name="pencil" size={13} />
-            </button>
+            editing ? (
+              <span className="ub-edit-now">
+                <Icon name="pencil" size={13} />
+                {t("chat.editingBelow")}
+              </span>
+            ) : (
+              <button
+                className="ub-edit-btn q-btn"
+                title={canEdit ? t("chat.editResend") : item.entryId ? t("chat.editWhileStreaming") : t("chat.editAfterSaved")}
+                disabled={!canEdit}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!canEdit || !item.entryId || !sessionId) return;
+                  useAppStore.setState({ editingEntry: { entryId: item.entryId, sessionId, text: body, images: item.images ?? null } });
+                }}
+              >
+                <Icon name="pencil" size={13} />
+              </button>
+            )
           ) : null}
-          {body && !editing ? (
+          {body ? (
             <button
               className="ub-copy q-btn"
               title={t("chat.copyMsg")}

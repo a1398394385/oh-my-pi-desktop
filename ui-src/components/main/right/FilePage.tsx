@@ -775,7 +775,7 @@ function FvDetail() {
           )}
           {isMd && mdPreview && previewable ? (
             <div className="pt-1 pb-3 px-[5px] max-w-[900px]">
-              <MdSurface text={fv.text ?? ""} />
+              <MdSurface className="md-body md-surface" text={fv.text ?? ""} />
             </div>
           ) : (
             <FvBody key={fv.path} fv={fv} bodyRef={bodyRef} />
@@ -854,14 +854,23 @@ function FvBody({ fv, bodyRef }: { fv: FileViewState; bodyRef: RefObject<HTMLDiv
 
   return (
     <>
-      <div className="pt-1 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" /* style-token-ignore */ ref={bodyRef}>
+      <div
+        className="pt-1 pb-1 font-mono text-[length:var(--code-fs,12px)] leading-[1.55] overflow-x-auto" /* style-token-ignore */
+        ref={bodyRef}
+        data-annot-file={fv.path}
+      >
         {topPad > 0 && <div style={padStyle(topPad)} />}
         {shown.map((tx, i) => {
           const n = lineNoOf(i);
           // Only the line-number column is highlighted within the requested range, content untouched; null = hole lines omitted by the tool
           const hl = n != null && reqStart != null && reqEnd != null && n >= reqStart && n <= reqEnd;
           return (
-            <div key={winStart + i} data-fv-row={i === 0 ? "" : undefined} className="flex items-baseline">
+            <div
+              key={winStart + i}
+              data-fv-row={i === 0 ? "" : undefined}
+              data-line={n == null ? undefined : n}
+              className="flex items-baseline"
+            >
               <span className={"fv-ln" + (hl ? " hl" : "")}>{n == null ? "…" : String(n)}</span>
               <span className="whitespace-pre text-dim [tab-size:4]">{tokens?.[i] ? <CodeTokens line={tokens[i]} /> : tx === "" ? " " : tx}</span>
             </div>

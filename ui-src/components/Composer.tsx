@@ -56,6 +56,8 @@ import {
   getDraftFiles,
   saveDraftFiles,
   clearDraftState,
+  parkDraft,
+  restoreParkedDraft,
   pushInputHistory,
   CONTENT_EDITABLE_OK,
 } from "./composer/lexical/draft";
@@ -287,8 +289,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     // takes effect only once); without syncing, stale text from the previous slot
     // lingers -- and gets written into the new slot by updateListener
     // (cross-session draft leak + ready state stuck on)
-    setText(getDraftText(draftKey));
-    lexRef.current?.setText(getDraftText(draftKey));
+    // A slot that lost its edit to a session switch finds its parked draft here; the
+    // slot itself still holds the edited message text (see parkDraft)
+    const slotText = restoreParkedDraft(draftKey) ?? getDraftText(draftKey);
+    setText(slotText);
+    lexRef.current?.setText(slotText);
     restoredRef.current = true;
   }, [draftKey]);
 
@@ -296,6 +301,53 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     if (!restoredRef.current) return;
     saveDraftFiles(draftKey, pendingFiles);
   }, [draftKey, pendingFiles]);
+
+  // ---- Historical-message editing (UserMsg edit button): the bubble hands the message
+  // over and the input box becomes the editor; submit goes out as edit_resend instead of
+  // a prompt, and the slot's own draft is parked (see draft.ts) until the edit ends ----
+  const editingEntry = useAppStore((st) => st.editingEntry);
+  const editParkedRef = useRef<string | null>(null); // draftKey whose draft is parked for the live edit
+  useEffect(() => {
+    if (!editingEntry) {
+      editParkedRef.current = null;
+      return;
+    }
+    // Park once per edit session: picking another message keeps the first parked draft
+    if (editParkedRef.current !== draftKey) {
+      parkDraft(draftKey);
+      editParkedRef.current = draftKey;
+    }
+    lexRef.current?.setText(editingEntry.text);
+    lexRef.current?.focus();
+  }, [editingEntry, draftKey]);
+
+  // Leave edit mode: send and cancel both put the parked draft back (spec: whatever the
+  // user had typed before the edit is not lost)
+  const endEdit = () => {
+    const parkedText = restoreParkedDraft(draftKey);
+    useAppStore.setState({ editingEntry: null });
+    if (parkedText !== null) {
+      lexRef.current?.setText(parkedText);
+      setText(parkedText);
+    }
+    lexRef.current?.focus();
+  };
+
+  // Esc leaves edit mode instead of reaching the global routing (double-Esc clear /
+  // abort generation / summon tree). Bubble phase on the card: the window-capture popup
+  // handlers (ModelMenu) still win first, and the typeahead panel keeps its own Esc.
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!editingEntry || !el) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape" || taOpenRef.current) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      endEdit();
+    };
+    el.addEventListener("keydown", onKey);
+    return () => el.removeEventListener("keydown", onKey);
+  }, [editingEntry]);
 
   const hasDraft = text.trim().length > 0 || pendingFiles.length > 0;
   // Running local bash row (!-prefixed command): the stop form covers it too --
@@ -397,6 +449,20 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     setBump({ pendingFiles: [] });
   };
   const sendPrompt = (steer = false) => {
+    // Edit mode: the draft is the edited message, so Enter / the send button resubmit it
+    // as edit_resend (Enter, Ctrl+Enter and the button all land here). The parked draft
+    // comes back afterwards, and its attachments stay untouched (pendingFiles is not ours).
+    const edit = editingEntry;
+    if (edit) {
+      const edited = getDraftText(draftKey).trim();
+      if (!edited) return;
+      // Stash the payload: the session_edited failure landing restores it into the
+      // composer, so the edited text is never silently lost
+      useAppStore.setState({ editingEntry: null, pendingEditText: { sessionId: edit.sessionId, text: edited, images: edit.images } });
+      send({ type: "edit_resend", sessionId: edit.sessionId, entryId: edit.entryId, text: edited, images: edit.images ?? [] });
+      endEdit();
+      return;
+    }
     // Sent prompts join the slot's input history (browsable with ↑ on an
     // empty input); push before clearDraft empties the slot's draft mirror.
     // The welcome/creating-new first send is deferred (pendingNew* intents):
@@ -965,6 +1031,15 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         aria-hidden={blocking ? true : undefined}
         style={blocking ? { display: "none" } : undefined}
       >
+        {editingEntry ? (
+          <div className="edit-hint">
+            <Icon name="pencil" size={13} />
+            <span className="edit-hint-label">{t("chat.editingPrevious")}</span>
+            <button className="edit-hint-cancel" onClick={endEdit}>
+              {t("common.cancel")}
+            </button>
+          </div>
+        ) : null}
         <div className="attach-fold">
           <AttachRow />
         </div>

@@ -78,10 +78,11 @@ export interface UiSlice {
   cyclePreview: { entries: { role: string; model: string }[]; activeRole: string; activeModel: string } | null; // ctrl+p quick-switch preview: the cycleOrder role list + the slot just switched to (drives the model menu's transient preview mode; manual menu opens always null it)
   thinkMenuAuto: boolean; // shift+tab auto-opened the think menu (normal content; auto-collapses on 0.8s pause / Shift release — manual opens always clear it)
   draftHasContent: boolean; // whether the composer has a draft (synced on every Composer render, used for the Esc double-confirm)
-  /** In-place user-message editing (UserMsg.tsx): entryId of the bubble currently showing
-      an edit box (null = none; one app-wide). Cleared on Esc/send, on session switch
-      (activateSession / showWelcomeScreen) and when focus enters the composer. */
-  editingEntryId: string | null;
+  /** Composer-side editing of a historical user message (Composer.tsx): the message text is
+      loaded into the input box and the next submit sends edit_resend instead of a prompt.
+      null = not editing. Cleared on send/cancel, session switch (activateSession /
+      showWelcomeScreen) and when the host rejects the edit (session_edited failure). */
+  editingEntry: { entryId: string; sessionId: string; text: string; images: NonNullable<UserItem["images"]> | null } | null;
   /** Stash of the just-sent edit_resend payload (set at send time): the session_edited
       failure landing restores it into the composer so the edited text is never lost. */
   pendingEditText: { sessionId: string; text: string; images: NonNullable<UserItem["images"]> | null } | null;
@@ -243,7 +244,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   cyclePreview: null,
   thinkMenuAuto: false,
   draftHasContent: false,
-  editingEntryId: null,
+  editingEntry: null,
   pendingEditText: null,
   voiceStt: null,
   sttSubmitSignal: 0,
@@ -404,7 +405,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     // disposed the slot themselves.
     const leaving = get().activePath;
     if (leaving) saveRightSlot(leaving);
-    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false, gitManage: null, editingEntryId: null }));
+    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false, gitManage: null, editingEntry: null }));
     restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings

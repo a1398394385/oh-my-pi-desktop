@@ -120,6 +120,7 @@
 
 .annot-chip-text {
   flex: 1; min-width: 0;
+  color: var(--text);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   overflow: hidden; line-height: 1.4;
 }
@@ -135,3 +136,11 @@
 .annot-chip-comment { color: var(--text); font-size: var(--ui-fs-sm); line-height: 1.5; white-space: pre-wrap; padding-left: 12px; }
 
 .annot-chip-count { color: var(--faint); font-size: var(--ui-fs-xs); }
+
+/* Pending block chip: the file-pane quote chip shares the shell above, its popover
+   rows lead with the source path + line span instead of "text only" */
+.annot-chip-src {
+  padding-left: 12px;
+  color: var(--faint); font-size: var(--ui-fs-xs);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

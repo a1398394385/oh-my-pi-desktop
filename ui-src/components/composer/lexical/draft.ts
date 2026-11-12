@@ -51,6 +51,27 @@ export function clearDraftState(key: string): void {
   drafts.delete(key || "welcome");
 }
 
+// Parked pre-edit drafts: while the composer carries a historical message for
+// edit-resend, its slot holds that message's text, so the slot's own draft is parked
+// here under the same key. It comes back when the edit ends (cancel/send) or when the
+// slot is next loaded (a session switch drops the edit and keeps the park, the
+// composer's draftKey effect puts it back). Text only: the EditorState belongs to the
+// slot's live editor and the message text has already overwritten it.
+const parked = new Map<string, string>();
+
+export function parkDraft(key = "welcome"): void {
+  parked.set(key || "welcome", getDraftText(key));
+}
+
+/** Take the parked draft for the slot (null = nothing parked). */
+export function restoreParkedDraft(key = "welcome"): string | null {
+  const k = key || "welcome";
+  const text = parked.get(k);
+  if (text === undefined) return null;
+  parked.delete(k);
+  return text;
+}
+
 // Input history (per composer slot, module-level = gone at app exit): both
 // successfully sent prompts and drafts cleared with double-Esc land here
 // while the composer.recallClearedDrafts setting is on; with an empty input,

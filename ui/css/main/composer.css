@@ -266,6 +266,34 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
   min-width: 260px;
 }
 
+/* Message-editing hint row (a bubble's edit button hands the message to this box): the
+   input itself carries the edited text, so this row is the only statement of the mode.
+   Filled block: its inset comes from #composer's padding, so its edges never touch the
+   card ring. */
+.edit-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 4px 6px 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--menu-hl);
+  color: var(--dim);
+  font-size: var(--ui-fs-sm);
+}
+.edit-hint-cancel {
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.edit-hint-cancel:hover { background: var(--tint-white-25); color: var(--text); }
+:is([data-theme="light"], [data-theme-mode="light"]) .edit-hint-cancel:hover { background: var(--tint-black-50); }
+
 /* TODO: standalone card at the top right of the middle column, collapsible to a pill.
    z-index 60 (the in-panel fixed-overlay tier): the sticky user message bar is also a fixed overlay but only gets 20;
    at the same 20, DOM order would let the sticky bar cover this card (the TODO card must stay readable and clickable at all times) */

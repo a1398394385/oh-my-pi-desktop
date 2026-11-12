@@ -1,19 +1,26 @@
-// Pending conversation annotations (text selected in assistant output + an
-// optional comment), keyed by session path so comments taken in one session
-// never ride along with another's prompt. They live outside the message flow:
-// the composer shows one aggregated chip, and the send path (components/
-// composer/send.ts) consumes them into a <conversation_quote> prompt prefix.
+// Pending conversation annotations (text selected in assistant output, or in the
+// file / diff pane where the note also carries its path + line span), keyed by
+// session path so notes taken in one session never ride along with another's
+// prompt. They live outside the message flow: the composer shows one aggregated
+// chip, and the send path (components/composer/send.ts) consumes them into a
+// <conversation_quote> prompt prefix.
 import { useAppStore } from "./index";
 
 export interface PendingAnnotation {
   id: number;
-  /** Selected assistant text, trimmed. */
+  /** Selected text, trimmed. */
   text: string;
   /** User comment; "" when left empty. */
   comment: string;
   /** Subagent name when the quote came from a subagent's output. */
   agent?: string;
+  /** Absolute path when the text came from the file / diff pane. */
+  file?: string;
+  /** New-side line span ("12" or "12-18") inside that file. */
+  lines?: string;
 }
+
+type NewAnnotation = Omit<PendingAnnotation, "id">;
 
 let seq = 0;
 
@@ -21,7 +28,7 @@ function keyOf(): string {
   return useAppStore.getState().activePath ?? "";
 }
 
-export function addAnnotation(a: { text: string; comment: string; agent?: string }): void {
+export function addAnnotation(a: NewAnnotation): void {
   const text = a.text.trim();
   if (!text) return;
   const key = keyOf();
@@ -31,7 +38,7 @@ export function addAnnotation(a: { text: string; comment: string; agent?: string
 }
 
 /** Put notes from a failed send back in front of newer ones (add order kept). */
-export function restoreAnnotations(list: { text: string; comment: string; agent?: string }[]): void {
+export function restoreAnnotations(list: NewAnnotation[]): void {
   if (list.length === 0) return;
   const key = keyOf();
   useAppStore.setState((st) => ({

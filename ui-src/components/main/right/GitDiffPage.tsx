@@ -389,7 +389,7 @@ function GdFileDetail() {
           </button>
         </div>
       </div>
-      <div className="rb-scroll">
+      <div className="rb-scroll" data-annot-file={cwd.replace(/\/+$/, "") + "/" + selectedFile}>
         {fileDiffCache.loading && fileDiffCache.path === selectedFile ? (
           <div className="py-3 text-faint text-ui-base">{t("common.loading")}</div>
         ) : fileDiffCache.path !== selectedFile || !fileDiffCache.diff ? (
