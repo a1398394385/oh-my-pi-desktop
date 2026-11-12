@@ -25,6 +25,7 @@ export const chatEn = {
   // ---- ACP context management rows (ToolRow.tsx + the shell rail summary) ----
   labelContextStatus: "Context status",
   labelCompressContext: "Compress context",
+  contextStatusAction: "Check context usage",
   contextStatusBlocks_one: "{{count}} active block",
   contextStatusBlocks_other: "{{count}} active blocks",
   contextStatusOccupied: "uses {{tokens}} of context",

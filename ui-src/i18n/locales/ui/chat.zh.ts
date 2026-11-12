@@ -25,6 +25,7 @@ export const chatZh = {
   // ---- ACP context management rows (ToolRow.tsx + the shell rail summary) ----
   labelContextStatus: "上下文状态",
   labelCompressContext: "压缩上下文",
+  contextStatusAction: "查看上下文占用",
   contextStatusBlocks: "共 {{count}} 活跃块",
   contextStatusOccupied: "占用 {{tokens}} 上下文",
   compressFolded: "上下文压缩完成 · 已压缩 {{count}} 活跃块 · 释放 {{tokens}} 上下文",

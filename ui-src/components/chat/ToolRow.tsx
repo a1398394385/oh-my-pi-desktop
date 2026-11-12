@@ -476,14 +476,16 @@ function renderSessionContext(item: ToolItem) {
 const ACP_REPORT_RE = /tier=(\S+)\s+compress=\S+\s+zone=\d+ tokens active=(\d+) tokens projected=\d+ tokens activeBlocks=(\d+)/;
 function renderContextStatus(item: ToolItem) {
   const m = ACP_REPORT_RE.exec(item.output || "");
-  // context_status takes no parameters: nothing to summarize beyond the dashboard numbers,
-  // and the row must not fall back to the tool name. `none` is the no-prompt tier — the row
-  // drops it and leads with the block count; the occupancy is the active-zone size.
-  const summary = m
+  // context_status takes no parameters (`parameters: type({})` in host/acp-status-tool.ts), so the
+  // model has nowhere to write the `i` intent every other tool row carries — the row leads with a
+  // fixed action label instead. Behind it: the tier (dropped when `none`, the no-prompt tier), the
+  // active-block count and the active-zone occupancy.
+  const numbers = m
     ? [m[1] === "none" ? "" : m[1], t("chat.contextStatusBlocks", { count: Number(m[3]) }), t("chat.contextStatusOccupied", { tokens: fmtTokens(Number(m[2])) })]
         .filter(Boolean)
         .join(" · ")
     : "";
+  const summary = [t("chat.contextStatusAction"), numbers].filter(Boolean).join(" · ");
   return <ExpandableRow item={item} iconName="stats" label={t("chat.labelContextStatus")} summary={summary} noInput />;
 }
 // compress_context result (the JSON CompressOutcome). Folding half the context is a turn
