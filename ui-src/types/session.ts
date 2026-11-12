@@ -404,7 +404,7 @@ export interface OpenSession {
       it (host detaches on close), so a slot below the store's current epoch is stale: activating it
       must remount through load_session instead of showing a view that receives no frames. */
   connEpoch?: number;
-  /** Latest base notice (UI-only, never persisted): a transient banner above the composer.
+  /** Latest base notice (UI-only, never persisted): a transient banner in the below-dock slot,
       Lives on the session, not in the global toast, so a background session's notice never
       bleeds into the session on screen. */
   notice?: { level: "info" | "warning" | "error"; message: string; seq: number } | null;

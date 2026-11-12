@@ -372,16 +372,42 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 /* Queued message card: ZCode's stacked second-level card recipe (ConversationQueuePanel) — relative z-0 +
    negative margin-bottom pulling up 28px + padding-bottom 28px keeping the content uncovered + top corners rounded only.
    the .dock below (z-20) covers its bottom edge, baring the upper half of the card; an empty queue makes the component return null so no card appears */
-/* Base UI-only notice strip (xd:// mount hints, tool-side warnings): one line above the
-   stacked cards, session-scoped and auto-expiring. Width follows the goal bar recipe. */
+/* Below-dock slot: the stats row and the base notice strip share one grid cell, so a notice
+   replaces the row in place instead of growing the bottom of #main (that would shrink the
+   message scroll area mid-turn). Both children carry their own width; the notice oversizes
+   the cell by a few pixels, which the bottom padding absorbs. */
+.below-dock {
+  flex: none;
+  width: 100%;
+  max-width: var(--col-w);
+  min-width: 0;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.below-dock > * { grid-area: 1 / 1; }
+
+/* --col-w resolves against each child's own containing block, and inside the slot that is
+   the slot itself — the four-stage shrink would then subtract the gutter twice and leave the
+   row ~150px narrower than the dock above. The slot already carries the resolved width, so
+   the children only need 100% of it. */
+.below-dock > .stats-bar { max-width: none; }
+.below-dock .notice-strip { justify-self: center; }
+
+/* The strip covers the row outright: hide the row's numbers rather than let them peek out
+   around the card's narrower edges. */
+.below-dock:has(.notice-strip) .stats-bar { visibility: hidden; }
+
+/* Base UI-only notice strip (xd:// mount hints, tool-side warnings): one line under the input
+   dock, session-scoped and auto-expiring. Width follows the goal bar recipe. */
 #main .notice-strip {
   width: calc(100% - 20px);
-  max-width: calc(var(--col-w) - 20px);
 }
 
 .notice-strip {
   display: flex; align-items: center; gap: 8px;
-  margin: 8px auto 0;
+  margin: 0 auto;
   padding: 6px 11px;
   background: var(--surface);
   border: 1px solid var(--line-soft);
@@ -389,6 +415,11 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   font-size: var(--ui-fs-sm);
   color: var(--text);
 }
+
+/* Swap motion reuses the stats carousel's keys (sbUpIn/sbUpOut): the strip rides up from
+   below and leaves through the top, so a new notice never blinks in place. */
+.notice-strip.enter { animation: sbUpIn var(--dur-sheet) ease; }
+.notice-strip.exit { animation: sbUpOut var(--dur-sheet) ease both; pointer-events: none; }
 
 .notice-strip .notice-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .notice-strip.warning { color: var(--yellow); }

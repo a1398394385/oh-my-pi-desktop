@@ -567,7 +567,7 @@ function findToolRow(s: OpenSession, toolCallId?: string, name?: string): ToolIt
 }
 
 // Base notices (UI-only, never persisted, never in the model context) land as a
-// session-scoped transient banner above the composer: not a transcript row (a
+// session-scoped transient banner under the composer dock: not a transcript row (a
 // notice is not persisted, so a reloaded session has none) and not the app-level
 // toast (that bleeds across sessions). The newest notice replaces the previous one
 // and expires on its own.
@@ -965,7 +965,7 @@ export function applyEvent(msg: EventFrame): void {
     });
   } else if (msg.kind === "notice") {
     // Base UI-only notice (xd:// mount hints, tool-side warnings): a session-scoped
-    // transient strip above the composer, never a transcript row (not persisted, so a row
+    // transient strip below the composer, never a transcript row (not persisted, so a row
     // would vanish on reload). The newest notice replaces the previous one and expires.
     const seq = ++noticeSeq;
     updateSession(msg.sessionId, (s) => {

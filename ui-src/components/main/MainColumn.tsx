@@ -193,7 +193,6 @@ export default function MainColumn() {
                 top down (the goal bar shifts up as the queue grows). Each card
                 pulls up with -mb-28px and the next card presses on its bottom
                 edge with z, exposing the upper half as a second-level stack */}
-            <SessionNotice />
             <GoalCard />
             <QueueCard />
             <div
@@ -216,9 +215,13 @@ export default function MainColumn() {
                 <rect width="100%" height="100%" rx="15.5" pathLength="100" />
               </svg>
             </div>
-            {/* Session stats row: outside the dock, on its own row below the
-                composer card (not inside the composer) */}
-            <SessionStatsBar />
+            {/* Below-dock slot: the stats row and the base notice strip share one
+                cell (composer.css), so the notice replaces the row instead of
+                pushing the message area up. */}
+            <div className="below-dock">
+              <SessionStatsBar />
+              <SessionNotice />
+            </div>
           </>
         )}
         {/* Column width drag handles: gutter strips beside the content column.
