@@ -58,6 +58,8 @@ export const composerZh = {
   resumeGoal: "继续目标 (/goal resume)",
   pauseGoal: "暂停目标 (/goal pause)",
   dropGoal: "删除目标 (/goal drop)",
+  goalBudgetStalled: "预算耗尽",
+  goalBudgetHint: "预算已耗尽，目标已停摆；提高预算继续：/goal budget <N>",
   // PaletteMenu.tsx
   noMatch: "无匹配",
   paletteCategories: "斜杠命令分类",

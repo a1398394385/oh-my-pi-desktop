@@ -25,6 +25,10 @@ export default function GoalCard() {
   const runLabel =
     run >= 3600 ? `${Math.floor(run / 3600)}h${Math.floor((run % 3600) / 60)}m` : run >= 60 ? `${Math.floor(run / 60)}m${run % 60}s` : `${run}s`;
   const paused = !g.enabled;
+  // A budget-limited goal keeps enabled=true and only flips goal.status (base
+  // goalRuntime accounting), so the pause branch cannot see it: render the stall
+  // explicitly and point at the command that actually raises the budget.
+  const budgetLimited = g.status === "budget-limited";
   return (
     <div
       className={"goal-card" + (expanded ? " open" : "")}
@@ -34,6 +38,7 @@ export default function GoalCard() {
       <div className="gc-row">
         <span className="gc-obj">{g.objective}</span>
         <span className="gc-meta">
+          {budgetLimited && <span title={t("composer.goalBudgetHint")}>{t("composer.goalBudgetStalled")}</span>}
           <span className="gc-run">{runLabel}</span>
           <span className="gc-cost">${(g.costUsed ?? 0).toFixed(4)}</span>
           <button

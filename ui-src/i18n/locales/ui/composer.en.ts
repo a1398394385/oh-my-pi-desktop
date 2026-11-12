@@ -58,6 +58,8 @@ export const composerEn = {
   resumeGoal: "Resume goal (/goal resume)",
   pauseGoal: "Pause goal (/goal pause)",
   dropGoal: "Drop goal (/goal drop)",
+  goalBudgetStalled: "Budget exhausted",
+  goalBudgetHint: "Budget exhausted, goal stalled; raise it to continue: /goal budget <N>",
   // PaletteMenu.tsx
   noMatch: "No match",
   paletteCategories: "Slash command categories",
