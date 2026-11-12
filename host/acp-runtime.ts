@@ -76,6 +76,7 @@ import {
 	ACP_ZONE_LIMIT_RATIO,
 	type AcpParams,
 	computeRoundPlan,
+	computeTier,
 	milestoneFor,
 } from "./acp-plan.ts";
 
@@ -598,6 +599,16 @@ export class AcpRuntimeState {
 	}
 
 	/**
+	 * True while the session is servicing a level-3 forced round (spec §5.2):
+	 * the request was pinned to compress_context and the host-side tool_call
+	 * gate (acp-assembly.ts) blocks every other tool with an error pointing
+	 * back at the pinned call. Cleared by the turn-end judgment below.
+	 */
+	forcedRoundActive(): boolean {
+		return this.#forcedFor > 0 && this.#forcedFor === this.#requestSeq;
+	}
+
+	/**
 	 * Arm the level-3 force for the next request (spec §5.2). The only
 	 * host-reachable channel is AgentSession.setForcedToolChoice: the named
 	 * form ① where the face supports it, and form ② for free on
@@ -762,10 +773,10 @@ export class AcpRuntimeState {
 			};
 		}
 		const activeTokens = Math.round(this.activeBlocks().reduce((n, b) => n + b.tokens, 0) * this.#ratio);
-		if (activeTokens < this.params.minCompress) {
+		if (computeTier(activeTokens, this.params) === "none") {
 			return {
 				ok: false,
-				error: `Active zone is ${activeTokens} tokens, below minCompress ${this.params.minCompress}; context_status is unavailable until more context accumulates.`,
+				error: `Active zone is ${activeTokens} tokens, at or below the L1 activation line ${this.params.l1}; the context is too small to compress — context_status returns once the active zone grows past L1.`,
 			};
 		}
 		const adopt = !this.#manifestOverride;

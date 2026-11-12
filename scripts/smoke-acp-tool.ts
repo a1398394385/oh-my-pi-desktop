@@ -117,35 +117,39 @@ function assertPristine(fx: Fixture, writesBefore: number) {
 
 // Tuned params: l-tiers small so fixtures land in the wanted tiers; the §11
 // values themselves are the ACP_DEFAULT_PARAMS defaults covered by tier math.
-const PARAMS_A: Partial<AcpParams> = { l1: 1_000, l2: 2_000, l3: 3_000, minCompress: 0, target: 10_000, tailTurns: 1, tailTokens: 0 };
+const PARAMS_A: Partial<AcpParams> = { l1: 100, l2: 2_000, l3: 3_000, minCompress: 0, target: 10_000, tailTurns: 1, tailTokens: 0 };
 const SUMMARY = "Condensed record of the retired blocks: parser bug traced, values pinned.";
 // v10: the compress entry speaks bN short refs (spec §3); test-supplied
 // manifests still pin entry ids, so keeps resolve them through the registry.
 const R = (st: { shortRef(id: string): string | undefined }, id: string): string => st.shortRef(id)!;
 const activeTokens = (fx: Fixture) => fx.state.activeBlocks().reduce((n, b) => n + b.tokens, 0);
 
-// --- A0: active-zone floor — both tools fail fast below minCompress --------------------
+// --- A0: active-zone floor — both tools fail fast at or below the L1 line -----------------
 
 {
-	const gate = makeFixture({ ...PARAMS_A, minCompress: 100_000 }, 2, 1);
+	const gate = makeFixture({ ...PARAMS_A, l1: 100_000 }, 2, 1);
 	const before = gate.state.manifest;
 	const status = gate.state.status();
 	assert.equal(status.ok, false);
-	assert.match(status.ok ? "" : status.error, /below minCompress 100000/);
+	assert.match(status.ok ? "" : status.error, /at or below the L1 activation line 100000/);
 	assert.equal(gate.state.manifest, before, "a rejected status call must not replace the current manifest");
 	gate.state.setManifest(gate.ids);
 	const r = rejected(await gate.state.compress({ keep: [], summary: SUMMARY }));
-	assert.equal(r.code, "below-min-compress");
+	assert.equal(r.code, "below-l1");
 	assertPristine(gate, 0);
-	console.log("ok: A0 below minCompress — status/compress reject with zero side effects");
+	console.log("ok: A0 below L1 — status/compress reject with zero side effects");
 }
 {
-	const probe = makeFixture(PARAMS_A, 2, 1);
-	const equality = makeFixture({ ...PARAMS_A, minCompress: activeTokens(probe) }, 2, 1);
-	const status = equality.state.status();
-	assert.equal(status.ok, true, "active zone exactly at minCompress remains available");
-	accepted(await equality.state.compress({ keep: [], summary: "x" }));
-	console.log("ok: A0 equality — active zone == minCompress can query and compress");
+	// The line is strict-greater, same as the tier judgment: exactly at L1 is
+	// still the none tier; one token past it unlocks both tools.
+	const probe = makeFixture(PARAMS_A, 8, 8);
+	const at = activeTokens(probe);
+	const atLine = makeFixture({ ...PARAMS_A, l1: at }, 8, 8);
+	assert.equal(atLine.state.status().ok, false, "active zone exactly at L1 stays rejected (strict >)");
+	const above = makeFixture({ ...PARAMS_A, l1: at - 1 }, 8, 8);
+	assert.equal(above.state.status().ok, true, "one token past L1 unlocks the tools");
+	accepted(await above.state.compress({ keep: [], summary: "x" }));
+	console.log("ok: A0 strict line — at L1 rejected, past L1 can query and compress");
 }
 
 // --- A: §6 validation sequence -----------------------------------------------------

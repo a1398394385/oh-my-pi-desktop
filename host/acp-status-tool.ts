@@ -36,7 +36,7 @@ const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams, forced: boole
 	L1: () =>
 		"Active-zone context is above the activation line (L1). You may continue the current task. At a natural pause, such as after completing a step, consider calling context_status and using compress_context to fold completed or settled work into a summary, while keeping anything still needed.",
 	L2: (p) =>
-		`Active-zone context is large (L2). You may finish the current step, but please prioritize compression at the earliest suitable opportunity rather than starting more new work. Call context_status for the manifest, then compress_context with the short ids (bN) to keep and a summary covering every other listed block. The compression still needs to bring keep + the protected tail under the target of ${p.target} tokens.`,
+		`Active-zone context is large (L2). Do not start new work. Compress as soon as the current step ends: call context_status for the manifest, then compress_context with the short ids (bN) to keep and a summary covering every other listed block. Keep + the protected tail must land under the target of ${p.target} tokens — putting compression off only brings the forced round closer.`,
 	L3: (_p, forced) =>
 		forced
 			? "Final notice (L3): context usage is critically high. This request is pinned to compress_context — compress now, before any other work, with a full summary of the listed blocks above you are not keeping."

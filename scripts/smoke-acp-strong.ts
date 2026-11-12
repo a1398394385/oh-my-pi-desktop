@@ -225,31 +225,30 @@ function zoneBlockSize(summaryTokens: number): number {
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], window);
 
 	fx.state.projectView(fx.view); // active 4x406 > l1, <= l2: tier L1, zone empty
-	let text = ephemeralText(fx);
-	assert.match(text, /\[compress-hint\] tier=L1 compress=normal zone=0 tokens/);
-	assert.ok(!text.includes("Pending strong"), "no annotation while the zone is under its line");
+	// v11: tier L1 without pending-strong is the silent band — nothing injected.
+	assert.ok(!JSON.stringify(fx.state.lastProjected).includes("[compress-hint]"), "silent in L1 while the zone is under its line");
 
 	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2", "e3"]), summary: tokenText(120) })); // S1{e0}
 	fx.state.projectView(fx.view); // active 3x406 > l1, zone ~one < limit
-	text = ephemeralText(fx);
-	assert.ok(!text.includes("Pending strong"), "annotation still absent under the line after one zone block");
+	assert.ok(!fx.state.roundStatus!.pendingStrong, "annotation still absent under the line after one zone block");
 	assert.ok(fx.state.roundStatus!.zoneTokens > 0 && fx.state.roundStatus!.zoneTokens < limit, "fixture zone really is under the line");
 
 	accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3"]), summary: tokenText(120) })); // S2{e1}
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.zoneTokens > limit, "fixture zone really is over the line after two blocks");
 
-	// Row 6: fold the remaining blocks so active drops under L1 while the zone
-	// stays over its line — tier=none + pending must still emit the ephemeral.
-	accepted(await fx.state.compress({ keep: [], summary: tokenText(120) })); // folds e2,e3 -> active 0
+	// Row 6: S2 already left the active zone at or under L1 (2 blocks) while
+	// the zone stays over its line — tier=none + pending must still emit the
+	// ephemeral (projection-side only; v11 would reject a compress here).
 	fx.state.projectView(fx.view);
-	text = ephemeralText(fx);
+	let text = ephemeralText(fx);
 	assert.match(text, /\[compress-hint\] tier=none compress=normal zone=\d+ tokens/, "row 6: emitted at tier=none");
 	assert.ok(text.includes("Pending strong"), "row 6 carries the annotation");
 	assert.ok(!text.includes("activation line"), "row 6 has no tier instruction — the annotation is the message");
 
-	// Row 5: grow active past L1 -> same annotation, method flips to strong.
-	addBlocks(fx, 3);
+	// Row 5: grow active past L1 (+1 block: 812+406 > 1000) -> same
+	// annotation, method flips to strong.
+	addBlocks(fx, 1);
 	fx.state.projectView(fx.view);
 	text = ephemeralText(fx);
 	assert.match(text, /\[compress-hint\] tier=L1 compress=strong zone=\d+ tokens/, "row 5: method flips once active > L1");
@@ -332,21 +331,18 @@ function zoneBlockSize(summaryTokens: number): number {
 // --- D: riding rules on the execution path -------------------------------------------------
 
 {
-	// No riding at or under L1: pending zone, small active zone -> normal append.
+	// v11: at or under L1 both tools reject even with the zone over its line —
+	// the pending-strong ride is only reachable past L1 (A covers the table row).
 	const one = zoneBlockSize(60);
 	const limit = Math.floor(one + one / 3);
 	const window = Math.ceil(limit / 0.35);
 	const fx = makeFixture({ ...PARAMS }, [0, 0, 0, 0], window, 200); // 4 x 200 = 800 <= l1
 	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: R(fx.state, ["e1", "e2", "e3"]), summary: tokenText(60) })); // S1{e0}, budget 66
-	fx.state.projectView(fx.view);
-	accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3"]), summary: tokenText(60) })); // S2{e1}
-	fx.state.projectView(fx.view);
-	assert.ok(fx.state.roundStatus!.pendingStrong, "zone over the line");
-	assert.ok(fx.state.roundStatus!.activeTokens <= PARAMS.l1, "active at or under L1");
-	accepted(await fx.state.compress({ keep: R(fx.state, ["e3"]), summary: tokenText(60) })); // normal despite pending
-	assert.deepEqual(fx.writes[2].meta.supersedes, []);
-	assert.equal(fx.state.zone.length, 3, "zone keeps appending — no reset");
+	assert.ok(fx.state.roundStatus!.activeTokens <= PARAMS.l1, "fixture active really is at or under L1");
+	const r = rejected(await fx.state.compress({ keep: [], summary: tokenText(60) }));
+	assert.equal(r.code, "below-l1", "compress rejects at or under L1");
+	assert.equal(fx.writes.length, 0, "no zone block written");
+	assert.equal(fx.state.status().ok, false, "status rejects at or under L1");
 
 	// Past L3: strong directly, even with an empty zone and a huge window.
 	const hot = makeFixture({ ...PARAMS }, [0, 0, 0, 0, 0, 0, 0, 0], 10_000_000, 500); // 8 x 500 = 4000 > l3
@@ -593,10 +589,10 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 		assert.ok(assistantCount() >= expectAssistants, `turn for "${text.slice(0, 24)}" did not complete`);
 	};
 
-	await ask(turnText("task one", 1_200), 1);
-	await ask(turnText("task two", 1_200), 2); // active ~2400 > l1 2000: ephemeral tier L1
-	const firstStatus = mock.calls.at(-1)!.context.messages.at(-1)!;
-	assert.match(textOf(firstStatus as { role: string; content: unknown }), /tier=L1 compress=normal/, "round 1 announced normal");
+await ask(turnText("task one", 2_400), 1);
+await ask(turnText("task two", 2_400), 2); // active ~4800 > l2 4000: milestone tier L2 (v11: L1 is silent)
+const firstStatus = mock.calls.at(-1)!.context.messages.at(-1)!;
+assert.match(textOf(firstStatus as { role: string; content: unknown }), /tier=L2 compress=normal/, "round 1 announced normal");
 
 	await ask("The context is large; compress it now.", 3);
 	assert.ok(compressedOnce, "model compressed via the plain tool schema (round 1)");

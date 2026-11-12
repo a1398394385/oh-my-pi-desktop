@@ -31,7 +31,8 @@ function fixture() {
 		countMessages,
 		sink,
 		getEntries: () => entries,
-		params: { minCompress: 0 },
+		// v11: the L1 floor gates both tools; keep the tiny fixture past it.
+		params: { minCompress: 0, l1: 10, l2: 100_000, l3: 200_000 },
 	});
 	return { state, entries, view };
 }
@@ -149,7 +150,7 @@ describe("ACP ratio calibration", () => {
 			sink: { appendCustomEntry: () => "s1" },
 			getEntries: () => entries,
 			getBranch: () => entries,
-			params: { minCompress: 0, tailTurns: 0, tailTokens: 0, tailUserMessages: 0 },
+			params: { minCompress: 0, l1: 10, l2: 100_000, l3: 200_000, tailTurns: 0, tailTokens: 0, tailUserMessages: 0 },
 			contextWindow: 1000,
 		});
 		state.projectView(view);
