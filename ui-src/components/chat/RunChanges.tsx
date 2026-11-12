@@ -1,8 +1,9 @@
 // Files a run changed, as one collapsible card at the run's tail (between the output and the
 // fork/copy acts). The host owns the per-run snapshots: review opens the snapshot diff in the
 // right panel, revert asks the host to restore this run's "before" image.
-// Revert eligibility is a frontend rule: only the last run that touched a file without having
-// been reverted may undo it — undoing an older run would also throw away the later edits.
+// Revert eligibility is the host's call (stack position + on-disk content and stat match), asked
+// again whenever the card opens; the disabled state mirrors that verdict so no button offers an
+// undo the host would refuse.
 import { useEffect, useRef, useState } from "react";
 import type { ChatItem } from "../../types/session";
 import type { RunChangeFile } from "../../types/frames";
@@ -64,6 +65,13 @@ export default function RunChanges({ entryId, changes }: { entryId?: string; cha
   // frame — the same channel the chat list re-renders from
   const items = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.items : undefined));
   useEffect(() => setPending(null), [changes]);
+  // Refreshed on every open: whether a revert is still safe depends on the disk, which the
+  // session store cannot see (another session, a terminal, an editor all touch the file)
+  useEffect(() => {
+    if (!open || !entryId) return;
+    const s = activeSession();
+    if (s) useAppStore.getState().send({ type: "get_run_changes_state", sessionId: s.sessionId, entryId });
+  }, [open, entryId]);
 
   const cwd = activeSession()?.cwd ?? "";
   const added = changes.reduce((n, f) => n + f.added, 0);
@@ -96,13 +104,17 @@ export default function RunChanges({ entryId, changes }: { entryId?: string; cha
             const { dir, name } = splitPath(displayPath(f.path, cwd));
             const live = entryId !== undefined && items !== undefined && lastLiveOwner(items, f.path) === entryId;
             const gone = !!f.deleted || (!!f.created && !!f.reverted); // no file to open any more
-            const revertWhy = f.noSnapshot
-              ? t("chat.runChangeNoSnapshot")
-              : f.reverted
-                ? t("chat.runChangeReverted")
-                : live
-                  ? undefined
-                  : t("chat.runChangeLater");
+            const revertWhy = f.blocked === "modified"
+              ? t("chat.runChangeModified")
+              : f.blocked === "notTop"
+                ? t("chat.runChangeLater")
+                : f.noSnapshot
+                  ? t("chat.runChangeNoSnapshot")
+                  : f.reverted
+                    ? t("chat.runChangeReverted")
+                    : live
+                      ? undefined
+                      : t("chat.runChangeLater");
             return (
               <div className={"rchg-row" + (f.reverted ? " reverted" : "")} key={f.path}>
                 <span className="rchg-file">

@@ -258,6 +258,7 @@ export const chatZh = {
   runChangeReverted: "已撤销",
   runChangeLater: "该文件已被后续运行修改，请到最近一次运行中撤销",
   runChangeNoSnapshot: "未保留快照，无法审查或撤销",
+  runChangeModified: "该文件在此次运行后又被改动过，无法撤销",
   runChangeGone: "该文件已不存在",
 };
 

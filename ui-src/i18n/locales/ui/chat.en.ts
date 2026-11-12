@@ -274,6 +274,7 @@ export const chatEn = {
   runChangeReverted: "Reverted",
   runChangeLater: "Changed by a later run; revert it there",
   runChangeNoSnapshot: "No snapshot kept, review and revert are unavailable",
+  runChangeModified: "This file changed after that run; revert is unavailable",
   runChangeGone: "This file no longer exists",
 };
 

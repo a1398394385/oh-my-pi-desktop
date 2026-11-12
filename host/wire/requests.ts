@@ -18,7 +18,7 @@ export type HostRequestMethod =
   "delete_mcp_server" | "delete_session" | "drop_queued" | "edit_resend" | "fork_session" | "get_all_providers" | "get_bg_jobs" |
   "get_capabilities" | "get_capability_keys" | "get_context_detail" | "get_entry_tree" | "get_file_diff" | "get_git_branches" |
   "get_git_diff" | "git_commit_detail" | "git_commit_file_diff" | "git_file_versions" | "git_graph" | "get_keepalive_status" | "get_limits" | "get_messages" | "get_model_roles" | "get_models_catalog" |
-  "get_provider_limits" | "get_run_file_diff" | "get_search_availability" | "get_session_tree" | "get_settings" | "get_settings_schema" | "get_todos" |
+  "get_provider_limits" | "get_run_changes_state" | "get_run_file_diff" | "get_search_availability" | "get_session_tree" | "get_settings" | "get_settings_schema" | "get_todos" |
   "get_usage_stats" | "git_commit" | "git_discard" | "git_push" | "git_stage" | "git_unstage" |
   "kill_subagent" | "link_activate" | "list_agent_assets" | "list_commands" | "list_dir" | "list_displays" | "list_open_apps" |
   "list_extensions" | "list_files" | "list_sessions" | "load_session" | "login_prompt_reply" | "mark_seen" |

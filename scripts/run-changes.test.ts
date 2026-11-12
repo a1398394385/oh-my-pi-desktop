@@ -5,7 +5,7 @@ import { describe, expect, test } from "bun:test";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { trackRunToolStart, trackRunToolEnd, finalizeRunChanges, revertRunFile, runFileDiff, readRunChanges, settleRunChanges } from "../host/run-changes.ts";
+import { trackRunToolStart, trackRunToolEnd, finalizeRunChanges, revertRunFile, runFileDiff, runRevertState, readRunChanges, settleRunChanges } from "../host/run-changes.ts";
 import { entriesToTranscript } from "../host/translate-history.ts";
 import { translateEvent } from "../host/translate.ts";
 import type { RunChangeFile } from "../host/wire/payloads.ts";
@@ -134,6 +134,37 @@ describe("run-changes tracking + revert", () => {
     await fsp.writeFile(abs, "user edit\n");
     await expect(revertRunFile(entry, "r1", abs)).rejects.toThrow(/modified|改动/);
     expect(await fsp.readFile(abs, "utf8")).toBe("user edit\n");
+  });
+
+  test("a touch that leaves the bytes intact still blocks the revert", async () => {
+    const cwd = await tmpdir();
+    const { entry } = fakeEntry(cwd);
+    const abs = path.join(cwd, "t.txt");
+    await fsp.writeFile(abs, "old\n");
+    trackRunToolStart(entry, "edit", { path: abs });
+    await settle();
+    await fsp.writeFile(abs, "new\n");
+    trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "old\n", newText: "new\n" } }, false);
+    await finalizeRunChanges(entry, "r1", () => {});
+    // Same bytes, later mtime: the content guard alone would wave this through
+    await fsp.utimes(abs, new Date(), new Date(Date.now() + 5000));
+    await expect(revertRunFile(entry, "r1", abs)).rejects.toThrow(/modified|改动/);
+    expect(await fsp.readFile(abs, "utf8")).toBe("new\n");
+  });
+
+  test("runRevertState reports which files are blocked and why", async () => {
+    const cwd = await tmpdir();
+    const { entry } = fakeEntry(cwd);
+    const abs = path.join(cwd, "s.txt");
+    await fsp.writeFile(abs, "old\n");
+    trackRunToolStart(entry, "edit", { path: abs });
+    await settle();
+    await fsp.writeFile(abs, "new\n");
+    trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "old\n", newText: "new\n" } }, false);
+    await finalizeRunChanges(entry, "r1", () => {});
+    expect((await runRevertState(entry, "r1"))[0].blocked).toBeUndefined();
+    await fsp.writeFile(abs, "user\n");
+    expect((await runRevertState(entry, "r1"))[0].blocked).toBe("modified");
   });
 
   test("no-net-change runs persist nothing and emit nothing", async () => {

@@ -891,13 +891,18 @@ export function applyEvent(msg: EventFrame): void {
     scheduleEvict();
   } else if (msg.kind === "run_changes") {
     // Files this run changed: the host pushes them once the run is persisted (and re-pushes
-    // after a revert, with the affected row flagged). In-place write like the entryId backfill.
+    // after a revert, with the affected row flagged; and on card open with refreshed eligibility).
+    // In-place write like the entryId backfill.
+    let flipped = false;
     updateSession(msg.sessionId, (s) => {
       const a = findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && it.entryId === msg.entryId);
-      if (a) a.changes = msg.files;
+      if (!a) return;
+      // Only a revert rewrites the working tree; an eligibility refresh must not touch the git
+      // diff cache (a first push has no previous row and still refreshes)
+      flipped = a.changes ? a.changes.some((f, i) => f.reverted !== msg.files[i]?.reverted) : true;
+      a.changes = msg.files;
     });
-    // A revert rewrote the working tree: the git diff cache is stale
-    if (findBySessionId(msg.sessionId)?.isGit) useAppStore.getState().refreshGitDiff(true);
+    if (flipped && findBySessionId(msg.sessionId)?.isGit) useAppStore.getState().refreshGitDiff(true);
   } else if (msg.kind === "thinking_level") {
     // Auto-level resolution frame: only records the resolved level for the bottom-right "auto · level" display; does not touch s.thinking
     if (msg.configured === "auto") {

@@ -275,6 +275,12 @@
       "risk": "read"
     },
     {
+      "id": "get_run_changes_state",
+      "kind": "file",
+      "risk": "read",
+      "note": "卡片展开时刷新可撤销性：逐文件回填 blocked（已撤销/无快照/非栈顶/文件已被改动），与 revert_run_file 共用同一判定，含 mtime+size 比对"
+    },
+    {
       "id": "get_run_file_diff",
       "kind": "file",
       "risk": "read",

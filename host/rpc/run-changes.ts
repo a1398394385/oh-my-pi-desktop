@@ -1,8 +1,9 @@
-// Run file-change RPC: per-file revert (write, remote-denylisted) and snapshot diff (read).
-// Both replay the session journal via run-changes.ts — no in-memory state is consulted, so a
-// reloaded session behaves exactly like a live one. Failures throw → the shell's error frame.
+// Run file-change RPC: per-file revert (write, remote-denylisted), snapshot diff (read) and the
+// card's on-open revert eligibility (read). All replay the session journal via run-changes.ts —
+// no in-memory state is consulted, so a reloaded session behaves exactly like a live one.
+// Failures throw → the shell's error frame.
 import { sessions, entryBus, stampEvent } from "../state.ts";
-import { revertRunFile, runFileDiff } from "../run-changes.ts";
+import { revertRunFile, runFileDiff, runRevertState } from "../run-changes.ts";
 import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import type { PoolEntry } from "../state.ts";
@@ -27,6 +28,24 @@ export const runChangesHandlers: Record<string, RpcHandler> = {
           kind: "run_changes",
           entryId: anchor,
           files: files.map(({ idx: _idx, ...f }) => f),
+        }),
+      ),
+    );
+  },
+  async get_run_changes_state(ws, msg) {
+    const entry = loadedEntry(msg);
+    const entryId = String(msg.entryId ?? "");
+    const files = await runRevertState(entry, entryId);
+    // Same frame as finalize's push so the card has one landing path; requester-only — the
+    // verdict describes the disk as this client sees it right now.
+    ws.send(
+      JSON.stringify(
+        stampEvent({
+          type: "event",
+          sessionId: String(msg.sessionId ?? ""),
+          kind: "run_changes",
+          entryId,
+          files,
         }),
       ),
     );

@@ -523,6 +523,9 @@ export type TranscriptItem = {
   changes?: RunChangeFile[];
 };
 
+/** Why the host refuses to revert one file of a run right now (absent = revert allowed). */
+export type RunRevertBlocker = "reverted" | "noSnapshot" | "notTop" | "modified";
+
 /** One file touched by an agent run (edit/write/apply_patch), with net line stats.
  *  Snapshots live under the session artifacts dir (run-changes/<changeId>/), keyed by the
  *  file's index inside its change record — never inside this wire shape. */
@@ -538,6 +541,8 @@ export type RunChangeFile = {
   reverted?: boolean;
   /** Snapshot unavailable (>2MB / binary / read failure): review and revert are both disabled */
   noSnapshot?: boolean;
+  /** Host-computed revert refusal, refreshed when the card is opened (absent = revert allowed) */
+  blocked?: RunRevertBlocker;
 };
 
 /** One TTSR rule behind an injection notice (base Rule, narrowed to the fields a row shows) */
