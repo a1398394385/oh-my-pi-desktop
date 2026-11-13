@@ -87,7 +87,9 @@ export default function SessionStatsBar() {
     return () => clearTimeout(id);
   }, [swap.prev]);
   if (narrow && !mobileStatsBar) return null; // phone default: hidden (remote settings toggle)
-  if (!st) return null; // no stats before the first turn ends (or while the session is still loading); take no space
+  // No stats yet (before the first turn ends / while loading): keep the bar element so its
+  // reserved line (composer.css `.stats-bar:empty::after`) holds the dock above in place.
+  if (!st) return <div className="stats-bar" id="statsBar" aria-hidden="true" />;
 
   const activeMs = st.activeMs + (streaming && st.receivedAt !== undefined ? Date.now() - st.receivedAt : 0);
   const advisorCost = st.advisorCost ?? 0;

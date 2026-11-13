@@ -137,11 +137,21 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
   overflow: hidden;
   padding: 0 6px;
   font-size: var(--ui-fs-sm);
+  /* Explicit, so the row's height depends on nothing but the font size: with the default
+     `normal`, the CJK duration value (4秒) grows the line box ~1.2x and the bar would be a
+     different height per locale. The reserved empty state below then matches exactly. */
+  line-height: 1.4;
   color: var(--faint);
   font-variant-numeric: tabular-nums;
   /* Size container: the low-priority parts below are trimmed by the row's own
      width, not the window's (the main column also shrinks with the side panels) */
   container-type: inline-size;
+}
+
+/* Reserve the row before the first stats frame: the dock stacks right above this slot, so
+   the empty bar keeps its line box and the composer does not jump when stats arrive. */
+.stats-bar:empty::after {
+  content: "\00a0";
 }
 
 /* One of the two stacked layers; the layout lives here now, not on the grid container.

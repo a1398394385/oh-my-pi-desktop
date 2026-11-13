@@ -58,6 +58,8 @@
      tighter gaps so the six token metrics fit the phone width */
   #main .stats-bar { font-size: var(--ui-fs-xs); padding: 0; }
   #main .stats-bar .sb-layer { flex-direction: column; gap: 2px; }
+  /* The narrow bar is two rows with a 2px gap: reserve both, gap included via the margins */
+  #main .stats-bar:empty::after { content: "\00a0\A\00a0"; white-space: pre; margin-block: 1px; }
   #main .stats-bar .sb-break { font-size: var(--ui-fs-xs); }
   #main .stats-bar .sb-row {
     display: flex;
