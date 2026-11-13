@@ -42,16 +42,17 @@ import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
+import { formatSessionReference } from "../session-context.ts";
 
 // Attachments sent by the frontend along with prompt: images as base64, text-kind as file
 // contents (legacy inline path), path-kind as absolute paths the base @-reads itself
 interface PromptAttachment {
-  kind: "image" | "text" | "path";
+  kind: "image" | "text" | "path" | "session";
   mime?: string;
   data?: string; // image: base64 (no data: prefix)
-  name?: string; // text: file name
+  name?: string; // text: file name / session: session title
   text?: string; // text: file contents
-  path?: string; // path: absolute path, appended to the prompt as an @mention
+  path?: string; // path: absolute path, appended to the prompt as an @mention / session: session file inlined as a quoted block
 }
 
 // ---------- Composer sigils: command list and @ file candidates ----------
@@ -613,6 +614,20 @@ async function handlePrompt(
   let finalText = text;
   if (textBlocks.length > 0) {
     finalText = text ? `${textBlocks.join("\n\n")}\n\n${text}` : textBlocks.join("\n\n");
+  }
+  // Referenced existing sessions (@ session tab): inline their turns here so the
+  // UI never has to read session files. Appended after the user's own text so the
+  // session's first message (sidebar preview, title generation) stays the user's
+  // words; unreadable (deleted/empty) references are skipped rather than failing
+  // the send.
+  const sessionBlocks: string[] = [];
+  for (const f of files ?? []) {
+    if (f.kind !== "session" || typeof f.path !== "string" || !f.path) continue;
+    const block = await formatSessionReference(f.path, String(f.name ?? "session"));
+    if (block) sessionBlocks.push(block);
+  }
+  if (sessionBlocks.length > 0) {
+    finalText = finalText ? `${finalText}\n\n${sessionBlocks.join("\n\n")}` : sessionBlocks.join("\n\n");
   }
   // Natively picked / dropped files arrive as absolute paths. Append each as an @mention so
   // the base reads it into its own fileMention message (text, images, video contact sheets and

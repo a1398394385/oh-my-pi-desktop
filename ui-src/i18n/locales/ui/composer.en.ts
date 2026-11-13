@@ -66,6 +66,8 @@ export const composerEn = {
   paletteRecent: "Recent",
   paletteModes: "Modes",
   paletteSkills: "Skills",
+  paletteFiles: "Files",
+  paletteSessions: "Sessions",
   palettePlugins: "Plugins",
   paletteCommands: "Commands",
   paletteSelect: "Select",

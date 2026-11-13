@@ -180,6 +180,31 @@ function formatHits(hits: SessionContextHit[], query: string, scanned: number): 
   return lines.join("\n");
 }
 
+/** Render one session file as a prompt-inline reference (the composer's @
+ *  session attachment): every turn, clipped, under the same character budget as an
+ *  expansion. Returns null when the file holds no readable turn (empty or
+ *  unparseable), so the caller can skip it instead of quoting nothing. */
+export async function formatSessionReference(sessionPath: string, title: string): Promise<string | null> {
+  const storage = new FileSessionStorage();
+  const turns = turnsFromEntries(await loadEntriesFromFile(sessionPath, storage));
+  if (turns.length === 0) return null;
+  const lines = [`<attached-session title="${title.replace(/"/g, "&quot;")}" path="${sessionPath}">`];
+  let used = 0;
+  for (const turn of turns) {
+    const user = clip(turn.user, USER_CLIP);
+    const assistant = turn.assistant ? clip(turn.assistant, ASSISTANT_CLIP) : "";
+    if (used + user.length + assistant.length > EXPAND_BUDGET) {
+      lines.push(``, `… [session truncated at turn ${turn.index}: ${EXPAND_BUDGET} char budget]`);
+      break;
+    }
+    used += user.length + assistant.length;
+    lines.push(``, `### user`, user);
+    if (assistant) lines.push(``, `### assistant`, assistant);
+  }
+  lines.push(``, `</attached-session>`);
+  return lines.join("\n");
+}
+
 function formatTurns(session: ScannedSession, fromTurn: number, toTurn: number): string {
   const { info } = session;
   const selected = session.turns.filter((turn) => turn.index >= fromTurn && turn.index <= toTurn);

@@ -20,12 +20,18 @@ interface SessionLabelLike {
   firstMessage?: string;
 }
 
+// Inlined attachment blocks (host-side @ session references, pasted files) are prompt
+// framing, not what the user said; a first message cut mid-block keeps nothing after
+// the opening tag either.
+const ATTACHED_BLOCK_RE = /<attached-(?:file|session)[\s\S]*?(?:<\/attached-(?:file|session)>|$)/g;
+
 export function sessionLabel(s: SessionLabelLike): string {
   // The base scanner stamps this sentinel when its 4 KB prefix window holds no message
   // entry (dense custom injections push the first message past it). It is not a title.
   // The first message carries the @path lines a path attachment appended; they are chips in
   // the transcript, not part of what the user said.
-  const first = s.firstMessage === "(no messages)" ? "" : atMentions(s.firstMessage ?? "").text;
+  const first =
+    s.firstMessage === "(no messages)" ? "" : atMentions((s.firstMessage ?? "").replace(ATTACHED_BLOCK_RE, "").trim()).text;
   return s.title || first || t("sidebar.emptySession");
 }
 

@@ -78,6 +78,8 @@
   transition: color var(--dur-fast) var(--swift);
 }
 .slash-tab:hover { color: var(--text); }
+/* Pinned strip ($ skill card): the single tab is not a switch target */
+.slash-tab:disabled { cursor: default; }
 .slash-tab[aria-selected="true"] { color: var(--text); font-weight: 600; }
 .slash-tab[aria-selected="true"]::after {
   content: "";

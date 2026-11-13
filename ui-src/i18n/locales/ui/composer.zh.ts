@@ -66,6 +66,8 @@ export const composerZh = {
   paletteRecent: "最近使用",
   paletteModes: "模式",
   paletteSkills: "技能",
+  paletteFiles: "文件",
+  paletteSessions: "会话",
   palettePlugins: "插件",
   paletteCommands: "命令",
   paletteSelect: "选择",

@@ -79,8 +79,10 @@ const ALLOWED_EDGES = new Set([
   // depends on the bootstrap SDK handles (listAllSessions / loadEntriesFromFile)
   "main.ts→session-context.ts", "session-context.ts→bootstrap.ts",
   // Sidebar full-text search (search_session_text): consumes the retrieval tool's exported scan/search core
-  // (scanSessions + searchSessionContext) — one parse path and one ranking for both consumers, no second parse layer
-  "rpc/session.ts→session-text-search.ts", "session-text-search.ts→session-context.ts",
+  // (scanSessions + searchSessionContext) — one parse path and one ranking for both consumers, no second parse layer.
+  // rpc/prompt.ts reuses formatSessionReference for the composer's @ session attachment: a referenced session is
+  // rendered by the same turn parser instead of a second JSONL reader.
+  "rpc/session.ts→session-text-search.ts", "session-text-search.ts→session-context.ts", "rpc/prompt.ts→session-context.ts",
   // GUI env bootstrap: thin entry host.ts fires the PATH augment early
   // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
   // the same idempotent-singleton promise

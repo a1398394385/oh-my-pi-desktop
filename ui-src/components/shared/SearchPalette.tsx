@@ -5,75 +5,18 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession, pathBase, openSettings,
-} from "../../store";
-import type { DiskSessionRow } from "../../types/frames";
-import type { SessionTextHit } from "../../store/projects";
+import { useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession, openSettings } from "../../store";
 import { useAllSettingsItems } from "../settings/Settings";
 import Icon from "../../Icon";
-import { fmtAgo, sessionLabel } from "../main/sidebar/util";
-
-interface SessionMatch {
-  path: string;
-  title: string;
-  repo: string;
-  cwd: string;
-  modified: string;
-  searchText: string;
-  archived?: boolean;
-  /** Hit snippet for a full-text match (search_session_text); absent for title-only hits */
-  snippet?: string;
-}
+import { fmtAgo } from "../main/sidebar/util";
+import { collectSessionMatches, mergeSearchMatches } from "./session-search";
+import type { SessionMatch } from "./session-search";
 
 type PaletteTab = "settings" | "sessions";
 
 type PaletteHit =
   | { kind: "settings"; key: string; label: string; pageTitle: string; pageId: string }
-  | {
-      kind: "session";
-      path: string;
-      title: string;
-      repo: string;
-      cwd: string;
-      modified: string;
-      archived?: boolean;
-      snippet?: string;
-    };
-
-/** Merge title matches with full-text hits (session_text_search): content hits fill in first so a row hit by both keeps its snippet, sidebar rows fill in the rest. */
-function mergeSearchMatches(
-  allSessions: SessionMatch[],
-  textHits: SessionTextHit[],
-  kw: string,
-  untitled: string,
-): SessionMatch[] {
-  if (!kw) return [];
-  const known = new Map(allSessions.map((s) => [s.path, s]));
-  const byPath = new Map<string, SessionMatch>();
-  for (const hit of textHits) {
-    const row = known.get(hit.path);
-    byPath.set(hit.path, {
-      path: hit.path,
-      // Content hits may be sessions no project row carries (removed projects, unlisted history) — keep them reachable anyway
-      title: row?.title || hit.title || untitled,
-      repo: row?.repo || pathBase(hit.cwd),
-      cwd: hit.cwd,
-      modified: hit.modified,
-      searchText: "",
-      archived: row?.archived,
-      snippet: hit.snippet,
-    });
-  }
-  for (const s of allSessions) {
-    if (!s.searchText.includes(kw)) continue;
-    const prev = byPath.get(s.path);
-    byPath.set(s.path, prev ? { ...prev, title: s.title, repo: s.repo, modified: s.modified, archived: s.archived } : s);
-  }
-  return [...byPath.values()]
-    .sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))
-    .slice(0, 20);
-}
+  | ({ kind: "session" } & SessionMatch);
 
 export default function SearchPalette() {
   const { t } = useTranslation();
@@ -94,37 +37,10 @@ export default function SearchPalette() {
   }, [open]);
 
   // Aggregate all disk sessions (unnamed/untitled sessions display with the firstMessage fallback label, aligned with the sidebar SessionRow)
-  const allSessions = useMemo(() => {
-    const list: SessionMatch[] = [];
-    const seenPaths = new Set<string>();
-
-    const pushSession = (s: DiskSessionRow, cwd: string, archived = false) => {
-      if (seenPaths.has(s.path)) return;
-      const displayTitle = sessionLabel(s);
-      if (!displayTitle || displayTitle === t("sidebar.emptySession")) return;
-      seenPaths.add(s.path);
-      const repo = pathBase(cwd);
-      list.push({
-        path: s.path,
-        title: displayTitle,
-        searchText: `${s.title || ""} ${s.firstMessage || ""} ${repo}`.toLowerCase(),
-        repo,
-        cwd,
-        modified: s.modified,
-        archived,
-      });
-    };
-
-    for (const p of diskProjects) {
-      for (const s of p.sessions) {
-        pushSession(s, p.cwd, false);
-      }
-    }
-    for (const s of archivedSessions) {
-      pushSession(s, s.cwd, true);
-    }
-    return list;
-  }, [diskProjects, archivedSessions, t]);
+  const allSessions = useMemo(
+    () => collectSessionMatches(diskProjects, archivedSessions, t("sidebar.emptySession")),
+    [diskProjects, archivedSessions, t],
+  );
 
   const kw = query.trim().toLowerCase();
 

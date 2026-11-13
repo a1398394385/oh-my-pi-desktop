@@ -30,8 +30,11 @@ import PaletteMenu from "./composer/PaletteMenu";
 import PredictionList from "./composer/PredictionList";
 import type { PaletteItem } from "./composer/PaletteMenu";
 import { detectTrigger, isBashMode, insertFile, insertCommand } from "./composer/trigger";
-import { filterPaletteCommands, filterSkills, filterSubcommands } from "./composer/completionFilters";
+import { filterPaletteCommands, filterSkills, filterSubcommands, COMMAND_CATEGORIES } from "./composer/completionFilters";
 import type { CommandCategory } from "./composer/completionFilters";
+import type { PaletteTabName } from "./composer/PaletteMenu";
+import { addSessionRef } from "../lib/incoming-files";
+import { collectSessionMatches, mergeSearchMatches } from "./shared/session-search";
 import { readRecentCommands, recordRecentCommand } from "./composer/recentCommands";
 import { bgTaskCount, subagentCount } from "./composer/sessionCounts";
 import { sendComposerPrompt } from "./composer/send";
@@ -94,11 +97,16 @@ function buildAttachPayload(): PromptAttachment[] {
         ? { kind: "image", mime: f.mime, data: f.data }
         : f.kind === "path"
           ? { kind: "path", name: f.name, path: f.path }
-          : { kind: "text", name: f.name, text: f.data },
+          : f.kind === "session"
+            ? { kind: "session", name: f.name, path: f.path }
+            : { kind: "text", name: f.name, text: f.data },
     );
 }
 
 type MenuName = "mode" | "model";
+
+// @ card strip: files first, then existing sessions
+const MENTION_TABS: readonly PaletteTabName[] = ["file", "session"];
 
 // Typeahead option wrapper: data carries the raw candidate (FileItem /
 // CommandItem), key takes path / name
@@ -164,6 +172,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const lastSubmitSeqRef = useRef(0);
   const commands = useAppStore((st) => st.commands);
   const mentionResult = useAppStore((st) => st.mentionResult);
+  // @ session tab sources: same store slices the global search palette reads
+  const diskProjects = useAppStore((st) => st.diskProjects);
+  const archivedSessions = useAppStore((st) => st.archivedSessions);
+  const sessionTextSearch = useAppStore((st) => st.sessionTextSearch);
   const approvalMode = useAppStore((st) => st.approvalMode);
   const rightCollapsed = useAppStore((st) => st.rightCollapsed);
   const rightTab = useAppStore((st) => st.rightTab);
@@ -239,6 +251,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const [taReqId, setTaReqId] = useState(0); // @ candidate request sequence (paired with mentionResult.reqId)
   const [taOpen, setTaOpen] = useState(false); // panel open/close (for yielding to keyboard commands)
   const [commandCategory, setCommandCategory] = useState<CommandCategory>("recent");
+  // @ card tab: files (default) or existing sessions
+  const [mentionTab, setMentionTab] = useState<"file" | "session">("file");
+  const mentionTabRef = useRef<"file" | "session">("file");
+  useEffect(() => {
+    mentionTabRef.current = mentionTab;
+  }, [mentionTab]);
   const [recentCommands, setRecentCommands] = useState<string[]>(readRecentCommands);
   const taOpenRef = useRef(false);
   useEffect(() => {
@@ -530,21 +548,43 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // fetch / @ file candidates with 150ms debounce, ported from the request
   // section of the old updatePalette (including the silent commands:null write
   // and reqId increment to drop stale responses) ----
-  const onQueryChange = useCallback((q: string | null) => {
-    const trig = lastTriggerRef.current;
-    const key = q == null || !trig ? null : `${trig.kind}${trig.command ? ":" + trig.command : ""}|${trig.quoted ? 1 : 0}|${q}`;
-    if (key === lastKeyRef.current) return; // repeated update for the same trigger state: idempotent skip of side effects
-    lastKeyRef.current = key;
-    if (!trig || q == null) return;
-    setTaKind(trig.kind);
-    setTaQuery(q);
-    setTaCommand(trig.command ?? "");
-    // A typed slash query is a global search, so no category is current. Reset
-    // the stored category to Recent so deleting back to bare "/" returns there.
-    if (trig.kind === "command" && q) setCommandCategory("recent");
+  // @ file candidates: send list_files after a 150ms debounce (the host
+  // fuzzyFind is a disk scan). Also runs when the card switches back to the
+  // file tab: the candidates parked in the store answer the session tab's
+  // keyword, not this one.
+  const requestFiles = useCallback((q: string) => {
     const st = useAppStore.getState();
     const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-    if (trig.kind !== "file") {
+    const reqId = st.mentionReqSeq + 1;
+    useAppStore.setState({ mentionReqSeq: reqId }); // silent increment (the old code did ++ without notify)
+    const cwd = sess ? undefined : st.newSessionProject || undefined;
+    clearTimeout(mentionTimer.current ?? undefined);
+    mentionTimer.current = setTimeout(() => {
+      send({ type: "list_files", sessionId: sess?.sessionId, cwd, query: q, reqId });
+    }, 150);
+    setTaReqId(reqId);
+  }, []);
+
+  const onQueryChange = useCallback(
+    (q: string | null) => {
+      const trig = lastTriggerRef.current;
+      const key = q == null || !trig ? null : `${trig.kind}${trig.command ? ":" + trig.command : ""}|${trig.quoted ? 1 : 0}|${q}`;
+      if (key === lastKeyRef.current) return; // repeated update for the same trigger state: idempotent skip of side effects
+      lastKeyRef.current = key;
+      if (!trig || q == null) return;
+      setTaKind(trig.kind);
+      setTaQuery(q);
+      setTaCommand(trig.command ?? "");
+      // A typed slash query is a global search, so no category is current. Reset
+      // the stored category to Recent so deleting back to bare "/" returns there.
+      if (trig.kind === "command" && q) setCommandCategory("recent");
+      if (trig.kind === "file") {
+        // The session tab searches sessions locally; no list_files pass
+        if (mentionTabRef.current === "file") requestFiles(q);
+        return;
+      }
+      const st = useAppStore.getState();
+      const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;
       // List ownership: session id or the creating-new sentinel (creating-new uses
       // the sessionless list, hiding session-level commands)
       const cmdKey = sess ? sess.sessionId : "new";
@@ -552,29 +592,46 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         useAppStore.setState({ commands: null }); // list stale: popup shows loading during fetch
         send({ type: "list_commands", sessionId: sess?.sessionId, cwd: sess ? undefined : st.newSessionProject || undefined });
       }
-    } else {
-      // @ file candidates: send list_files after a 150ms debounce (the host
-      // fuzzyFind is a disk scan)
-      const reqId = st.mentionReqSeq + 1;
-      useAppStore.setState({ mentionReqSeq: reqId }); // silent increment (the old code did ++ without notify)
-      const cwd = sess ? undefined : st.newSessionProject || undefined;
-      clearTimeout(mentionTimer.current ?? undefined);
-      mentionTimer.current = setTimeout(() => {
-        send({ type: "list_files", sessionId: sess?.sessionId, cwd, query: q, reqId });
-      }, 150);
-      setTaReqId(reqId);
+    },
+    [requestFiles],
+  );
+
+  // Session tab is backed by the same aggregation / ranking the global search
+  // palette uses; full-text hits arrive through search_session_text.
+  const sessionItems: PaletteItem[] = useMemo(() => {
+    const all = collectSessionMatches(diskProjects, archivedSessions, t("sidebar.emptySession"));
+    const kw = taQuery.trim().toLowerCase();
+    if (!kw) {
+      // Idle state: recent sessions (same ordering as the merge below)
+      return [...all].sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified)).slice(0, 8);
     }
-  }, []);
+    const hits = sessionTextSearch?.query === kw ? sessionTextSearch.hits : [];
+    return mergeSearchMatches(all, hits, kw, t("sidebar.untitledSession"));
+  }, [diskProjects, archivedSessions, sessionTextSearch, taQuery, t]);
+
+  // Full-text search: host scans every session file (~1s), so debounce and keep
+  // single characters title-only (same policy as the global search palette)
+  useEffect(() => {
+    if (taKind !== "file" || mentionTab !== "session") return;
+    const kw = taQuery.trim().toLowerCase();
+    if (kw.length < 2) return;
+    const timer = setTimeout(() => send({ type: "search_session_text", query: kw }), 300);
+    return () => clearTimeout(timer);
+  }, [mentionTab, taKind, taQuery]);
 
   // Candidates and loading state are computed from the store at render time (the
   // file_matches/commands replies setState and trigger a re-render); no snapshot
   // is stored -- candidates appear the moment the reply frame arrives, no extra
   // keystroke needed
+  const sessionSearching =
+    taQuery.trim().length >= 2 && sessionTextSearch?.query !== taQuery.trim().toLowerCase();
   const taItems: PaletteItem[] =
     taKind === "file"
-      ? mentionResult && mentionResult.reqId === taReqId
-        ? mentionResult.matches
-        : []
+      ? mentionTab === "session"
+        ? sessionItems
+        : mentionResult && mentionResult.reqId === taReqId
+          ? mentionResult.matches
+          : []
       : taKind === "command"
         ? filterPaletteCommands(commands, taQuery, commandCategory, recentCommands)
         : taKind === "commandArgs"
@@ -583,7 +640,13 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
           ? filterSkills(commands, taQuery)
           : [];
   const taLoading =
-    taKind === "file" ? !(mentionResult && mentionResult.reqId === taReqId) : taKind === "command" || taKind === "commandArgs" || taKind === "skill" ? commands === null : false;
+    taKind === "file"
+      ? mentionTab === "session"
+        ? sessionSearching
+        : !(mentionResult && mentionResult.reqId === taReqId)
+      : taKind === "command" || taKind === "commandArgs" || taKind === "skill"
+        ? commands === null
+        : false;
   const taOptions = taItems.map((it) => new PalOption(it));
 
   // ---- Accepting a completion: file/directory -> ChipNode (serialization =
@@ -606,12 +669,27 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       return;
     }
     const it = option.data;
+    if (trig.kind === "file" && mentionTabRef.current === "session") {
+      // Reference an existing session: it becomes an attachment chip and the
+      // typed @token is removed (nothing about it belongs in the prompt text)
+      if (!("title" in it)) {
+        closeMenu(); // type guard: candidates must be SessionItem on the session tab
+        return;
+      }
+      addSessionRef(it.path, it.title);
+      if (node) {
+        node.setTextContent("");
+        node.select(0, 0);
+      }
+      closeMenu();
+      return;
+    }
     if (trig.kind === "file") {
       if (!node) {
         closeMenu(); // unreachable via the guard above; keeps the narrowing explicit
         return;
       }
-      if (!("path" in it)) {
+      if (!("dir" in it)) {
         closeMenu(); // type guard: candidates must be FileItem when kind=file
         return;
       }
@@ -733,17 +811,34 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     lexRef.current?.focus();
   }, [taQuery]);
 
+  // @ card tabs. Switching tabs keeps the typed query (the same keyword searches
+  // both surfaces); switching back to files re-requests candidates for it.
+  const onPaletteTab = useCallback((next: PaletteTabName) => {
+    if (next === "file" || next === "session") {
+      setMentionTab(next);
+      if (next === "file") requestFiles(taQuery);
+      return;
+    }
+    onCommandCategory(next as CommandCategory);
+  }, [onCommandCategory, requestFiles, taQuery]);
+
+  const paletteTab: PaletteTabName =
+    taKind === "command" ? commandCategory : taKind === "file" ? mentionTab : taKind === "skill" ? "skill" : "command";
+  const paletteTabs: readonly PaletteTabName[] =
+    taKind === "command" ? COMMAND_CATEGORIES : taKind === "file" ? MENTION_TABS : [paletteTab];
+
   // Navigation/highlight/accept go through the plugin-provided itemProps.
   const menuRenderFn: MenuRenderFn<PalOption> = (_anchorRef, itemProps) => (
     <PaletteMenu
-      mode={taKind ?? "file"}
+      mode={taKind === "file" ? mentionTab : (taKind ?? "file")}
       items={taItems}
       index={itemProps.selectedIndex ?? 0}
       loading={taLoading}
       composerRef={rootRef}
-      category={commandCategory}
+      tabs={paletteTabs}
+      tab={paletteTab}
       query={taQuery}
-      onCategoryChange={onCommandCategory}
+      onTabChange={onPaletteTab}
       onPick={(i) => {
         const opt = itemProps.options[i];
         if (!opt) return;
@@ -756,6 +851,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const onTaOpen = useCallback(() => setTaOpen(true), []);
   const onTaClose = useCallback(() => {
     lastKeyRef.current = null;
+    setMentionTab("file"); // reopen always starts on files
     setTaOpen(false);
   }, []);
 

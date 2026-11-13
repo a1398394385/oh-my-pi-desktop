@@ -822,12 +822,14 @@ export type AssetKind = "agent" | "skill" | "mcp" | "hook";
 
 /** Prompt attachment (UI → host; host/rpc/prompt.ts PromptAttachment, sent along with the prompt) */
 export interface PromptAttachment {
-  kind: "image" | "text" | "path";
+  kind: "image" | "text" | "path" | "session";
   mime?: string; // image: base64 (no data: prefix)
-  name?: string; // text: file name
+  name?: string; // text: file name / session: session title
   text?: string; // text: file content
   data?: string;
   /** path: absolute path of a natively picked/dropped file; the host appends it as an
-   *  @mention so the base reads it into its own fileMention message */
+   *  @mention so the base reads it into its own fileMention message
+   *  session: absolute path of a Pi session file; the host inlines that session's
+   *  turns into the prompt as a quoted block */
   path?: string;
 }
