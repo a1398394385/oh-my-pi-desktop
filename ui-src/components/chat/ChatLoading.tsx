@@ -13,15 +13,22 @@ import { t } from "../../i18n";
 import { rowSpec } from "../main/right/subRowSpec";
 import type { ChatItem } from "../../types/session";
 
-// The live entry is the last streaming thinking block or running tool; scanning from the end
-// means a finished entry never keeps the previous activity's icon on screen.
+// The live entry is the last streaming thinking block or running tool, scanned from the end.
+// A settled tool still names the run's current activity: between a tool returning and the next
+// thinking phase the row is generating its reply, and falling back to the thinking glyph there
+// made the row read "still thinking" long after the thought ended.
 export function liveActivity(items: ChatItem[]): { icon: string; thinking?: string } {
+  let lastTool: string | undefined;
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
     if (it.role === "thinking" && it.streaming) return { icon: "think", thinking: it.thinking || "" };
-    if (it.role === "tool" && it.running) return { icon: rowSpec({ name: it.name || "", args: it.args, running: true }).icon };
+    if (it.role === "tool") {
+      const icon = rowSpec({ name: it.name || "", args: it.args, running: true }).icon;
+      if (it.running) return { icon };
+      lastTool ??= icon;
+    }
   }
-  return { icon: "think" };
+  return { icon: lastTool ?? "think" };
 }
 
 // Only the tail is rendered: the thought can run to tens of thousands of chars, and a bounded

@@ -28,9 +28,17 @@ describe("liveActivity", () => {
     expect(liveActivity(items).icon).toBe("read");
   });
 
-  test("a settled tool does not keep its glyph", () => {
+  test("a settled tool keeps its glyph while the run generates the reply", () => {
     const items: ChatItem[] = [{ role: "tool", text: "bash", name: "bash", running: false }];
-    expect(liveActivity(items).icon).toBe("think");
+    expect(liveActivity(items).icon).toBe("termBox");
+  });
+
+  test("the newest settled tool names the activity before an older one", () => {
+    const items: ChatItem[] = [
+      { role: "tool", text: "read", name: "read", running: false },
+      { role: "tool", text: "bash", name: "bash", running: false },
+    ];
+    expect(liveActivity(items).icon).toBe("termBox");
   });
 });
 
