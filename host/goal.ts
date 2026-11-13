@@ -12,6 +12,7 @@
 import { hostI18n } from "./i18n/host.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { reportModeChange } from "./mode-state.ts";
+import type { Settings } from "@oh-my-pi/pi-coding-agent";
 
 /** Goal record (isomorphic to modeData.goal of the persisted mode_change; field validation in goalFromModeData). */
 export interface GoalLike {
@@ -40,7 +41,7 @@ export interface GoalSession {
   extensionRunner?: { emit(event: unknown): Promise<unknown> } | null;
   getEnabledToolNames(): string[];
   setActiveToolsByName(names: string[]): Promise<unknown> | void;
-  settings: { get(key: string): unknown };
+  settings: Settings;
   goalRuntime: {
     createGoal(input: { objective: string }): Promise<GoalStateLike>;
     replaceGoal(input: { objective: string }): Promise<GoalStateLike>;

@@ -49,7 +49,7 @@ export async function awaitPersistedModelRefresh(sessionManager: {
 }
 
 export function rebuildScopedModels() {
-  const enabledEntries: string[] = settingsGet(H.settings, "enabledModels") ?? [];
+  const enabledEntries = (settingsGet(H.settings, "enabledModels") ?? []) as string[];
   enabledDefaults.clear();
   for (const e of enabledEntries) enabledDefaults.set(e.split(":")[0], e.split(":")[1] ?? null);
   H.scopedModels =
@@ -307,10 +307,12 @@ const CAPABILITY_AUTH_LABELS: Record<string, string> = {
 export function capabilityKeysPayload() {
   return CAPABILITY_AUTH_IDS.map((id) => {
     const policy = authPolicyFor(id);
+    // env is either a fixed var list or a resolver hook; only the list names a literal var
+    const env = policy?.env && "vars" in policy.env ? policy.env.vars : undefined;
     return {
       id,
       label: CAPABILITY_AUTH_LABELS[id] ?? id,
-      envVar: policy?.env?.vars?.[0] ?? `${id.toUpperCase().replace(/-/g, "_")}_API_KEY`,
+      envVar: env?.[0] ?? `${id.toUpperCase().replace(/-/g, "_")}_API_KEY`,
       configured: H.authStorage.keys.source(id, { env: "aliases" }) !== undefined,
       stored: H.authStorage.credentials.list(id).length > 0,
     };

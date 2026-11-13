@@ -3,6 +3,7 @@
 // prompt replies, opening models.yml. Moved over from the main.ts message
 // dispatch (third slice).
 import { Database } from "bun:sqlite";
+import type { AuthCredential } from "@oh-my-pi/pi-ai";
 import { openExternal } from "../open-external.ts";
 import { getAgentDbPath } from "@oh-my-pi/pi-utils";
 import path from "node:path";
@@ -155,10 +156,12 @@ export const loginHandlers: Record<string, RpcHandler> = {
         .get(id, MANUAL_DISABLE_CAUSE) as { provider: string; credential_type: string; data: string } | undefined;
       if (!row || row.provider !== provider) throw new Error(hostI18n.t("errors.account.notFound"));
       const parsed = JSON.parse(row.data) as Record<string, unknown>;
-      const credential =
+      // The row was written from an AuthCredential, so the type discriminator picks its shape;
+      // `key` round-trips as the stored string and the OAuth fields come from the same JSON.
+      const credential: AuthCredential =
         row.credential_type === "api_key"
-          ? { type: "api_key", key: parsed.key, ...(parsed.source === "login" ? { source: "login" } : {}) }
-          : { type: "oauth", ...parsed };
+          ? { type: "api_key", key: parsed.key as string, ...(parsed.source === "login" ? { source: "login" } : {}) }
+          : ({ type: "oauth", ...parsed } as AuthCredential);
       await H.authStorage.credentials.upsert(provider, credential);
     } finally {
       db.close();

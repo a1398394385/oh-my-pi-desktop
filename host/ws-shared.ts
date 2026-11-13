@@ -18,10 +18,13 @@ import { safeStderr } from "./stderr.ts";
 export interface HostWs {
   send(data: string): unknown;
   close(code?: number, reason?: string): void;
-  data?: { sessionId?: string | null; remote?: boolean; meta?: { ua: string; ip: string } };
+  data?: { remote?: boolean; meta?: { ua: string; ip: string } };
 }
 
-export function makeWsHandlers(profileReady: Promise<unknown>): Bun.WebSocketHandler<unknown> {
+/** Handler subset without `data`: one instance must serve serve() calls whose data types differ (undefined here, RemoteWsData in remote.ts). */
+type SharedWsHandlers = Pick<Bun.WebSocketHandler<never>, "open" | "message" | "close">;
+
+export function makeWsHandlers(profileReady: Promise<unknown>): SharedWsHandlers {
   return {
     open(ws: HostWs) {
       // Channel-scoped takeover (spec §3.4): each channel — local desktop vs

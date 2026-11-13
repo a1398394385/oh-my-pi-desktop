@@ -101,7 +101,8 @@ export async function git(
   try {
     // Without input, stdin stays closed so a credential/identity prompt fails
     // fast instead of blocking until the timeout.
-    if (opts.input !== undefined) {
+    // stdin is a pipe whenever input is provided (spawn options above)
+    if (opts.input !== undefined && proc.stdin) {
       proc.stdin.write(opts.input);
       proc.stdin.end();
     }

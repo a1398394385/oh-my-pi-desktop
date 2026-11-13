@@ -19,8 +19,7 @@
 // MCP prompts/resources and the mcp:// device stay manager-bound and are NOT
 // wired here (enableMCP stays false; OAuth-configured servers are unsupported
 // — connectToServer has no auth storage on this path).
-import type { MCPServerConfig } from "@oh-my-pi/pi-coding-agent/mcp/types";
-import type { MCPServerConnection } from "@oh-my-pi/pi-coding-agent/mcp/client";
+import type { MCPServerConfig, MCPServerConnection } from "@oh-my-pi/pi-coding-agent/mcp/types";
 import type { MCPTool as McpToolInstance } from "@oh-my-pi/pi-coding-agent/mcp/tool-bridge";
 import { connectToServer, disconnectServer, listTools, MCPTool } from "./bootstrap.ts";
 import { acquireSharedMcpConnection } from "./mcp-pool.ts";
@@ -138,7 +137,8 @@ export async function preloadMcpForCwd(cwd: string): Promise<void> {
 /** Assemble the transport config for one server (union discriminant must be a literal) */
 function toServerConfig(s: McpServerAsset, cwd: string): MCPServerConfig {
   if (s.transport === "http" || s.transport === "sse") {
-    return { type: s.transport, url: s.url ?? "", headers: s.headers, cwd: s.cwd ?? cwd };
+    // In-process transports: the SDK's http/sse config carries no cwd (only stdio does)
+    return { type: s.transport, url: s.url ?? "", headers: s.headers };
   }
   return { type: "stdio", command: s.command ?? "", args: s.args, env: s.env, cwd: s.cwd ?? cwd };
 }

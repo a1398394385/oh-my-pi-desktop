@@ -129,7 +129,7 @@ function handleDropQueued(
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
   const agent = entry.session.agent;
   const queue = which === "steering" ? agent.peekSteeringQueue() : agent.peekFollowUpQueue();
-  let next: any[];
+  let next: readonly any[];
   if (index === undefined) {
     // Clear all: drop only user messages and their hidden companions, keep system notices (goal/plan/budget etc.)
     next = queue.filter((m) => !isUserQueuedMessage(m) && !isHiddenUserCompanion(m));

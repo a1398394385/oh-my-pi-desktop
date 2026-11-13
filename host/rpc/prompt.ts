@@ -200,7 +200,7 @@ async function stubCommandList(cwd: string): Promise<InternalAvailableSlashComma
   const [skillsRes, customRes] = await Promise.all([
     discoverSkills(cwd, H.agentDir, {
       ...cfgSkills.get(H.settings),
-      disabledExtensions: settingsGet(H.settings, "disabledExtensions") ?? [],
+      disabledExtensions: (settingsGet(H.settings, "disabledExtensions") ?? []) as string[],
     }),
     discoverCustomTSCommands(cwd, H.agentDir),
   ]);

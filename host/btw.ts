@@ -20,7 +20,7 @@ type BtwWs = { send(data: string): unknown };
 
 interface TopicRun {
   record: BtwHistoryRecord;
-  store: BtwHistoryStore;
+  store: InstanceType<typeof BtwHistoryStore>;
   abort: AbortController;
 }
 
@@ -67,7 +67,7 @@ function pushRecord(_ws: BtwWs, sessionId: string, record: BtwHistoryRecord): vo
   entryBus(sessions.get(sessionId)!).send(JSON.stringify(stampEvent({ type: "btw_record", sessionId, record })));
 }
 
-async function openStore(sessionId: string): Promise<BtwHistoryStore> {
+async function openStore(sessionId: string): Promise<InstanceType<typeof BtwHistoryStore>> {
   const manager = managerOf(sessionId);
   return BtwHistoryStore.open(manager.getArtifactsDir() ?? undefined, manager.getSessionId());
 }

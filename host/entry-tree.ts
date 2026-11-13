@@ -4,8 +4,6 @@
 import os from "node:os";
 import { hostI18n } from "./i18n/host.ts";
 import { stripDcpTags } from "./translate.ts";
-import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
-import type { SessionEntry, SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
 
 // ---------- In-session entry tree (TUI /tree data source) ----------
 // SessionTreeNode forest (manager.getTree()) → frontend display nodes. Row
@@ -231,7 +229,7 @@ export function treeToDisplay(roots: SessionTreeNode[], leafId: string | null): 
     if (TREE_SETTINGS_KINDS[entry.type]) out.isSettings = true;
     // Matching the base's default filter: a textless assistant that is neither error nor aborted (a pure tool-call container) is hidden by default, except the leaf
     if (role === "assistant" && !isLeaf && !text) {
-      const sr = msgField(entry.message, "stopReason");
+      const sr = entry.type === "message" ? msgField(entry.message, "stopReason") : undefined;
       if (sr === undefined || sr === "stop" || sr === "toolUse") out.emptyAssistant = true;
     }
     return out;

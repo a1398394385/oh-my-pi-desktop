@@ -18,6 +18,7 @@ export const runChangesHandlers: Record<string, RpcHandler> = {
   async revert_run_file(ws, msg) {
     const entry = loadedEntry(msg);
     const anchor = String(msg.entryId ?? "");
+    // revertRunFile returns the recorded files, which carry the internal idx the wire strips out
     const files = await revertRunFile(entry, anchor, String(msg.path ?? ""));
     // Every attached UI updates the card (and the other runs' revert buttons recompute from it)
     entryBus(entry).send(

@@ -128,6 +128,7 @@
 node scripts/comment-audit.mjs         # 注释审计：前后对比注释行、中文注释与 TODO
 bun run check                        # 注释语言棘轮 / 编码 / i18n / 类型
 bun run ui:typecheck                 # ui-src 改动必跑
+bun run host:typecheck               # host 改动必跑（全量 host/**/*.ts）
 bun run smoke:features               # host 核心改动抽样冒烟（其余按 host/ 目录对应 smoke）
 ```
 

@@ -377,6 +377,9 @@ async function approvePlan(
     .restoreNonMCPToolPresentation(
       presentation.enabled.includes("read") ? presentation.enabled : [...presentation.enabled, "read"],
       presentation.mounted,
+      // No pre-plan registered-tool snapshot is kept; the empty set preserves
+      // the previous implicit-undefined call (Set(undefined) === Set([])).
+      [],
     )
     .catch((err: unknown) => safeStderr(`[host] plan tool restore failed: ${describe(err)}\n`));
   session.setPlanReferencePath(planFilePath);
@@ -438,6 +441,9 @@ async function dispatchApprovedTurn(
     const chosen = cycle?.models[args.roleIndex];
     if (chosen) {
       await session.applyRoleModel(chosen);
+      // applyRoleModel() routes through setModel(), which assigns the agent state
+      // model, so the getter is set once the await resolves.
+      const model = session.model!;
       // Mirror the set_model RPC's session_model push: without it the composer
       // keeps showing the pre-approval model while the approved turn already
       // runs on the chosen role model.
@@ -447,7 +453,7 @@ async function dispatchApprovedTurn(
         JSON.stringify({
           type: "session_model",
           sessionId: poolSessionId,
-          model: `${session.model.provider}/${session.model.id}`,
+          model: `${model.provider}/${model.id}`,
           thinking: session.configuredThinkingLevel?.() ?? "auto",
         }),
       );

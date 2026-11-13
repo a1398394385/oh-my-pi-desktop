@@ -77,6 +77,8 @@ export interface RemoteConfig {
    * toggles it. Desktop ignores it entirely.
    */
   mobileStatsBar: boolean;
+  /** Recent authenticated visitors, newest first (capped at REMOTE_DEVICE_HISTORY_LIMIT) */
+  devices: RemoteDeviceRecord[];
 }
 
 /** One historical remote visitor, recorded on each authenticated /ws upgrade (settings page card). */

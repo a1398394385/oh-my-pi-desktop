@@ -68,7 +68,7 @@ profileReady.catch((err) => {
 // open/message/close are shared with the LAN remote server (host/remote.ts) —
 // one handler set, protocol identical for both (spec §3.3/§3.4).
 const wsHandlers = makeWsHandlers(profileReady);
-const server = Bun.serve<{ sessionId: string | null }>({
+const server = Bun.serve({
   port: 0, // Dynamic port: a fixed one would clash when multiple workspaces run the same app in parallel
   // Loopback-only: this channel carries no auth (the Tauri webview, smoke scripts and the
   // ?ws= browser dev direct-connect all reach it via 127.0.0.1). The LAN-facing, key-gated

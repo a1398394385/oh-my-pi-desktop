@@ -13,7 +13,7 @@
 // the base tool-result spill stage a byte budget so it never head/tails the
 // list in the middle (its escape hatch is staying under the threshold).
 import { type } from "@oh-my-pi/omptype";
-import type { AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-agent-core";
+import type { AssistantMessage, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-ai";
 import type { AcpParams } from "./acp-plan.ts";
 
 /** Round-status fields the renders read (AcpRoundStatus structurally satisfies this). */
@@ -123,7 +123,14 @@ export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams
 		provider: "anthropic",
 		model: "acp-synthetic-status",
 		stopReason: "toolUse",
-		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
 		timestamp: 0,
 	};
 	const result: ToolResultMessage = {

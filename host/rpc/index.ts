@@ -27,6 +27,7 @@ import { collabHandlers } from "./collab";
 import { remoteHandlers } from "./remote";
 import { runChangesHandlers } from "./run-changes";
 import { REMOTE_WRITE_DENYLIST } from "../remote.ts";
+import type { RpcHandler } from "./types";
 import { hostI18n } from "../i18n/host.ts";
 
 export const rpcHandlers: Record<string, RpcHandler> = {

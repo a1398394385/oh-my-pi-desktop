@@ -4,6 +4,7 @@
 // slice).
 import { authPolicyFor, formatModelRoleAlias, getKnownRoleIds, getRoleInfo, resolveModelRoleValue } from "../bootstrap.ts";
 import { completeSimple } from "@oh-my-pi/pi-ai";
+import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import { H, sessions, enabledDefaults, sendSessionState } from "../state.ts";
 import { modelCatalog, modelRolesPayload, rebuildScopedModels, capabilityKeysPayload, CAPABILITY_AUTH_IDS, searchAvailabilityPayload } from "../models.ts";
 import { modelsFrame } from "../frames.ts";
@@ -41,19 +42,23 @@ export const modelsHandlers: Record<string, RpcHandler> = {
       // outranks the global defaultThinkingLevel; unset → the global level (Kimi-gated).
       // Without this the base's setModel re-applies the target model's own catalog
       // default (often off), ignoring the user's deliberate level choice.
-      const defaultLevel =
-        enabledDefaults.get(msg.model) ??
-        gateKimiAutoThinking(entry.session.model?.provider, settingsGet(H.settings, "defaultThinkingLevel") as string | undefined);
-      if (defaultLevel) entry.session.setThinkingLevel(defaultLevel);
+      // Wire strings: the SDK clamps unknown selectors, so the union is only a label set here
+      const defaultLevel = gateKimiAutoThinking(
+        entry.session.model?.provider,
+        (enabledDefaults.get(msg.model) ?? settingsGet(H.settings, "defaultThinkingLevel")) as ConfiguredThinkingLevel | undefined,
+      );
+      if (defaultLevel) entry.session.setThinkingLevel(defaultLevel as ConfiguredThinkingLevel);
     }
-    const model = `${entry.session.model.provider}/${entry.session.model.id}`;
+    // setModel above left a live model attached; the SDK types it optional before the first load
+    const live = entry.session.model!;
+    const model = `${live.provider}/${live.id}`;
     // Kimi auto gate: an `auto` level reaching a kimi-code session while the
     // providers-page switch is off is pinned to `high` (Kimi re-bills the whole
     // prefix on every effort switch). Covers the ":level" default, the role
     // path and the model's own thinking.defaultLevel in one post-check.
     const configured = entry.session.configuredThinkingLevel?.();
     const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
-    if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
+    if (gated && gated !== configured) entry.session.setThinkingLevel(gated as ConfiguredThinkingLevel);
     // After a model switch, return the configured selector ("auto" or a
     // concrete level): the bottom-right shows the user-configured mode; the
     // capability-clamped effective value is send-parameter detail and never
@@ -73,7 +78,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
   set_thinking(ws, msg) {
     const entry = sessions.get(msg.sessionId);
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
-    entry.session.setThinkingLevel(gateKimiAutoThinking(entry.session.model?.provider, msg.level));
+    entry.session.setThinkingLevel(gateKimiAutoThinking(entry.session.model?.provider, msg.level) as ConfiguredThinkingLevel);
     // Return the configured selector ("auto" or a concrete level); the clamped effective value never reaches the UI
     sendSessionState(
       ws,
@@ -100,7 +105,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     // the providers-page switch is off, same gate as set_model/set_thinking
     const cycled = entry.session.configuredThinkingLevel?.();
     const gated = gateKimiAutoThinking(result.model.provider, cycled);
-    if (gated && gated !== cycled) entry.session.setThinkingLevel(gated);
+    if (gated && gated !== cycled) entry.session.setThinkingLevel(gated as ConfiguredThinkingLevel);
     sendSessionState(
       ws,
       entry,
@@ -121,7 +126,7 @@ export const modelsHandlers: Record<string, RpcHandler> = {
     const id = String(msg.id ?? "");
     const on = !!msg.enabled;
     if (!H.availableModels.some((m) => `${m.provider}/${m.id}` === id)) throw new Error(hostI18n.t("errors.model.unknown", { model: id }));
-    let entries: string[] = (settingsGet(H.settings, "enabledModels") ?? []).slice();
+    let entries: string[] = ((settingsGet(H.settings, "enabledModels") ?? []) as string[]).slice();
     if (entries.length === 0) {
       entries = H.availableModels.map((m) => `${m.provider}/${m.id}`);
     }

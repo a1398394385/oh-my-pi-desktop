@@ -6,6 +6,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { parseStreamingJsonThrottled } from "@oh-my-pi/pi-utils";
 import type { AssistantMessageEvent } from "@oh-my-pi/pi-ai";
+import type { SessionEntry } from "@oh-my-pi/pi-coding-agent/session/session-entries";
 import { hostI18n } from "./i18n/host.ts";
 import { collectFiles, isDevicePath, outReplyArgs, pathOf, summarizeResult, toolArgsForUi } from "./translate-tool.ts";
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
@@ -186,7 +187,7 @@ export function backfillUserEntryIds(entry: PoolEntry): string | undefined {
   const pending = all.filter((t) => t.role === "user" && !t.entryId);
   if (pending.length === 0) return undefined;
   const used = new Set(all.filter((t) => t.role === "user" && t.entryId).map((t) => t.entryId));
-  const users = (entry.manager?.getEntries() ?? [])
+  const users: { id: string; text: string }[] = (entry.manager?.getEntries() ?? [])
     .filter((e: any) => e?.type === "message" && e.message?.role === "user" && !used.has(e.id as string))
     .map((e: any) => ({ id: e.id as string, text: userEntryText(e.message.content) }));
   let last: string | undefined;
@@ -575,13 +576,13 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
 // Getters translate on every read so a language switch is picked up
 // immediately (module-load-time constants would freeze the startup language).
 export const PHASE_TEXT: Record<string, [string, string]> = {
-  get compact() {
+  get compact(): [string, string] {
     return [hostI18n.t("flows.phase.compactActive"), hostI18n.t("flows.phase.compactDone")];
   },
-  get handoff() {
+  get handoff(): [string, string] {
     return [hostI18n.t("flows.phase.handoffActive"), hostI18n.t("flows.phase.handoffDone")];
   },
-  get rename() {
+  get rename(): [string, string] {
     return [hostI18n.t("flows.phase.renameActive"), hostI18n.t("flows.phase.renameDone")];
   },
 };

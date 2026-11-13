@@ -3,6 +3,7 @@
 // Relocated from the message dispatch in main.ts (third cut).
 import fs from "node:fs";
 import { normalizePathForComparison } from "@oh-my-pi/pi-utils";
+import type { TextContent } from "@oh-my-pi/pi-ai";
 import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import { SessionManager, USER_INTERRUPT_LABEL, AgentRegistry, lookupSetting } from "../bootstrap.ts";
 import { repoGroups } from "../repo-roots.ts";
@@ -59,7 +60,7 @@ export async function buildSessionListPayload() {
     title?: string | null;
     firstMessage?: string;
     modified: Date;
-    messageCount?: number;
+    messageCount: number;
     cwd?: string;
     /** Pool fallback only: session file not yet on disk, so id is the pool UUID, not a real disk session id */
     pending?: boolean;
@@ -847,14 +848,16 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       if (parentTitle) await newManager.setSessionName(`Fork of ${parentTitle}`, "user");
 
       // Extract the selected text (only user messages need it to backfill the composer; after forking an assistant reply the composer stays blank awaiting the question)
-      const selectedText = isUser
-        ? (typeof targetEntry.message.content === "string"
-            ? targetEntry.message.content
-            : (targetEntry.message.content ?? [])
-                .filter((b: any) => b?.type === "text")
-                .map((b: any) => b.text)
-                .join("\n"))
-        : null;
+      const forkMessage = targetEntry.type === "message" ? targetEntry.message : null;
+      const selectedText =
+        forkMessage?.role === "user"
+          ? typeof forkMessage.content === "string"
+            ? forkMessage.content
+            : (forkMessage.content ?? [])
+                .filter((b): b is TextContent => b.type === "text")
+                .map((b) => b.text)
+                .join("\n")
+          : null;
 
       // Push the new session's messages snapshot and the session_branched receipt
       ws.send(JSON.stringify({ type: "messages", sessionId: newSessionId, messages: newTranscript }));
@@ -1140,13 +1143,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         newSessionFile = tempManager.createBranchedSession(entryId, { copyArtifacts: true });
         if (!newSessionFile) throw new Error(hostI18n.t("errors.session.forkCreateFailed"));
         if (targetEntry.type === "message" && targetEntry.message.role === "user") {
+          const message = targetEntry.message;
           selectedText =
-            typeof targetEntry.message.content === "string"
-              ? targetEntry.message.content
-              : (targetEntry.message.content ?? [])
-                  .filter((b: { type?: string }) => b?.type === "text")
-                  .map((b: { text?: string }) => b.text ?? "")
-                  .join("\n");
+            typeof message.content === "string"
+              ? message.content
+              : (message.content ?? []).filter((b): b is TextContent => b.type === "text").map((b) => b.text).join("\n");
         }
       } else {
         const peek = await SessionManager.peekSessionInit(sourcePath);
@@ -1238,7 +1239,8 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!agentId) throw new Error(hostI18n.t("errors.param.missingSubagentId"));
     const action = msg.action === "cancel" || msg.action === "steer" ? msg.action : undefined;
     if (!action) throw new Error(hostI18n.t("errors.subagent.invalidAction", { action: String(msg.action) }));
-    const registry = entry.subagentRegistry as { getSubagents: () => unknown[] } | undefined;
+    // PoolEntry.subagentRegistry is untyped; derive the registry shape from the SDK handlers that consume it
+    const registry = entry.subagentRegistry as Parameters<typeof handleRpcCancelSubagent>[0] | undefined;
     if (!registry) throw new Error(hostI18n.t("errors.subagent.registryUnavailable"));
     const { handleRpcCancelSubagent, handleRpcSteerSubagent } = await import(
       "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-mode"

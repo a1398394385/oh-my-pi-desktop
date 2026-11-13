@@ -10,6 +10,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent";
+import type { ConfiguredThinkingLevel } from "@oh-my-pi/pi-tui/thinking";
 import { computeNonMessageTokens } from "@oh-my-pi/pi-tui/status-line/context-usage";
 import { createAgentSession, AgentRegistry, SessionManager } from "./bootstrap.ts";
 import {
@@ -357,6 +358,9 @@ export async function createSessionCore(
   // frontend's openSessions map, branch/fork results) must go by `path`, never by id —
   // the pool UUID and disk ids never coincide.
   const sessionId = crypto.randomUUID();
+  // Every createSessionCore caller hands in a persisting manager (SessionManager.create/open),
+  // so the manager has already allocated its session file path.
+  const sessionFilePath = session.sessionFile!;
   const entry: PoolEntry = {
     session,
     sessionResult: result, // Host injection points such as setToolUIContext
@@ -381,9 +385,9 @@ export async function createSessionCore(
     activeMs: 0,
     activeStartedAt: null,
     lastActiveAt: Date.now(), // N2 idle-eviction clock; see state.ts PoolEntry
-    path: session.sessionFile,
+    path: sessionFilePath,
     pollKnownSize: 0, // External-write detection: 0 = not first-scanned yet
-    awaitDiskList: !fs.existsSync(session.sessionFile), // brand-new only: a loaded/branched session's file already exists
+    awaitDiskList: !fs.existsSync(sessionFilePath), // brand-new only: a loaded/branched session's file already exists
     externalWrite: false,
     previousPaths: [], // Persistence-move history: old file locations keep resolving to this entry (see state.ts)
     cwd,
@@ -484,7 +488,11 @@ export async function spawnSession(
   // Explicit level from the UI wins; otherwise the model's own default (the
   // enabledModels "provider/id:level" suffix, same precedence as set_model) —
   // scheduler/ACP spawns pass no level and would otherwise sit on the SDK default.
-  const level = thinkingLevel ?? (entry.session.model ? enabledDefaults.get(`${entry.session.model.provider}/${entry.session.model.id}`) : null);
+  // Both sources are wire strings; the SDK clamps unknown selectors, so the
+  // union is only a label set and no validation is added here.
+  const level = (
+    thinkingLevel ?? (entry.session.model ? enabledDefaults.get(`${entry.session.model.provider}/${entry.session.model.id}`) : null)
+  ) as ConfiguredThinkingLevel | null;
   if (level) {
     try {
       entry.session.setThinkingLevel(level);
@@ -498,7 +506,8 @@ export async function spawnSession(
   try {
     const configured = entry.session.configuredThinkingLevel?.();
     const gated = gateKimiAutoThinking(entry.session.model?.provider, configured);
-    if (gated && gated !== configured) entry.session.setThinkingLevel(gated);
+    // gateKimiAutoThinking passes wire strings through unchanged (SDK clamps them).
+    if (gated && gated !== configured) entry.session.setThinkingLevel(gated as ConfiguredThinkingLevel);
   } catch (err) {
     safeStderr(`[host] kimi auto-thinking gate failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
   }

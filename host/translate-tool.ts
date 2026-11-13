@@ -66,6 +66,8 @@ export function collectFiles(name: string, args: any, details?: any): string[] {
   return out;
 }
 
+type TaskArgItem = { name?: unknown; agent?: unknown; isolated?: unknown; task?: unknown };
+
 export function toolArgsForUi(name: string, args: any): Record<string, unknown> {
   if (!args || typeof args !== "object") return {};
   if (name === "bash" || name === "shell") return { command: String(args.command ?? "").slice(0, 4000) };
@@ -118,7 +120,7 @@ export function toolArgsForUi(name: string, args: any): Record<string, unknown> 
       task: typeof args.task === "string" ? args.task.slice(0, 20_000) : undefined,
       context: typeof args.context === "string" ? args.context.slice(0, 20_000) : undefined,
       tasks: Array.isArray(args.tasks)
-        ? args.tasks.map((it) => ({
+        ? (args.tasks as TaskArgItem[]).map((it) => ({
             name: it?.name,
             agent: it?.agent,
             isolated: it?.isolated,

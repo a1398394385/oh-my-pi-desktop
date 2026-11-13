@@ -38,7 +38,7 @@ import { createBgJobsRefresh } from "./async-jobs.ts";
 import { maybeRefreshSessionTitle, syncBranchTitle } from "./titles.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
-import { getExtensionUISelectOptionLabel, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
+import { getExtensionUISelectOptionLabel, type ExtensionUIContext, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
 import { createSessionModes } from "./mode-control.ts";
 import { cancelPrediction, requestPrediction } from "./prediction.ts";
 import { rerenderAssistantMessage } from "./assistant-text.ts";
@@ -130,7 +130,11 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     }
     deltas.push(translateEvent(ev, entry));
     // TTS vocalization bridge: forward this session's deltas as tts_* frames (speech.enabled)
-    handleVoiceEvent(bus, ev, sessionId);
+    // voice.ts types its event by the message/message_update members only; the
+    // session union's `notice` member carries a string `message`, so it is
+    // excluded here rather than widening the handler's signature (it has no
+    // voice semantics either way).
+    if (ev.type !== "notice") handleVoiceEvent(bus, ev, sessionId);
     // After the todo tool persists, push the latest task list (TodoTracker updates after the tool result)
     if (ev.type === "tool_execution_end" && ev.toolName === "todo") {
       bus.send(JSON.stringify(stampEvent({ type: "todos", sessionId, phases: entry.session.getTodoPhases() })));
@@ -253,6 +257,11 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     }
   });
   // Approvals/dialogs: in non-yolo mode the approval gate suspends via ExtensionUIContext.select awaiting the user's choice
+  // Headless shim: only the dialog-shaped subset extensions reach on this host is
+  // implemented (the rest are TUI-only, so extensions get the same missing-method
+  // behaviour they had before this host existed). The runner types its UI context
+  // as the full interface, so the shim is asserted at this single declaration
+  // instead of stubbing the TUI-only members with no-ops.
   const uiCtx = {
     // UI timeout for tools like ask counts from dialog presentation, not from when the tool invoked
     timeoutStartsOnPresentation: true,
@@ -364,7 +373,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
         deadlineMs !== undefined && deadlineMs > 0 ? { ms: deadlineMs, answer: timedOutAskAnswer(questions) } : undefined,
       ).then((v) => (v === undefined ? undefined : parseAskAnswer(v)));
     },
-  };
+  } as ExtensionUIContext;
   entry.sessionResult.setToolUIContext(uiCtx, true);
   // The crucial step (same as ACP, acp-agent.ts:2631): runner.hasUI() checks
   // the uiContext injected via initialize; calling only setToolUIContext is
@@ -511,9 +520,11 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
   // Re-reading the full manager state per event beats replaying event payloads
   // (out-of-order/coalesced events cannot desync the view).
   const unsubMcp = entry.sessionResult?.mcpManager?.addConnectionStatusListener?.(() => {
+    const mcpManager = entry.sessionResult.mcpManager;
+    if (!mcpManager) return;
     bus.send(
       JSON.stringify(
-        stampEvent({ type: "capabilities_mcp", mcp: snapshotMcp(entry.sessionResult.mcpManager) }),
+        stampEvent({ type: "capabilities_mcp", mcp: snapshotMcp(mcpManager) }),
       ),
     );
   });

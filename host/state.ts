@@ -18,6 +18,7 @@ import { hostI18n } from "./i18n/host.ts";
 // The wire version is the field superset (adds role "error" + the `intent` field).
 import type { TranscriptItem, TurnUsage, AdvisorNote } from "./wire/payloads.ts";
 import type { McpSharingMode } from "./mcp-pool.ts";
+import type { GoalController } from "./goal.ts";
 import type { AssistantMessageLike } from "./assistant-text.ts";
 export type { TranscriptItem, TurnUsage, AdvisorNote };
 export type PoolEntry = {

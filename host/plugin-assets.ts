@@ -52,6 +52,8 @@ export interface PluginAssetItem {
   key?: string;
   version?: string;
   path?: string;
+  /** Symlink-resolved package root (marketplace installs symlink node_modules into the cache dir) */
+  realPath?: string;
   scope?: "user" | "project";
   enabled?: boolean;
   description?: string;
@@ -426,8 +428,10 @@ async function scanPluginContents(pkgPath: string, manifest: PluginManifestLike)
       };
       for (const [serverName, cfg] of Object.entries(parsed.mcpServers ?? {})) {
         if (!cfg || typeof cfg !== "object") continue;
-        if (typeof cfg.command !== "string" && typeof cfg.url !== "string") continue;
-        push("mcp", { name: serverName, description: typeof cfg.command === "string" ? cfg.command : cfg.url }, serverName);
+        // command wins over url; a server with neither string is not usable
+        const description = typeof cfg.command === "string" ? cfg.command : cfg.url;
+        if (typeof description !== "string") continue;
+        push("mcp", { name: serverName, description }, serverName);
       }
     } catch {}
   }

@@ -1,25 +1,12 @@
-// Host typecheck, tier 1: the self-contained state/ACP/wire vocabulary.
-// The root tsconfig only covers ui-src, so host/ was outside every tsc project.
-// Expansion rule: a host file joins this project only when it and its whole import
-// closure typecheck with zero errors here. Never suppress errors to force a file in;
-// narrow the include instead and record why.
+// Host typecheck, full coverage: every host/**/*.ts file.
+// The root tsconfig only covers ui-src, so host/ needs this project to be typed at all.
+// lib/target follow the Bun runtime (ES2024); bun-types supplies Bun/bun:* globals.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": [],
+    "types": ["bun"],
+    "lib": ["ES2024", "DOM"],
     "allowImportingTsExtensions": true
   },
-  "include": [
-    "host/wire/**/*.ts",
-    "host/acp-compress.ts",
-    "host/acp-fingerprint.ts",
-    "host/acp-persist.ts",
-    "host/acp-plan.ts",
-    "host/acp-projection.ts",
-    "host/acp-refs.ts",
-    "host/automations/cron.ts",
-    "host/automations/types.ts",
-    "host/mode-state.ts",
-    "host/rpc/types.ts"
-  ]
+  "include": ["host/**/*.ts"]
 }

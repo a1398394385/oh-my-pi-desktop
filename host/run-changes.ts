@@ -369,7 +369,7 @@ export async function runRevertState(entry: PoolEntry, anchor: string): Promise<
 
 /** Revert one run's change to one file; returns the change record's files for the run_changes
  *  re-push. Fails closed on any mismatch — never overwrites content it cannot account for. */
-export async function revertRunFile(entry: PoolEntry, anchor: string, filePath: string): Promise<RunChangeFile[]> {
+export async function revertRunFile(entry: PoolEntry, anchor: string, filePath: string): Promise<RecordedChangeFile[]> {
   const records = readRunChanges(entry.manager?.getEntries() ?? []);
   const { change, file } = findRecord(records, anchor, filePath);
   const blocked = await revertBlocker(entry, records, change, file);

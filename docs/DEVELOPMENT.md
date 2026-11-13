@@ -71,7 +71,7 @@ Full-repo checks:
 bun run check
 ```
 
-Covers: capabilities gate / frame fan-out gate / host boundaries / style token gate / architecture ratchet / comment language / encoding gate / omp imports / version consistency / i18n keys / settings copy / UI typecheck.
+Covers: capabilities gate / frame fan-out gate / host boundaries / style token gate / architecture ratchet / comment language / encoding gate / omp imports / version consistency / i18n keys / settings copy / UI typecheck / host typecheck.
 
 ## Releasing
 

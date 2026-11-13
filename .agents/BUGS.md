@@ -145,7 +145,7 @@
 | BUG-151 | 后台任务失败/取消被显示成「已完成」——四态塌成一个布尔 | 2026-11-12 |
 | BUG-152 | 目标预算耗尽在 UI 上不可见——卡片只认 `enabled` | 2026-11-12 |
 | BUG-153 | worktree 9 个错误码只有 4 个有文案——其余落进通用失败 | 2026-11-12 |
-| BUG-154 | `host/` 不在任何 tsc 项目内——状态字面量漂移无人看守 | 2026-11-12 |
+| BUG-154 | `host/` 不在任何 tsc 项目内——状态字面量漂移无人看守（已全量收口） | 2026-11-12 |
 | BUG-155 | 通知授权状态用 if/else 链兜底——未知状态被伪装成「未询问」 | 2026-11-12 |
 | BUG-156 | i18n 门禁对动态 key 视而不见——新增状态渲染原始 key | 2026-11-12 |
 | BUG-157 | 子代理状态两套平行表——未知状态被谎报成「运行中」 | 2026-11-12 |
@@ -2285,9 +2285,16 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 
 **验证**：`bunx tsc -p tsconfig.host.json` exit 0；负向对照（给 union 赋 `"bogus-code"`）报 TS2322。`bun run check` 全绿。
 
-**遗留**：全量 host 仍有约 130 个类型错误（29 个是 Bun 全局类——本机 `node_modules/bun-types` 缺 `.d.ts`、`@types/bun` 未安装），需按判据逐档收紧，不是本条能一次做完的事。
+**收口（2026-11-13）**：tier-1 子集扩到 `host/**/*.ts` 全量，75 个错误清零，`tsconfig.host.json` 的 `include` 不再需要逐档列举。
 
-**教训**：类型门禁的覆盖面决定了漂移能不能被发现；只覆盖一半的仓库等于把另一半放在没有守门人的走廊里。
+- 前置三项，缺一都解不掉：① 装 `@types/bun` 1.4.4（`bun-types` 是纯类型包，`types: []` 时代被有意关掉）；② `lib` 升 `ES2024`（`Promise.withResolvers` / `findLast` / `findLastIndex` 报 TS2550）；③ `host/env.d.ts` 声明 `*.md` 为 text 模块（`bunfig` 的 `[loader] ".md" = "text"`，`host/bootstrap.ts` 静态导入三个 prompt 镜像）。
+- **排查陷阱**：本机 `node_modules/bun-types` 曾残缺——只有 `docs/`、没有任何 `.d.ts`，于是装了 `@types/bun` 也照样报 29 个「Cannot find name 'Bun'」。`rm -rf node_modules/bun-types && bun install` 后正常；遇到「装了类型包还说找不到 Bun」先查这一点，别去改代码。
+- 剩余 75 个全是实现与类型漂移，无一处需要 `@ts-ignore`：本地 interface 漏字段（`RemoteConfig.devices`、`PluginAssetItem.realPath`）、SDK 导出搬家（`@oh-my-pi/pi-agent-core` → `pi-ai` 的消息类型、`mcp/types` 的 `MCPServerConnection`）、判别联合未收窄（`SessionEntry.message`、`AgentMessage.content`）、`handleVoiceEvent` 手写窄形状（`voice.ts` 仍是手写形状，调用点用 `type !== "notice"` 判别挡住，属遗留）。
+- 顺带修掉的真缺陷：`host/entry-tree.ts` 顶部重复导入同一组符号（TS2300 六连）；`host/run-changes.ts` 的 `revertRunFile` 声明返回 `RunChangeFile[]` 实际返回带内部 `idx` 的 `RecordedChangeFile[]`（调用点原靠 `as` 掩盖）。
+
+**验证**：`bun run host:typecheck` 0 错误；`bun run check` 全绿（620 条声明边、架构门禁、i18n 等不变）；`bun run host:build` 通过；`bun run smoke` 端到端通过（建会话 → prompt → 落盘 → 恢复历史）。
+
+**教训**：类型门禁的覆盖面决定了漂移能不能被发现；只覆盖一半的仓库等于把另一半放在没有守门人的走廊里。「按判据逐档收紧」的替代方案是先量清错误构成——一半是环境假象（类型包残缺 / lib 版本），处理完环境后剩余量级才反映真实欠债。
 
 ### BUG-155: 通知授权状态用 if/else 链兜底——未知状态被伪装成「未询问」
 
