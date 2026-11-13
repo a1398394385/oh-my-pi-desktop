@@ -87,7 +87,7 @@ function SubagentDetail({ sub, sessionId, subagentId }: { sub: SubagentState; se
         </button>
       </div>
       <div className={"rb-scroll" + (kids ? " kids-in" : "")}>
-        // key: switching subagents must remount, or the previous one’s markdown view mode sticks
+        {/* key: switching subagents must remount, or the previous one's markdown view mode sticks */}
         <HubDetail key={subagentId} sub={sub} subagentId={subagentId} sessionId={sessionId} t={t} />
       </div>
     </>
