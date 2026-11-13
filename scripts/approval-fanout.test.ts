@@ -2,11 +2,11 @@
 // late-joining remote UI stayed on screen after the desktop answered, and answering it
 // failed with "approval request not found" — the receipt only went to the answering socket).
 //
-// The request frame is per-answerer by design (requestApproval / attachEntryUi replay), so
+// The request frame is per-answerer by design (requestApproval / replayPendingApprovals), so
 // the receipt must fan out over the session's uiSockets instead.
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/approval-fanout.test.ts
 import { describe, expect, test } from "bun:test";
-import { pendingApprovals, requestApproval, sessions, settleApprovalResponse, type PoolEntry } from "../host/state.ts";
+import { pendingApprovals, replayPendingApprovals, requestApproval, sessions, settleApprovalResponse, type PoolEntry } from "../host/state.ts";
 
 interface FakeSocket {
   sent: string[];
@@ -63,6 +63,32 @@ describe("approval_resolved fan-out", () => {
     } finally {
       pendingApprovals.clear();
       sessions.delete("probe-approval");
+    }
+  });
+
+  test("a late joiner gets the open dialog only through the load path's replay", async () => {
+    const desktop = fakeSocket();
+    const lateJoiner = fakeSocket();
+    const otherSession = fakeSocket();
+    attachEntry("probe-replay", [desktop]);
+    try {
+      const wait = requestApproval(desktop, "probe-replay", "probe", ["Approve", "Deny"]);
+      const request = desktop.frames().find((f) => f.type === "approval_request")!;
+
+      // The replay is what the load path calls after session_created + snapshot; it is not
+      // part of attachEntryUi anymore, because the frontend drops the frame until the slot exists.
+      replayPendingApprovals(lateJoiner, "probe-replay");
+      const replayed = lateJoiner.frames().filter((f) => f.type === "approval_request");
+      expect(replayed).toHaveLength(1);
+      expect(replayed[0]!.requestId).toBe(request.requestId);
+      expect(replayed[0]!.sessionId).toBe("probe-replay");
+      expect(otherSession.sent).toHaveLength(0);
+
+      settleApprovalResponse(lateJoiner, { requestId: String(request.requestId), answer: "Approve" });
+      await expect(wait).resolves.toBe("Approve");
+    } finally {
+      pendingApprovals.clear();
+      sessions.delete("probe-replay");
     }
   });
 

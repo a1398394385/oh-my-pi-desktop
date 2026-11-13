@@ -454,7 +454,11 @@ function modelRegistryContextWindow(model: string | null): number | undefined {
 // recurses: a directory's own name is the display name of the parent whose transcript lives
 // beside it, which is exactly what the roster's tree mode matches on (parent ids are not
 // persisted). Top-level files hang off "Main".
-export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: string, includeTools: boolean) {
+//
+// skipRecent=false for a rebuilt entry: its pool session is a fresh AgentSession, so no live
+// frame can ever land on this view — skipping a transcript that is still being written drops
+// the only copy (opening a running subagent's own session showed 1 of its 3 children).
+export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: string, includeTools: boolean, skipRecent = true) {
   if (!sessionPath.endsWith(".jsonl")) return;
   const rootDir = sessionPath.slice(0, -".jsonl".length);
   const files: { file: string; parent: string; parentPath: string; rel: string }[] = [];
@@ -474,9 +478,11 @@ export function replaySubagentHistory(ws: any, sessionPath: string, sessionId: s
         continue;
       }
       if (name.endsWith(".jsonl") && isFile) {
-        // Still being written = a live subagent of a pooled session; its real frames arrive through subscriptions
+        // Still being written = a live subagent of the pooled session this view watches;
+        // its real frames arrive through subscriptions (rebuilt entries: no subscriptions,
+        // see skipRecent)
         try {
-          if (Date.now() - fs.statSync(full).mtimeMs < HIST_SUBAGENT_RECENT_MS) continue;
+          if (skipRecent && Date.now() - fs.statSync(full).mtimeMs < HIST_SUBAGENT_RECENT_MS) continue;
         } catch {
           continue;
         }

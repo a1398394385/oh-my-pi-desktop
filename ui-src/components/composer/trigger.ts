@@ -127,7 +127,10 @@ export function isBashMode(text: string): boolean {
     gets no trailing space */
 export function insertFile(value: string, dir: boolean, quoted: boolean): string {
   const needsQuote = quoted || value.includes(" ");
-  const body = dir ? value + "/" : value;
+  // fuzzyFind already suffixes directory matches with "/", so a drilled
+  // directory must not gain a second one ("docs//" would either re-list with a
+  // doubled prefix or drop back to fuzzy matching).
+  const body = dir && !value.endsWith("/") ? value + "/" : value;
   return "@" + (needsQuote ? `"${body}"` : body) + (dir ? "" : " ");
 }
 
@@ -137,4 +140,13 @@ export function insertFile(value: string, dir: boolean, quoted: boolean): string
     the host dispatches via parseSkillInvocation) */
 export function insertCommand(name: string): string {
   return "/" + name + " ";
+}
+
+/** Insertion text after accepting a session candidate: the "@session:" prefix
+    marks a conversation reference for the host (it inlines the session's turns
+    and strips the marker). The base resolves mentions exactly and treats an
+    unresolvable "@..." as prose, so the prefixed form never reads a file. Paths
+    with whitespace take the quoted form the host parser accepts. */
+export function insertSessionRef(sessionPath: string): string {
+  return "@session:" + (/\s/.test(sessionPath) ? `"${sessionPath}"` : sessionPath) + " ";
 }

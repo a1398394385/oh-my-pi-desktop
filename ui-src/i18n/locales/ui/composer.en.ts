@@ -73,6 +73,8 @@ export const composerEn = {
   paletteSelect: "Select",
   paletteSwitchCategory: "Switch category",
   paletteAdd: "Add",
+  // PredictionList.tsx
+  predictionTab: "Predictions",
   // prompt_dropped handler: the submit was cancelled before it reached the agent
   cancelledBeforeSend: "Cancelled — message restored to the input",
   // SelectionAnnotate.tsx / AnnotationChips.tsx: selection comments over assistant output

@@ -73,6 +73,8 @@ export const composerZh = {
   paletteSelect: "选择",
   paletteSwitchCategory: "切换类别",
   paletteAdd: "添加",
+  // PredictionList.tsx
+  predictionTab: "预测",
   // prompt_dropped handler: 消息未到达模型即被取消
   cancelledBeforeSend: "已取消，消息已放回输入框",
   // SelectionAnnotate.tsx / AnnotationChips.tsx: selection comments over assistant output

@@ -168,7 +168,7 @@ if (new URLSearchParams(location.search).has("preview")) {
         { role: "user", text: "把主题色改成蓝色" },
         { role: "assistant", text: "先读一下样式文件。" },
         readItem("src/style.css"),
-        { role: "thinking", text: "思考 · 3 秒", expandable: true, expanded: true,
+        { role: "thinking", text: "3 秒", expandable: true, expanded: true,
           thinking: "1. 定位颜色定义\n2. 替换为 blue\n" + "逐行核对相邻规则的级联影响\n".repeat(12) },
         { role: "tool", name: "edit", text: "", args: { path: "src/style.css" }, files: ["src/style.css"],
           added: 2, removed: 1, diffExpanded: true, diffContent: diffSample },

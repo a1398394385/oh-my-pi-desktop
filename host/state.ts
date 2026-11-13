@@ -661,10 +661,25 @@ export function requestApproval(
   return promise;
 }
 
+/**
+ * Re-show the dialogs still open on another UI to a socket that just loaded the
+ * session (remote control joining mid-approval, frontend reload), so it can
+ * answer them too. The caller must have pushed session_created and the
+ * transcript snapshot first: before the slot exists the frontend has nowhere to
+ * put the card, and session_created resets its pendingApprovals list — the old
+ * attach-time replay was silently dropped, which is how a pending permission
+ * card never reached the remote.
+ */
+export function replayPendingApprovals(ws: { send(data: string): unknown }, sessionId: string): void {
+  for (const pending of pendingApprovals.values()) {
+    if (pending.sessionId === sessionId && pending.frame) ws.send(JSON.stringify(stampEvent(pending.frame)));
+  }
+}
+
 /** approval_resolved fan-out: the request frame is replayed to every UI that attaches
- *  mid-approval (attachEntryUi), so the receipt must reach those UIs too — a card left
- *  standing on the other channel answers an already-settled requestId and fails with
- *  "approval not found". The answerer gets its own copy first. */
+ *  mid-approval (replayPendingApprovals), so the receipt must reach those UIs too — a
+ *  card left standing on the other channel answers an already-settled requestId and
+ *  fails with "approval not found". The answerer gets its own copy first. */
 function pushApprovalResolved(
   ws: { send(data: string): unknown },
   sessionId: string,

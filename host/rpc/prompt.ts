@@ -44,15 +44,20 @@ import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
 import { formatSessionReference } from "../session-context.ts";
 
+// Conversation reference written by the composer's session chip: "@session:<path>",
+// quoted when the path carries whitespace. Matched and stripped before the base's
+// own @mention scan, so the marker never reaches it as prose.
+const SESSION_REF_RE = /@session:(?:"([^"]+)"|(\S+)) ?/g;
+
 // Attachments sent by the frontend along with prompt: images as base64, text-kind as file
 // contents (legacy inline path), path-kind as absolute paths the base @-reads itself
 interface PromptAttachment {
-  kind: "image" | "text" | "path" | "session";
+  kind: "image" | "text" | "path";
   mime?: string;
   data?: string; // image: base64 (no data: prefix)
-  name?: string; // text: file name / session: session title
+  name?: string; // text: file name
   text?: string; // text: file contents
-  path?: string; // path: absolute path, appended to the prompt as an @mention / session: session file inlined as a quoted block
+  path?: string; // path: absolute path, appended to the prompt as an @mention
 }
 
 // ---------- Composer sigils: command list and @ file candidates ----------
@@ -269,38 +274,26 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
   sendCommandsFrame(ws, null, list, true);
 }
 
-// @ candidates: absolute-path / home-dir prefixes go through readdir prefix
-// listing (matching the TUI autocomplete's directory completion); everything
-// else goes through fuzzyFind whole-repo fuzzy search; any error silently
-// returns empty (the popup shows no match).
+// @ candidates: a path prefix (bare `@`, or any query containing "/") completes
+// against one directory listing -- the TUI autocomplete's directory completion.
+// fuzzyFind is wrong for both cases: an empty query walks the whole tree and
+// fills the card with deep directories, and a path prefix matches the same name
+// across unrelated subtrees (".cargo/" also offering cargo/crates/...). Anything
+// else (no "/") goes through whole-repo fuzzy search. Any error silently returns
+// empty (the popup shows no match).
 // Directories carry `empty`: Tab accepts a leaf directory but drills into a
 // non-empty one, so the composer decides from this flag instead of guessing.
 export async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean; empty?: boolean }>> {
+  if (!query) return await listPrefix(root, "", "");
   if (query.startsWith("/") || query.startsWith("~")) {
-    try {
-      const expanded = query.startsWith("~") ? os.homedir() + query.slice(1) : query;
-      const searchDir = query.endsWith("/") ? expanded : path.dirname(expanded);
-      const base = query.endsWith("/") ? "" : path.basename(expanded);
-      const dirents = await readdir(searchDir, { withFileTypes: true });
-      const prefix = base.toLowerCase();
-      const dirPart = query.endsWith("/") ? query : query.slice(0, query.length - path.basename(query).length);
-      const rows = (
-        await Promise.all(
-          dirents
-            .filter((d) => d.name !== ".git" && d.name.toLowerCase().startsWith(prefix))
-            .map(async (d) => ({ d, p: dirPart + d.name, dir: await resolvesToDirectory(path.join(searchDir, d.name)) })),
-        )
-      )
-        .sort((a, b) => Number(b.dir) - Number(a.dir) || a.p.localeCompare(b.p))
-        .slice(0, 100);
-      return await Promise.all(
-        rows.map(async ({ d, p, dir }) =>
-          dir ? { path: p, dir: true, empty: await dirIsEmpty(path.join(searchDir, d.name)) } : { path: p, dir: false },
-        ),
-      );
-    } catch {
-      return [];
-    }
+    const expanded = query.startsWith("~") ? os.homedir() + query.slice(1) : query;
+    const dirPart = query.endsWith("/") ? query : query.slice(0, query.length - path.basename(query).length);
+    const searchDir = query.endsWith("/") ? expanded : path.dirname(expanded);
+    return await listPrefix(searchDir, dirPart, query.endsWith("/") ? "" : path.basename(expanded));
+  }
+  if (query.includes("/")) {
+    const cut = query.lastIndexOf("/") + 1;
+    return await listPrefix(path.join(root, query.slice(0, cut)), query.slice(0, cut), query.slice(cut));
   }
   try {
     const r = await fuzzyFind({ query, path: root, maxResults: 100, hidden: true, gitignore: true, cache: true });
@@ -309,6 +302,32 @@ export async function listFileMatches(root: string, query: string): Promise<Arra
         const abs = path.join(root, m.path);
         return (await resolvesToDirectory(abs)) ? { path: m.path, dir: true, empty: await dirIsEmpty(abs) } : { path: m.path, dir: false };
       }),
+    );
+  } catch {
+    return [];
+  }
+}
+
+// One directory's entries whose name starts with `base`, directories first;
+// `dirPart` is prepended verbatim to every returned path so relative queries
+// keep their own separator spelling. Errors read as "no candidates".
+async function listPrefix(searchDir: string, dirPart: string, base: string): Promise<Array<{ path: string; dir: boolean; empty?: boolean }>> {
+  try {
+    const prefix = base.toLowerCase();
+    const dirents = await readdir(searchDir, { withFileTypes: true });
+    const rows = (
+      await Promise.all(
+        dirents
+          .filter((d) => d.name !== ".git" && d.name.toLowerCase().startsWith(prefix))
+          .map(async (d) => ({ d, p: dirPart + d.name, dir: await resolvesToDirectory(path.join(searchDir, d.name)) })),
+      )
+    )
+      .sort((a, b) => Number(b.dir) - Number(a.dir) || a.p.localeCompare(b.p))
+      .slice(0, 100);
+    return await Promise.all(
+      rows.map(async ({ d, p, dir }) =>
+        dir ? { path: p, dir: true, empty: await dirIsEmpty(path.join(searchDir, d.name)) } : { path: p, dir: false },
+      ),
     );
   } catch {
     return [];
@@ -615,19 +634,25 @@ async function handlePrompt(
   if (textBlocks.length > 0) {
     finalText = text ? `${textBlocks.join("\n\n")}\n\n${text}` : textBlocks.join("\n\n");
   }
-  // Referenced existing sessions (@ session tab): inline their turns here so the
-  // UI never has to read session files. Appended after the user's own text so the
-  // session's first message (sidebar preview, title generation) stays the user's
-  // words; unreadable (deleted/empty) references are skipped rather than failing
-  // the send.
+  // Referenced existing sessions ride inside the prompt text as "@session:<path>"
+  // markers (composer chips). Each marker is pulled out and replaced by the
+  // session's turns, appended after the user's own words so the session's first
+  // message (sidebar preview, title generation) stays what the user wrote.
+  // Unreadable (deleted/empty) references are dropped rather than failing the send.
+  const refPaths: string[] = [];
+  finalText = finalText.replace(SESSION_REF_RE, (_m, quoted: string | undefined, plain: string | undefined) => {
+    refPaths.push(quoted ?? plain ?? "");
+    return "";
+  });
   const sessionBlocks: string[] = [];
-  for (const f of files ?? []) {
-    if (f.kind !== "session" || typeof f.path !== "string" || !f.path) continue;
-    const block = await formatSessionReference(f.path, String(f.name ?? "session"));
+  for (const refPath of refPaths) {
+    // Only the path travels in the text; the block title is the session file name
+    const name = refPath.split("/").pop()?.replace(/\.jsonl$/, "") || "session";
+    const block = refPath ? await formatSessionReference(refPath, name) : null;
     if (block) sessionBlocks.push(block);
   }
   if (sessionBlocks.length > 0) {
-    finalText = finalText ? `${finalText}\n\n${sessionBlocks.join("\n\n")}` : sessionBlocks.join("\n\n");
+    finalText = finalText.trim() ? `${finalText.trim()}\n\n${sessionBlocks.join("\n\n")}` : sessionBlocks.join("\n\n");
   }
   // Natively picked / dropped files arrive as absolute paths. Append each as an @mention so
   // the base reads it into its own fileMention message (text, images, video contact sheets and

@@ -1,7 +1,9 @@
-// Composer prediction alternatives list (ui-src/components/composer/PredictionList.tsx): renders
-// every candidate, ↑↓ moves the highlight, Enter replaces the draft through onPick and closes the
-// list. The real host path (ghost + first Tab) is exercised against a live model elsewhere; this
-// smoke pins the list's own state machine, which no model run can force to have 4 candidates.
+// Composer prediction card (ui-src/components/composer/PredictionList.tsx): renders every
+// candidate under one "Predictions" tab. ↑↓ moves the highlight AND writes that candidate into
+// the composer (onPick); Tab and Enter are the editor's business and must not be claimed, while
+// Esc closes. The real host path (ghost + first Tab) is exercised against a live model
+// elsewhere; this smoke pins the card's own state machine, which no model run can force to have
+// four candidates.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-prediction-list.tsx
 import { Window } from "happy-dom";
 import { strict as assert } from "node:assert";
@@ -78,7 +80,7 @@ await act(async () => {
   );
 });
 
-const rows = () => Array.from(document.querySelectorAll(".palette-list .mi-tx")).map((e) => e.textContent);
+const rows = () => Array.from(document.querySelectorAll(".slash-list .mi-tx")).map((e) => e.textContent);
 assert.deepEqual(rows(), ["run the tests", "ship it", "ask for review"], "every candidate renders");
 
 const key = (k: string) => document.dispatchEvent(new win.KeyboardEvent("keydown", { key: k, bubbles: true }));
@@ -86,23 +88,28 @@ await act(async () => {
   key("ArrowDown");
 });
 assert.equal((document.querySelector(".mi.on .mi-tx") as HTMLElement | null)?.textContent, "ship it", "ArrowDown moves the highlight");
+assert.deepEqual(picked, ["ship it"], "ArrowDown also applies that candidate to the composer");
 
+await act(async () => {
+  key("ArrowUp");
+});
+assert.deepEqual(picked, ["ship it", "run the tests"], "ArrowUp applies the previous candidate");
+
+// Tab and Enter belong to the editor: the card must not apply, close, or swallow them
+await act(async () => {
+  key("Tab");
+});
+assert.deepEqual(picked, ["ship it", "run the tests"], "Tab is not the card's to claim");
 await act(async () => {
   key("Enter");
 });
-assert.deepEqual(picked, ["ship it"], "Enter picks the highlighted candidate");
-assert.equal(useAppStore.getState().openSessions.get(path)?.predictionOpen, false, "picking closes the list");
+assert.deepEqual(picked, ["ship it", "run the tests"], "Enter is not the card's to claim");
+assert.equal(useAppStore.getState().openSessions.get(path)?.predictionOpen, true, "Tab/Enter leave the card open");
 
-await act(async () => {
-  useAppStore.setState((st) => {
-    const s = st.openSessions.get(path)!;
-    return { openSessions: new Map(st.openSessions).set(path, { ...s, predictionOpen: true }) };
-  });
-});
 await act(async () => {
   key("Escape");
 });
-assert.equal(useAppStore.getState().openSessions.get(path)?.predictionOpen, false, "Escape closes the list");
+assert.equal(useAppStore.getState().openSessions.get(path)?.predictionOpen, false, "Escape closes the card");
 
 await act(async () => root.unmount());
-console.log("✓ prediction list smoke: 3 rows, ↑↓ move, Enter picks, Esc closes");
+console.log("✓ prediction card smoke: 3 rows, ↑↓ apply live, Tab/Enter untouched, Esc closes");

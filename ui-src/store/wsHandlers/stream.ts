@@ -94,6 +94,9 @@ export const streamHandlers = {
   approval_request(msg) {
     updateSession(msg.sessionId, (s) => {
       s.pendingApprovals ??= [];
+      // A load path may replay the same open dialog (two load_session frames in flight):
+      // the second card would answer a requestId that is already settled.
+      if (s.pendingApprovals.some((p) => p.requestId === msg.requestId)) return;
       s.pendingApprovals.push({
         requestId: msg.requestId,
         title: msg.title,

@@ -98,4 +98,22 @@ assert.equal(useAppStore.getState().diskProjects[0].sessions[1].title, "待落�
 assert.equal(sessionLabel({ title: null, firstMessage: "(no messages)" }), t("sidebar.emptySession"), "哨兵字符串不作为标题显示");
 assert.equal(sessionLabel({ title: null, firstMessage: "真实首条消息" }), "真实首条消息", "真实首条消息仍是标题回退");
 
-console.log("store 级双通道落点冒烟通过: 13 项断言");
+// 7. Approval replay ordering: the host replays an already-open dialog from the load
+// path's snapshot, i.e. AFTER session_created + messages. A request that lands before the
+// slot exists is dropped, and session_created resets pendingApprovals — which is why the
+// old attach-time replay left a remote joining mid-approval with no card at all.
+// Dynamic import for the same reason as the block above: happy-dom globals must exist
+// before these store modules evaluate, so a static import (hoisted) would break the env.
+const { streamHandlers } = await import("../ui-src/store/wsHandlers/stream.ts");
+const PATH_E = "/tmp/dual-store-approval-e";
+const approvalFrame = { type: "approval_request", sessionId: "s-e", requestId: "req-e", title: "执行 Bash 命令?", options: ["Approve", "Deny"] };
+streamHandlers.approval_request(approvalFrame as never);
+assert.ok(!useAppStore.getState().openSessions.has(PATH_E), "未建槽的会话不会凭空出现审批卡片(帧被丢弃)");
+sessionHandlers.session_created({ type: "session_created", sessionId: "s-e", path: PATH_E, cwd: "/tmp", busy: false } as never);
+assert.equal(useAppStore.getState().openSessions.get(PATH_E)!.pendingApprovals!.length, 0, "session_created 重建槽时清空待审批");
+streamHandlers.approval_request(approvalFrame as never);
+assert.equal(useAppStore.getState().openSessions.get(PATH_E)!.pendingApprovals!.length, 1, "快照之后重放的审批卡片落到槽里");
+streamHandlers.approval_request(approvalFrame as never);
+assert.equal(useAppStore.getState().openSessions.get(PATH_E)!.pendingApprovals!.length, 1, "同一 requestId 只落一张卡(重复重放不叠卡)");
+
+console.log("store 级双通道落点冒烟通过: 17 项断言");

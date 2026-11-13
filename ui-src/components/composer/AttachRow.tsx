@@ -49,8 +49,8 @@ export default function AttachRow() {
             <button className="atchip-x" title={t("composer.remove")} onClick={() => remove(f)}>×</button>
           </span>
         ) : (
-          <span className={"atchip" + (f.kind === "session" ? " sess" : "")} key={f.id}>
-            <span className="at-ic"><Icon name={f.kind === "session" ? "comment" : fileTypeIcon(f.name)} /></span>
+          <span className="atchip" key={f.id}>
+            <span className="at-ic"><Icon name={fileTypeIcon(f.name)} /></span>
             <span className="at-name" title={f.name}>{f.name}</span>
             <button className="atchip-x" title={t("composer.remove")} onClick={() => remove(f)}>×</button>
           </span>

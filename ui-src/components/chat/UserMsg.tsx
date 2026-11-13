@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import type { OpenSession, UserItem } from "../../types/session";
-import { activeOpen, sendNowQueueMsg, editQueueMsg, dropQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
+import { activeOpen, editQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
 import { useCopyFeedback } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
@@ -12,43 +12,10 @@ import { FadeBox } from "./parts";
 import { t } from "../../i18n";
 import { Chip } from "../composer/AnnotationChips";
 
-// Left-side action group of a pending-consumption bubble: queued state (send now / edit /
-// delete) | steer state (edit / requeue to top)
-function PendingActs({ item }: { item: UserItem }) {
-  const s = activeOpen();
-  const mk = (title: string, ic: string, fn: (sess: OpenSession, item: UserItem) => void) => (
-    <button
-      className="q-btn"
-      title={title}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (s) fn(s, item);
-      }}
-    >
-      <Icon name={ic} size={15} />
-    </button>
-  );
-  return (
-    <div className="qk-acts">
-      {item.pending === "steer" ? (
-        <>
-          {mk(t("chat.editBackToComposer"), "pencil", editQueueMsg)}
-          {mk(t("chat.requeueTop"), "down", requeueSteerMsg)}
-        </>
-      ) : (
-        <>
-          {mk(t("chat.sendNow"), "upload", sendNowQueueMsg)}
-          {mk(t("chat.editBackToComposer"), "pencil", editQueueMsg)}
-          {mk(t("common.delete"), "trash", dropQueueMsg)}
-        </>
-      )}
-    </div>
-  );
-}
-
+// Steer bubbles awaiting consumption carry edit / requeue-to-top in their own action row
+// (same row and spacing as copy); the queue card owns the followUp actions.
 // The fork button that used to appear on hover of historical user messages with an entryId
-// has been removed: forking now hangs at the end of a turn's output (see TurnActs.jsx);
-// only the queued/steer action group remains beside the bubble.
+// has been removed: forking now hangs at the end of a turn's output (see TurnActs.jsx).
 // pending is a captured mutation snapshot (T2): applySteerConsumed flips it in place
 export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?: string; pending?: UserItem["pending"]; branch?: ReactNode }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -74,13 +41,18 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   // streaming), same policy as TurnActs' canFork, so the hover row does not jump
   const canEdit = !item.pending && !item.automation && !!item.entryId && !!sessionId && !streaming;
 
-  // Queued/steer pending-consumption message: hover shows the action group to the left of
-  // the bubble (once consumed, pending clears and it becomes an ordinary historical message)
+  // Queued/steer pending-consumption message: the action row below the bubble carries the
+  // steer controls (once consumed, pending clears and it becomes an ordinary message)
   const delivery = item.automation;
-  const cls = item.pending ? "user-bubble pending" : delivery ? "user-bubble delivery" : "user-bubble";
+  const cls = delivery ? "user-bubble delivery" : "user-bubble";
   // Edit stays available on remote clients: edit_resend only appends a sibling branch
   // (see REMOTE_WRITE_DENYLIST), so it is not a read-only violation
   const showEditBtn = !item.pending && !item.automation;
+  const steerAct = (fn: (sess: OpenSession, item: UserItem) => void) => (e: MouseEvent) => {
+    e.stopPropagation();
+    const sess = activeOpen();
+    if (sess) fn(sess, item);
+  };
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls}>
@@ -153,11 +125,20 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
           </button>
         ) : null}
         {mention.text ? <FadeBox className="user-msg-text whitespace-pre-wrap">{mention.text}</FadeBox> : null}
-        {item.pending ? <PendingActs item={item} /> : null}
       </div>
-      {branch || showEditBtn || body ? (
+      {branch || showEditBtn || body || item.pending === "steer" ? (
         <div className={"ub-actions" + (editing ? " show" : "")}>
           {branch}
+          {item.pending === "steer" ? (
+            <>
+              <button className="q-btn" title={t("chat.editBackToComposer")} onClick={steerAct(editQueueMsg)}>
+                <Icon name="pencil" size={13} />
+              </button>
+              <button className="q-btn" title={t("chat.requeueTop")} onClick={steerAct(requeueSteerMsg)}>
+                <Icon name="down" size={13} />
+              </button>
+            </>
+          ) : null}
           {showEditBtn ? (
             editing ? (
               <span className="ub-edit-now">

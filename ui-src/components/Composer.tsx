@@ -29,11 +29,10 @@ import ModelMenu from "./composer/ModelMenu";
 import PaletteMenu from "./composer/PaletteMenu";
 import PredictionList from "./composer/PredictionList";
 import type { PaletteItem } from "./composer/PaletteMenu";
-import { detectTrigger, isBashMode, insertFile, insertCommand } from "./composer/trigger";
+import { detectTrigger, isBashMode, insertFile, insertCommand, insertSessionRef } from "./composer/trigger";
 import { filterPaletteCommands, filterSkills, filterSubcommands, COMMAND_CATEGORIES } from "./composer/completionFilters";
 import type { CommandCategory } from "./composer/completionFilters";
 import type { PaletteTabName } from "./composer/PaletteMenu";
-import { addSessionRef } from "../lib/incoming-files";
 import { collectSessionMatches, mergeSearchMatches } from "./shared/session-search";
 import { readRecentCommands, recordRecentCommand } from "./composer/recentCommands";
 import { bgTaskCount, subagentCount } from "./composer/sessionCounts";
@@ -97,9 +96,7 @@ function buildAttachPayload(): PromptAttachment[] {
         ? { kind: "image", mime: f.mime, data: f.data }
         : f.kind === "path"
           ? { kind: "path", name: f.name, path: f.path }
-          : f.kind === "session"
-            ? { kind: "session", name: f.name, path: f.path }
-            : { kind: "text", name: f.name, text: f.data },
+          : { kind: "text", name: f.name, text: f.data },
     );
 }
 
@@ -486,7 +483,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     // The welcome/creating-new first send is deferred (pendingNew* intents):
     // its entry lands in the created session's slot in the session_created
     // handler, not the welcome slot.
-    if (sendComposerPrompt({ raw: getDraftText(draftKey), files: buildAttachPayload(), steer })) {
+    const raw = getDraftText(draftKey);
+    if (sendComposerPrompt({ raw, files: buildAttachPayload(), steer })) {
       const st = useAppStore.getState();
       const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
       if (s && !st.isCreatingNew && st.hostSettings?.values?.["composer.recallClearedDrafts"] !== false) {
@@ -670,17 +668,16 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
     const it = option.data;
     if (trig.kind === "file" && mentionTabRef.current === "session") {
-      // Reference an existing session: it becomes an attachment chip and the
-      // typed @token is removed (nothing about it belongs in the prompt text)
-      if (!("title" in it)) {
+      // Referenced session -> a chip inside the prompt text, exactly like a file
+      // reference: the host resolves the "@session:" marker and inlines that
+      // session's turns, so deleting the chip drops the reference.
+      if (!("title" in it) || !node) {
         closeMenu(); // type guard: candidates must be SessionItem on the session tab
         return;
       }
-      addSessionRef(it.path, it.title);
-      if (node) {
-        node.setTextContent("");
-        node.select(0, 0);
-      }
+      const chip = $createChipNode(insertSessionRef(it.path), it.title);
+      node.replace(chip);
+      $selectAfter(chip);
       closeMenu();
       return;
     }
@@ -1344,7 +1341,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         {/* Merged model + thinking menu (delivered after the host filters
             enabledModels; the second-level overlay is a direct child of #composer) */}
         {openMenu === "model" && <ModelMenu btnRef={modelBtnRef} composerRef={rootRef} onClose={() => setOpenMenu(null)} />}
-        {/* Composer prediction alternatives: Tab again after inserting a prediction */}
+        {/* Composer predictions: one Tab inserts and opens this card; ↑↓ applies as it moves */}
         <PredictionList
           composerRef={rootRef}
           draftKey={draftKey}

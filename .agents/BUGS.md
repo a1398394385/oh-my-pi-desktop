@@ -153,6 +153,8 @@
 | BUG-159 | 自动化状态三套词表 + `lifecycle:"failed"` 死状态 | 2026-11-12 |
 | BUG-160 | 冒烟脚本用裸字面量断言状态——拼错不报错且零覆盖 | 2026-11-12 |
 | BUG-161 | 拖文件进中栏无反应——按 Tauri v2 载荷里不存在的 `type` 字段过滤 | 2026-11-13 |
+| BUG-162 | 远程端收不到命令审批弹窗——审批帧在 `session_created` 之前重放被前端丢弃 | 2026-11-13 |
+| BUG-163 | 远程终端无法粘贴——非安全上下文没有 clipboard API，`Ctrl+V` 却被无条件吞掉 | 2026-11-13 |
 ---
 
 ## 详情
@@ -2394,3 +2396,33 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：cargo 源码确认载荷字段与四个事件名（`DragDropEvent::Drop` → `tauri://drag-drop`），且 JS `listen` 默认 target 为 `Any`、经 `match_any_or_filter` 匹配 `emit_to_webview`；`bun run ui:typecheck` + `bun run ui:build` + `bun run check` 通过，构建产物中已无该判断；浏览器通道注入 `DataTransfer` 的 `dragenter` 后 `.dz-overlay` 出现（毛玻璃 `blur(12px) saturate(1.2)`、「松开以添加到当前会话」），`drop` 后覆盖层消失且附件名出现在 composer。真机拖拽未自动化：跨屏拖拽无法用 kimi_cu 单应用坐标系模拟。
 
 **教训**：判据里的字段名必须能在原生载荷 struct 里找到；跨大版本抄事件处理时，先读一次 struct 定义比读示例代码便宜。投放语义（事件流）与交互反馈（覆盖层）必须同源——只接一条通道，另一条就静默失效。
+
+### BUG-162: 远程端收不到命令审批弹窗——审批帧在 `session_created` 之前重放被前端丢弃
+
+**日期**：2026-11-13
+
+**现象**：桌面端一轮对话里弹出 bash 命令审批卡片，停在原地约 30 分钟（会话文件里 `tool_execution_start` 与 `toolResult` 的时间戳差 30m17s，工具实际只跑 121ms），期间远程控制端（Windows Edge，设备记录 `lastAt` 比审批弹出晚 42s）看不到卡片，也无法作答。
+
+**根因**：审批请求的"晚到者重放"挂在 `attachEntryUi`（`host/session-entry-core.ts`）里，而 `handleLoadSession` 的顺序是 `attachEntry` → `session_created` → 快照。前端两条约束叠加：①`updateSession` 按 `sessionId` 找 `openSessions` 槽，槽还不存在就静默丢帧；②`session_created` 处理器用 `pendingApprovals: []` 重建槽，会把早到的卡片清掉。于是重放帧落在一个"还看不见、且马上会被重置"的位置——远程加入会话时卡片彻底消失。同一顺序缺陷也吞掉前端重载后仍在等待的审批卡片。
+
+**修复**：重放从 `attachEntryUi` 摘出，改为 `host/state.ts` 的 `replayPendingApprovals(ws, sessionId)`，由 `pushSessionSnapshot` 末尾调用（两个 load 分支共用，必在 `session_created` 与 `messages` 快照之后）；`attachEntryUi` 只负责加入扇出集合与子代理名册。前端 `approval_request` 顺带按 `requestId` 去重，防止两次 `load_session` 在飞行中重放成两张卡（第二张会答一个已结算的 requestId）。
+
+**验证**：临时端到端探针（真宿主 + 本机/远程双通道 + `local-proxy/deepseek-flash` 触发 bash 工具）：本机审批弹出后远程才 `load_session`——修复后远程收到重放卡片且帧序 `session_created`(idx 8) 早于 `approval_request`(idx 17)，远程作答后本机卡片收起、工具执行完成；把 `replayPendingApprovals` 调用注掉复跑同一探针，失败在"远程审批卡片重放"超时（红绿对照）。常驻回归：`scripts/approval-fanout.test.ts` 新增"晚到者只能通过 load 路径重放拿到卡片"用例；`scripts/smoke-dual-channel-store.ts` 新增顺序契约 4 断言（无槽时丢帧、`session_created` 清空、快照后落卡、同 requestId 不叠卡）。`bun run check` 全绿。
+
+**教训**：per-socket 重放帧的落点必须晚于所有"重建该 socket 视图状态"的帧（`session_created` 是 wholesale 重建），否则是发出去等于没发；"attach"只代表订阅，不代表前端已经有这个会话的渲染槽。
+
+### BUG-163: 远程终端无法粘贴——非安全上下文没有 clipboard API，`Ctrl+V` 却被无条件吞掉
+
+**日期**：2026-11-13
+
+**现象**：远程控制端（浏览器访问 `http://<LAN-IP>:16800`）打开终端后，`Ctrl+V` 毫无反应，只能手打内容；桌面端正常。
+
+**根因**：`TerminalPage` 的 `attachCustomKeyEventHandler` 对 `mod + V` 无条件 `preventDefault()` 再走 `navigator.clipboard.readText()`。`navigator.clipboard` 只在安全上下文（https / localhost / `tauri://`）存在；远程是纯 http 的局域网地址，`navigator.clipboard` 为 `undefined`，`?.readText()` 直接短路成空操作。而 `preventDefault()` 同时杀掉了浏览器随后本应派发的原生 `paste` 事件——xterm 6 自己在 textarea 与 element 上监听 `paste` 并从 `clipboardData` 取文本（`@xterm/xterm/src/browser/CoreBrowserTerminal.ts:342-344`），这条唯一的可用通道也被切断，于是"按键被吞、内容没有"。
+
+**修复**：仅在 `navigator.clipboard?.readText` 存在（安全上下文）时才拦截并手动 `term.paste`；否则 `return true` 让按键走浏览器默认行为，由 xterm 的 `paste` 监听接管。桌面路径的语义不变（仍是 readText，避免批次双写）。
+
+**验证**：真宿主（`omp-desktop-test`）+ 真 Chromium 打开 `http://192.168.20.18:16899/?t=…`（`isSecureContext=false`、`navigator.clipboard === undefined`），底部终端内派发 `KeyboardEvent('keydown', {key:'v', ctrlKey:true, cancelable:true})`：修复前 `defaultPrevented === true`（红），修复后 `false`（绿）；随后派发带 `clipboardData` 的 `paste` 事件，终端收到字节并执行 `echo GREEN_456`，屏幕输出 `GREEN_456`。`bun run check` 全绿。
+
+**教训**：任何"我先 preventDefault 再自己实现"的按键路径，都要先判能力是否存在——安全上下文是浏览器的硬边界，http 局域网客户端拿不到剪贴板 API，此时必须把默认行为还给浏览器。xterm 自带 `paste` 处理，宿主不应再拦。
+
+**已知边缘**：终端刚创建、shell 尚未发送 `\x1b[?2004h` 的极短窗口内粘贴，bracketed paste 序列会以字面 `^[[200~` 出现在输入行（xterm 端与 shell 端的模式开启存在竞态，与本次修复无关）。

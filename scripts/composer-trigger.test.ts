@@ -43,3 +43,10 @@ describe("drill text re-triggers the file completion", () => {
     });
   });
 });
+
+test("a directory whose path already ends with a slash keeps exactly one", () => {
+  // fuzzyFind returns directory matches as "docs/"
+  const text = insertFile("docs/", true, false);
+  expect(text).toBe("@docs/");
+  expect(detectTrigger(text, text.length)?.query).toBe("docs/");
+});

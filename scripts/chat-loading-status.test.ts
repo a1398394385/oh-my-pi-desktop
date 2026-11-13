@@ -56,4 +56,8 @@ describe("thoughtWindow", () => {
     expect(thoughtWindow("一二三四五六", 2)).toBe("一二");
     expect(thoughtWindow("   ", 3)).toBe(" ");
   });
+
+  test("a line that filled the row restarts at the reset offset", () => {
+    expect(thoughtWindow("一二三四五六", 5, 3)).toBe("四五");
+  });
 });

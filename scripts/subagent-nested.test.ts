@@ -125,4 +125,24 @@ describe("disk replay of nested transcripts", () => {
     replaySubagentHistory({ send: (data: string) => frames.push(JSON.parse(data) as Frame) }, rootFile, "s1", false);
     expect(frames).toEqual([]);
   });
+
+  test("a rebuilt entry replays a transcript still inside the live-write window", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nested-recent-"));
+    const rootFile = path.join(dir, "root.jsonl");
+    const childDir = path.join(dir, "root");
+    const childFile = path.join(childDir, "Outer.jsonl");
+    fs.mkdirSync(childDir, { recursive: true });
+    const session = (parentSession?: string) =>
+      JSON.stringify({ type: "session", timestamp: "2026-01-01T00:00:00.000Z", ...(parentSession ? { parentSession } : {}) });
+    fs.writeFileSync(rootFile, session());
+    fs.writeFileSync(childFile, `${session(rootFile)}\n`); // mtime = now, i.e. a running child's transcript
+
+    const rows = (skipRecent?: boolean) => {
+      const frames: Frame[] = [];
+      replaySubagentHistory({ send: (data: string) => frames.push(JSON.parse(data) as Frame) }, rootFile, "s1", false, skipRecent);
+      return frames.filter((f) => f.type === "subagent_lifecycle");
+    };
+    expect(rows()).toHaveLength(0); // pooled session: its own live frames own the row
+    expect(rows(false)).toHaveLength(1); // rebuilt entry: this replay is the only copy
+  });
 });

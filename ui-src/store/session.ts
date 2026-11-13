@@ -951,10 +951,10 @@ export function applyEvent(msg: EventFrame): void {
       s.items.push({ role: "ttsr", text: msg.rules.map((r) => r.name).join(", "), rules: msg.rules });
     });
   } else if (msg.kind === "prediction") {
-    // Composer predictions: empty choices retire the ghost; a new batch always closes the list
+    // Composer predictions: empty choices retire the ghost. The card's open state is untouched —
+    // only a manual Esc closes it (a new turn retires it together with the list).
     updateSession(msg.sessionId, (s) => {
       s.prediction = msg.choices.length > 0 ? msg.choices : null;
-      s.predictionOpen = false;
     });
   } else if (msg.kind === "assistant_rerender") {
     // An extension re-drew one reply block (ctx.ui.rerenderMessage): replace that row's text in

@@ -44,17 +44,6 @@ export async function addIncomingFiles(picked: File[]) {
   });
 }
 
-// Reference an existing session as an attachment chip. The host inlines that
-// session's turns into the prompt (kind "session" carries the file path), so the
-// UI never reads session bytes itself.
-export function addSessionRef(path: string, title: string) {
-  useAppStore.setState((st) => {
-    if (st.pendingFiles.some((f) => f.kind === "session" && f.path === path)) return {};
-    const seq = st.fileSeq + 1;
-    return { pendingFiles: [...st.pendingFiles, { id: seq, kind: "session" as const, path, name: title }], fileSeq: seq };
-  });
-}
-
 // Files that arrive as absolute paths (Tauri dialog pick, native drag-drop) skip the browser
 // File entirely: the path travels to the host, which appends it as an @mention so the base
 // reads it itself (no content copy through the UI, no 10MB cap, video becomes a contact sheet).

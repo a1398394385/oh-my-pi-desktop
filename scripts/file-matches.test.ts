@@ -42,3 +42,26 @@ describe("listFileMatches prefix listing", () => {
     expect(broken.map((h) => [h.path, h.dir])).toEqual([[path.join(root, "broken"), false]]);
   });
 });
+
+describe("listFileMatches path prefixes", () => {
+  // A bare @ must show the root's own level: fuzzyFind on an empty query walks
+  // the tree and fills the card with deep directories instead.
+  test("a bare @ lists the root level only, directories first", async () => {
+    const hits = await listFileMatches(root, "");
+    expect(hits.map((h) => [h.path, h.dir])).toEqual([
+      ["linkdir", true],
+      ["realdir", true],
+      ["broken", false],
+      ["plain.txt", false],
+    ]);
+  });
+
+  // A path prefix completes one directory listing; fuzzyFind would also match
+  // the same name in unrelated subtrees.
+  test("a relative prefix lists that directory only, keeping the query's own separators", async () => {
+    expect((await listFileMatches(root, "realdir/")).map((h) => [h.path, h.dir])).toEqual([["realdir/inner.ts", false]]);
+    expect((await listFileMatches(root, "re")).map((h) => [h.path, h.dir])).toEqual([
+      ["realdir/", true],
+    ]);
+  });
+});

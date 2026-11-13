@@ -58,7 +58,7 @@ export const hostFlowsZh = {
   },
   think: {
     label: "思考",
-    with: "思考 · {{duration}}",
+    with: "{{duration}}",
     durationFew: "持续了几秒",
     durationSec: "持续了 {{n}} 秒",
     durationMinSec: "持续了 {{m}} 分 {{s}} 秒",

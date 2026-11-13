@@ -198,12 +198,9 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
 
     const unregisterUpdates = editor.registerUpdateListener(({ tags }) => {
       if (tags.has(GHOST_TAG)) return;
-      // Any user edit belongs to a new draft: the alternatives list closes, and an emptied
-      // composer re-offers the prediction's first candidate below
-      const active = useAppStore.getState();
-      const current = active.activePath ? active.openSessions.get(active.activePath) : undefined;
-      if (current?.predictionOpen && current.sessionId) setPredictionOpen(current.sessionId, false);
       const text = editor.read(() => $flattenText());
+      // Typing never closes the prediction card: only a manual Esc does (PredictionList). The card
+      // disappears by itself when a new turn retires the prediction.
       if (text !== lastTextRef.current) {
         clearTimer();
         timerRef.current = window.setTimeout(requestCompletion, REQUEST_DEBOUNCE_MS);
@@ -252,16 +249,11 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
       (ev) => {
         if (typeaheadOpenRef.current) return false; // palette Tab accepts a candidate
         const suggestion = editor.read(() => $findGhostNode())?.__suggestion;
-        if (suggestion === undefined) {
-          // An inserted prediction with more than one candidate: Tab opens the list of them
-          const prediction = activePrediction();
-          const text = editor.read(() => $flattenText());
-          if (!prediction || prediction.choices.length < 2 || !prediction.choices.includes(text)) return false;
-          ev.preventDefault();
-          setPredictionOpen(prediction.sessionId, true);
-          return true;
-        }
+        if (suggestion === undefined) return false;
+        // A prediction insert also opens the alternatives card (one Tab, not two)
+        const fromPrediction = predictionGhostRef.current === suggestion;
         ev.preventDefault();
+
         // Deliberately a plain undoable update (no tag/discrete/guard): the
         // ghost removal rides along, and the unguarded listener afterwards
         // sees the text change and re-arms the debounce for the next request
@@ -283,6 +275,11 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
           sel.focus.set(parent.getKey(), idx + nodes.length, "element");
           $setSelection(sel);
         });
+        if (fromPrediction) {
+          // The card is the confirmation surface for every prediction, even a single candidate
+          const prediction = activePrediction();
+          if (prediction) setPredictionOpen(prediction.sessionId, true);
+        }
         return true;
       },
       COMMAND_PRIORITY_NORMAL,

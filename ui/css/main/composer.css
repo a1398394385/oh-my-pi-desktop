@@ -622,22 +622,6 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 }
 
 /* turn end time: follows the fork button, tabular numerals avoid per-turn width jitter */
-/* action group left of the pending bubble: appears on whole-row hover (buttons sit outside the bubble to its left; row hover keeps them visible while moving over) */
-.user-bubble.pending { position: relative; }
-
-.qk-acts {
-  position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
-  display: none; gap: 2px; align-items: center;
-  background: var(--ctl-bg); --hover-fill: var(--menu-hl); border: 1px solid var(--line); border-radius: 8px;
-  padding: 2px; box-shadow: 0 4px 14px var(--tint-black-350);
-}
-
-.msg.user:has(> .user-bubble.pending):hover .qk-acts { display: flex; }
-
-/* button icons inside the bubble match the text height (bubble font size var(--ui-fs-md)) */
-.user-bubble .qk-acts .q-btn { width: 1.05em; height: 1.05em; }
-
-.user-bubble .qk-acts .q-btn svg { width: 100%; height: 100%; display: block; }
 
 .atchip {
   position: relative;
@@ -655,16 +639,6 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .atchip .at-ic svg { display: block; width: 12px !important; height: 12px !important; }
 
 .atchip .at-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; display: inline-flex; align-items: center; }
-
-/* Session reference chip (@ session tab): accent icon on a tinted fill, so a quoted
-   conversation never reads as another file attachment. */
-.atchip.sess {
-  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  color: var(--text);
-}
-
-.atchip.sess .at-ic { color: var(--accent); }
 
 .atchip-x {
   position: absolute; top: -6px; right: -6px;
@@ -1074,6 +1048,8 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .chip-command { --chip-ink: var(--blue); }
 .chip-skill { --chip-ink: var(--purple); }
 .chip-file { --chip-ink: var(--dim); }
+/* Conversation reference: accent ink keeps it distinct from file chips */
+.chip-session { --chip-ink: var(--accent); }
 
 .chip .chip-ic { flex: none; line-height: 1; }
 .chip .chip-ic svg { width: 12px; height: 12px; }

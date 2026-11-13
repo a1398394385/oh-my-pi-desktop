@@ -243,10 +243,13 @@ function createTermSession(key: string, container: HTMLElement, scope: string, t
       return false;
     }
     if (mod && (e.key === "v" || e.key === "V")) {
+      // clipboard.readText only exists in a secure context (https / localhost). A remote
+      // http LAN client has no clipboard API at all, and preventDefault would also kill the
+      // browser's native paste event — the terminal then took nothing. Leave the key alone
+      // there: the browser dispatches `paste`, which xterm reads from clipboardData itself.
+      if (!navigator.clipboard?.readText) return true;
       e.preventDefault();
-      // Paste has no execCommand fallback (clipboard reads are gated to secure contexts);
-      // remote http clients simply get no paste instead of a crash.
-      navigator.clipboard?.readText().then((t) => term.paste(t)).catch(() => {});
+      navigator.clipboard.readText().then((t) => term.paste(t)).catch(() => {});
       return false;
     }
     return true;

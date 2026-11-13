@@ -8,12 +8,18 @@
 //            projecting with the pre-move zone — forking back onto a node
 //            BEFORE a compression node still folded those blocks into the
 //            stale summary instead of restoring the uncompressed context
-//            (resyncAcpToBranch re-derives zone/compressed from getBranch()).
+//            (resyncToBranch re-derives zone/compressed from getBranch()).
+//   seam:    the two RPC handlers own that resync call. The fork shares the
+//            boundary fingerprint (most recent reset/compaction), so the runtime
+//            cannot notice the move on its own — deleting either call keeps
+//            every runtime-only test green, hence the handler cases below.
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/acp-branch-resync.test.ts
 import { describe, expect, test } from "bun:test";
 import { AcpRuntimeState } from "../host/acp-runtime.ts";
-import { rebuildAcpState } from "../host/acp-persist.ts";
+import { branchCompactionFingerprint, rebuildAcpState } from "../host/acp-persist.ts";
 import type { AcpSummaryData } from "../host/acp-persist.ts";
+import { sessionHandlers } from "../host/rpc/session.ts";
+import { sessions } from "../host/state.ts";
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
@@ -151,5 +157,84 @@ describe("branch-scoped ACP rebuild", () => {
 		// Only the shared prefix stays addressable: the 6 active-branch blocks sit
 		// past the 80 abandoned entries and degrade to pseudo ids.
 		expect(manifestLines(fullJournal)).toBe(shared.length);
+	});
+});
+
+// Fake pool entry for the RPC seam: the handlers only touch these members on
+// the navigate path, so the object stays a literal instead of a SessionManager.
+function seamEntry(navigate: { cancelled: boolean } = { cancelled: false }) {
+	const resynced: string[][] = [];
+	const frames: Array<{ type?: string; ok?: boolean }> = [];
+	const entry = {
+		manager: {
+			getLeafId: () => "m4",
+			getBranch: () => [m1, m2],
+			getEntry: () => m1,
+			getSessionName: () => undefined,
+		},
+		session: {
+			isStreaming: false,
+			navigateTree: async () => ({ ...navigate, editorText: null, editorImages: null }),
+			prompt: async () => true,
+		},
+		acpRuntime: {
+			resyncToBranch: (branch: readonly SessionEntry[]) => resynced.push(branch.map((e) => e.id)),
+		},
+		transcript: [] as unknown[],
+		uiSockets: [] as unknown[],
+	};
+	const ws = { send: (data: string) => frames.push(JSON.parse(data)) };
+	return { entry, resynced, frames, ws };
+}
+
+describe("ACP branch isolation at the RPC seam", () => {
+	test("a fork keeps the boundary fingerprint, so only an explicit resync can tell", () => {
+		// Forking back to m2 leaves reset/compaction ids unchanged: the runtime's
+		// own #ensureBranchCurrent check cannot notice the move, which is why the
+		// two RPC handlers below must resync explicitly.
+		expect(branchCompactionFingerprint(entries)).toEqual(branchCompactionFingerprint([m1, m2]));
+		// Same fingerprint, opposite state — the stale side still folds m1+m2.
+		expect(rebuildAcpState(entries).compressedBlockIds.size).toBe(2);
+		expect(rebuildAcpState([m1, m2]).compressedBlockIds.size).toBe(0);
+	});
+
+	test("navigate_tree re-derives the runtime from the new branch", async () => {
+		const { entry, resynced, frames, ws } = seamEntry();
+		sessions.set("acp-seam-navigate", entry as never);
+		try {
+			await sessionHandlers.navigate_tree(ws as never, { sessionId: "acp-seam-navigate", entryId: "m2" } as never);
+		} finally {
+			sessions.delete("acp-seam-navigate");
+		}
+		expect(resynced).toEqual([["m1", "m2"]]);
+		expect(frames.some((f) => f.type === "session_navigated" && f.ok === true)).toBe(true);
+	});
+
+	test("edit_resend re-derives the runtime from the new branch", async () => {
+		const { entry, resynced, frames, ws } = seamEntry();
+		sessions.set("acp-seam-edit", entry as never);
+		try {
+			await sessionHandlers.edit_resend(ws as never, {
+				sessionId: "acp-seam-edit",
+				entryId: "m1",
+				text: "re-ask",
+			} as never);
+		} finally {
+			sessions.delete("acp-seam-edit");
+		}
+		expect(resynced).toEqual([["m1", "m2"]]);
+		expect(frames.some((f) => f.type === "session_edited" && f.ok === true)).toBe(true);
+	});
+
+	test("a cancelled leaf move leaves the runtime alone", async () => {
+		const { entry, resynced, frames, ws } = seamEntry({ cancelled: true });
+		sessions.set("acp-seam-cancelled", entry as never);
+		try {
+			await sessionHandlers.navigate_tree(ws as never, { sessionId: "acp-seam-cancelled", entryId: "m2" } as never);
+		} finally {
+			sessions.delete("acp-seam-cancelled");
+		}
+		expect(resynced).toEqual([]);
+		expect(frames.some((f) => f.type === "session_navigated" && f.ok === false)).toBe(true);
 	});
 });

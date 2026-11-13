@@ -12,7 +12,6 @@ import {
   H,
   sessions,
   stampEvent,
-  pendingApprovals,
   requestApproval,
   pushPoolSnapshot,
   entryBus,
@@ -65,20 +64,16 @@ export function attachEntry(ws: UiSocket, sessionId: string, entry: PoolEntry, e
   attachEntryUi(ws, sessionId, entry, eventBus);
 }
 
-/** Per-socket attach: join the fan-out set, start this socket's subagent
- * roster (A12 split), push the pool snapshot, and re-show dialogs already
- * open on another UI so a late joiner (e.g. remote control joining mid-
- * approval) can answer them too. */
+/** Per-socket attach: join the fan-out set, start this socket's subagent roster
+ * (A12 split), push the pool snapshot. Open dialogs are NOT replayed here: the
+ * frontend drops an approval_request for a session it has not slotted yet, and
+ * session_created wipes pendingApprovals — so the replay belongs after both,
+ * in the load path's snapshot (state.ts replayPendingApprovals). */
 export function attachEntryUi(ws: UiSocket, sessionId: string, entry: PoolEntry, eventBus: unknown) {
   if (entry.uiSockets.has(ws)) return;
   entry.uiSockets.add(ws);
   entry.uiSubViews.set(ws, createSubagentView(ws, sessionId, entry, eventBus));
   pushPoolSnapshot(ws);
-  for (const pending of pendingApprovals.values()) {
-    if (pending.sessionId === sessionId && pending.frame) {
-      ws.send(JSON.stringify(stampEvent(pending.frame)));
-    }
-  }
 }
 
 /** Leave a socket's fan-out set (socket close, or the frontend dropping its slot on

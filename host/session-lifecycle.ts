@@ -20,6 +20,7 @@ import {
   defaultCwd,
   stampEvent,
   pendingApprovals,
+  replayPendingApprovals,
   pushCommandOutput,
   eachUiWs,
   sendSessionState,
@@ -604,7 +605,15 @@ async function pushSessionSnapshot(
   // Subagent history replay (child run files live in the sibling artifacts dir; the
   // frontend store is empty on both replaying paths, so the full tool stream is safe)
   const replaySubagents = req.mode === "rebuild" ? true : req.replaySubagents;
-  if (replaySubagents) replaySubagentHistory(ws, req.sessionPath, sessionId, true);
+  // rebuild = a fresh AgentSession: no live frame can reach this view, so a child transcript
+  // still inside the live-write window is the only copy (a running subagent's own session
+  // showed 1 of its 3 children). reuse keeps the guard — that session may still be spawning.
+  if (replaySubagents) replaySubagentHistory(ws, req.sessionPath, sessionId, true, req.mode !== "rebuild");
+  // Open dialogs (permission approval / ask / plan) travel with the snapshot, LAST: the
+  // frontend needs the session_created slot above, which resets pendingApprovals, and a
+  // request sent earlier is silently dropped — the remote joining a session mid-approval
+  // saw no card at all.
+  replayPendingApprovals(ws, sessionId);
 }
 
 export async function handleLoadSession(ws: any, sessionPath: string) {

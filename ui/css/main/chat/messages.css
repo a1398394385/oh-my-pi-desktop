@@ -637,6 +637,10 @@
 
 .act.read .path, .act.mcp .path {
   color: var(--faint);
+  /* row summaries (web_search/find/ask intents, read paths) ride the same code size as .lbl and
+     .cmd .c-tx; inheriting .act's 13px body size made them read a step larger than the rows
+     above and below them */
+  font-size: var(--code-fs, 12px);
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 

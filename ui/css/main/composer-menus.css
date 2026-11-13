@@ -47,7 +47,7 @@
 /* Slash-command browser: category tabs, an independently scrolling result list,
    and a fixed keyboard footer. The container owns all filled-row clearance. */
 .menu.palette.slash {
-  height: 258px;
+  height: 298px;
   padding: 0;
   overflow: hidden;
   border-radius: var(--r-md);
@@ -122,7 +122,7 @@
 .slash-close { margin-left: auto; }
 
 @media (max-width: 640px) {
-  .menu.palette.slash { height: 234px; }
+  .menu.palette.slash { height: 274px; }
   .slash-tabs { gap: 20px; padding: 0 12px; }
   .slash-footer { gap: 12px; padding: 0 12px; }
 }

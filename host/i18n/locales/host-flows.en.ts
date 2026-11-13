@@ -55,10 +55,10 @@ export const hostFlowsEn = {
   },
   think: {
     label: "Thinking",
-    with: "Thinking · {{duration}}",
-    durationFew: "lasted a few seconds",
-    durationSec: "lasted {{n}}s",
-    durationMinSec: "lasted {{m}}m {{s}}s",
+    with: "{{duration}}",
+    durationFew: "a few seconds",
+    durationSec: "{{n}}s",
+    durationMinSec: "{{m}}m {{s}}s",
   },
   phase: {
     compactActive: "Compacting context",
