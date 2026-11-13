@@ -196,7 +196,7 @@ declare global {
   interface Window {
     __TAURI__?: {
       core?: { invoke: <T = any>(cmd: string, args?: Record<string, unknown>) => Promise<T> };
-      event?: { listen: (event: string, handler: (e: { payload?: any }) => void) => Promise<unknown> };
+      event?: { listen: (event: string, handler: (e: { payload?: any }) => void) => Promise<() => void> };
       app?: { getVersion: () => Promise<string> };
       window?: { getCurrentWindow(): import("./titlebar-window").TauriWindow };
       // Native save panel (tauri-plugin-dialog); absent in browser direct-connect debugging

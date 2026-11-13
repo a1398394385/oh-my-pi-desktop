@@ -152,6 +152,7 @@
 | BUG-158 | MCP 连接状态四套词表——「未知」在 UI 上显示成绿色「就绪」 | 2026-11-12 |
 | BUG-159 | 自动化状态三套词表 + `lifecycle:"failed"` 死状态 | 2026-11-12 |
 | BUG-160 | 冒烟脚本用裸字面量断言状态——拼错不报错且零覆盖 | 2026-11-12 |
+| BUG-161 | 拖文件进中栏无反应——按 Tauri v2 载荷里不存在的 `type` 字段过滤 | 2026-11-13 |
 ---
 
 ## 详情
@@ -2379,3 +2380,17 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：临时把状态字面量改成 `"shadowd"` / `"abortd"` / `"runing"`，tsc 分别报 TS2561 / TS2551 / TS1360；恢复后 `probe-extensions.ts` 实跑输出「状态分布: { active: 94, disabled: 9, shadowed: 34 }」并断言三态不变量成立。四个测试文件 4+5+5+17 = 31 断言全绿。
 
 **教训**：测试里的字面量也是漂移源——把它绑到生产 union 上，一次改名就能让所有相关测试同时变红。
+
+### BUG-161: 拖文件进中栏无反应——按 Tauri v2 载荷里不存在的 `type` 字段过滤
+
+**日期**：2026-11-13
+
+**现象**：把文件从访达拖到中栏，既没有投放高亮也没有附件胶囊，界面毫无反应（浏览器通道正常）。
+
+**根因**：`ui-src/main.tsx` 的 `tauri://drag-drop` 监听按 `payload?.type !== "drop"` 早退，而 Tauri v2 的 `DragDropPayload` 只有 `paths` + `position`（`tauri-2.12.5` `src/manager/window.rs:167`）；`type` 恒为 `undefined`，判据恒真，事件被全部丢弃。同一事件名只承载 drop（enter/over/leave 各有独立事件名），本就不需要类型判别——这是照 v1 回收事件写的残留。
+
+**修复**：删掉 `type` 判断，只校验 `payload.paths` 是数组，删后注释点明载荷无判别字段；同时把灰色毛玻璃覆盖层接到原生事件——`HTML5 dragenter/drop` 在 Tauri 下永不触发，改由 `tauri://drag-enter/over` 置位、`drag-leave/drop` 复位 `dropActive`；`__TAURI__.event.listen` 的返回类型从 `unknown` 收窄为 `() => void` 以支持取消订阅。
+
+**验证**：cargo 源码确认载荷字段与四个事件名（`DragDropEvent::Drop` → `tauri://drag-drop`），且 JS `listen` 默认 target 为 `Any`、经 `match_any_or_filter` 匹配 `emit_to_webview`；`bun run ui:typecheck` + `bun run ui:build` + `bun run check` 通过，构建产物中已无该判断；浏览器通道注入 `DataTransfer` 的 `dragenter` 后 `.dz-overlay` 出现（毛玻璃 `blur(12px) saturate(1.2)`、「松开以添加到当前会话」），`drop` 后覆盖层消失且附件名出现在 composer。真机拖拽未自动化：跨屏拖拽无法用 kimi_cu 单应用坐标系模拟。
+
+**教训**：判据里的字段名必须能在原生载荷 struct 里找到；跨大版本抄事件处理时，先读一次 struct 定义比读示例代码便宜。投放语义（事件流）与交互反馈（覆盖层）必须同源——只接一条通道，另一条就静默失效。

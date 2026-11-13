@@ -243,9 +243,11 @@ if (new URLSearchParams(location.search).has("preview")) {
   // Native file drop (dragDropEnabled in tauri.conf.json): the webview never sees an HTML5
   // drop event once Tauri owns drag & drop, so absolute paths arrive here. The browser build
   // keeps MainColumn's HTML5 handler. See the dragDropEnabled note in shell.ts.
+  // Payload is { paths, position } only: tauri://drag-drop already means "drop" (enter/over/
+  // leave carry their own event names), so there is no `type` discriminator to check.
   void nativeEvents?.listen("tauri://drag-drop", (event) => {
-    const payload = event.payload as { type?: string; paths?: string[] } | undefined;
-    if (payload?.type !== "drop" || !Array.isArray(payload.paths)) return;
+    const payload = event.payload as { paths?: string[] } | undefined;
+    if (!Array.isArray(payload?.paths)) return;
     addIncomingPaths(payload.paths);
   });
   if (nativeEvents && invokeNative) {

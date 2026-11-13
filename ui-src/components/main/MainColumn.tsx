@@ -143,6 +143,25 @@ export default function MainColumn() {
   // zero and pin the overlay open.
   const dragDepth = useRef(0);
   const [dropActive, setDropActive] = useState(false);
+  // Tauri owns drag & drop above, so the HTML5 handlers never run there: drive the same
+  // overlay from the native drag events. Enter/over both arm it (a drop that starts inside
+  // the window only reports over), leave/drop disarm.
+  useEffect(() => {
+    const events = window.__TAURI__?.event;
+    if (!events) return;
+    const subs = [
+      events.listen("tauri://drag-enter", () => setDropActive(true)),
+      events.listen("tauri://drag-over", () => setDropActive(true)),
+      events.listen("tauri://drag-leave", () => setDropActive(false)),
+      events.listen("tauri://drag-drop", () => {
+        dragDepth.current = 0;
+        setDropActive(false);
+      }),
+    ];
+    return () => {
+      for (const sub of subs) void sub.then((un) => un());
+    };
+  }, []);
   return (
       <main
         id="main"
