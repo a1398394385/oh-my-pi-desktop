@@ -2,7 +2,7 @@
 // middle-card Agent Hub and the right-sidebar subagent tab (one component, two surfaces).
 // Only the surrounding chrome differs: the hub adds its keybind bar and back button, and
 // passes onOpen so a row opens the sidebar detail instead of the hub's session jump.
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, fmtDurationMs, openSessionByPath } from "../../../store";
 import { expandRightPanel } from "../../main/right/tabs";
@@ -88,6 +88,24 @@ export function useRosterRows(s: RosterSession | undefined): Row[] {
   return useMemo(() => (s ? buildRows([...s.subagents], mode) : []), [sig, mode]);
 }
 
+// One usage stat. Its width floor only ever grows: the aggregates tick up and then reset when
+// the roster empties, and a cell that shrank would drag the whole line left on every update.
+// The floor is measured off the inline span (the div itself is already stretched by min-width,
+// so it cannot report the text's natural width).
+function UsageCell({ children }: { children: ReactNode }) {
+  const text = useRef<HTMLSpanElement>(null);
+  const [floor, setFloor] = useState(0);
+  useLayoutEffect(() => {
+    const w = Math.ceil(text.current?.getBoundingClientRect().width ?? 0);
+    if (w > floor) setFloor(w);
+  });
+  return (
+    <div className="hub-cell" style={{ minWidth: floor }}>
+      <span ref={text}>{children}</span>
+    </div>
+  );
+}
+
 // Roster header (mode toggle + status counts) and the aggregate usage line
 export function RosterHead({ s }: { s: RosterSession }) {
   const { t } = useTranslation();
@@ -104,7 +122,7 @@ export function RosterHead({ s }: { s: RosterSession }) {
     .join(";");
 
   const agg = useMemo(() => {
-    let cost = 0, dur = 0, reqs = 0, tools = 0, tok = 0, measured = 0, timed = 0;
+    let cost = 0, dur = 0, reqs = 0, tools = 0, tok = 0, measured = 0;
     for (const [, sub] of s.subagents) {
       const u = sub.usage;
       if (!u) continue;
@@ -114,9 +132,8 @@ export function RosterHead({ s }: { s: RosterSession }) {
       reqs += u.requests ?? 0;
       tools += u.toolCount ?? sub.tools.length;
       tok += tokenTotal(u.tokens) ?? 0;
-      if ((u.durationMs ?? 0) > 0) timed++;
     }
-    return { cost, dur, reqs, tools, tok, measured, timed, total: s.subagents.size };
+    return { cost, dur, reqs, tools, tok, measured };
   }, [usageSig]);
 
   // Grouped and ordered like the roster (running → completed → failed → aborted → unknown),
@@ -164,12 +181,15 @@ export function RosterHead({ s }: { s: RosterSession }) {
           t("right.hubNoUsage")
         ) : (
           <>
-            <span className="hub-cost">${agg.cost.toFixed(3)}</span>
-            {" · "}
-            {agg.dur > 0 ? fmtDurationMs(agg.dur) : "—"} {t("right.hubAgentTime")}
-            {" · "}
-            {agg.reqs} req · {agg.tools} tools · {fmtTokens(agg.tok)} tok ·{" "}
-            {t("right.hubTimed", { t: agg.timed, n: agg.measured })} · {t("right.hubMeasured", { m: agg.measured, n: agg.total })}
+            <UsageCell>
+              <span className="hub-cost">${agg.cost.toFixed(3)}</span>
+            </UsageCell>
+            <UsageCell>
+              {agg.dur > 0 ? fmtDurationMs(agg.dur) : "—"} {t("right.hubAgentTime")}
+            </UsageCell>
+            <UsageCell>{agg.reqs} req</UsageCell>
+            <UsageCell>{agg.tools} tools</UsageCell>
+            <UsageCell>{fmtTokens(agg.tok)} tok</UsageCell>
           </>
         )}
       </div>
@@ -224,10 +244,14 @@ export function HubRow({ row, flat, selected, onSelect, onOpen, t, sessionId }: 
         {sub.streaming ? currentProgress(sub) || rowTask : rowTask}
       </span>
       {/* Metrics (left) and timing info (right) share one line */}
-      <span className="hub-meta text-faint">
-        <span className="hub-meta-usage">{segs.join(" · ")}</span>
-        <span className="hub-meta-right">{times.concat(age).join(" · ")}</span>
-      </span>
+      <div className="hub-meta text-faint">
+        {segs.map((s, i) => (
+          <UsageCell key={"u" + i}>{s}</UsageCell>
+        ))}
+        {times.concat(age).map((s, i) => (
+          <UsageCell key={"t" + i}>{s}</UsageCell>
+        ))}
+      </div>
     </div>
   );
 }

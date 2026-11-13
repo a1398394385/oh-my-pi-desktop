@@ -124,8 +124,6 @@ export const rightZh = {
   hubFlat: "Flat",
   hubTree: "By parent",
   hubAgentTime: "agent time",
-  hubTimed: "{{t}}/{{n}} timed",
-  hubMeasured: "{{m}}/{{n}} measured",
   hubNoUsage: "usage —",
   hubKeySelect: "选择",
   hubKeyOpen: "打开",

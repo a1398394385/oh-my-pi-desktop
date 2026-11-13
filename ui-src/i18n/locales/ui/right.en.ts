@@ -125,8 +125,6 @@ export const rightEn = {
   hubFlat: "Flat",
   hubTree: "By parent",
   hubAgentTime: "agent time",
-  hubTimed: "{{t}}/{{n}} timed",
-  hubMeasured: "{{m}}/{{n}} measured",
   hubNoUsage: "usage —",
   hubKeySelect: "select",
   hubKeyOpen: "open",

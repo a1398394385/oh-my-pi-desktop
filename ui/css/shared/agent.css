@@ -51,12 +51,15 @@
 
 .hub-meta {
   font-size: var(--ui-fs-sm); color: var(--faint);
-  display: flex; align-items: baseline; gap: 8px;
+  display: flex; flex-wrap: wrap; gap: 6px;
 }
 
-.hub-meta-usage { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* One stat cell, shared by the roster's aggregate line and each card's metrics line:
+   text centered, and the component sets a growing min-width so a shrinking value keeps its
+   widest footprint instead of dragging its neighbours. */
+.hub-cell { text-align: center; }
 
-.hub-meta-right { margin-left: auto; flex: none; white-space: nowrap; }
+.hub-cell > span { white-space: nowrap; }
 
 /* ---- 18.5 hub extension: card controls, background jobs, cache warming ---- */
 /* Row action buttons (subagent stop/open, background-job cancel): one shared mini icon button */
