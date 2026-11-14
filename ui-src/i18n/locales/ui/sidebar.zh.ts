@@ -39,6 +39,7 @@ export const sidebarZh = {
   running: "运行中",
   hasNewResults: "有新结果",
   awaitingApproval: "等待审批",
+  awaitingAnswer: "等待回答",
   lastRunFailed: "最近一次运行失败",
   unpin: "取消置顶",
   pinSession: "置顶会话",

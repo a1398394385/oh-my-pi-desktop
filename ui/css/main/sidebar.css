@@ -335,7 +335,12 @@ body:has(#sidebar.collapsed) #left-resizer {
 .task-indicator { color: var(--dim); opacity: 1; transition: opacity var(--dur-snap) var(--swift); }
 .task-indicator.error,
 .task-indicator.unread,
+.task-indicator.ask,
 .task-indicator.approval { opacity: 1; }
+/* Blocked-on-user glyphs: ask (blue) and approval (orange) must also read differently from the
+   unread dot, which fills the same 16px slot in blue. */
+.task-indicator.ask { color: var(--blue); }
+.task-indicator.approval { color: var(--orange); }
 .task-indicator.loading svg { animation: spin 1s linear infinite; }
 /* automation badge: inline, just left of the relative-time label; hover hides it along with the label */
 .task-auto {

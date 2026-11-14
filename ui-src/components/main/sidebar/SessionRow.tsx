@@ -120,7 +120,13 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // Per-path field selectors (Batch 1, T7): after LRU eviction the getters return
   // undefined/false and the row falls back to its disk/pool state instead of crashing
   const streaming = useAppStore((st) => st.openSessions.get(s.path)?.streaming ?? false);
-  const awaitingApproval = useAppStore((st) => (st.openSessions.get(s.path)?.pendingApprovals?.length ?? 0) > 0);
+  // Which dialog blocks this session: the FIRST pending request decides, matching the card
+  // MainColumn renders. Ask and approval are distinct states — both share one approval
+  // channel, so the array's contents (not the frame type) tell them apart.
+  const pendingKind = useAppStore((st) => {
+    const first = st.openSessions.get(s.path)?.pendingApprovals?.[0];
+    return first ? (first.questions?.length ? "ask" : "approval") : null;
+  });
   const hasError = useAppStore((st) => {
     const o = st.openSessions.get(s.path);
     if (!o || o.streaming) return false;
@@ -176,17 +182,18 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const pinned = pinnedSessions.has(s.path);
   // Like ZCode's TaskListItem, keep a single 16px leading slot with a fixed priority:
-  // error > approval > running > unread. The error state (selector above) comes from the
-  // session's last error row. A session blocked on an ask/approval dialog is waiting on the
-  // user, not working: the spinner would read as "still busy" while nothing moves until
-  // the question is answered, so it shows the attention dot instead. A run outranks the
-  // unread dot: the dot belongs to the PREVIOUS turn's result, and it outlived an unopened
-  // row (a run started on the other channel leaves it behind), which used to hide the
-  // spinner for every rerun of that session.
+  // error > ask > approval > running > unread. The error state (selector above) comes from
+  // the session's last error row. A session blocked on a dialog is waiting on the user, not
+  // working: the spinner would read as "still busy" while nothing moves until the question
+  // is answered, so it shows a dialog glyph instead — a question bubble for ask, a shield
+  // for approval (they used to share the unread dot, which read as "new results"). A run
+  // outranks the unread dot: the dot belongs to the PREVIOUS turn's result, and it outlived
+  // an unopened row (a run started on the other channel leaves it behind), which used to
+  // hide the spinner for every rerun of that session.
   // Loaded here → the subscribed streaming flag (driven by this client's own event frames);
   // otherwise the host pool's busy flag (cross-channel running state)
   const running = streaming || poolBusy;
-  const leading = hasError ? "error" : awaitingApproval ? "approval" : running ? "loading" : unseenFinished.has(s.path) ? "unread" : "none";
+  const leading = hasError ? "error" : (pendingKind ?? (running ? "loading" : unseenFinished.has(s.path) ? "unread" : "none"));
   // Open session: already open → activate directly (refreshes the right panel's git diff); not
   // open → the host loading chain
   const openSession = () => {
@@ -275,9 +282,11 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       onMouseLeave={handleMouseLeave}
     >
       <span className="relative flex-none w-[16px] h-[16px] inline-flex items-center justify-center">
-        <span className={"task-indicator " + leading} title={leading === "loading" ? t("sidebar.running") : leading === "unread" ? t("sidebar.hasNewResults") : leading === "approval" ? t("sidebar.awaitingApproval") : leading === "error" ? t("sidebar.lastRunFailed") : undefined}>
+        <span className={"task-indicator " + leading} title={leading === "loading" ? t("sidebar.running") : leading === "unread" ? t("sidebar.hasNewResults") : leading === "ask" ? t("sidebar.awaitingAnswer") : leading === "approval" ? t("sidebar.awaitingApproval") : leading === "error" ? t("sidebar.lastRunFailed") : undefined}>
           {leading === "error" ? <span className="w-[6px] h-[6px] rounded-full bg-err" /> : null}
-          {leading === "unread" || leading === "approval" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
+          {leading === "unread" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
+          {leading === "ask" ? <Icon name="messageQuestion" size={16} /> : null}
+          {leading === "approval" ? <Icon name="shieldQuestion" size={16} /> : null}
           {leading === "loading" ? <Icon name="loader" size={16} /> : null}
         </span>
         {/* Same as ZCode: on hover Pin takes over the same leading slot; always shown in the
