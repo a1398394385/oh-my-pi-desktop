@@ -4,6 +4,7 @@
 // fmtDuration lives in chat/util.ts.
 import { useEffect, useRef, useState } from "react";
 import { atMentions } from "../../../lib/at-mentions";
+import { splitQuote } from "../../../lib/conversation-quote";
 import { t } from "../../../i18n";
 
 export function fmtAgo(iso: string): string {
@@ -21,18 +22,16 @@ interface SessionLabelLike {
 }
 
 // Inlined attachment blocks (host-side @ session references, pasted files) are prompt
-// framing, not what the user said; a first message cut mid-block keeps nothing after
-// the opening tag either.
-const ATTACHED_BLOCK_RE = /<attached-(?:file|session)[\s\S]*?(?:<\/attached-(?:file|session)>|$)/g;
-
+// framing, not what the user said: splitQuote cuts them (and any truncated tail).
 export function sessionLabel(s: SessionLabelLike): string {
   // The base scanner stamps this sentinel when its 4 KB prefix window holds no message
   // entry (dense custom injections push the first message past it). It is not a title.
   // The first message carries the @path lines a path attachment appended; they are chips in
-  // the transcript, not part of what the user said.
+  // the transcript, not part of what the user said. A title auto-derived from a prompt that
+  // was nothing but an @ session reference carries that block verbatim — not a title either.
   const first =
-    s.firstMessage === "(no messages)" ? "" : atMentions((s.firstMessage ?? "").replace(ATTACHED_BLOCK_RE, "").trim()).text;
-  return s.title || first || t("sidebar.emptySession");
+    s.firstMessage === "(no messages)" ? "" : atMentions(splitQuote(s.firstMessage ?? "").body).text;
+  return splitQuote(s.title ?? "").body || first || t("sidebar.emptySession");
 }
 
 // Copy to clipboard (replica of shell.js copyText, incl. the WKWebView insecure-context fallback)

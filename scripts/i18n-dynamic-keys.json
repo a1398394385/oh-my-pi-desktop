@@ -21,7 +21,7 @@
     },
     {
       "file": "ui-src/components/Composer.tsx",
-      "line": 914,
+      "line": 1034,
       "prefix": "composer.thinkingLevels.",
       "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
     },

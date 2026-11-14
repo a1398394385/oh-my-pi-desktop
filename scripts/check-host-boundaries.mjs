@@ -83,6 +83,9 @@ const ALLOWED_EDGES = new Set([
   // rpc/prompt.ts reuses formatSessionReference for the composer's @ session attachment: a referenced session is
   // rendered by the same turn parser instead of a second JSONL reader.
   "rpc/session.ts→session-text-search.ts", "session-text-search.ts→session-context.ts", "rpc/prompt.ts→session-context.ts",
+  // edit_resend resolves the composer's "@session:<path>" markers with the same
+  // inliner the prompt path uses (the base does not know the marker).
+  "rpc/session.ts→session-context.ts",
   // GUI env bootstrap: thin entry host.ts fires the PATH augment early
   // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
   // the same idempotent-singleton promise

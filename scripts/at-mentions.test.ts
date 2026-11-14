@@ -2,7 +2,7 @@
 // else (Chinese text glued to the @ never triggers a read, so its token must stay visible).
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/at-mentions.test.ts --pool=forks --poolOptions.forks.singleFork
 import { describe, expect, test } from "bun:test";
-import { atMentions } from "../ui-src/lib/at-mentions.ts";
+import { atMentions, splitRefs } from "../ui-src/lib/at-mentions.ts";
 
 describe("atMentions", () => {
   test("strips a standalone mention line and keeps the prose", () => {
@@ -33,5 +33,39 @@ describe("atMentions", () => {
     const r = atMentions("说 @/a.md 和 @/b.md", ["/a.md"]);
     expect(r.paths).toEqual(["/a.md"]);
     expect(r.text).toBe("说 和 @/b.md");
+  });
+});
+
+describe("splitRefs (editor backfill)", () => {
+  // Chips must serialize back to the exact bytes: rebuilding an editor from a sent prompt
+  // and sending it again has to reproduce the same reference tokens.
+  const roundTrip = (text: string) =>
+    splitRefs(text)
+      .map((seg) => ("text" in seg ? seg.text : seg.token))
+      .join("");
+
+  test("splits a file mention and its token owns the trailing space", () => {
+    expect(splitRefs("看下 @/x/a.md 然后")).toEqual([
+      { text: "看下 " },
+      { kind: "file", path: "/x/a.md", token: "@/x/a.md " },
+      { text: "然后" },
+    ]);
+    expect(roundTrip("看下 @/x/a.md 然后")).toBe("看下 @/x/a.md 然后");
+  });
+
+  test("quoted paths and session references keep their token", () => {
+    expect(splitRefs('@"My Notes.md"')).toEqual([{ kind: "file", path: "My Notes.md", token: '@"My Notes.md"' }]);
+    expect(splitRefs("@session:/p/s.jsonl 继续")).toEqual([
+      { kind: "session", path: "/p/s.jsonl", token: "@session:/p/s.jsonl " },
+      { text: "继续" },
+    ]);
+    expect(splitRefs('@session:"/p/a b.jsonl"')).toEqual([
+      { kind: "session", path: "/p/a b.jsonl", token: '@session:"/p/a b.jsonl"' },
+    ]);
+  });
+
+  test("leaves text with no references untouched", () => {
+    expect(splitRefs("普通文字\n两行")).toEqual([{ text: "普通文字\n两行" }]);
+    expect(splitRefs("看一下@/x/a.md")).toEqual([{ text: "看一下@/x/a.md" }]);
   });
 });

@@ -42,12 +42,7 @@ import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
-import { formatSessionReference } from "../session-context.ts";
-
-// Conversation reference written by the composer's session chip: "@session:<path>",
-// quoted when the path carries whitespace. Matched and stripped before the base's
-// own @mention scan, so the marker never reaches it as prose.
-const SESSION_REF_RE = /@session:(?:"([^"]+)"|(\S+)) ?/g;
+import { inlineSessionRefs } from "../session-context.ts";
 
 // Attachments sent by the frontend along with prompt: images as base64, text-kind as file
 // contents (legacy inline path), path-kind as absolute paths the base @-reads itself
@@ -635,25 +630,9 @@ async function handlePrompt(
     finalText = text ? `${textBlocks.join("\n\n")}\n\n${text}` : textBlocks.join("\n\n");
   }
   // Referenced existing sessions ride inside the prompt text as "@session:<path>"
-  // markers (composer chips). Each marker is pulled out and replaced by the
-  // session's turns, appended after the user's own words so the session's first
-  // message (sidebar preview, title generation) stays what the user wrote.
-  // Unreadable (deleted/empty) references are dropped rather than failing the send.
-  const refPaths: string[] = [];
-  finalText = finalText.replace(SESSION_REF_RE, (_m, quoted: string | undefined, plain: string | undefined) => {
-    refPaths.push(quoted ?? plain ?? "");
-    return "";
-  });
-  const sessionBlocks: string[] = [];
-  for (const refPath of refPaths) {
-    // Only the path travels in the text; the block title is the session file name
-    const name = refPath.split("/").pop()?.replace(/\.jsonl$/, "") || "session";
-    const block = refPath ? await formatSessionReference(refPath, name) : null;
-    if (block) sessionBlocks.push(block);
-  }
-  if (sessionBlocks.length > 0) {
-    finalText = finalText.trim() ? `${finalText.trim()}\n\n${sessionBlocks.join("\n\n")}` : sessionBlocks.join("\n\n");
-  }
+  // markers (composer chips); the shared resolver inlines their turns (edit_resend
+  // resolves them the same way).
+  finalText = await inlineSessionRefs(finalText);
   // Natively picked / dropped files arrive as absolute paths. Append each as an @mention so
   // the base reads it into its own fileMention message (text, images, video contact sheets and
   // binary skips are all handled there) instead of inlining the bytes into the user's prompt.

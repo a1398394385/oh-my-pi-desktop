@@ -7,6 +7,7 @@ import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
 import { atMentions } from "../../lib/at-mentions";
 import { splitQuote } from "../../lib/conversation-quote";
+import { insertSessionRef } from "../composer/trigger";
 import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
 import { t } from "../../i18n";
@@ -21,7 +22,7 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   // Annotations ride in the sent prompt text: the bubble shows the user's own words
   // plus the blocks quoted from a file / diff pane (their path and line span)
-  const { body, notes } = splitQuote(item.text);
+  const { body, notes, sessions } = splitQuote(item.text);
   const blocks = notes.filter((n) => n.file);
   const { copied, copy } = useCopyFeedback();
   const images = item.images ?? [];
@@ -153,7 +154,18 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!canEdit || !item.entryId || !sessionId) return;
-                  useAppStore.setState({ editingEntry: { entryId: item.entryId, sessionId, text: body, images: item.images ?? null } });
+                  // Edit loads what the user wrote plus every reference the host inlined, so
+                  // the chips come back and resubmitting re-inlines the same material.
+                  const refs = sessions.map((s) => insertSessionRef(s.path).trim());
+                  useAppStore.setState({
+                    editingEntry: {
+                      entryId: item.entryId,
+                      sessionId,
+                      text: [body, ...refs].filter(Boolean).join("\n\n"),
+                      images: item.images ?? null,
+                      notes,
+                    },
+                  });
                 }}
               >
                 <Icon name="pencil" size={13} />

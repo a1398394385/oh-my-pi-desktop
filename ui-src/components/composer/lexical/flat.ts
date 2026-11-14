@@ -18,6 +18,8 @@ import {
   $setSelection,
 } from "lexical";
 import type { LexicalNode } from "lexical";
+import { $createChipNode } from "./ChipNode";
+import { splitRefs } from "../../../lib/at-mentions";
 
 // Global text span of any node (leaves carry text; an element's span is its content range)
 type NodeSpan = { node: LexicalNode; start: number; end: number };
@@ -79,18 +81,25 @@ export function $leafStart(node: LexicalNode): number | null {
 }
 
 /** Rebuild the editor content wholesale from plain text (external backfill:
-    fork selected text / queued message recall). Newlines are expressed as a
-    single paragraph + LineBreakNodes, inverse of $flattenText's flattening
-    rules. */
+    fork selected text / queued message recall / history edit). Newlines are
+    expressed as a single paragraph + LineBreakNodes, inverse of $flattenText's
+    flattening rules. @ references are rebuilt as chips so backfilled text reads
+    like what the user typed; the chip carries the identical token bytes, so the
+    serialized prompt is unchanged. */
 export function $setText(text: string): void {
   const root = $getRoot();
   root.clear();
   const p = $createParagraphNode();
-  const lines = text.split("\n");
-  lines.forEach((line, i) => {
-    if (i > 0) p.append($createLineBreakNode());
-    if (line) p.append($createTextNode(line));
-  });
+  const pushLiteral = (chunk: string) => {
+    chunk.split("\n").forEach((line, i) => {
+      if (i > 0) p.append($createLineBreakNode());
+      if (line) p.append($createTextNode(line));
+    });
+  };
+  for (const seg of splitRefs(text)) {
+    if ("text" in seg) pushLiteral(seg.text);
+    else p.append($createChipNode(seg.token));
+  }
   root.append(p);
   p.selectEnd();
 }

@@ -37,6 +37,9 @@ import { collectSessionMatches, mergeSearchMatches } from "./shared/session-sear
 import { readRecentCommands, recordRecentCommand } from "./composer/recentCommands";
 import { bgTaskCount, subagentCount } from "./composer/sessionCounts";
 import { sendComposerPrompt } from "./composer/send";
+import { takeAnnotations, restoreAnnotations } from "../store/annotations";
+import type { PendingAnnotation } from "../store/annotations";
+import { buildQuotePrefix } from "../lib/conversation-quote";
 import CtxCard from "./chat/CtxCard";
 import { LexicalComposer } from "@lexical/react/LexicalComposer";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
@@ -322,6 +325,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   // a prompt, and the slot's own draft is parked (see draft.ts) until the edit ends ----
   const editingEntry = useAppStore((st) => st.editingEntry);
   const editParkedRef = useRef<string | null>(null); // draftKey whose draft is parked for the live edit
+  const editNotesParkedRef = useRef<{ key: string; notes: PendingAnnotation[] } | null>(null);
   useEffect(() => {
     if (!editingEntry) {
       editParkedRef.current = null;
@@ -334,6 +338,24 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     }
     lexRef.current?.setText(editingEntry.text);
     lexRef.current?.focus();
+  }, [editingEntry, draftKey]);
+
+  // Annotations follow the edit: the message's own notes come back as chips so a resubmit
+  // still carries them, and the user's pending notes are parked until the edit ends.
+  useEffect(() => {
+    const parked = editNotesParkedRef.current;
+    if (!editingEntry) {
+      editNotesParkedRef.current = null;
+      if (parked && parked.key === draftKey) {
+        takeAnnotations(); // whatever the edit left behind (none after a submit)
+        restoreAnnotations(parked.notes);
+      }
+      return;
+    }
+    // A previous edit target's notes are not the user's: drop them, park the real ones once
+    if (parked?.key === draftKey) takeAnnotations();
+    else editNotesParkedRef.current = { key: draftKey, notes: takeAnnotations() };
+    restoreAnnotations(editingEntry.notes);
   }, [editingEntry, draftKey]);
 
   // Leave edit mode: send and cancel both put the parked draft back (spec: whatever the
@@ -471,10 +493,15 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     if (edit) {
       const edited = getDraftText(draftKey).trim();
       if (!edited) return;
+      // Same annotation handling as a plain send: the chips put back by the edit (the
+      // message's own notes) ride as the quote prefix, so a resubmit does not drop them.
+      const notes = takeAnnotations();
+      const text = notes.length > 0 ? buildQuotePrefix(notes) + edited : edited;
       // Stash the payload: the session_edited failure landing restores it into the
-      // composer, so the edited text is never silently lost
+      // composer, so the edited text is never silently lost (the bare text: the prefix is
+      // reconstructed from the restored chips, not typed back into the editor)
       useAppStore.setState({ editingEntry: null, pendingEditText: { sessionId: edit.sessionId, text: edited, images: edit.images } });
-      send({ type: "edit_resend", sessionId: edit.sessionId, entryId: edit.entryId, text: edited, images: edit.images ?? [] });
+      send({ type: "edit_resend", sessionId: edit.sessionId, entryId: edit.entryId, text, images: edit.images ?? [] });
       endEdit();
       return;
     }

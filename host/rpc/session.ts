@@ -28,6 +28,7 @@ import type { AcpRuntimeState } from "../acp-runtime.ts";
 import { bgJobsPayload } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
+import { inlineSessionRefs } from "../session-context.ts";
 import { searchSessionText } from "../session-text-search.ts";
 import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../titles.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
@@ -1036,7 +1037,10 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const entryId = String(msg.entryId ?? "");
     if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
-    const text = String(msg.text ?? "");
+    // "@session:<path>" markers come back with an edited message (the composer rebuilds
+    // them as chips); resolve them here too — the base does not know the marker — so a
+    // resend inlines exactly what the original prompt did.
+    const text = await inlineSessionRefs(String(msg.text ?? ""));
     // Images are the original message's attachments round-tripped untouched
     // (the UI can neither add nor drop any); shape-checked at this boundary.
     const rawImages: Array<{ type?: unknown; data?: unknown; mimeType?: unknown }> = Array.isArray(msg.images)
