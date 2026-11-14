@@ -72,6 +72,8 @@ export interface BgJobEntry {
   id: string;
   type: string;
   label: string | null;
+  /** The model's `i` intent on the call that started the job (null for old host frames) */
+  intent: string | null;
   command: string | null;
   cwd: string | null;
   pids: number[];

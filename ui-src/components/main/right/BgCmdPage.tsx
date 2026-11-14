@@ -37,6 +37,8 @@ interface BgTask {
   toolCallId?: string;
   op: string;
   procName: string;
+  // The model's `i` intent on the call (snapshot intent, or the call's own `i` arg)
+  intent?: string | null;
   command: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same as above: host tool args are an open dict
   args: Record<string, any>;
@@ -96,6 +98,7 @@ function getBgTasksForSession(
         toolCallId: it.toolCallId,
         op,
         procName,
+        intent: typeof args.i === "string" && args.i.trim() ? args.i.trim() : null,
         command: taskCommand,
         args,
         output: it.output || "",
@@ -136,6 +139,7 @@ function getBgTasksForSession(
         toolCallId: it.toolCallId,
         op: "run",
         procName: name,
+        intent: typeof it.args?.i === "string" && it.args.i.trim() ? it.args.i.trim() : null,
         command: it.args?.command || it.text || name,
         args: it.args || {},
         output: it.output || "",
@@ -171,6 +175,7 @@ function getBgTasksForSession(
       id: `job_${job.id}`,
       op: job.type,
       procName: job.label || job.command || job.type,
+      intent: job.intent ?? null,
       command: job.command || job.label || "",
       args: {},
       output: "",
@@ -226,8 +231,8 @@ export default function BgCmdPage() {
             <div className="stext">
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <b style={{ color: "var(--text)" }}>{task.op.toUpperCase()}</b>
-                <span className="path" title={task.command || task.procName || ""}>
-                  {task.command || task.procName || t("right.bgCommandFallback")}
+                <span className="path" title={task.intent || task.command || task.procName || undefined}>
+                  {task.intent || task.command || task.procName || t("right.bgCommandFallback")}
                 </span>
               </div>
             </div>

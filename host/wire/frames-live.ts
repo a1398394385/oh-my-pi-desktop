@@ -124,6 +124,7 @@ export interface BgJobsFrame {
     id: string;
     type: string; // "bash" | "task" | "eval"; process-less jobs carry no command
     label: string | null; // snapshot item title (eval cell title, task id) — the only title without a command
+    intent: string | null; // the model's `i` intent on the call that started the job (base AsyncJob.intent)
     command: string | null; // process-backed jobs only (bash)
     cwd: string | null;
     pids: number[]; // live pids while running, empty once settled
