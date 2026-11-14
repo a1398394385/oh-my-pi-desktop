@@ -403,7 +403,11 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
    row ~150px narrower than the dock above. The slot already carries the resolved width, so
    the children only need 100% of it. */
 .below-dock > .stats-bar { max-width: none; }
-.below-dock .notice-strip { justify-self: center; }
+/* The strip is stretched to the cell, and the cell's bottom is #main's bottom edge, so it
+   would sit flush on the card edge with the dock's 12px margin as its only gap. Lift it
+   half that margin: the strip then reads as centered between the input's bottom edge and
+   the card's, at the same heights whether or not the slot is taller than the strip. */
+.below-dock .notice-strip { justify-self: center; position: relative; top: -6px; }
 
 /* The strip covers the row outright: hide the row's numbers rather than let them peek out
    around the card's narrower edges. */
