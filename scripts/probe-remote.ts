@@ -366,6 +366,36 @@ try {
   const reloaded = await r1.rpc<{ type: string }>("reload_settings", {}, "models");
   assert(reloaded.type === "models", "矩阵3: reload_settings 放行(回 models 帧非 error)");
 
+  // Matrix 3b (2026-11-13): set_session_pinned is the one session write a remote
+  // viewer keeps (spec §3.5). The write must land host-side and fan out to the
+  // local channel: while it sat in the denylist the remote toggle only moved its
+  // own store, and the next session_list frame restored the host value (the
+  // desktop stayed pinned). Synthetic path — no session file needed, the host
+  // only records the string, and the unpin below leaves the profile clean.
+  const pinPath = `${tmpdir()}/omp-remote-pin-probe-${Date.now()}.jsonl`;
+  const pinnedReply = await r1.rpc<{ type: string; pinnedSessions?: string[] }>(
+    "set_session_pinned",
+    { path: pinPath, pinned: true },
+    "session_list",
+  );
+  assert(pinnedReply.pinnedSessions?.includes(pinPath) === true, "矩阵3b: 远程置顶写回 host(回帧含该 path)");
+  const localPin = await waitForStray(
+    main.strayFrames,
+    (m) => m.type === "session_list" && (m.pinnedSessions as string[] | undefined)?.includes(pinPath) === true,
+  );
+  assert(localPin !== undefined, "矩阵3b: 置顶帧到达本地桌面通道");
+  const unpinReply = await r1.rpc<{ type: string; pinnedSessions?: string[] }>(
+    "set_session_pinned",
+    { path: pinPath, pinned: false },
+    "session_list",
+  );
+  assert(unpinReply.pinnedSessions?.includes(pinPath) === false, "矩阵3b: 远程取消置顶从 host 移除");
+  const localUnpin = await waitForStray(
+    main.strayFrames,
+    (m) => m.type === "session_list" && (m.pinnedSessions as string[] | undefined)?.includes(pinPath) === false,
+  );
+  assert(localUnpin !== undefined, "矩阵3b: 取消置顶帧到达本地桌面通道");
+
   // Matrix 4 (channel-scoped takeover, spec §3.4): the remote join must NOT evict
   // the local desktop — takeover is per-channel (remote vs remote only). The
   // session's event stream then fans out to BOTH ends (dual subscription).

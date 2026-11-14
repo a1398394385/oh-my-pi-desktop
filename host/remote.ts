@@ -49,9 +49,14 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "automations_create", "automations_update", "automations_delete", "automations_toggle",
   // ssh.ts (3)
   "ssh_save_host", "ssh_remove_host", "add_remote_workspace",
-  // session.ts (10)
-  "set_session_pinned", "archive_session", "set_project_expanded", "add_project", "remove_project",
+  // session.ts (9)
+  "archive_session", "set_project_expanded", "add_project", "remove_project",
   "reorder_projects", "delete_session", "rename_session", "compact_session", "fork_session",
+  // set_session_pinned stays OUT: it only reorders the sidebar's pinned section in
+  // omp-desktop.json and is the one session-write a remote (phone) viewer needs, so a
+  // remote unpin has to land host-side and propagate back to the desktop channel.
+  // Denying it left the remote UI toggling a local-only set that the next session_list
+  // frame reverted.
   // branch_session and edit_resend stay OUT: both only append (a new session file, or a
   // sibling branch) and never rewrite or destroy existing history, so they sit on the same
   // footing as the already-allowed prompt / navigate_tree / create_session.
