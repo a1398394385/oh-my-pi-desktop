@@ -28,6 +28,8 @@ import type { AcpRuntimeState } from "../acp-runtime.ts";
 import { bgJobsPayload } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
+import { runSkillInvocation } from "./prompt.ts";
+import { parseSkillInvocation } from "../bootstrap.ts";
 import { inlineSessionRefs } from "../session-context.ts";
 import { searchSessionText } from "../session-text-search.ts";
 import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../titles.ts";
@@ -1086,6 +1088,14 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         }
       }
       markSeen(entry);
+      // Edited text may carry a `/skill:<name>` token (the user rewrote a skill
+      // message): dispatch it as a fresh skill call instead of handing the token to
+      // the model as prose. runSkillInvocation draws its own user row + echo.
+      const skillCall = parseSkillInvocation(text.trim());
+      if (skillCall && runSkillInvocation(entry, msg.sessionId, skillCall)) {
+        ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: true }));
+        return;
+      }
       entry.transcript.push({ role: "user", text, ...(images.length > 0 ? { images } : {}) });
       entryBus(entry).send(
         JSON.stringify(

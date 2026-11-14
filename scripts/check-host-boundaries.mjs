@@ -506,6 +506,9 @@ const ALLOWED_EDGES = new Set([
   "rpc/collab.ts→state.ts", "rpc/collab.ts→i18n/host.ts", "rpc/collab.ts→stderr.ts",
   "rpc/collab.ts→wire/frames-live.ts", "rpc/collab.ts→rpc/types.ts",
   "rpc/index.ts→rpc/collab.ts", "rpc/prompt.ts→rpc/collab.ts", "rpc/session.ts→rpc/collab.ts",
+  // edit_resend re-dispatches an edited `/skill:<name>` draft through the same
+  // user-attributed skill path the composer uses (one dispatch implementation).
+  "rpc/session.ts→rpc/prompt.ts",
   // rpc/worktree.ts: git worktree session create/status/remove over Bun.spawn
   "rpc/worktree.ts→rpc/types.ts", "rpc/index.ts→rpc/worktree.ts",
   // rpc/git-graph.ts: read-only commit graph + commit detail for the middle-column

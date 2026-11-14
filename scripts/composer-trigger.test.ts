@@ -50,3 +50,18 @@ test("a directory whose path already ends with a slash keeps exactly one", () =>
   expect(text).toBe("@docs/");
   expect(detectTrigger(text, text.length)?.query).toBe("docs/");
 });
+
+describe("$ skill trigger", () => {
+  test("triggers at line start and at any whitespace-separated word start", () => {
+    expect(detectTrigger("$rev", 4)).toEqual({ kind: "skill", start: 0, end: 4, query: "rev" });
+    expect(detectTrigger("fix this $rev", 13)).toEqual({ kind: "skill", start: 9, end: 13, query: "rev" });
+  });
+
+  test("stays inert inside a word", () => {
+    expect(detectTrigger("a$rev", 5)).toBeNull();
+  });
+
+  test("closes once the argument slot opens", () => {
+    expect(detectTrigger("$rev arg", 8)).toBeNull();
+  });
+});

@@ -543,6 +543,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
         if (caret == null) return fail();
         const t = detectTrigger(full, caret);
         if (!t) return fail();
+        // $ is a shell variable sigil inside `!` commands (`! ls $HOME`); the
+        // bash card (BashCompletePlugin) owns that slot, and the skill palette
+        // would stack on top of it.
+        if (t.kind === "skill" && isBashMode(full)) return fail();
         if (t.kind !== "file") {
           const st = useAppStore.getState();
           const sess = st.activePath ? st.openSessions.get(st.activePath) : undefined;

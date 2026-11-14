@@ -15,7 +15,7 @@ import { stripDcpTags } from "./translate.ts";
 // semantics as the base). In the installed base this function lives at
 // pi-tui/chat/transcript-entry (only newer versions moved it to
 // session-context — follow the installed one)
-import { isUserRequestEntry } from "@oh-my-pi/pi-tui/chat/transcript-entry";
+import { isUserRequestEntry, userTurnDraft } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import type { SessionEntry, SessionTreeNode } from "@oh-my-pi/pi-coding-agent/session/session-entries";
 
 const TREE_SETTINGS_KINDS: Record<string, true> = {
@@ -170,7 +170,9 @@ function treeEntryText(entry: SessionEntry, toolCalls: Map<string, { name: strin
       return treeNormMulti(content); // user / developer / other roles
     }
     case "custom_message":
-      return treeNormMulti(treeContentText(entry.content));
+      // A user-invoked skill prompt opens a user turn: the row names the draft the
+      // user typed, not the expanded skill body that was injected for the model.
+      return treeNormMulti(isUserRequestEntry(entry) ? (userTurnDraft(entry) ?? "") : treeContentText(entry.content));
     case "compaction":
       return `[compaction: ${Math.round((entry.tokensBefore ?? 0) / 1000)}k tokens]`;
     case "branch_summary":

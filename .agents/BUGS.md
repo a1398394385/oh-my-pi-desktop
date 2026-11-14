@@ -160,6 +160,7 @@
 | BUG-166 | 缩放命令弹窗上栏越界且滚动少一行——旧矩形算行数、视觉像素算滚动 | 2026-11-14 |
 | BUG-167 | 远程刷新后运行中的子代理全部消失——名册 seed 帧发在 `session_created` 之前被丢弃 | 2026-11-14 |
 | BUG-168 | 每轮都被要求「强力压缩」——percent 档位线在无窗口时被当成 25/50/75 token，会话永久 L3 | 2026-11-14 |
+| BUG-169 | skill 消息不是用户节点——skill 派发只写 custom_message，无 user 行/entryId，编辑置灰且重载后消失 | 2026-11-14 |
 ---
 
 ## 详情
@@ -2515,3 +2516,19 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：`scripts/smoke-acp-tiermode.ts`（回退契约改为「保留默认线」，1 条 warn）与 `scripts/smoke-acp-ephemeral.ts` 新增 H 段（无窗口构造 = 默认线；`rebindModel({contextWindow: 1_000_000})` 后 l1/l3 = 250K/750K）均通过；`smoke-acp-{strong,forced,pull,synth,projection,persist,tool,takeover,child-ownership}` 与 `scripts/acp-projection-pairing.test.ts` 11 项全绿；`bun run check` 全绿。**未做真机复现**：需要在跑着的桌面实例里重开会话观察 tier 由 L3 变 none，用户下次重开会话确认。
 
 **教训**：百分比配置的每一步换算都必须承认「窗口可能还不知道」——把缺失当成「用数字本身」是最坏的默认值，它既保留了配置的外观，又产生了完全不同的量纲。凡是「窗口派生」的参数（tier 线、zone 线、guard 线）必须在同一个 `#applyWindow` 里一起重算，否则会出现一半正确一半荒谬的分裂状态。
+
+### BUG-169: skill 消息不是用户节点——skill 派发只写 custom_message，无 user 行/entryId，编辑置灰且重载后消失
+
+**日期**：2026-11-14
+
+**分诊**：②确认存量缺陷（`/skill:` 命令自接入桌面起就走 `promptCustomMessage`，与本次 `$` 行内插入无关；`$` 只是把它从"偶发走斜杠命令"放大成常用路径）。
+
+**现象**：发送带 skill 的消息后，气泡右下角「编辑重发」一直置灰（title=消息落盘后可编辑）；刷新或重开会话，这条用户消息整条消失，只剩过程组和助手输出。会话树里它显示成一条 custom_message 节点，不像用户回合。
+
+**根因**：底座把 user-invoked skill 落盘为 `type:"custom_message", customType:"skill-prompt", attribution:"user"`，不是 `message(role:"user")`。桌面宿主三处没对齐这个语义：①`runSkillInvocation` 派发后 `return null`，跳过了普通 prompt 的 `entry.transcript.push({role:"user"})` 与跨通道 `user_message` echo，屏幕上那条只是发送时的乐观行，entryId 永远不回填 → `canEdit` 恒 false；②`entriesToTranscript` 的 `e.type !== "message"` 早退把 custom_message 全丢，重载后气泡消失（底座自己的 `isUserRequestEntry`/`isUserTurnInitiator` 已把它当用户请求，桌面没接）；③`edit_resend` 直连 `session.prompt`，编辑带 skill 的消息重发会把 `/skill:` 当普通文本。附带的时序坑：`promptCustomMessage` 的 Promise 要等**整轮结束**（底座 `#promptWithMessage` 内部 `await run`）才 resolve，所以 entryId 不能在派发处同步读——那时 leaf 早已移过该消息。
+
+**修复**：①`entriesToTranscript` 对 `custom_message && isUserRequestEntry` 输出 user 行（text=`userTurnDraft`，即 details.prompt 原文；entryId=entry.id）并开新 turn；`treeEntryText` 同一条目改显示用户原稿。②`runSkillInvocation` 改两次回执：派发时 push transcript + echo（无 entryId，让所有通道立刻有气泡），回合结束的 `.then` 里用 `skillEntryIdOf`（沿 branch 倒查同文本的 skill-prompt 条目）回填 entryId 并再 echo 一次；前端 `user_message` 处理在 dedup 命中时写入 entryId，`startLocalRun` 接可选 entryId。③`edit_resend` 在 push 前对文本跑 `parseSkillInvocation`，命中就复用 `runSkillInvocation`。帧与边界：`user_message` 加 `entryId?`，`rpc/session.ts→rpc/prompt.ts` 登记到 ALLOWED_EDGES。
+
+**验证**：真机（`dev-browser` + 真 host + `omp-desktop-dev`，MiniMax-M3.1-Flash）三条路径全绿：发送 `fix this $` 选 skill → 回合中置灰、回合结束后按钮变「编辑重发（原对话保留为分支）」且可点；`reload` 后重新打开会话，`.msg.user` 仍在（1 条）且编辑可点；点编辑回填 `fix this /skill:ai-sdk`，提交后新回合启动，会话文件 `skill-prompt` 计数由 1 变 2、`details.prompt` 两处一致。`bun run host:typecheck`/`ui:typecheck`、`check-host-boundaries`、`scripts/composer-trigger.test.ts`（9 项）全绿；`bun run check` 全绿（此前唯一红灯是 ui 中文注释基线 15→20，来源是未跟踪的原型页 `ui/prototypes/model-cap-icons.html`，已改英文注释）。
+
+**教训**：底座对"用户发起"有两种落盘形态（`message(role:user)` 与 attributed custom_message），桌面的 transcript/回填/编辑三条链路都必须同时认这两种，只认前一种就会出现"看得见但改不了、刷新即消失"。另外别把 `promptCustomMessage` 当"已受理"用——它 resolve 在整轮结束，需要早期信号时用 `onPromptAdmitted`，需要最终 entryId 时在 settle 后沿 branch 回查。

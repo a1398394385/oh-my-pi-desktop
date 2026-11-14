@@ -1,6 +1,6 @@
 // Composer sigil trigger computation (@ file completion / line-leading /
-// command completion / line-leading $ skill completion / ! bash mode): pure
-// functions, no React dependency. Semantics aligned with the base TUI's
+// command completion / $ skill completion at any word start / ! bash mode):
+// pure functions, no React dependency. Semantics aligned with the base TUI's
 // autocomplete.ts extractAtPrefix / findLeadingSlashCommandStart and
 // input-controller.ts's isBashMode.
 
@@ -84,10 +84,13 @@ export function detectTrigger(text: string, caret: number): Trigger | null {
     if (/\s/.test(query)) return null; // the command name is typed out and the argument section is entered: close the popup
     return { kind: "command", start, end: caret, query };
   }
-  if (ch === "$" && text.slice(0, start).trim() === "") {
-    // Line-leading $ triggers skill completion (same line-start rule as /:
-    // the accepted candidate inserts "/skill:<name>", which the host only
-    // dispatches in leading position, so mid-prompt $ stays inert)
+  if (ch === "$" && (start === 0 || /[ \t\n]/.test(text[start - 1]))) {
+    // $ triggers skill completion at any word start: the accepted candidate
+    // inserts "/skill:<name>", which the host dispatches both leading and as a
+    // mid-prompt token (parseSkillInvocation threads the surrounding prose
+    // through as args). Only whitespace qualifies as the preceding delimiter --
+    // tokenStart also breaks on quotes and "=", but the host's token regex
+    // accepts whitespace alone.
     const query = text.slice(start + 1, caret);
     if (/\s/.test(query)) return null; // arguments started: close the popup
     return { kind: "skill", start, end: caret, query };

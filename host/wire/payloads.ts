@@ -574,7 +574,7 @@ export interface QueuedMessage {
 /** Narrow event-stream event (host/translate.ts UiEvent; kind-discriminated body of event/subagent_event frames) */
 export type UiEvent =
   | { kind: "turn_start" }
-  | { kind: "user_message"; text: string; images?: Array<{ type: "image"; data: string; mimeType: string }>; automation?: { id: string; title: string } } // host-side prompt echo: every attached UI draws the bubble (cross-channel send); automation variant has no local composer send
+  | { kind: "user_message"; text: string; images?: Array<{ type: "image"; data: string; mimeType: string }>; automation?: { id: string; title: string }; entryId?: string } // host-side prompt echo: every attached UI draws the bubble (cross-channel send); automation variant has no local composer send; entryId backfills the fresh skill-prompt row so its edit action arms
   | { kind: "text_delta"; text: string; reset?: boolean } // reset: renderer output for the whole block replaces the draft (not a suffix)
   | { kind: "thinking"; phase: "start" | "end"; durationLabel?: string; thinking?: string; expandable?: boolean }
   | { kind: "thinking_delta"; text: string }

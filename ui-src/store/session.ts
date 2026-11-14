@@ -493,6 +493,7 @@ export function startLocalRun(
   text: string,
   images?: UserItem["images"],
   automation?: UserItem["automation"],
+  entryId?: string,
 ): void {
   updateSession(sessionId, (s) => {
     // A live turnItemStart here means the previous run left its fold open — its runEnd never
@@ -501,7 +502,13 @@ export function startLocalRun(
     // group and the user's message is invisible until a reload (session 01a18749).
     const openRun = s.turnItemStart != null;
     if (openRun) sealRunItems(s, null);
-    s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}), ...(automation ? { automation } : {}) });
+    s.items.push({
+      role: "user",
+      text,
+      ...(images && images.length > 0 ? { images } : {}),
+      ...(automation ? { automation } : {}),
+      ...(entryId ? { entryId } : {}),
+    });
     s.streaming = true;
     s.turnStartAt = Date.now();
     // This bubble opens the new run: the process after it belongs to the next fold
@@ -657,13 +664,14 @@ export function applyEvent(msg: EventFrame): void {
     }
     // A hit adopts the echo's text (it is the canonical prompt: resolved references, @path
     // lines) so the bubble renders exactly like the reloaded transcript.
-    if (dupe < 0) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
+    if (dupe < 0) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation, msg.entryId);
     else {
       const parsed = atMentions(msg.text);
       updateSession(msg.sessionId, (s) => {
         s.items[dupe] = {
           ...(s.items[dupe] as UserItem),
           text: msg.text,
+          ...(msg.entryId ? { entryId: msg.entryId } : {}),
           ...(parsed.paths.length > 0 ? { attachments: parsed.paths } : {}),
         };
       });

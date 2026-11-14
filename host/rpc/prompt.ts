@@ -362,6 +362,79 @@ async function dirIsEmpty(abs: string): Promise<boolean> {
 // push); returning a string = continue through prompt with that text.
 // prompt() itself also expands file commands / custom TS commands /
 // extension commands (the agentInvoked=false signal is handled in then).
+/** Entry id of the skill-prompt row a dispatch wrote, found on the active branch:
+ *  the leaf moves on once the turn streams, so the end-of-turn settle walks back. */
+function skillEntryIdOf(entry: PoolEntry, text: string): string | null {
+  const branch: Array<{ id?: string; type?: string; customType?: string; attribution?: string; details?: { prompt?: string } }> =
+    entry.manager?.getBranch?.() ?? [];
+  for (let i = branch.length - 1; i >= 0; i--) {
+    const e = branch[i];
+    if (
+      e.type === "custom_message" &&
+      e.customType === SKILL_PROMPT_MESSAGE_TYPE &&
+      e.attribution === "user" &&
+      e.details?.prompt === text
+    ) {
+      return e.id ?? null;
+    }
+  }
+  return null;
+}
+
+/** Dispatch a `/skill:<name>` invocation as a user-attributed skill prompt:
+ *  true = claimed, false = unknown or disabled skill (caller keeps the text).
+ *  Leading and mid-prompt tokens share this path; the base's parser already
+ *  threads the surrounding prose into `args` for the mid-prompt form.
+ *
+ *  The row is drawn twice: once on dispatch so every attached channel shows it
+ *  immediately, then again with its entryId at settle. The id cannot be read
+ *  inline — promptCustomMessage resolves only when the whole run ends (the base
+ *  awaits the run), and the leaf has already moved past the message by then. */
+export function runSkillInvocation(
+  entry: PoolEntry,
+  sessionId: string,
+  parsed: { name: string; args: string; prompt: string },
+): boolean {
+  const skill = entry.session.skillsSettings?.enableSkillCommands
+    ? entry.session.skills.find((c) => c.name === parsed.name)
+    : undefined;
+  if (!skill) return false;
+  const echo = (entryId?: string): void => {
+    entryBus(entry).send(
+      JSON.stringify(
+        stampEvent({ type: "event", sessionId, kind: "user_message", text: parsed.prompt, ...(entryId ? { entryId } : {}) }),
+      ),
+    );
+  };
+  entry.transcript.push({ role: "user", text: parsed.prompt });
+  echo();
+  void buildSkillPromptMessage(skill, parsed, "user")
+    .then((built) =>
+      entry.session.promptCustomMessage(
+        {
+          customType: SKILL_PROMPT_MESSAGE_TYPE,
+          content: built.message,
+          display: true,
+          details: built.details,
+          attribution: "user",
+        },
+        { streamingBehavior: "steer" },
+      ),
+    )
+    .then(() => {
+      const entryId = skillEntryIdOf(entry, parsed.prompt);
+      if (!entryId) return;
+      // A reload rebuilt the transcript meanwhile: claim the row that is still unaddressed
+      const row = entry.transcript.findLast((t) => t.role === "user" && t.text === parsed.prompt && !t.entryId);
+      if (row) row.entryId = entryId;
+      echo(entryId);
+    })
+    .catch((err: unknown) => {
+      entryBus(entry).send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
+    });
+  return true;
+}
+
 async function dispatchSlashInput(
   ws: { send(data: string): unknown },
   sessionId: string,
@@ -369,7 +442,14 @@ async function dispatchSlashInput(
   text: string,
 ): Promise<string | null> {
   const trimmed = text.trim();
-  if (!trimmed.startsWith("/")) return text;
+  if (!trimmed.startsWith("/")) {
+    // Mid-prompt `/skill:<name>` token (the composer's $ completion inserts it
+    // at any word start): without this the draft would reach the model as
+    // plain prose and the skill would never run.
+    const mid = parseSkillInvocation(trimmed);
+    if (mid && runSkillInvocation(entry, sessionId, mid)) return null;
+    return text;
+  }
 
   // Slash-command returns carry the typed command line so the UI can render them as a
   // command card (header = what was typed) instead of an anonymous meta row
@@ -380,23 +460,7 @@ async function dispatchSlashInput(
 
   // 1) /skill:<name>: the base's prompt() does not handle it, the host must dispatch (matching ACP #tryRunSkillCommand)
   const parsed = parseSkillInvocation(trimmed);
-  const skill = parsed && entry.session.skillsSettings?.enableSkillCommands
-    ? entry.session.skills.find((c) => c.name === parsed.name)
-    : undefined;
-  if (parsed && skill) {
-    const built = await buildSkillPromptMessage(skill, parsed, "user");
-    await entry.session.promptCustomMessage(
-      {
-        customType: SKILL_PROMPT_MESSAGE_TYPE,
-        content: built.message,
-        display: true,
-        details: built.details,
-        attribution: "user",
-      },
-      { streamingBehavior: "steer" },
-    );
-    return null;
-  }
+  if (parsed && runSkillInvocation(entry, sessionId, parsed)) return null;
 
   // 2) Removed commands: neither executed nor turned into a prompt (the list is already filtered in pushCommands; this intercepts hand-typed input)
   const removedHint = removedSlashHint(trimmed);
