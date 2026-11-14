@@ -740,6 +740,25 @@
   mask-image: none;
 }
 
+/* Folded args body (ToolRow.tsx ArgsBox, 5–10 lines): four whole lines plus the .cmd-card-foot
+   toggle row instead of an inner scrollbar. The 8px is the block's own padding-bottom — kept
+   out of the four rows so the fold never cuts a line in half. Expanded state drops the cap and
+   lets FadeBox add .no-fade on its own (content no longer overflows). */
+.cmd-card-cmd.folded { max-height: calc(1.5em * 4 + 8px); overflow: hidden; }
+.cmd-card-cmd.folded.open { max-height: none; }
+
+/* Left-aligned toggle row under a folded args body: no rule, no line count, same row metrics
+   as the caret row it replaces. */
+.cmd-card-foot { display: flex; height: 18px; margin-top: 4px; }
+
+.cmd-card-foot button {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none;
+  font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm); line-height: 1;
+  color: var(--dim); cursor: pointer;
+}
+
+.cmd-card-foot button:hover, .cmd-card-foot button:focus-visible { color: var(--text); }
+
 /* `out://` mid-call replies (items.tsx OutReply): the agent's prose as its own card, drawn
    in place of a reply `write`'s tool row (base parity: the TUI mounts the reply block, not
    the card) and after a terminal row for eval/bash replies. Surfaces and radii mirror

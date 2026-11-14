@@ -42,6 +42,8 @@ export const chatZh = {
   noCommand: "（无命令）",
   noOutput: "（无输出）",
   noParams: "（无参数）",
+  argsExpand: "展开全部",
+  argsCollapse: "收起",
   multiSelect: "（多选）",
   noDiffContent: "（无差异内容）",
   noTextContent: "（无文本内容）",

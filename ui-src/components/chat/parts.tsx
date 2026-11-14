@@ -208,7 +208,7 @@ export function LinkedText({ text }: { text?: string }) {
 }
 
 // ---------- Fade mask (adds .no-fade to lift the bottom blur when scrolled to bottom or content is shorter than one screen, formerly attachFadeMask) ----------
-export function FadeBox({ className, as = "div", children, html, liftRef }: { className?: string; as?: "div" | "pre"; children?: ReactNode; html?: string; liftRef?: (el: HTMLElement | null) => void }) {
+export function FadeBox({ className, as = "div", children, html, liftRef, elRef }: { className?: string; as?: "div" | "pre"; children?: ReactNode; html?: string; liftRef?: (el: HTMLElement | null) => void; elRef?: (el: HTMLElement | null) => void }) {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const el = ref.current;
@@ -226,7 +226,9 @@ export function FadeBox({ className, as = "div", children, html, liftRef }: { cl
   // Dynamic tag narrowing: `as` actually only takes "div" (default) / "pre" (CmdCard output body);
   // branch rendering + callback ref keeps the ref type of both concrete tags (equivalent to the former <Tag ref>)
   // liftRef (from useLift) is merged in so the collapse can measure/animate this element's height
-  const refCb = (el: HTMLElement | null) => { ref.current = el; liftRef?.(el); };
+  // elRef exposes the element itself (ArgsBox measures its own line count; liftRef is the
+  // collapse animator and must not be borrowed for that without firing its height bookkeeping)
+  const refCb = (el: HTMLElement | null) => { ref.current = el; liftRef?.(el); elRef?.(el); };
   if (as === "pre") {
     return html !== undefined
       ? <pre className={className} ref={refCb} dangerouslySetInnerHTML={{ __html: html }} />

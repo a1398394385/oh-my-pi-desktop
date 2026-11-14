@@ -45,6 +45,8 @@ export const chatEn = {
   noCommand: "(no command)",
   noOutput: "(no output)",
   noParams: "(no params)",
+  argsExpand: "Show all",
+  argsCollapse: "Show less",
   multiSelect: "(multi-select)",
   noDiffContent: "(no diff)",
   noTextContent: "(no text)",
