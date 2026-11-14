@@ -28,6 +28,17 @@ type ModelMenuProps = {
 const ROLES_ROW = "@roles"; // flyout entry: swaps level 1 to the role quick list
 const MANAGE_ROW = "@manage"; // flyout entry: opens the settings model page
 const THINK_ROW = "@think"; // level-1 cursor stop on the thinking slider (←/→ step the level)
+const BUBBLE_COUNT = 12; // top-tier bubbles in the thinking track
+// Lane centres (px from the capsule top, track is 22px tall) — neighbours ride
+// different lanes so approaching bubbles pass beside each other, not into each other
+const BUBBLE_LANES = [5, 11, 17];
+// One pass duration per lane. Lane-mates share it, so they can never close the
+// gap and overlap; the lanes differ a little (4.9/5.0/5.1s) so the field is not
+// one rigid conveyor. The spread stays small on purpose: cross-lane bubbles do
+// not overlap vertically, but any bigger speed delta makes them line up over
+// time, which reads as uneven spacing.
+const BUBBLE_LANE_DUR = [4.9, 5.0, 5.1];
+const BUBBLE_PER_LANE = BUBBLE_COUNT / BUBBLE_LANES.length; // slots per lane
 const HOVER_INTENT_MS = 180; // pointer cutting down to the model rows must not flash the flyout
 const LEAVE_GRACE_MS = 150; // union-leave grace, same as the old flyout close
 
@@ -299,20 +310,28 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   const curIdx = Math.max(0, levels.indexOf(curThinking));
   // At the model's ceiling the capsule turns "energised" (bubbles, see CSS)
   const atMax = levels.length > 1 && curIdx === levels.length - 1;
-  // Per-bubble randomised size/pace/phase; generated once per menu mount so a
-  // re-render (hover, level pick) never makes the field jump.
+  // Per-bubble randomised size/opacity, fixed lane/phase grid; generated once per
+  // menu mount so a re-render (hover, level pick) never makes the field jump.
+  // Phase = lane-offset slot grid: the 12 bubbles start a 1/12 track apart and
+  // each lane advances at its own constant speed, so the field stays evenly
+  // spread and two bubbles can only meet across lanes (passing, not stacking).
   const bubbles = useMemo(
     () =>
-      Array.from({ length: 12 }, () => {
-        const dur = 3.2 + Math.random() * 3;
+      Array.from({ length: BUBBLE_COUNT }, (_, i) => {
+        const laneIdx = i % BUBBLE_LANES.length;
+        const lane = BUBBLE_LANES[laneIdx];
+        const dur = BUBBLE_LANE_DUR[laneIdx]; // 4.8 / 5.0 / 5.2s per pass
+        const slot = Math.floor(i / BUBBLE_LANES.length); // 0..BUBBLE_PER_LANE-1
+        // Small jitter keeps the grid from reading as a machine; it stays far
+        // below the 1/BUBBLE_COUNT slot width, so lane-mates keep their gap
+        const phase = ((slot + laneIdx / BUBBLE_LANES.length) / BUBBLE_PER_LANE + (Math.random() - 0.5) * 0.02 + 1) % 1;
+        const size = 1.5 + Math.random() * 3; // 1.5–4.5px
         return {
-          "--s": `${(2 + Math.random() * 4).toFixed(1)}px`,
-          "--y": `${(3 + Math.random() * 13).toFixed(1)}px`,
-          "--d": `${dur.toFixed(2)}s`,
-          // Negative delay inside the bubble's own period, so fast and slow bubbles
-          // spread evenly along the track instead of clustering at the right end
-          "--delay": `${(-Math.random() * dur).toFixed(2)}s`,
-          "--o": (0.3 + Math.random() * 0.55).toFixed(2),
+          "--s": `${size.toFixed(1)}px`,
+          "--y": `${(lane - size / 2).toFixed(1)}px`,
+          "--d": `${dur}s`,
+          "--delay": `${(-phase * dur).toFixed(2)}s`,
+          "--o": (0.5 + Math.random() * 0.4).toFixed(2),
         } as CSSProperties;
       }),
     [],

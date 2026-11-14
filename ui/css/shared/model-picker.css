@@ -170,7 +170,8 @@
 
 .think-bubbles span { position: absolute; top: var(--y); left: 0; width: var(--s); height: var(--s); border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, var(--white), var(--tint-white-750) 58%, var(--tint-white-200) 100%);
-  box-shadow: 0 0 3px var(--tint-white-200);
+  /* a sub-2px bubble would vanish on the gradient without a faint rim */
+  box-shadow: 0 0 2.5px color-mix(in srgb, var(--white) 55%, transparent);
   opacity: var(--o); transform: translateX(var(--track-w, 0px));
   animation: thinkBubble var(--d) linear var(--delay) infinite; }
 
