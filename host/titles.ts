@@ -18,6 +18,7 @@
 // the last branchTitle on A's root→leaf path and never leaks into B.
 import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import { buildReplanTitleContext, buildTitleDriftTurns } from "@oh-my-pi/pi-coding-agent/session/messages";
+import { keepTitleCard } from "@oh-my-pi/pi-coding-agent/utils/title-card";
 import { classifyTitleDrift } from "@oh-my-pi/pi-coding-agent/session/title-drift-classifier";
 import { resolveJudge, sharedJudgmentCache } from "./bootstrap.ts";
 import { H } from "./state.ts";
@@ -235,8 +236,12 @@ export function maybeRefreshSessionTitle(entry: TitleEntry): void {
 				if (!drifted) return;
 				const context = buildReplanTitleContext(entry.session.messages);
 				if (!context) return;
-				const title = await entry.session.generateTitle(context, undefined, signal);
-				if (!title) return;
+				// The regenerated title is plain (generateTitle names no card); the
+				// old card prefix survives the refresh — same keep as the base's
+				// replan retitle, so title.icons stays in force across refreshes.
+				const fresh = await entry.session.generateTitle(context, undefined, signal);
+				if (!fresh) return;
+				const title = keepTitleCard(entry.manager.getSessionName() ?? "", fresh);
 				// Branch moved while the model was thinking: the title belongs to the
 				// branch the user left, and a late write would land on the wrong one.
 				// Dropping is safe — that branch regenerates on its next settled turn.
