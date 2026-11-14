@@ -640,8 +640,10 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
     // over entry.uiSockets), so unlike the old single-attachedWs model there
     // is nothing to detach — the other channel's subscription keeps living.
     const frontendReloaded = !entry.uiSockets.has(ws);
-    if (frontendReloaded) attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
     ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
+    // After session_created: the roster seed for in-flight subagents is dropped by a frontend
+    // without a slot yet, while the disk replay skips those same recent transcripts (BUG-167).
+    if (frontendReloaded) attachEntry(ws, sessionId, entry, entry.sessionResult.eventBus);
     pushModelFallback(ws, sessionId, entry); // Must land after session_created: the slot is replaced wholesale there
     await pushSessionSnapshot(ws, sessionId, entry, {
       mode: "reuse",
@@ -689,8 +691,8 @@ export async function handleLoadSession(ws: any, sessionPath: string) {
   entry.mentionScanIndex = entries.length;
   // Active-duration seed for a past session: the in-memory timer only covers time since this open; seed the backlog by summing per-turn spans from the active branch
   entry.activeMs = sumRunDurationMs(branch);
-  attachEntry(ws, sessionId, entry, eventBus);
   ws.send(JSON.stringify(buildSessionCreatedFrame(sessionId, entry, { subagentLineage: true })));
+  attachEntry(ws, sessionId, entry, eventBus); // Same order as the reuse branch (BUG-167)
   pushModelFallback(ws, sessionId, entry); // After session_created; the rebuild branch is the main reopen path
   await pushSessionSnapshot(ws, sessionId, entry, { mode: "rebuild", sessionPath, entries: branch });
   safeStderr(hostI18n.t("errors.lifecycle.sessionLoaded", { sessionId: sessionId.slice(0, 8), cwd: entry.cwd, entries: transcript.length }));
