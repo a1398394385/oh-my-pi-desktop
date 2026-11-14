@@ -32,6 +32,7 @@ import { PHASE_TEXT } from "../translate.ts";
 import { entriesToTranscript } from "../translate-history.ts";
 import { noteTitlePrompt } from "../titles.ts";
 import { readPluginsEnabled } from "../plugin-assets.ts";
+import { readAcpEnabled } from "../profile.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { computerModeActive, readComputerProvider, setComputerMode } from "../computer-mode.ts";
@@ -160,8 +161,12 @@ function sendCommandsFrame(
   hideSessionCommands: boolean,
 ) {
   const computerGateOpen = settingsGet(H.settings, "computer.enabled") === true;
+  // ACP compaction owns the context while its switch is on: a base /compact writes a
+  // compaction boundary into the journal and degrades ACP for the rest of the session
+  // (spec §5.3), so the command is not offered there.
+  const acpOn = readAcpEnabled();
   const commands = list
-    .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]) && (computerGateOpen || c.name !== "computer"))
+    .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]) && (computerGateOpen || c.name !== "computer") && (!acpOn || c.name !== "compact"))
     .concat(GOAL_SLASH_COMMAND, PLAN_SLASH_COMMAND, BTW_SLASH_COMMAND);
   ws.send(
     JSON.stringify({
@@ -397,6 +402,15 @@ async function dispatchSlashInput(
   const removedHint = removedSlashHint(trimmed);
   if (removedHint) {
     sendCommandOutput(removedHint);
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    return null;
+  }
+  // 2.1) /compact under ACP: the base compaction would write a boundary into the
+  // journal and degrade ACP for good (spec §5.3) — hand-typed input is closed too.
+  if (readAcpEnabled() && parseSlashCommand(trimmed)?.name === "compact") {
+    sendCommandOutput(
+      hostI18n.t("errors.removedCmd.template", { command: "compact", hint: hostI18n.t("errors.removedCmd.compactAcpOn") }),
+    );
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }

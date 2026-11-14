@@ -278,6 +278,9 @@ const ALLOWED_EDGES = new Set([
   // same frame shape); UiEvent comes from the wire payload contract.
   "session-lifecycle.ts→delta-coalesce.ts", "delta-coalesce.ts→wire/payloads.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
+  // The composer's slash list drops /compact while ACP owns the context, and hand-typed
+  // input is intercepted on the way in (acp.enabled read from omp-desktop.json).
+  "rpc/prompt.ts→profile.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
   // A12 split: the session snapshot family (goal/todos/context/stats pushes +
   // the collapsed session_created frame body) lives in session-snapshot.ts;

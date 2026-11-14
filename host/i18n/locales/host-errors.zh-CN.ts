@@ -98,6 +98,7 @@ export const hostErrorsZh = {
     extContextSettingPage: "扩展上下文开关请到设置页操作",
     forceRemoved: "强制工具选择已移除",
     useForkButton: "会话分叉请点击回复下方的分叉按钮",
+    compactAcpOn: "ACP 上下文压缩已接管上下文，请让模型调用 context_status / compress_context",
   },
   file: {
     notAFile: "不是文件: {{path}}",

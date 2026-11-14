@@ -217,6 +217,7 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
   const ctxDetail = useAppStore((s) => s.ctxDetail); // response arrival triggers redraw (while the card is open)
   const ctxLimits = useAppStore((s) => s.ctxLimits);
   const keepaliveStatus = useAppStore((s) => s.keepaliveStatus);
+  const acpOn = useAppStore((s) => s.hostSettings?.acpEnabled === true);
   const cur = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath) : undefined));
   const [open, setOpen] = useState(false);
   const [noModel, setNoModel] = useState(false); // no session and no model picked in the composer: the card shows "no model available"
@@ -334,10 +335,11 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
   const ka = (cur ? keepaliveStatus[cur.sessionId] : undefined) as KaStatus | undefined;
   const kaThis = ka && ka.enabled ? ka : null;
   // Compact-context entry: shown only when the session is non-empty and usage > 0; disabled
-  // while streaming (races with the running turn).
+  // while streaming (races with the running turn). Hidden while ACP owns the context: a base
+  // compaction writes a boundary into the journal and degrades ACP for good (spec §5.3).
   // Compacting is non-destructive, so it runs directly without a confirm; pending is set on
   // click, and the response toast / messages frames are finalized by existing store logic
-  const canCompact = !!cur && cur.items.length > 0 && !!b && b.usedTokens > 0;
+  const canCompact = !acpOn && !!cur && cur.items.length > 0 && !!b && b.usedTokens > 0;
 
   return createPortal(
     <div
