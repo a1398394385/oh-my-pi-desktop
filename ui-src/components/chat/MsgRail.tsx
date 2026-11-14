@@ -23,6 +23,9 @@ const RAIL_SNIPPET_LEN = 280;
 const RAIL_W_BASE = 12.5; // default tick length in CSS px (the UI zoom multiplies it along with everything else: #main carries the zoom)
 const RAIL_W_PEAK = 2.5; // peak-top multiplier (the line closest to the mouse)
 const RAIL_FALLOFF = 24; // Gaussian falloff radius (CSS px): at ~11.25px spacing, neighbor ≈1.9, next-neighbor ≈1.3
+const RAIL_PITCH = 11.25; // fixed gap between adjacent ticks: the pitch never shrinks, overflow scrolls instead
+const RAIL_TICK_H = 1.95; // tick line thickness (130% of a 1.5px hairline)
+const RAIL_BOX_RATIO = 4 / 6; // rail viewport = this share of the stream's visible height, centred
 
 // Module-level rail state (tick elements are fully rebuilt by the effect; references do not follow React renders)
 let railPopEl: HTMLDivElement | null = null; // the currently popped message card
@@ -33,9 +36,10 @@ let railPopIdx = -1; // tick index owning the popped / pending card
 let railTotal = 0; // total tick count (denominator of the card's "n / total")
 let railSessionId: string | null = null; // session the ticks were drawn for; switching sessions forces rebuild and card dismissal
 let railTicks: HTMLDivElement[] = []; // current tick elements (continuous peaks computed per tick from mouse Y vs tick center)
-let railTickCY: number[] = []; // tick centers' Y relative to rail top (precomputed on rebuild; zero rect reads on the mousemove hot path)
-let railSpan = { top: 0, bottom: 0 }; // Y band the ticks actually occupy (rail-relative); outside it the pointer counts as away
+let railTickCY: number[] = []; // tick centers' Y relative to the track's top (precomputed on rebuild; zero rect reads on the mousemove hot path)
+let railSpan = { top: 0, bottom: 0 }; // Y band the ticks occupy (track-relative, so its rect carries the rail's scroll); outside it the pointer counts as away
 let railPitch = 0; // vertical spacing between ticks, also the hover slop at each end
+let railHoverY = NaN; // last pointer Y (visual px) while the rail was armed; the rail's own scroll repaints from it
 interface RailTickMeta { entry: RailEntry; idx: number; tick: HTMLDivElement; pinEl: Element; topDoc: number }
 let railTickMeta: RailTickMeta[] = []; // per-tick card payload, index-aligned with railTicks (anchors not yet mounted are skipped on both)
 let railSig: string | null = null; // user-message keys + scrollport height of the last rebuild; equal → ticks are still geometrically valid
@@ -124,12 +128,12 @@ function paintRailWidths() {
 // one, but the falloff itself is only drawn when music is NOT driving the
 // rail — see paintRailWidths). The peak top is the nearest line brightened and
 // owns the card.
-function paintRailAt(clientY: number, railTop: number) {
+function paintRailAt(clientY: number, trackTop: number) {
   let best = -1;
   let bestD = Infinity;
   const z = effZoom();
-  // clientY/railTop are visual; railTickCY lives in the rail's layout px: convert before comparing
-  const yLocal = (clientY - railTop) / z;
+  // clientY/trackTop are visual; railTickCY lives in the track's layout px: convert before comparing
+  const yLocal = (clientY - trackTop) / z;
   railTicks.forEach((_, j) => {
     const d = Math.abs(yLocal - railTickCY[j]);
     if (d < bestD) {
@@ -189,6 +193,7 @@ function removeRailCard() {
 
 function dismissRailPop() {
   railHovering = false;
+  railHoverY = NaN;
   clearTimeout(railLeaveTimer);
   clearTimeout(railPopTimer);
   railLeaveTimer = undefined;
@@ -234,6 +239,8 @@ function showRailPop(entry: RailEntry, idx: number, total: number, tick: HTMLDiv
 // entries: { key, role, text } (collected along the traversal in items.tsx); each message is located via its data-fk anchor
 export default function MsgRail({ entries, sessionId, streamRef }: { entries: RailEntry[]; sessionId: string; streamRef: RefObject<HTMLDivElement | null> }) {
   const railRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
   // The tick layout is derived from the scrollport height (rail box + tick pitch), and the
   // layout effect below only re-runs on a render. Dock toggles, dock-height drags and column
   // resizes change that height without touching `entries`, so the rail would keep the old
@@ -270,8 +277,9 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     if (!streamEl || !rail || rail.hidden) return;
     let idx = railPopIdx;
     if (idx < 0 || !railTicks[idx]?.isConnected) {
-      const rr = rail.getBoundingClientRect();
-      const yLocal = (e.clientY - rr.top) / effZoom();
+      const track = trackRef.current;
+      if (!track) return;
+      const yLocal = (e.clientY - track.getBoundingClientRect().top) / effZoom();
       idx = -1;
       let bestD = Infinity;
       railTickCY.forEach((cy, i) => {
@@ -299,7 +307,7 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     if (userEntries.length <= 4) {
       // With ≤ 4 user messages the rail line is not shown
       rail.hidden = true;
-      rail.innerHTML = "";
+      if (trackRef.current) trackRef.current.innerHTML = "";
       railTicks = [];
       railTickMeta = [];
       railGain = new Float32Array(0);
@@ -311,21 +319,32 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       return;
     }
     rail.hidden = false;
+    const track = trackRef.current;
+    const scroller = scrollRef.current;
+    if (!track || !scroller) return;
     // Read phase first (6d): every geometry read happens before the first style/DOM write
     // below, so streaming redraws force at most one layout instead of read/write interleave
     const zs = effZoom(); // rect diffs below are visual; scrollTop/scrollTo are layout px
     const railH = streamEl.clientHeight;
     const railTop = streamEl.offsetTop;
     const streamTop = streamEl.getBoundingClientRect().top;
-    rail.style.top = railTop + "px";
-    rail.style.height = railH + "px";
+    // Pitch is fixed, so the tick stack can outgrow the rail: the box takes at most
+    // 4/6 of the stream's visible height (centred) and the rest scrolls inside it.
+    const contentH = (userEntries.length - 1) * RAIL_PITCH + RAIL_TICK_H;
+    // ceil, not round: rounding the box 0.2px below the content height would flag a fully
+    // fitting stack as scrollable (feather + wheel capture with nothing to scroll)
+    const boxH = Math.ceil(Math.min(contentH, railH * RAIL_BOX_RATIO));
+    rail.style.top = railTop + Math.round((railH - boxH) / 2) + "px";
+    rail.style.height = boxH + "px";
+    track.style.height = contentH + "px";
+    scroller.classList.toggle("scrollable", contentH > boxH);
     if (railHovering) return;
     // Rebuild skip: streaming redraws re-run this effect many times a second while the
     // user-message set is unchanged; wiping and recreating the tick nodes each time
     // invalidates the rail's composited layer and makes the lit pin tick blink. Same
     // keys + same scrollport height → same tick geometry: keep the nodes, only refresh
     // the click-to-scroll offsets (they drift as streamed content grows above).
-    const sig = userEntries.map((e) => e.key).join(",") + "|" + railH;
+    const sig = userEntries.map((e) => e.key).join(",") + "|" + boxH;
     if (sig === railSig && railTicks.length) {
       railTickMeta.forEach((m) => {
         const anchor = streamEl.querySelector(`[data-fk="${m.entry.key}"]`);
@@ -338,22 +357,19 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       return;
     }
     railSig = sig;
-    rail.innerHTML = "";
+    track.innerHTML = "";
     railTicks = [];
     railTickCY = [];
     railTickMeta = [];
     railGain = new Float32Array(userEntries.length).fill(1);
     railMusicGain = new Float32Array(userEntries.length);
     railTotal = userEntries.length;
-    const pitchBase = 11.25; // CSS px between adjacent ticks (15 reduced by 1/4)
-    const pitch = userEntries.length > 1 ? Math.min(pitchBase, (railH - 6) / (userEntries.length - 1)) : pitchBase;
-    const startTop = Math.max(0, (railH - (userEntries.length - 1) * pitch) / 2); // laid out from the centerline outward
-    // Ticks are centred in a much taller rail, so the dead space above and
-    // below them must not count as hover: without this the pointer anywhere in
-    // the column — including the far corners — armed the first/last card.
-    railSpan = { top: startTop - pitch / 2, bottom: startTop + (userEntries.length - 1) * pitch + pitch / 2 };
-    railPitch = pitch / 2; // half a gap of slop past each end: forgiving without reaching the corners
-    const tickH = 1.95; // CSS px line thickness (130% of a 1.5px hairline)
+    // Ticks sit in document order from the track's top edge; the track centres itself inside
+    // the scroller (margin auto), so the dead space above and below must not count as hover:
+    // without this the pointer anywhere in the column — including the far corners — armed
+    // the first/last card.
+    railSpan = { top: -RAIL_PITCH / 2, bottom: (userEntries.length - 1) * RAIL_PITCH + RAIL_TICK_H + RAIL_PITCH / 2 };
+    railPitch = RAIL_PITCH / 2; // half a gap of slop past each end: forgiving without reaching the corners
     // Anchor measurement pass (reads only): anchors not mounted yet (e.g. a steer bubble
     // rendering late) are skipped — their tick joins on a later rebuild
     const measured: { en: (typeof userEntries)[number]; i: number; pinEl: Element; topDoc: number }[] = [];
@@ -375,13 +391,13 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     for (const m of measured) {
       const tick = document.createElement("div");
       tick.className = "rail-tick t-" + m.en.role;
-      tick.style.top = startTop + m.i * pitch + "px";
-      tick.style.height = tickH + "px";
-      tick.style.borderRadius = tickH + "px"; // capsule ends: radii over half the height get clamped, keeping both ends fully rounded
+      tick.style.top = m.i * RAIL_PITCH + "px";
+      tick.style.height = RAIL_TICK_H + "px";
+      tick.style.borderRadius = RAIL_TICK_H + "px"; // capsule ends: radii over half the height get clamped, keeping both ends fully rounded
       tick.style.width = RAIL_W_BASE + "px";
-      railTickCY.push(startTop + m.i * pitch + tickH / 2); // center relative to rail top; consumed directly on the mousemove hot path
+      railTickCY.push(m.i * RAIL_PITCH + RAIL_TICK_H / 2); // center relative to track top; consumed directly on the mousemove hot path
       railTickMeta.push({ entry: m.en, idx: m.i, tick, pinEl: m.pinEl, topDoc: m.topDoc });
-      rail.appendChild(tick);
+      track.appendChild(tick);
       railTicks.push(tick);
     }
     paintRailPins(streamEl); // initial pin state (restored scroll position arrives without a scroll event)
@@ -397,15 +413,17 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
       if (!railTicks.length) return;
       const rail = railRef.current;
       const streamEl = streamRef.current;
-      if (!rail || !streamEl || rail.hidden) return;
+      const track = trackRef.current;
+      if (!rail || !streamEl || !track || rail.hidden) return;
       const rr = rail.getBoundingClientRect();
       const z = effZoom();
       // Horizontal: the rail column itself (a small slop for slanted pointers).
-      // Vertical: only the band the ticks actually occupy — the rail box spans
-      // the whole stream height, so trusting it made the empty corners above and
-      // below the ticks arm the nearest (i.e. always the first or last) message.
-      // e.clientY/rr are visual; railSpan/railPitch are layout px: convert once.
-      const yLocal = (e.clientY - rr.top) / z;
+      // Vertical: only the band the ticks actually occupy — the track's rect already carries
+      // the rail's own scroll offset, so the empty space around the centred stack still does
+      // not arm the nearest (i.e. always the first or last) message.
+      // e.clientY/tr are visual; railSpan/railPitch are layout px: convert once.
+      const tr = track.getBoundingClientRect();
+      const yLocal = (e.clientY - tr.top) / z;
       const inside =
         e.clientX >= rr.left - 6 &&
         e.clientX <= rr.right + 6 &&
@@ -413,10 +431,12 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
         yLocal <= railSpan.bottom + railPitch;
       if (inside) {
         railHovering = true;
+        railHoverY = e.clientY;
         clearTimeout(railLeaveTimer); // slid back in from the card gap: cancel the dismissal grace period
-        paintRailAt(e.clientY, rr.top); // resolves the peak tick, which then owns the card
+        paintRailAt(e.clientY, tr.top); // resolves the peak tick, which then owns the card
         return;
       }
+      railHoverY = NaN;
       clearRailProfile();
       if (railPopEl) {
         railHovering = true; // card still up: keep rebuilds locked until it dismisses (mirrors the former hover lock)
@@ -476,6 +496,21 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     };
   }, [streamRef]);
 
+  // The rail scrolls its own ticks: with the pointer parked, scrolling moves the lines
+  // under it, so the mountain and the hovered tick must follow. Repaints from the last
+  // pointer Y instead of waiting for the next mousemove.
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const onScroll = () => {
+      const track = trackRef.current;
+      if (!railHovering || !track || Number.isNaN(railHoverY)) return;
+      paintRailAt(railHoverY, track.getBoundingClientRect().top);
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => scroller.removeEventListener("scroll", onScroll);
+  }, []);
+
   // Music-reactive ticks: each tick takes the energy of its own slice of the
   // spectrum (band 0 = bass at the rail's top, the top bands = treble). The feed
   // is off by default and the settings pref owns the capture lifecycle
@@ -512,5 +547,11 @@ export default function MsgRail({ entries, sessionId, streamRef }: { entries: Ra
     };
   }, []);
 
-  return <div id="msgRail" ref={railRef} hidden onClick={onRailClick} />;
+  return (
+    <div id="msgRail" ref={railRef} hidden onClick={onRailClick}>
+      <div className="rail-scroll" ref={scrollRef}>
+        <div className="rail-track" ref={trackRef} />
+      </div>
+    </div>
+  );
 }

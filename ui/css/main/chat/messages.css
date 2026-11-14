@@ -912,14 +912,33 @@
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 
 /* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
-   Ticks sit 15 CSS px apart (JS-compressed when too many), 12.5 long x 1.95 thick, centred on the rail's midline. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line longest x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. The user message currently pinned at the stream top keeps its tick lit (.pin) — widths stay pointer-only. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
+   Ticks sit a fixed 11.25 CSS px apart and 12.5 long x 1.95 thick. The strip is capped at 4/6 of the stream's visible height and centred; past that the ticks scroll inside it (scrollbar hidden, both edges feathered by the mask) so the pitch never collapses into a solid block. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line longest x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. The user message currently pinned at the stream top keeps its tick lit (.pin) — widths stay pointer-only. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
 #msgRail {
-  position: absolute; left: 8px; width: 22px; z-index: 60;
+  position: absolute; left: 8px; width: 33px; z-index: 60; /* ≥ tick peak length (12.5 × 2.5) so the scroller cannot clip it */
   pointer-events: none; /* the container itself doesn't block messages; ticks are individually hoverable */
 }
 
 /* Hide the left message rail when the content column margin < 65px (JS adds .rail-off to #main from the measured margin), so ticks don't crowd the content column */
 #main.rail-off #msgRail { display: none; }
+
+.rail-scroll {
+  display: flex; flex-direction: column; height: 100%;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.rail-scroll::-webkit-scrollbar { display: none; }
+
+/* Only an overflowing rail takes the wheel and shows the feather; a short stack stays
+   click-through and loses no tick length to the mask. */
+.rail-scroll.scrollable {
+  pointer-events: auto;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--black) 18px, var(--black) calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, var(--black) 18px, var(--black) calc(100% - 18px), transparent 100%);
+}
+
+/* margin auto centres the stack while it fits; once contentH exceeds the box the auto
+   margins collapse to 0 and the scroll reaches the first tick */
+.rail-track { position: relative; flex: none; margin: auto 0; }
 
 .rail-tick {
   position: absolute; left: 0; height: 4px; border-radius: 4px; /* placeholder; actual thickness/pill rounding written by JS */
@@ -932,7 +951,7 @@
 /* invisible hit pad: the 2px line itself is near-impossible to click; the pad spans the
    whole rail width and the gap to the neighbors, so a click anywhere in the tick's band
    reaches it (the rail-level click handler resolves the peak tick, not the DOM hit) */
-.rail-tick::after { content: ""; position: absolute; left: 0; width: 22px; top: -5px; bottom: -5px; }
+.rail-tick::after { content: ""; position: absolute; left: 0; width: 33px; top: -5px; bottom: -5px; }
 
 .rail-tick.pin { background: var(--text); } /* scroll-pinned message's tick: the only lit tick; pointer hover drives widths only */
 
