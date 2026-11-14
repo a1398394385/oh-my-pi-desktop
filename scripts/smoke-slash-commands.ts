@@ -115,7 +115,6 @@ const cases: Array<{ text: string; hint: string }> = [
   { text: "/switch deepseek/deepseek-flash", hint: "/switch 已移除" },
   { text: "/force:bash", hint: "/force 已移除" },
   { text: "/extended-context on", hint: "/extended-context 已移除" },
-  { text: "/computer status", hint: "/computer 已移除" },
   { text: "/skillful on", hint: "/skillful 已移除" },
   { text: "/prewalk", hint: "/prewalk 已移除" },
   { text: "/fast status", hint: "/fast 已移除" },
@@ -130,6 +129,15 @@ for (const c of cases) {
   await waitFor((f) => f.type === "command_result" && f.text === c.text && f.consumed === true, `${c.text} 的 command_result`);
   console.log(`✓ ${c.text} → ${out.text}`);
 }
+
+// 3b) /computer is desktop-routed, not "removed": the toggle status line comes back
+send({ type: "prompt", sessionId, text: "/computer status", images: [] });
+const computerOut = await waitFor(
+  (f) => f.type === "command_output" && String(f.text).startsWith("电脑控制："),
+  "/computer status 的 command_output",
+);
+await waitFor((f) => f.type === "command_result" && f.text === "/computer status", "/computer status 的 command_result");
+console.log(`✓ /computer 由桌面接管：${String(computerOut.text)}`);
 
 // 4) Intercepted commands produce no event frames (no sneaky turn opened)
 const eventsAfter = seen.filter((f) => f.type === "event").length;
