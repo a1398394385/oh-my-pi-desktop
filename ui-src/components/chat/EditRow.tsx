@@ -13,6 +13,7 @@ import Icon from "../../Icon";
 import LightweightDiff from "../diff/LightweightDiff";
 import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub, ownDiffOf } from "./parts";
 import { splitPath } from "./util";
+import { useTypewriter, useLineReveal } from "./typewriter";
 import { t } from "../../i18n";
 
 // File list of the event: prefer the files backfilled by tool_update, otherwise fall back to args
@@ -60,9 +61,10 @@ function useTailScroll(ref: React.RefObject<HTMLDivElement | null>, key: string 
 
 function StreamBody({ text }: { text: string }) {
   const box = useRef<HTMLDivElement>(null);
-  const all = text.split("\n");
+  const typed = useTypewriter(text);
+  const all = typed.split("\n");
   const lines = all.length > STREAM_TAIL_LINES ? all.slice(-STREAM_TAIL_LINES) : all;
-  useTailScroll(box, text);
+  useTailScroll(box, typed);
   return (
     <div className="ed-brief" ref={box}>
       <div className="ldiff">
@@ -83,11 +85,12 @@ function StreamBody({ text }: { text: string }) {
 // recomputed per frame, and highlighting it per frame is the BUG-007 cost.
 function StreamDiff({ preview }: { preview: NonNullable<ToolItem["streamDiff"]> }) {
   const box = useRef<HTMLDivElement>(null);
-  useTailScroll(box, preview.diff);
+  const diff = useLineReveal(preview.diff || "");
+  useTailScroll(box, diff);
   return (
     <div className="ed-brief" ref={box}>
-      {preview.diff ? (
-        <LightweightDiff diff={preview.diff} />
+      {diff ? (
+        <LightweightDiff diff={diff} />
       ) : (
         <div className="text-faint text-ui-base py-[12px] px-[10px]">{preview.error}</div>
       )}
