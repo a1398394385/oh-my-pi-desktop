@@ -47,9 +47,11 @@ export function placeComposerMenu(comp: HTMLElement | null, menu: HTMLElement | 
 // loading never leave a stale gap.
 const PALETTE_GAP = 8;
 
-export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | null, ratio = 2.6): void {
+export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | null, ratio = 2.6): number | undefined {
   if (!comp || !menu) return;
-  const z = effZoom();
+  const compRect = comp.getBoundingClientRect();
+  // Live DOM geometry can briefly disagree with the store while WebKit applies zoom.
+  const z = compRect.height / comp.offsetHeight;
   const cs = getComputedStyle(comp);
   const borderLeft = Number.parseFloat(cs.borderLeftWidth) || 0;
   const borderTop = Number.parseFloat(cs.borderTopWidth) || 0;
@@ -63,17 +65,19 @@ export function placePaletteCard(comp: HTMLElement | null, menu: HTMLElement | n
   // padding box bottom edge, i.e. PALETTE_GAP screen pixels above the card top
   menu.style.bottom = comp.clientHeight + borderTop + PALETTE_GAP / z + "px";
   menu.style.top = "auto";
-  const maxH = Math.round(comp.offsetHeight * ratio);
-  if (menu.offsetHeight > maxH) {
+  // Rects are visual px; maxHeight is written back in layout px.
+  const maxH = Math.round((compRect.height / z) * ratio);
+  if (menu.getBoundingClientRect().height / z > maxH) {
     menu.style.maxHeight = maxH + "px";
     menu.style.overflowY = "auto";
   }
-  // Available height above (layout px): up to 4px below the viewport top,
-  // minus the gap and the border difference from the containing block to the
-  // card's outer edge
-  const avail = Math.round((comp.getBoundingClientRect().top - 4) / z) - borderTop - Math.ceil(PALETTE_GAP / z);
-  if (menu.offsetHeight > avail) {
+  // Full capacity to the viewport top, in layout px. The slash card uses this
+  // to choose the largest whole row count that keeps every band visible.
+  const fitHeight = Math.round(compRect.top / z) - borderTop - Math.ceil(PALETTE_GAP / z);
+  const avail = Math.round((compRect.top - 4) / z) - borderTop - Math.ceil(PALETTE_GAP / z);
+  if (menu.getBoundingClientRect().height / z > avail) {
     menu.style.maxHeight = Math.max(80, avail) + "px";
     menu.style.overflowY = "auto";
   }
+  return fitHeight;
 }

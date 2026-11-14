@@ -44,10 +44,16 @@
 
 .menu.palette .mi .sub { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Slash-command browser: category tabs, an independently scrolling result list,
-   and a fixed keyboard footer. The container owns all filled-row clearance. */
+/* Slash-command browser, three stacked bands: category tabs (44px), the result
+   list (6px margin + N rows), and the fixed keyboard footer (44px).
+   --slash-row pins the row height and --slash-rows the visible row count, so the
+   card height is always a whole multiple of the row: when the space above runs
+   short (bigger UI zoom) PaletteMenu drops to 4/3/2 rows instead of letting a
+   fractional row peek out under the footer. */
 .menu.palette.slash {
-  height: 298px;
+  --slash-row: max(40px, calc(var(--ui-fs-sm) * 1.35 + 12px));
+  --slash-rows: 5;
+  height: calc(var(--slash-row) * var(--slash-rows) + 102px); /* N rows + list margins 12 + tabs 44 + footer 44 + border 2 */
   padding: 0;
   overflow: hidden;
   border-radius: var(--r-md);
@@ -92,13 +98,24 @@
   background: currentColor;
   transform: translateX(-50%);
 }
+/* Vertical clearance is a margin, not padding: padding is part of the scroll
+   content, so the next row painted a 6px sliver into it and the card showed a
+   fractional row below the last whole one. */
 .slash-list {
-  flex: 1;
-  min-height: 0;
-  padding: 0 8px 8px;
+  /* Exact on purpose: `flex: 1` leaves the leftover to sub-pixel rounding (a
+     zoomed card ended up 0.4px taller than its rows and painted a sliver of the
+     next one). Height is N whole rows; the 6px clearance above/below is margin. */
+  flex: none;
+  height: calc(var(--slash-row) * var(--slash-rows));
+  margin: 6px 0;
+  padding: 0 6px;
   overflow-y: auto;
 }
-.menu.palette.slash .slash-list .mi { min-height: 40px; border-radius: var(--r-sm); }
+.menu.palette.slash .slash-list .mi {
+  height: var(--slash-row);
+  padding-block: clamp(0px, calc((var(--slash-row) - 1.35em) / 2), 6px);
+  border-radius: var(--r-sm);
+}
 .menu.palette.slash .slash-list .mi-tx { flex: none; max-width: 38%; font-weight: 500; }
 .menu.palette.slash .slash-list .sub { flex: 1; min-width: 0; max-width: none; margin-left: 0; }
 .slash-ic { display: inline-flex; flex: none; width: 16px; color: var(--dim); }
@@ -122,7 +139,6 @@
 .slash-close { margin-left: auto; }
 
 @media (max-width: 640px) {
-  .menu.palette.slash { height: 274px; }
   .slash-tabs { gap: 20px; padding: 0 12px; }
   .slash-footer { gap: 12px; padding: 0 12px; }
 }
