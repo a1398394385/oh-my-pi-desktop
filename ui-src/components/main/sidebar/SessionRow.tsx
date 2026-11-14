@@ -176,15 +176,17 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   if (renaming) return <RenameEditor s={s} sub={sub} onDone={onRenameDone} />;
   const pinned = pinnedSessions.has(s.path);
   // Like ZCode's TaskListItem, keep a single 16px leading slot with a fixed priority:
-  // error > unread > approval > running. The error state (selector above) comes from the
-  // session's last error row; unopened sessions have no runtime state and only show the
-  // persisted unread dot. A session blocked on an ask/approval dialog is waiting on the
+  // error > approval > running > unread. The error state (selector above) comes from the
+  // session's last error row. A session blocked on an ask/approval dialog is waiting on the
   // user, not working: the spinner would read as "still busy" while nothing moves until
-  // the question is answered, so it shows the attention dot instead.
+  // the question is answered, so it shows the attention dot instead. A run outranks the
+  // unread dot: the dot belongs to the PREVIOUS turn's result, and it outlived an unopened
+  // row (a run started on the other channel leaves it behind), which used to hide the
+  // spinner for every rerun of that session.
   // Loaded here → the subscribed streaming flag (driven by this client's own event frames);
   // otherwise the host pool's busy flag (cross-channel running state)
   const running = streaming || poolBusy;
-  const leading = hasError ? "error" : unseenFinished.has(s.path) ? "unread" : awaitingApproval ? "approval" : running ? "loading" : "none";
+  const leading = hasError ? "error" : awaitingApproval ? "approval" : running ? "loading" : unseenFinished.has(s.path) ? "unread" : "none";
   // Open session: already open → activate directly (refreshes the right panel's git diff); not
   // open → the host loading chain
   const openSession = () => {
