@@ -55,7 +55,6 @@ export const rightEn = {
   bgWidgetWaiting: "Waiting for data",
   bgWidgetNoData: "No data yet",
   nameLabel: "Name:",
-  collapse: "Collapse",
   workDirLabel: "Working directory:",
   commandInputLabel: "Command / input:",
   argsLabel: "Arguments:",

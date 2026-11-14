@@ -1,5 +1,11 @@
 /* Background command line (right sidebar) */
-.srow.bgcmd-row { cursor: pointer; user-select: none; }
+.slist.bgcmd-list { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+
+/* One card per command. The 3px card padding keeps the row's hover/selected fill off the
+   card border (a fill touching a divider reads as a thickened line). */
+.bgcmd-card { border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 3px; }
+
+.srow.bgcmd-row { cursor: pointer; user-select: none; border-radius: calc(var(--r-md) - 3px); }
 
 /* title column grows so status/caret stay pinned right — the .srow default
    space-between would otherwise float the title to the row centre */
@@ -27,15 +33,14 @@
 
 .bgcmd-caret svg { transition: transform var(--dur-snap) var(--swift); transform: rotate(-90deg); }
 
+/* The card already carries the outline: an inner fill or a bottom hairline would sit on
+   that border and read as a double line. */
 .bgcmd-expand {
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--tint-black-120);
   padding: 10px 12px;
   animation: popIn .3s ease-out;
   --pop-from: -4px;
 }
 
-:is([data-theme="light"], [data-theme-mode="light"]) .bgcmd-expand { background: var(--tint-black-30); }
 .bgcmd-meta-row {
   display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
   font-size: var(--ui-fs-sm); color: var(--dim);
@@ -44,12 +49,12 @@
 
 .bgcmd-meta-row b { color: var(--text); font-weight: 500; }
 
-/* Head items stay on one line: overflow becomes a tail ellipsis instead of a wrap.
-   Labels never shrink (a label cut to "Workin…" is unreadable); the value does. */
+/* Head items stay on one line: overflow becomes a tail ellipsis instead of a wrap. */
 .bgcmd-meta-item { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bgcmd-meta-item.wd, .bgcmd-meta-item.name { flex: 1 1 auto; }
-
-.bgcmd-meta-lbl { flex: none; white-space: nowrap; }
+/* Head row: name on the left, the working dir pinned to the right edge (margin-left:
+   auto eats the slack so the cwd box keeps its own width and truncates at the tail) */
+.bgcmd-meta-item.name { flex: 0 1 auto; }
+.bgcmd-meta-item.wd { flex: 0 1 auto; margin-left: auto; }
 
 .bgcmd-meta-row > .save-btn { white-space: nowrap; }
 

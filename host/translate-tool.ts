@@ -222,7 +222,15 @@ export function summarizeResult(name: string, args: any, result: any, pendingWri
     // Backgrounded runs carry `async.jobId` only in the result details (the output text says
     // "Backgrounded as job …" in prose): the UI needs the id to attach the live job widget
     // and to fold this transcript row into its bg_jobs row instead of listing both.
-    if (details?.async) patch.details = { async: details.async };
+    // `cwd` is the directory the base actually ran in (call `cwd` arg or a hoisted leading
+    // `cd`); without it the right panel can only guess the session cwd.
+    const ranCwd = typeof details?.cwd === "string" ? details.cwd : undefined;
+    if (details?.async || ranCwd) {
+      patch.details = {
+        ...(details?.async ? { async: details.async } : {}),
+        ...(ranCwd ? { cwd: ranCwd } : {}),
+      };
+    }
     return patch;
   }
   if (name === "hub") {
