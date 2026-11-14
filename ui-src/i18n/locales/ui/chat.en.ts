@@ -185,6 +185,7 @@ export const chatEn = {
   speakReply: "Read this reply aloud",
   openAutomation: "This turn created the task “{{title}}” — open it",
   copyFailed: "Copy failed",
+  copyCode: "Copy code",
   branchFromHere: "Branch into a new session from here",
   branchAfterSaved: "Branching available once the reply is saved",
   // ---- user message (UserMsg.tsx) ----

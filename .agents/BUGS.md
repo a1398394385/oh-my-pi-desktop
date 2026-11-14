@@ -161,6 +161,7 @@
 | BUG-167 | 远程刷新后运行中的子代理全部消失——名册 seed 帧发在 `session_created` 之前被丢弃 | 2026-11-14 |
 | BUG-168 | 每轮都被要求「强力压缩」——percent 档位线在无窗口时被当成 25/50/75 token，会话永久 L3 | 2026-11-14 |
 | BUG-169 | skill 消息不是用户节点——skill 派发只写 custom_message，无 user 行/entryId，编辑置灰且重载后消失 | 2026-11-14 |
+| BUG-170 | 远程端代码块复制按钮无效——streamdown 复制按钮在非安全上下文直接 return | 2026-11-14 |
 ---
 
 ## 详情
@@ -2532,3 +2533,22 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：真机（`dev-browser` + 真 host + `omp-desktop-dev`，MiniMax-M3.1-Flash）三条路径全绿：发送 `fix this $` 选 skill → 回合中置灰、回合结束后按钮变「编辑重发（原对话保留为分支）」且可点；`reload` 后重新打开会话，`.msg.user` 仍在（1 条）且编辑可点；点编辑回填 `fix this /skill:ai-sdk`，提交后新回合启动，会话文件 `skill-prompt` 计数由 1 变 2、`details.prompt` 两处一致。`bun run host:typecheck`/`ui:typecheck`、`check-host-boundaries`、`scripts/composer-trigger.test.ts`（9 项）全绿；`bun run check` 全绿（此前唯一红灯是 ui 中文注释基线 15→20，来源是未跟踪的原型页 `ui/prototypes/model-cap-icons.html`，已改英文注释）。
 
 **教训**：底座对"用户发起"有两种落盘形态（`message(role:user)` 与 attributed custom_message），桌面的 transcript/回填/编辑三条链路都必须同时认这两种，只认前一种就会出现"看得见但改不了、刷新即消失"。另外别把 `promptCustomMessage` 当"已受理"用——它 resolve 在整轮结束，需要早期信号时用 `onPromptAdmitted`，需要最终 entryId 时在 settle 后沿 branch 回查。
+
+### BUG-170: 远程端代码块复制按钮无效——streamdown 复制按钮在非安全上下文直接 return
+
+**日期**：2026-11-14
+
+**分诊**：②确认存量缺陷（自 `MdSurface.tsx` 接入 streamdown 的 `CodeBlockCopyButton` 起就如此；本地跑在 localhost 安全上下文，所以从未暴露）。
+
+**现象**：远程访问（浏览器打开 `http://<LAN IP>:16800`）时，消息区代码块右上角的复制按钮点击无任何反应：图标不闪、无 toast、系统剪贴板不变。
+
+**根因**：`MdSurface.tsx` 两处（普通代码块、mermaid/graphviz/svg 渲染失败时的降级代码块）直接使用 streamdown 的 `CodeBlockCopyButton`。该组件 onClick 首行即判断 `navigator.clipboard?.writeText`，不存在就调 `onError` 后 return。远程服务是纯 http + LAN IP（非 localhost），浏览器判定为非安全上下文，`navigator.clipboard` 为 `undefined` → 按钮空转。桌面端与 `dev:browser` 走 localhost，clipboard API 存在，所以只在远程暴露。
+
+**修复**：`MdSurface.tsx` 改为自建 `MdCopyButton`，复用共享 `copyText`（内含 WKWebView 场景的 `document.execCommand("copy")` 兜底）与 `useCopyFeedback`（图标闪 check），保留 `data-streamdown="code-block-copy-button"` 属性以沿用 `ui/css/main/chat/streamdown.css` 既有按钮样式；文案走 i18n 新增 `chat.copyCode`（en/zh）。
+
+**验证**：真机实测（`omp-desktop-test` profile + 独立 host + 远程服务 16850，有头 Chromium）：
+- `http://192.168.20.18:16850`：`isSecureContext=false`、`navigator.clipboard=undefined`；点按钮后图标切 check，`pbpaste` 读出代码块原文 `hello-sub`（9 字节），此前哨兵值未被改动过。
+- `http://127.0.0.1:16850`（安全上下文，`writeText` 存在）：同样写入 `hello-sub`，未回归。
+- `ui:typecheck`、`check-i18n-keys` 全绿；`bun run check` 全绿（红灯仅为未跟踪原型页的中文注释，已改英文）。
+
+**教训**：所有剪贴板写入必须走项目内的 `copyText`（带 execCommand 兜底），不要直接用第三方组件的 clipboard 调用——远程只读席是纯 http，非安全上下文根本没有 clipboard API。这条与 BUG-163（远程终端粘贴）是同一根因的两侧：粘贴侧靠原生 paste 事件，复制侧只能靠 execCommand。

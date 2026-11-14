@@ -8,7 +8,7 @@
 // rules (ui/css/main-chat.css); surfaces needing their own font size or page height set them in
 // their domain CSS (e.g. .cmd-card-cmd.task-md).
 import { createElement, isValidElement, useMemo, useState, useEffect, type JSX, type MouseEvent as ReactMouseEvent } from "react";
-import { CodeBlock, CodeBlockCopyButton, Streamdown, defaultRehypePlugins, useIsCodeFenceIncomplete, type Components } from "streamdown";
+import { CodeBlock, Streamdown, defaultRehypePlugins, useIsCodeFenceIncomplete, type Components } from "streamdown";
 import { cjk } from "@streamdown/cjk";
 import type * as mermaidNs from "@streamdown/mermaid";
 import type { DiagramPlugin } from "@streamdown/mermaid";
@@ -21,7 +21,7 @@ import { CODE_PLUGINS, resolvePluginKey, type CodePluginKey } from "../../lib/co
 import { getThemeById } from "../../theme-registry";
 import { FileChip, openExternal, openImagePathPanel, openInBrowser } from "./parts";
 import { modDown } from "../../platform";
-import { SUCCESS_FLASH_MS } from "../main/sidebar/util";
+import { useCopyFeedback } from "../main/sidebar/util";
 import { IMAGE_EXTS } from "./util";
 import { fixStrongAutolink } from "./strong-autolink";
 
@@ -156,13 +156,31 @@ function AsyncDiagram({ source, render, alt, language }: { source: string; rende
     return (
       <div className="md-code-block-frame">
         <CodeBlock className="md-streamdown-code" code={source} language={language} lineNumbers={false}>
-          <CodeBlockCopyButton timeout={SUCCESS_FLASH_MS} />
+          <MdCopyButton code={source} />
         </CodeBlock>
       </div>
     );
   }
   if (!url) return null; // render in flight
   return <img className="md-diagram" src={url} alt={alt} />;
+}
+
+// streamdown's CodeBlockCopyButton gives up when navigator.clipboard is absent, and a remote LAN
+// client reaches the host over plain http (insecure context, no clipboard API): route through
+// copyText, whose execCommand fallback still copies there.
+function MdCopyButton({ code }: { code: string }) {
+  const { copied, copy } = useCopyFeedback();
+  return (
+    <button
+      type="button"
+      data-streamdown="code-block-copy-button"
+      aria-label={t("chat.copyCode")}
+      title={t("chat.copyCode")}
+      onClick={() => void copy(code)}
+    >
+      <Icon name={copied ? "check" : "copy"} size={14} />
+    </button>
+  );
 }
 
 function mdCodeBlock({ className, children }: ElProps<"code">) {
@@ -210,7 +228,7 @@ function mdCodeBlock({ className, children }: ElProps<"code">) {
         >
           <Icon name="wrapText" size={14} />
         </button>
-        <CodeBlockCopyButton />
+        <MdCopyButton code={source} />
       </CodeBlock>
     </div>
   );

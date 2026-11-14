@@ -170,6 +170,7 @@ export const chatZh = {
   speakReply: "朗读这条回复",
   openAutomation: "本回合创建了定时任务「{{title}}」，点击打开",
   copyFailed: "复制失败",
+  copyCode: "复制代码",
   branchFromHere: "从此处分叉出新会话",
   branchAfterSaved: "回复落盘后可分叉",
   // ---- user message (UserMsg.tsx) ----
