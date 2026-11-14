@@ -2,7 +2,7 @@
 // else (Chinese text glued to the @ never triggers a read, so its token must stay visible).
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/at-mentions.test.ts --pool=forks --poolOptions.forks.singleFork
 import { describe, expect, test } from "bun:test";
-import { atMentions, splitRefs } from "../ui-src/lib/at-mentions.ts";
+import { atMentions, isDirToken, splitRefs } from "../ui-src/lib/at-mentions.ts";
 
 describe("atMentions", () => {
   test("strips a standalone mention line and keeps the prose", () => {
@@ -67,5 +67,45 @@ describe("splitRefs (editor backfill)", () => {
   test("leaves text with no references untouched", () => {
     expect(splitRefs("普通文字\n两行")).toEqual([{ text: "普通文字\n两行" }]);
     expect(splitRefs("看一下@/x/a.md")).toEqual([{ text: "看一下@/x/a.md" }]);
+  });
+
+  // A picked-element block is one chip: the header lines and the fenced html must not be
+  // split by the @ and / tokens the markup contains.
+  const element = [
+    "[element] span#picked 426×18",
+    "color: rgb(127, 209, 255)",
+    "background: rgba(0, 0, 0, 0)",
+    "font: 12px ui-monospace, Menlo, monospace",
+    "url: file:///x/icon-candidates.html",
+    "```html",
+    '<span id="picked">@not-a-file /not-a-cmd</span>',
+    "```",
+  ].join("\n");
+
+  test("an element block stays whole and its html tokens never split it", () => {
+    expect(splitRefs(element)).toEqual([{ kind: "element", token: element }]);
+    expect(roundTrip(element)).toBe(element);
+  });
+
+  test("an element block survives next to file references", () => {
+    expect(splitRefs(`看图 @/a.ts\n\n${element}\n\n继续 @/b.ts`)).toEqual([
+      { text: "看图 " },
+      { kind: "file", path: "/a.ts", token: "@/a.ts" },
+      { text: "\n\n" },
+      { kind: "element", token: element },
+      { text: "\n\n继续 " },
+      { kind: "file", path: "/b.ts", token: "@/b.ts" },
+    ]);
+  });
+});
+
+describe("isDirToken (file chip icon)", () => {
+  // insertFile writes a trailing slash for directories and a trailing space for files
+  test("directories end with a slash, files with a space", () => {
+    expect(isDirToken("@docs/")).toBe(true);
+    expect(isDirToken("@src/components/")).toBe(true);
+    expect(isDirToken('@"a b/"')).toBe(true);
+    expect(isDirToken("@src/a.ts ")).toBe(false);
+    expect(isDirToken("@src/a.ts")).toBe(false);
   });
 });

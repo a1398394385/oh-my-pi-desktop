@@ -46,16 +46,50 @@ export interface PromptRef {
   token: string;
 }
 
+/** True when a file-mention token points at a directory. insertFile writes a trailing
+ *  slash for directory matches ("@docs/", '@"a b/"'); file matches end with a space. */
+export function isDirToken(token: string): boolean {
+  return token.replace(/ +$/, "").replace(/"$/, "").endsWith("/");
+}
+
+/** An element the browser mirror's picker wrote into the draft: a `[element] sel WxH`
+ *  header with color/background/font/url lines and the fenced html below it. The whole
+ *  block is one chip, so it carries no path -- only the bytes to serialize back. */
+export interface ElementRef {
+  kind: "element";
+  token: string;
+}
+
 const REF_RE = /@session:(?:"([^"]+)"|(\S+)) ?|@(?:"([^"]+)"|'([^']+)'|([^\s@]+))/g;
+
+/** Picked-element block, byte-for-byte as AgentBrowserView.pickedText writes it. Matched
+ *  whole because the fenced html may contain @ and / tokens that must not split it. */
+const ELEMENT_RE = /^\[element\] [^\n]*(?:\n[^\n]*)*?\n```[^\n]*\n[\s\S]*?\n```/gm;
 
 /** Split a prompt into literal text and its references. Used to rebuild the editor
  *  (chips) from already-sent text; display paths use `atMentions` instead. */
-export function splitRefs(text: string): Array<{ text: string } | PromptRef> {
-  const out: Array<{ text: string } | PromptRef> = [];
+export function splitRefs(text: string): Array<{ text: string } | PromptRef | ElementRef> {
+  const out: Array<{ text: string } | PromptRef | ElementRef> = [];
+  const blocks = [...text.matchAll(ELEMENT_RE)].map((m) => ({ start: m.index!, end: m.index! + m[0].length, token: m[0] }));
+  let next = 0;
   let last = 0;
+  const flushTo = (cut: number) => {
+    if (cut > last) out.push({ text: text.slice(last, cut) });
+    last = cut;
+  };
+  const flushBlocksBefore = (cut: number) => {
+    while (next < blocks.length && blocks[next].end <= cut) {
+      const b = blocks[next++];
+      flushTo(b.start);
+      out.push({ kind: "element", token: b.token });
+      last = b.end;
+    }
+  };
   for (const m of text.matchAll(REF_RE)) {
     const start = m.index;
     if (start === undefined) continue;
+    flushBlocksBefore(start);
+    if (next < blocks.length && start >= blocks[next].start && start < blocks[next].end) continue;
     const session = m[1] !== undefined || m[2] !== undefined;
     if (!session && start > 0 && !BOUNDARY_RE.test(text[start - 1])) continue;
     const path = (m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5] ?? "").trim();
@@ -64,10 +98,11 @@ export function splitRefs(text: string): Array<{ text: string } | PromptRef> {
     // rebuilt text stays byte-identical: "a @f.ts b" -> "a " + chip("@f.ts ") + "b"
     const spaced = text[start + m[0].length] === " ";
     const token = m[0] + (spaced ? " " : "");
-    if (start > last) out.push({ text: text.slice(last, start) });
+    flushTo(start);
     out.push({ kind: session ? "session" : "file", path, token });
     last = start + token.length;
   }
-  if (last < text.length) out.push({ text: text.slice(last) });
+  flushBlocksBefore(text.length);
+  flushTo(text.length);
   return out;
 }

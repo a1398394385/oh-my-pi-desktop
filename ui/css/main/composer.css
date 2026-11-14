@@ -1054,9 +1054,37 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .chip-file { --chip-ink: var(--dim); }
 /* Conversation reference: accent ink keeps it distinct from file chips */
 .chip-session { --chip-ink: var(--accent); }
+/* Picked page element (browser mirror): its own ink so it never reads as a file ref */
+.chip-element { --chip-ink: var(--green); }
 
 .chip .chip-ic { flex: none; line-height: 1; }
 .chip .chip-ic svg { width: 12px; height: 12px; }
+/* Box size rides along in the chip; the selector owns the emphasis */
+.chip .chip-sz { color: color-mix(in srgb, var(--chip-ink) 62%, var(--faint)); font-weight: 400; font-size: var(--ui-fs-xs); }
+
+/* Picked-element card (hover/focus on the chip): header fields plus the html block the
+   Agent will read, so the payload never occupies composer lines. */
+.el-pop {
+  position: fixed; left: 0; top: 0; z-index: 520;
+  width: 420px; max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 10px;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.el-pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.el-pop-sel { font-family: var(--mono); font-size: var(--ui-fs-base); font-weight: 600; color: var(--text); word-break: break-all; }
+.el-pop-sz { flex: none; margin-left: auto; font-family: var(--mono); font-size: var(--ui-fs-sm); color: var(--faint); }
+.el-pop-kv { font-family: var(--mono); font-size: var(--ui-fs-sm); color: var(--dim); word-break: break-all; }
+.el-pop-code {
+  margin: 2px 0 0; padding: 8px;
+  max-height: 220px; overflow: auto;
+  background: var(--panel); border-radius: var(--r-sm);
+  font-family: var(--mono); font-size: var(--code-fs); line-height: 1.5; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+}
 
 /* Fade along the stream→composer boundary: a sticky ::after pinned to the scrollport's
    bottom edge dissolves incoming messages into the background (mirror of the top
