@@ -2,7 +2,7 @@
 // collapsed state (capsule).
 // Migrated from renderStatusCard in ui/right.js + initRight's card interactions (DOM
 // position at #statusWrap).
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, useRef } from "react";
 import { useAppStore, setBump } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
@@ -29,16 +29,10 @@ interface TodoPhase {
 }
 
 // Status icon and text of a todo row (completed → struck-through text; blocked appends the
-// blocker reason). The strike animates only on the transition into completed: `mounted` is
-// false during the first render, so a row that mounts already done (history session, card
-// re-expand) renders its line instantly instead of replaying the sweep.
+// blocker reason).
 function TodoRow({ t }: { t: TodoTask }) {
   const st = t.status;
   const text = t.content + (st === "blocked" && t.blocker ? `（${t.blocker}）` : "");
-  const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-  }, []);
   return (
     <div
       className={"todo " + (st === "completed" ? "done" : st === "in_progress" ? "cur" : st === "blocked" ? "blocked" : "")}
@@ -47,7 +41,7 @@ function TodoRow({ t }: { t: TodoTask }) {
       <i className={st === "completed" ? "ck" : st === "in_progress" ? "ar" : "ci"}>
         {st === "completed" ? <Icon name="circleCheck" /> : st === "in_progress" ? "→" : st === "blocked" ? "⊘" : <Icon name="circle" />}
       </i>
-      {st === "completed" ? <s className={mounted.current ? "strike" : undefined}>{text}</s> : <span>{text}</span>}
+      {st === "completed" ? <s>{text}</s> : <span>{text}</span>}
     </div>
   );
 }
@@ -78,11 +72,19 @@ export default function TodoCard() {
     if (!card || !list || !path) return;
     const startX = e.clientX;
     const startY = e.clientY;
-    // Baseline from the stored size (or the CSS defaults 280×168), not offsetHeight:
-    // shorter content would otherwise eat the first stretch of a downward drag
-    const startW = size?.w ?? 280;
+    // Width baseline is the card's current rendered width (content-fitted until the session
+    // is resized), so the first drag starts where the card actually is; height stays on the
+    // CSS default 168 rather than the rendered height, or a short list would eat the first
+    // stretch of a downward drag
+    const startW = size?.w ?? card.offsetWidth;
     const startH = size?.h ?? 168;
-    const maxW = window.innerWidth - 100;
+    // The drag caps at the content's own width: past the point where no row wraps the card
+    // only gains blank space on the right. Measured with the card's inline width dropped,
+    // since a stored size wins over the content-fitted CSS width.
+    const prevW = card.style.width;
+    card.style.width = "max-content";
+    const maxW = card.offsetWidth;
+    card.style.width = prevW;
     document.body.classList.add("resizing");
     const onMove = (ev: PointerEvent) => {
       // The grip is on the bottom-left and the card is anchored to the right edge of

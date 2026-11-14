@@ -63,13 +63,6 @@
   to   { background-position: -200% 0; }
 }
 
-/* Todo completion: the strike-through grows left→right in 12 discrete steps (TUI parity),
-   not as one instantaneous line. */
-@keyframes todoStrike {
-  from { background-size: 0% 1px; }
-  to   { background-size: 100% 1px; }
-}
-
 /* Welcome title intro: one diagonal light band crossing the text once, easing out. The title
    paints two layers (shine over the brand gradient), so both positions are animated and the
    gradient layer stays pinned. */
