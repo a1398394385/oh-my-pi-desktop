@@ -267,6 +267,19 @@
 /* user-select:text counters .msg.user's none: only the text line boxes get the selection color, not the bubble around them */
 .user-msg-text { width: fit-content; max-width: 100%; user-select: text; -webkit-user-select: text; }
 
+/* Fold toggle for long user bubbles (UserMsg.tsx): a chevron pinned to the bubble's
+   bottom-right corner. The bubble reserves a band below its last text line — and, while
+   folded, a right slot — so the icon never sits on the text it would cover. */
+.msg.user .user-bubble.foldable:not(.folded) { padding-bottom: 26px; }
+.msg.user .user-bubble.folded { padding-right: 34px; }
+.msg.user .user-bubble > .ub-fold { position: absolute; right: 6px; bottom: 3px; }
+.msg.user .user-bubble.folded > :not(.user-msg-text):not(.ub-fold) { display: none; }
+/* Folded: the message's first line only (a wrapped first line is clipped at one line box) */
+.msg.user .user-bubble.folded .user-msg-text {
+  width: auto; max-height: 1.55em; overflow: hidden;
+  -webkit-mask-image: none; mask-image: none;
+}
+
 /* Attachment thumbnails inside the user bubble: the height cap is a fixed 75px, so a
    tall screenshot cannot inflate the bubble. The multi-image tiles use the same side
    length to stay square. */

@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import type { OpenSession, UserItem } from "../../types/session";
 import { activeOpen, editQueueMsg, requeueSteerMsg, useAppStore } from "../../store";
@@ -20,6 +20,26 @@ import { Chip } from "../composer/AnnotationChips";
 // pending is a captured mutation snapshot (T2): applySteerConsumed flips it in place
 export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?: string; pending?: UserItem["pending"]; branch?: ReactNode }) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // Bubbles taller than three text lines (images and attachment chips included) carry a
+  // fold toggle in their bottom-right corner; folded shows only the message's first line.
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
+  const [tall, setTall] = useState(false);
+  const [folded, setFolded] = useState(false);
+  // Measured only while unfolded: a folded bubble's height is the clamped single line, which
+  // would flip the toggle off. The observer covers width changes and late-loading images.
+  useEffect(() => {
+    const el = bubbleRef.current;
+    if (!el || folded) return;
+    const sync = () => {
+      const cs = getComputedStyle(el);
+      const inner = el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      setTall(inner > parseFloat(cs.lineHeight) * 3);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [folded]);
   // Annotations ride in the sent prompt text: the bubble shows the user's own words
   // plus the blocks quoted from a file / diff pane (their path and line span)
   const { body, notes, sessions } = splitQuote(item.text);
@@ -45,7 +65,10 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   // Queued/steer pending-consumption message: the action row below the bubble carries the
   // steer controls (once consumed, pending clears and it becomes an ordinary message)
   const delivery = item.automation;
-  const cls = delivery ? "user-bubble delivery" : "user-bubble";
+  // Steer bubbles awaiting consumption keep their own transient action row; media-only
+  // messages and the automation card have no "first line" to fold down to.
+  const foldable = tall && !!mention.text && !delivery && item.pending !== "steer";
+  const cls = (delivery ? "user-bubble delivery" : "user-bubble") + (foldable ? " foldable" : "") + (folded ? " folded" : "");
   // Edit stays available on remote clients: edit_resend only appends a sibling branch
   // (see REMOTE_WRITE_DENYLIST), so it is not a read-only violation
   const showEditBtn = !item.pending && !item.automation;
@@ -56,7 +79,7 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   };
   return (
     <div className="msg user" data-fk={fk || undefined}>
-      <div className={cls}>
+      <div className={cls} ref={bubbleRef}>
         {blocks.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             <Chip
@@ -126,6 +149,20 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
           </button>
         ) : null}
         {mention.text ? <FadeBox className="user-msg-text whitespace-pre-wrap">{mention.text}</FadeBox> : null}
+        {foldable ? (
+          <button
+            type="button"
+            className="ub-fold q-btn"
+            title={folded ? t("chat.expandMsg") : t("chat.collapseMsg")}
+            aria-expanded={!folded}
+            onClick={(e) => {
+              e.stopPropagation();
+              setFolded((v) => !v);
+            }}
+          >
+            <Icon name={folded ? "chevronDown" : "chevronUp"} size={13} />
+          </button>
+        ) : null}
       </div>
       {branch || showEditBtn || body || item.pending === "steer" ? (
         <div className={"ub-actions" + (editing ? " show" : "")}>

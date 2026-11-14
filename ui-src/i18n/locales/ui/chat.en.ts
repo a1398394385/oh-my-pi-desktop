@@ -197,6 +197,8 @@ export const chatEn = {
   automationDelivery: "Automation delivery",
   automationTaskLabel: "Scheduled task",
   copyMsg: "Copy this message",
+  collapseMsg: "Collapse this message",
+  expandMsg: "Expand this message",
   editResend: "Edit & resend (keeps this chat as a branch)",
   editingPrevious: "Editing the previous message",
   editingBelow: "Editing below",

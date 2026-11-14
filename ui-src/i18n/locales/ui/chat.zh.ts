@@ -182,6 +182,8 @@ export const chatZh = {
   automationDelivery: "自动化投递",
   automationTaskLabel: "定时任务",
   copyMsg: "复制这条消息",
+  collapseMsg: "收起这条消息",
+  expandMsg: "展开这条消息",
   editResend: "编辑重发（原对话保留为分支）",
   editingPrevious: "正在编辑上一条消息",
   editingBelow: "正在下方编辑",
