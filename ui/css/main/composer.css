@@ -1142,3 +1142,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .cap-b { flex: none; padding: 0 5px; border: 1px solid var(--line-soft); border-radius: 8px; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 16px; }
 
 .cap-b + .cap-b { margin-left: 4px; }
+
+/* Icon-only capability chip: same 18px outer height as the text chips (a row
+   mixing both keeps one baseline); the label survives as the hover title. */
+.cap-b.ic { display: inline-flex; align-items: center; justify-content: center; height: 18px; padding: 0 4px; }

@@ -432,7 +432,9 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
                 onClick={(e) => { e.stopPropagation(); enterRow(model.id); }}>
                 <span className="ck">{curBase === model.id ? "✓" : ""}</span>
                 <span className="mi-name">{model.name}</span>
-                {modelCatalog.find((m) => m.id === model.id)?.vision ? <span className="cap-b">{t("composer.visionTag")}</span> : null}
+                {modelCatalog.find((m) => m.id === model.id)?.vision ? (
+                  <span className="cap-b ic" title={t("composer.visionTag")}><Icon name="image" size={12} /></span>
+                ) : null}
                 <CapBadges caps={modelCaps.get(model.id)} />
               </div>
             ))}
@@ -502,21 +504,24 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   );
 }
 
-// Capability badges at model-row tails (18.5 models frame axes): small text
-// chips for prompt-cache keepalive / built-in web search / image generation;
-// rendered only for axes the host actually reports
+// Capability badges at model-row tails (18.5 models frame axes): icon chips for
+// built-in web search / image generation, rendered only for axes the host
+// actually reports. The prompt-cache axis is deliberately not rendered (data
+// stays in the frame, the chip was dropped as noise). Labels stay as hover
+// titles — a bare icon is not self-evident.
 function CapBadges({ caps }: { caps: ModelCaps | undefined }) {
   const { t } = useTranslation();
   if (!caps) return null;
-  const badges: string[] = [];
-  if ((caps.promptCache ?? 0) > 0) badges.push(t("compExt.capCache"));
-  if (caps.webSearch) badges.push(t("compExt.capWeb"));
-  if (caps.imageGen) badges.push(t("compExt.capImg"));
+  const badges: { icon: string; label: string }[] = [];
+  if (caps.webSearch) badges.push({ icon: "search", label: t("compExt.capWeb") });
+  if (caps.imageGen) badges.push({ icon: "palette", label: t("compExt.capImg") });
   if (badges.length === 0) return null;
   return (
     <>
-      {badges.map((label) => (
-        <span className="cap-b" key={label}>{label}</span>
+      {badges.map((b) => (
+        <span className="cap-b ic" key={b.label} title={b.label}>
+          <Icon name={b.icon} size={12} />
+        </span>
       ))}
     </>
   );
