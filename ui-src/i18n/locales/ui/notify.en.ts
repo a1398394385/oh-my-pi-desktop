@@ -17,6 +17,7 @@ export const notifyEn = {
   remoteKeySubmit: "Connect",
   // Working-state text (store/session.ts)
   working: "Working…",
+  outputting: "Writing",
   thinking: "Thinking",
   thinkingLabel: "Thinking",
   thinkingDone: "{{label}}",

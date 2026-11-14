@@ -18,7 +18,9 @@ import type { ChatItem } from "../../types/session";
 // A settled tool still names the run's current activity: between a tool returning and the next
 // thinking phase the row is generating its reply, and falling back to the thinking glyph there
 // made the row read "still thinking" long after the thought ended.
-export function liveActivity(items: ChatItem[]): { icon: string; thinking?: string } {
+// `writing` (the reply's own text is streaming) supersedes both: the row then names that phase.
+export function liveActivity(items: ChatItem[], writing = false): { icon: string; thinking?: string } {
+  if (writing) return { icon: "writing" };
   let lastTool: string | undefined;
   for (let i = items.length - 1; i >= 0; i--) {
     const it = items[i];
@@ -102,8 +104,12 @@ function SmoothThought({ text }: { text: string }) {
 
 export default function ChatLoading() {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
-  const text = s?.streaming ? s.workingText || t("chat.processing") : "";
-  const activity = s?.streaming && s.items ? liveActivity(s.items) : { icon: "think" };
+  // The reply's own text streaming is the one phase the items cannot name (assistantDraft is not
+  // a row yet): pass it so the row shows the writing glyph and the "outputting" label instead of
+  // the last tool's.
+  const writing = !!s?.assistantDraft;
+  const text = s?.streaming ? (writing ? t("notify.outputting") : s.workingText || t("chat.processing")) : "";
+  const activity = !s?.streaming || !s.items ? { icon: "think" } : liveActivity(s.items, writing);
   const thinking = activity.thinking || "";
   return (
     <div className="flex items-center min-h-[20px] py-[2px]" role="status" aria-label={text || t("chat.loadingAria")}>
