@@ -419,11 +419,11 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   };
   return (
     <>
-      {/* In-group compact state reuses chg-item (same spacing as edit rows inside change groups); standalone rows keep act.read */}
+      {/* In-group compact state reuses chg-item (same spacing as edit rows inside change groups); standalone rows keep act.read. The leading icon belongs to the group title row only, same as the change/terminal/device sub-rows. */}
       {/* Directory read: folder icon + the directory label (not in lookup groups, not expandable) */}
       {item.details?.isDirectory ? (
         <div className={inGroup ? "chg-item" : "act read"}>
-          <Icon name="folder" size={15} />
+          {!inGroup && <Icon name="folder" size={15} />}
           {cleanPath ? <Ellip className="path" title={cleanPath}>{cleanPath}</Ellip> : item.text || "read"}
         </div>
       ) : (
@@ -432,7 +432,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         style={canOpen || isImage ? { cursor: "pointer" } : undefined}
         onClick={isImage ? () => openReadFileInSidebar(item, path || cleanPath) : canOpen ? toggle : undefined}
       >
-        <Icon name="file" size={15} />
+        {!inGroup && <Icon name="file" size={15} />}
         <Ellip className="path" title={cleanPath}>{item.intent || cleanPath || item.text || "read"}</Ellip>
         {cleanPath && (
           <>
