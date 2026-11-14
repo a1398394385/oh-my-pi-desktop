@@ -51,7 +51,7 @@
 
 .hub-meta {
   font-size: var(--ui-fs-sm); color: var(--faint);
-  display: flex; flex-wrap: wrap; gap: 6px;
+  display: flex; flex-wrap: wrap; gap: 9px;
 }
 
 /* One stat cell, shared by the roster's aggregate line and each card's metrics line:
