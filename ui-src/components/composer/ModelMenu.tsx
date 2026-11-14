@@ -8,8 +8,8 @@
 // the other never closes); Esc / outside click / window blur close as before.
 // With a session picks go through the host; creating-new state lands in
 // localStorage.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pickModelId, pickThinkingLevel, getSupportedThinkingForModel, effZoom } from "../../store";
 import type { ModelCaps } from "../../store/models";
@@ -297,6 +297,26 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   };
   const thLv = (lv: string) => t(`composer.thinkingLevels.${lv}`, { defaultValue: lv });
   const curIdx = Math.max(0, levels.indexOf(curThinking));
+  // At the model's ceiling the capsule turns "energised" (bubbles, see CSS)
+  const atMax = levels.length > 1 && curIdx === levels.length - 1;
+  // Per-bubble randomised size/pace/phase; generated once per menu mount so a
+  // re-render (hover, level pick) never makes the field jump.
+  const bubbles = useMemo(
+    () =>
+      Array.from({ length: 12 }, () => {
+        const dur = 3.2 + Math.random() * 3;
+        return {
+          "--s": `${(2 + Math.random() * 4).toFixed(1)}px`,
+          "--y": `${(3 + Math.random() * 13).toFixed(1)}px`,
+          "--d": `${dur.toFixed(2)}s`,
+          // Negative delay inside the bubble's own period, so fast and slow bubbles
+          // spread evenly along the track instead of clustering at the right end
+          "--delay": `${(-Math.random() * dur).toFixed(2)}s`,
+          "--o": (0.3 + Math.random() * 0.55).toFixed(2),
+        } as CSSProperties;
+      }),
+    [],
+  );
   const pct = levels.length > 1 ? (curIdx / (levels.length - 1)) * 100 : 100;
   // The knob is a ball as tall as the track riding inside the capsule: it must
   // stay fully visible at both ends, so its center (and every tier dot, end
@@ -305,7 +325,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   useLayoutEffect(() => {
     setTrackW(trackRef.current?.clientWidth ?? 0); // menu width is fixed while open, one measure is enough
   }, []);
-  const rPct = trackW > 0 ? (10 / trackW) * 100 : 0; // knob radius = 10px (track height 20px / 2)
+  const rPct = trackW > 0 ? (11 / trackW) * 100 : 0; // knob radius = 11px (track height 22px / 2)
   const clampP = (p: number) => Math.min(100 - rPct, Math.max(rPct, p));
   const knobPct = clampP(pct);
   const dotPos = levels.length > 1 ? levels.map((_, i) => clampP((i / (levels.length - 1)) * 100)) : [];
@@ -403,19 +423,27 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             icon), revealed progressively by clipping it at the knob center;
             the ball-shaped knob (track height) rides inside the groove, its
             center snapping onto the tier dots (end dots included). Clicking or
-            dragging jumps to the nearest tier. */}
+            dragging jumps to the nearest tier. At the top tier the gradient
+            fills the whole capsule and bubbles stream inside it (the level has
+            nowhere further to go, so the track shows it as saturated). */}
         <div className={"think-sec" + (hlK === THINK_ROW ? " on" : "")} ref={setRowEl(THINK_ROW)} onClick={(e) => e.stopPropagation()}>
           <div className="think-sec-h">
             <span className="think-ht">{t("composer.reasoning")}<span className="think-cur">{thLv(levels[curIdx] ?? "off")}</span></span>
             <span className="think-keys"><kbd>⇧ Tab</kbd></span>
           </div>
-          <div className="think-track" ref={trackRef}
+          <div className={"think-track" + (atMax ? " is-max" : "")} ref={trackRef}
+            style={trackW > 0 ? ({ "--track-w": `${trackW}px` } as CSSProperties) : undefined}
             onPointerDown={onTrackDown}
             onPointerMove={onTrackMove}>
-            <div className="think-grad" style={{ clipPath: `inset(0 ${100 - knobPct}% 0 0)` }} />
+            <div className="think-grad" style={{ clipPath: `inset(0 ${100 - (atMax ? 100 : knobPct)}% 0 0)` }} />
             {dotPos.map((p) => (
               <span className="think-dot" key={p} style={{ left: p + "%" }} />
             ))}
+            {atMax && (
+              <div className="think-bubbles">
+                {bubbles.map((st, i) => <span key={i} style={st} />)}
+              </div>
+            )}
             <div className="think-knob" style={{ left: knobPct + "%" }} />
           </div>
         </div>
