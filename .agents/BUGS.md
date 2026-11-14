@@ -155,6 +155,11 @@
 | BUG-161 | 拖文件进中栏无反应——按 Tauri v2 载荷里不存在的 `type` 字段过滤 | 2026-11-13 |
 | BUG-162 | 远程端收不到命令审批弹窗——审批帧在 `session_created` 之前重放被前端丢弃 | 2026-11-13 |
 | BUG-163 | 远程终端无法粘贴——非安全上下文没有 clipboard API，`Ctrl+V` 却被无条件吞掉 | 2026-11-13 |
+| BUG-164 | 远程端取消置顶无效且刷新弹回——`set_session_pinned` 在远程写 denylist 里，前端仍乐观更新 | 2026-11-13 |
+| BUG-165 | @ 附加会话后气泡显示注入的 `<attached-session>` 原文与其中的 @ 提及卡片 | 2026-11-13 |
+| BUG-166 | 缩放命令弹窗上栏越界且滚动少一行——旧矩形算行数、视觉像素算滚动 | 2026-11-14 |
+| BUG-167 | 远程刷新后运行中的子代理全部消失——名册 seed 帧发在 `session_created` 之前被丢弃 | 2026-11-14 |
+| BUG-168 | 每轮都被要求「强力压缩」——percent 档位线在无窗口时被当成 25/50/75 token，会话永久 L3 | 2026-11-14 |
 ---
 
 ## 详情
@@ -2426,3 +2431,87 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **教训**：任何"我先 preventDefault 再自己实现"的按键路径，都要先判能力是否存在——安全上下文是浏览器的硬边界，http 局域网客户端拿不到剪贴板 API，此时必须把默认行为还给浏览器。xterm 自带 `paste` 处理，宿主不应再拦。
 
 **已知边缘**：终端刚创建、shell 尚未发送 `\x1b[?2004h` 的极短窗口内粘贴，bracketed paste 序列会以字面 `^[[200~` 出现在输入行（xterm 端与 shell 端的模式开启存在竞态，与本次修复无关）。
+
+### BUG-164: 远程端取消置顶无效且刷新后弹回——`set_session_pinned` 在远程写 denylist 里，前端仍做乐观更新
+
+**日期**：2026-11-13
+
+**现象**：远程控制端取消某会话置顶，界面立刻收起（看起来成功），但桌面端仍是置顶；刷新远程页面后该会话又变回置顶。
+
+**根因**：`set_session_pinned` 属 `REMOTE_WRITE_DENYLIST`（2026-10-16 按域全量圈定，`host/remote.ts`），远程连接一调用就被 `dispatchRpc` 回 `{type:"error",message:"remote read-only"}`，host 的 `omp-desktop.json` 从未改动，因此桌面端（另一个通道）也收不到任何列表推送。前端 `SessionRow.tsx` / `SessCtxMenu.tsx` 都是"先发 RPC 再乐观改本地 `pinnedSessions`"，而 `session_list` 处理器每次都 `new Set(msg.pinnedSessions)` 全量覆盖——下一条列表帧或刷新即把 host 旧值写回，形成"点了、闪一下、弹回去"。
+
+**修复**：认定置顶是远程端唯一需要的会话写（只改侧栏置顶段，不碰会话文件、不销毁状态），从 denylist 移除并在 `host/remote.ts` 注释与 [remote-control-spec.md](../docs/architecture/remote-control-spec.md) §3.5 记为放行项（会话域 10 → 9）。host 侧无需改逻辑：`set_session_pinned` 本来就 `saveDesktopProjects()` + `refreshAllSessionLists(ws)`，后者向两端推送同一 payload。
+
+**验证**：`scripts/probe-remote.ts` 新增矩阵 3b（真宿主 + 本机/远程双通道）：远程 `set_session_pinned{on}` 的 `session_list` 回帧含该 path、本机通道收到含该 path 的推送；反向 unpin 同样双端生效——四项断言全过。`bun scripts/smoke-projects.ts`（桌面临顶持久化）全过；`host:typecheck`、capabilities / 注释语言 / 编码门禁全绿。
+
+**教训**："denylist 拒绝 + 前端乐观更新"是一类静默失败的组合：host 拒绝的写操作，UI 必须先决定是隐藏控件还是本地生效，否则用户看到的是假成功。远程只读边界下每个会话写都要问一次"手机端真的需要吗"，需要就走规格放行，不需要就隐藏。
+
+**已知边缘**（同类未处理）：远程右键菜单里 `rename` / `archive` 同样被 denylist 拒绝且前端也是乐观更新（`session_renamed` 回 `ok:false` 时无提示、归档只靠列表帧回弹），本次未改动，按同样口径另立任务决定隐藏还是放行。
+
+### BUG-165: @ 附加会话后气泡显示注入的 `<attached-session>` 原文与其中的 @ 提及卡片
+
+**日期**：2026-11-13
+
+**分诊**：②确认存量缺陷（会话引用通道落地起即如此，与近期改动无关）。
+
+**现象**：用输入框的会话 chip 引用一段历史会话并发送后，用户气泡里除了自己写的话，还整块列出 `<attached-session title="…" path="…">` 及其中的每一轮 user/assistant 原文；气泡顶部另出现若干文件卡片，卡名是引用内容里的 @ 提及（如 `cli`、`core`）。侧栏该会话的行标题同样变成 `<attached-session title=…`。
+
+**根因**：`host/rpc/prompt.ts` 把 `@session:<path>` 标记替换成 `formatSessionReference()` 生成的内联块（模型输入），同一段文本也进了 transcript、`user_message` 回显和会话首消息。前端 `UserMsg` 直接渲染 `item.text`，且 `atMentions()` 会扫描整段文本，把引用内容里的 `@xxx` 当成用户自己打的提及抽成卡片。`sessionLabel` 虽在早期已剥离 `attached-*` 块，但只处理 `firstMessage` 的 80 字符预览：块头被截断（没有 `>`）就匹配不上；host 侧标题也可能直接取自块内文本。
+
+**修复**：把"剥离宿主注入的附件框架"收成一处——`ui-src/lib/conversation-quote.ts` 的 `splitQuote()`（所有展示面都走它）新增 `stripAttached()`：删除 `<attached-file>` / `<attached-session>` 块、容忍属性值里的 `>`、并丢掉被截断的块尾；`sessionLabel` 改为 `splitQuote(title).body`，标题与首消息同口径。回显去重（`ui-src/store/session.ts` 的 `user_message`）改成按**展示形态**比较：乐观气泡带的是 `@session:<path>` 标记，host 回显带的是内联块，逐字比较永不相等，于是首条消息会画出两个气泡；命中后采用回显文本，使气泡与重载后的 transcript 完全一致。
+
+**验证**：`scripts/conversation-quote.test.ts` 新增两例（含引用的真实 prompt、被截断的块头/块尾），5 例全过；`bun run check` 全绿。真机：`bun run dev:browser` 连真实 host，发一条 `@session:<path>` + 文本的消息——气泡只显示用户原话、无卡片、单气泡；同一会话里旧的泄漏气泡重载后也恢复干净；侧栏行标题由 `<attached-session…` 变回 `sum` / `hi` / `（空会话）`。落盘 prompt（`agent/sessions/…jsonl`）确认仍带完整块，模型输入未受影响。
+
+**教训**：同一段文本既喂模型又喂界面的地方，必须显式区分"线上格式"与"展示格式"；判断两者是否为同一条消息也不能比原文。
+
+**后续（同日补齐）**：剥离造成"编辑即丢失"——编辑回填的 body 里既没有引用块也没有元数据。现在编辑一条历史消息会把它当初的**全部附件形态**恢复到输入框：`@path` 与 `@session:<path>` 重建为 chip（`lexical/flat.ts:$setText` 走 `splitRefs` 重建 `ChipNode`，chip 的 token 与原文字节一致）、图片挂进附件行（`AttachRow` 读 `editingEntry.images`，可查看/剔除）、`<conversation_quote>` 批注复原为 chip 并在提交时重新拼前缀（含右侧栏"选中 N 块"那类带 `file`+`lines` 的 note）。批注由 composer 在编辑期间 park、退出时回滚，用户自己未发送的 pending 批注不会与消息的批注互相污染。
+
+另一处必须同时修的是 host：`edit_resend` 不过 `handlePrompt`，原来不解析 `@session:` 标记，重发会把裸标记当普通 @ 提及交给底座（底座会把 `.jsonl` 当文件读）。标记解析已抽成 `session-context.ts:inlineSessionRefs`，prompt 与 edit_resend 共用。
+
+### BUG-166: 缩放命令弹窗上栏越界且滚动少一行——旧矩形算行数、视觉像素算滚动
+
+**日期**：2026-11-14
+
+**分诊**：①确认回归（弹窗改成固定整数行后，缩放边界仍可越界）。
+
+**现象**：提高界面缩放后，技能/命令弹窗为了保留过多行数而把上栏顶出窗口；部分档位第一次向下滚动只移动 39px，选中行不能完整落入中栏。
+
+**根因**：行数用卡片自身的 `getBoundingClientRect()` 反推可用空间，同一帧内的两次测量仍可能读到旧底边；WebKit 随后稳定输入框的缩放位置，行数却不再更新。滚动又把缩放后的视觉坐标除以 store zoom 后与布局像素混算，小数误差可把 40px 滚动量取成 39px。
+
+**修复**：`placePaletteCard` 改从输入框的实时 DOM 几何计算 zoom 和上方可容纳高度并返回，`PaletteMenu` 据此直接取 5/4/3/2/1 整数行，并在下一帧复测；连一行都放不下时压缩该行及垂直内边距，优先保住完整三栏。滚动改用 `offsetTop` / `offsetHeight`，不再经过视觉坐标。
+
+**验证**：Playwright WebKit 连真实 host，修复前在 700px 高、1.5 倍缩放下复现卡片顶 -3.93px；修复后 560/700/900px × 1/1.1/1.25/1.5/1.75/2 倍共 18 组全部整卡可见且列表为整数行。⌘+ 到 1.5 倍后连续 ↓，源码与 `ui/dist` 均为 0/40/80… 的整行滚动，选中行始终完整；`bun run check`、`bun run ui:build` 全绿。
+
+**教训**：CSS zoom 下不要混用视觉矩形与布局单位，也不要用被布局对象自己的旧盒子反推父级可用空间；WebKit 的缩放后位置需要跨帧验证。
+
+### BUG-167: 远程刷新后运行中的子代理全部消失——名册 seed 帧发在 `session_created` 之前被丢弃
+
+**日期**：2026-11-14
+
+**分诊**：②确认存量缺陷（`createSubagentView` 的晚到者 seed 自加入起就与 `session_created` 顺序相反，与本次改动无关）。
+
+**现象**：一个主会话起了 11 个 subagent，远程控制页面刷新后右栏只列出刷新那一刻已完成的那 1 个；其余 10 个仍在运行的看不见，直到各自结束（且结束后也不会自己出现，只有再刷新一次才由磁盘重放补上）。
+
+**根因**：`handleLoadSession` 的 reuse 分支先 `attachEntry` 再发 `session_created`，而 `attachEntry` → `attachEntryUi` → `createSubagentView` 会在建视图时同步 seed 在跑的 subagent（`status: running/pending`）。前端 `updateSession`（`ui-src/store/session.ts:147`）按 `sessionId` 找 `openSessions` 槽，槽不存在就静默丢帧，而槽只在 `session_created` 处理器里创建；`openSessions` 不持久化，刷新后必然为空。同一时刻磁盘重放又跳过 60s 内仍在写的 transcript（`host/subagent-view.ts:485` 的 live-write 护栏）——两道来源同时失效，运行中的子代理一条都不剩，只有 mtime 已过窗口的完成项被重放。与 BUG-162 同一类顺序缺陷。
+
+**修复**：两条 load 分支都把 `attachEntry` 移到 `session_created` 之后、`pushModelFallback` 之前（中间无 `await`，无事件丢失窗口）。前端没有 `session_start` 处理器，per-socket 帧后移不引入新行为；reuse 分支只在 `frontendReloaded` 时 attach，同 ws 切回仍不重放。
+
+**验证**：代码级定位（两处顺序 + `updateSession` 早退 + `openSessions` 不持久化三条证据链闭合）；`bun run host:typecheck` 通过；`scripts/subagent-nested.test.ts`、`scripts/subagent-error-row.test.ts` 10 项全绿。**未做真机复现**（需要在跑着 11 个子代理的会话上重启宿主或另起 host 实例，会打断当前会话），实际刷新效果待用户下次远程刷新确认。
+
+**教训**：per-socket 帧（名册 seed、池快照）与 `session_created` 的顺序是硬契约，不是可选优化——`session_created` 是 wholesale 重建，任何更早的帧等于没发；新增 per-socket 推送时必须问一句"前端此刻有槽吗"。
+
+### BUG-168: 每轮都被要求「强力压缩」——percent 档位线在无窗口时被当成 25/50/75 token，会话永久 L3
+
+**日期**：2026-11-14
+
+**分诊**：①本次报告即存量缺陷（`tierMode=percent` 自 v10.2 起就只在会话创建时换算一次）。
+
+**现象**：`acp.tierMode = "percent"`（l1/l2/l3 = 25/50/75）配 1M 窗口模型，会话上下文只有 ~66K、底座自身判定 `shouldCompact: false`，但 ACP 连续两轮要求并执行了「强力压缩」（`method: "strong"`），第二轮折叠 2496 token 还返回 `countedAsSuccess: false`，提示继续压。
+
+**根因**：`acpParamsFromConfig` 的 percent 分支在 `contextWindow` 缺失时把用户存的百分数直接当 token 数（25/50/75 token）。窗口在两条路径上拿不到：`createSessionCore` 的 load/branch 调用点传 `initialModel = undefined`，`H.modelOverride` 又只在设了 `OMP_DESKTOP_MODEL` 时才有值；而 `params` 只在 runtime 构造时算一次，`rebindModel`（会话建立后才拿到真模型）只重算 zone/guard 两条窗口线，不碰档位线。于是 tier 线永久停在 75 token，`computeTier` 恒 L3、`computeRoundPlan` 恒 strong，每轮 status 都要求压缩。会话 `01a1d2cc`（桌面池 id `588a7a16`）的两条 `compress_context` 结果 `tier: "L3"` 且 `activeTokensAfter: 5972` 是该矛盾的直接证据。
+
+**修复**：三层同时修。(1) `acpParamsFromConfig` 在 percent 且无窗口时不再采纳 l1/l2/l3 数值，保留默认绝对线（150K/250K/350K）并告警。(2) `AcpRuntimeDeps.resolveParams(contextWindow)` 新增钩子，`AcpRuntimeState.#applyWindow` 在构造与 `rebindModel` 时统一重算 zone 线、guard 线和档位参数，并重置里程碑游标。(3) `createSessionCore` 改传 `resolveParams: (window) => acpParamsFromConfig(readAcpRaw().acp, window)`，`params` 不再预先冻结。
+
+**验证**：`scripts/smoke-acp-tiermode.ts`（回退契约改为「保留默认线」，1 条 warn）与 `scripts/smoke-acp-ephemeral.ts` 新增 H 段（无窗口构造 = 默认线；`rebindModel({contextWindow: 1_000_000})` 后 l1/l3 = 250K/750K）均通过；`smoke-acp-{strong,forced,pull,synth,projection,persist,tool,takeover,child-ownership}` 与 `scripts/acp-projection-pairing.test.ts` 11 项全绿；`bun run check` 全绿。**未做真机复现**：需要在跑着的桌面实例里重开会话观察 tier 由 L3 变 none，用户下次重开会话确认。
+
+**教训**：百分比配置的每一步换算都必须承认「窗口可能还不知道」——把缺失当成「用数字本身」是最坏的默认值，它既保留了配置的外观，又产生了完全不同的量纲。凡是「窗口派生」的参数（tier 线、zone 线、guard 线）必须在同一个 `#applyWindow` 里一起重算，否则会出现一半正确一半荒谬的分裂状态。
