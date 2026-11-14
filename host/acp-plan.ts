@@ -129,8 +129,9 @@ export function computeSummaryBudget(
  * tierMode selects the l1/l2/l3 storage semantics: "absolute" (token counts,
  * the default) or "percent" (shares of the session model's contextWindow,
  * converted here into token lines so computeTier/computeRoundPlan stay in
- * tokens). Percent mode without a usable window cannot derive lines, so it
- * falls back to absolute semantics and warns once on stderr.
+ * tokens). Percent mode without a usable window keeps the default absolute
+ * lines and warns once on stderr — reading the percentages as token counts
+ * (25/50/75) would pin every session at L3 and force a compression per turn.
  */
 let percentFallbackWarned = false;
 export function acpParamsFromConfig(section: unknown, contextWindow?: number): AcpParams {
@@ -141,11 +142,13 @@ export function acpParamsFromConfig(section: unknown, contextWindow?: number): A
 	const percent = s.tierMode === "percent";
 	if (percent && !windowOk && !percentFallbackWarned) {
 		percentFallbackWarned = true;
-		process.stderr.write("acp: tierMode=percent without a usable contextWindow; treating l1/l2/l3 as absolute token values\n");
+		process.stderr.write("acp: tierMode=percent without a usable contextWindow; keeping the default absolute tier lines\n");
 	}
 	for (const key of ["l1", "l2", "l3"] as const) {
 		const v = s[key];
-		if (typeof v === "number" && v >= 0) p[key] = percent && windowOk ? Math.round((v / 100) * contextWindow!) : v;
+		if (typeof v !== "number" || v < 0) continue;
+		if (!percent) p[key] = v;
+		else if (windowOk) p[key] = Math.round((v / 100) * contextWindow!);
 	}
 	for (const key of ["target", "minCompress", "summaryBudgetMax", "summaryDivisor", "tailTurns", "tailTokens", "tailUserMessages", "milestoneSteps"] as const) {
 		const v = s[key];

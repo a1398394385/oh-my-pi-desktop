@@ -114,6 +114,16 @@ export interface AcpRuntimeDeps {
 	contextWindow?: number;
 	params?: Partial<AcpParams>;
 	/**
+	 * Re-derives the full param set for a context window. Required for
+	 * tierMode=percent: the tier lines are percentages of the model window, and
+	 * the window is unknown at construction (createSessionCore receives no model
+	 * on the load/branch paths) — only rebindModel knows it. Without this hook
+	 * the lines stay whatever the window-less conversion produced for the whole
+	 * session (percent degenerating to 25/50/75 tokens pinned every session at
+	 * L3).
+	 */
+	resolveParams?: (contextWindow: number) => AcpParams;
+	/**
 	 * Level-3 force channel (spec §5.2/§10): must call
 	 * AgentSession.setForcedToolChoice("compress_context") — the named form on
 	 * faces that support it, and form ② for free on openai-completions faces
@@ -167,7 +177,8 @@ export interface AcpRoundStatus {
 }
 
 export class AcpRuntimeState {
-	readonly params: AcpParams;
+	/** Rebuilt by #applyWindow whenever the window changes (percent tier lines are window-relative). */
+	params: AcpParams;
 	readonly compressed = new Set<string>();
 	zone: AcpSummaryData[] = [];
 	manifest: AcpManifest | null = null;
@@ -246,7 +257,16 @@ export class AcpRuntimeState {
 	constructor(deps: AcpRuntimeDeps) {
 		this.#deps = deps;
 		this.params = { ...ACP_DEFAULT_PARAMS, ...deps.params };
-		this.#recomputeWindowLines(deps.contextWindow ?? 0);
+		this.#applyWindow(deps.contextWindow ?? 0);
+	}
+
+	/** Re-derive everything window-dependent: the zone/guard lines and, when the caller supplies the hook, the tier lines. */
+	#applyWindow(contextWindow: number): void {
+		this.#recomputeWindowLines(contextWindow);
+		if (!this.#deps.resolveParams) return;
+		this.params = { ...ACP_DEFAULT_PARAMS, ...this.#deps.resolveParams(contextWindow) };
+		// Shifted tier lines make the milestone cursor's rank/key comparison meaningless; restart the ladder.
+		this.#delivered = 0;
 	}
 
 	/** Both window-derived lines (zone × 35%, guard = window − base reserve); 0 window disables them. */
@@ -799,8 +819,9 @@ export class AcpRuntimeState {
 
 	/**
 	 * Rebind the token counter to a new model (spec §8; T3 leftover). The memo
-	 * must go too: cached counts belong to the old encoding, and both
-	 * window-derived lines (zone × 35%, guard) follow the new window.
+	 * must go too: cached counts belong to the old encoding, and everything
+	 * window-derived (zone × 35%, guard, percent tier lines) follows the new
+	 * window.
 	 */
 	rebindModel(model: unknown): void {
 		const tokenizer = new Tokenizer(model as never);
@@ -812,7 +833,7 @@ export class AcpRuntimeState {
 		this.#pendingRatio = null;
 		this.#tokenMemo.clear();
 		this.#zoneRenderTokens.clear();
-		this.#recomputeWindowLines((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0);
+		this.#applyWindow((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0);
 	}
 
 	/** compress_context entry: mutex + full §6 validation sequence + execution. */

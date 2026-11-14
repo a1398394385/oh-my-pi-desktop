@@ -173,8 +173,10 @@ export async function createSessionCore(
   });
   // The live session exists only after createAgentSession below.
   const acpSession: { session?: AgentSession } = {};
-  // Same model object feeds the runtime's zone axis and the param conversion
-  // below (percent tier lines derive from this window).
+  // Same model object feeds the runtime's zone axis; the tier lines are not
+  // derivable here for the load/branch paths (no initialModel), so the runtime
+  // re-derives them from this hook once createAgentSession/rebindModel hands it
+  // the real model (tierMode=percent means percentages of that window).
   const acpModel = initialModel ?? H.modelOverride;
   const acpRuntime = acpEnabled
     ? createAcpRuntime({
@@ -183,7 +185,7 @@ export async function createSessionCore(
         // Branch-scoped: sibling branches must not affect alignment or baseline rebuilds.
         getEntries: () => sessionManager.getBranch(),
         getBranch: () => sessionManager.getBranch(),
-        params: acpParamsFromConfig(readAcpRaw().acp, (acpModel as { contextWindow?: number } | null | undefined)?.contextWindow),
+        resolveParams: (window) => acpParamsFromConfig(readAcpRaw().acp, window),
         // Level-3 force channel (spec §5.2/§10): the named form where the face
         // supports it (openai-completions faces narrow tools internally = form
         // ②); a throw (neither form) degrades via form ③.

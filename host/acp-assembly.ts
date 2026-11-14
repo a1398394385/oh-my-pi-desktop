@@ -39,6 +39,8 @@ export function createAcpRuntime(opts: {
 	getEntries: () => readonly SessionEntry[];
 	getBranch?: () => readonly SessionEntry[];
 	params?: Partial<AcpParams>;
+	/** Full param re-derivation for a context window (percent tier lines); see AcpRuntimeDeps.resolveParams. */
+	resolveParams?: (contextWindow: number) => AcpParams;
 	/** Level-3 force channel (spec §5.2/§10): arms tool_choice on the live session. */
 	forceCompressTool?: () => void;
 	/** §5.3 degrade hook: fired once when ACP exits this session (observability; no settings write-back). */
@@ -71,6 +73,7 @@ export function createAcpRuntime(opts: {
 		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.
 		contextWindow: (opts.model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0,
 		params: opts.params,
+		resolveParams: opts.resolveParams,
 		forceCompressTool: opts.forceCompressTool,
 		onDegrade: opts.onDegrade,
 	});

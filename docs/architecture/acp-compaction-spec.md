@@ -231,7 +231,7 @@
 | 参数 | 值 | 备注 |
 |---|---|---|
 | L1 / L2 / L3 | 150K / 250K / 350K(活跃区 token) | 默认值(`ACP_DEFAULT_PARAMS`),运行时动态调整;可达性硬线 = 总量保险线(见下),L3 越过它则该档永不触发、只剩保险线强制压缩兜底(默认 L3=350K 要求窗口 ≳ 412K;小窗口模型下调或改 `tierMode=percent`) |
-| tierMode(v10.2 实现层) | `acp.tierMode`:"absolute"(缺省,l1/l2/l3 存 token 数)或 "percent"(l1/l2/l3 存百分数,会话创建时按模型 contextWindow 换算为 token 线;窗口缺失/非正回退 absolute 语义) | 小窗口模型高档位不可达缺口的修复;UI 见实验设置页 ACP 区(absolute 输入单位 K,percent 单位 %) |
+| tierMode(v10.2 实现层) | `acp.tierMode`:"absolute"(缺省,l1/l2/l3 存 token 数)或 "percent"(l1/l2/l3 存百分数,按模型 contextWindow 换算为 token 线;**换算时机 = 每次拿到模型窗口**(构造时与 `rebindModel`,后者是 load/branch 路径唯一的窗口来源);窗口缺失/非正时保留默认绝对线并告警,绝不把百分数当 token 数) | 小窗口模型高档位不可达缺口的修复;UI 见实验设置页 ACP 区(absolute 输入单位 K,percent 单位 %) |
 | **target(压缩目标线)** | 默认 100K,可配置,可调更高/更低 | 压缩后允许的活跃区大小:keep + 保护区 ≤ target;普通/强力统一生效(v7 Decider 拍板)。档位线抬到 150K/250K/350K 后 target **不再等于 L1**(刻意让压后回落到 100K,压得更狠、往返更少) |
 | minCompress | 20K | 单次成功压缩的被压集下限(v7;v13 起不再担任活跃区调用门槛——该职责移至 L1 线,§5.2)。设置页按 K token 配置,与 tierMode 无关;清单可压总量低于它的极端碎块场景不特化,三级无进展即降级(v8) |
 | summary 预算 | ≤ min((本次被压 + 参与重置旧摘要) ÷ 3, 8K) | v3 修正基数 |
