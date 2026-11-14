@@ -4,17 +4,18 @@
 // module — no imports; every consumer (runtime, assembly, smokes) shares this
 // single decision source.
 //
-// Since T6 the §5.2 table runs on both axes: the zone-size axis (rendered zone
-// tokens vs window × 35%) drives the pending-strong state — strong execution
-// semantics for the next compress once the active zone is past L1 (riding) or
-// past L3 (always). T7 reuses the same table for the failure exits: the L3 tier
-// anchors the ultimatum round and the guard line is judged against the window
-// lines derived from the same contextWindow (in acp-runtime).
+// Since T6 the §5.2 table runs on both axes: the tier axis reads the projected
+// context total (active blocks + rendered zone), and the zone-size axis
+// (rendered zone tokens vs window × 35%) drives the pending-strong state —
+// strong execution semantics for the next compress once the total is past L1
+// (riding) or past L3 (always). T7 reuses the same table for the failure exits:
+// the L3 tier anchors the ultimatum round and the guard line is judged against
+// the window lines derived from the same contextWindow (in acp-runtime).
 
 // ---- parameters (spec §11; defaults are the SSOT table values) -----------------
 
 export interface AcpParams {
-	/** Prompt tiers by active-zone tokens; boundaries are strict-greater (spec §5.1). */
+	/** Prompt tiers by projected context tokens (active + rendered zone); boundaries are strict-greater (spec §5.1). */
 	l1: number;
 	l2: number;
 	l3: number;
@@ -55,11 +56,14 @@ export const ACP_DEFAULT_PARAMS: AcpParams = {
 	milestoneSteps: 10,
 };
 
-/** Prompt tier for an active-zone size (spec §5.1 decision table, strict >). */
-export function computeTier(activeTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): "none" | "L1" | "L2" | "L3" {
-	if (activeTokens > p.l3) return "L3";
-	if (activeTokens > p.l2) return "L2";
-	if (activeTokens > p.l1) return "L1";
+/**
+ * Prompt tier for a projected context size — active zone + rendered compression
+ * zone, i.e. everything the request sends (spec §5.1 decision table, strict >).
+ */
+export function computeTier(totalTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): "none" | "L1" | "L2" | "L3" {
+	if (totalTokens > p.l3) return "L3";
+	if (totalTokens > p.l2) return "L2";
+	if (totalTokens > p.l1) return "L1";
 	return "none";
 }
 
@@ -73,10 +77,10 @@ export function computeTier(activeTokens: number, p: AcpParams = ACP_DEFAULT_PAR
  * machine owns the rest. steps = 0 keeps the whole segment silent; an l3<=l2
  * config makes it unreachable.
  */
-export function milestoneFor(activeTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): number {
-	if (activeTokens <= p.l2 || p.milestoneSteps <= 0 || p.l3 <= p.l2) return 0;
-	if (activeTokens > p.l3) return p.milestoneSteps;
-	return Math.min(p.milestoneSteps, Math.ceil(((activeTokens - p.l2) * p.milestoneSteps) / (p.l3 - p.l2)));
+export function milestoneFor(totalTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): number {
+	if (totalTokens <= p.l2 || p.milestoneSteps <= 0 || p.l3 <= p.l2) return 0;
+	if (totalTokens > p.l3) return p.milestoneSteps;
+	return Math.min(p.milestoneSteps, Math.ceil(((totalTokens - p.l2) * p.milestoneSteps) / (p.l3 - p.l2)));
 }
 
 /** The §5.2 two-dimensional decision table as the single implementation. */
@@ -90,20 +94,21 @@ export interface AcpRoundPlan {
 
 /**
  * State -> ephemeral tier + allowed compress method (spec §5.2 decision table).
- * Boundaries are strictly greater on both axes, so active == L3 lands in the
+ * The tier axis reads the projected context total (active + rendered zone);
+ * boundaries are strictly greater on both axes, so a total == L3 lands in the
  * L2 tier with normal compression (acceptance 19), and a zone exactly at its
  * line is not pending. The optional `zone` axis enables the pending-strong
- * rows: over the line AND active > L1 the next compress rides strong; at or
+ * rows: over the line AND total > L1 the next compress rides strong; at or
  * under L1 it stays normal (no riding); past L3 the method is strong anyway.
  */
 export function computeRoundPlan(
-	activeTokens: number,
+	totalTokens: number,
 	p: AcpParams = ACP_DEFAULT_PARAMS,
 	zone?: { tokens: number; limitTokens: number },
 ): AcpRoundPlan {
 	const pendingStrong = zone !== undefined && zone.limitTokens > 0 && zone.tokens > zone.limitTokens;
-	const strong = activeTokens > p.l3 || (pendingStrong && activeTokens > p.l1);
-	return { tier: computeTier(activeTokens, p), method: strong ? "strong" : "normal", pendingStrong };
+	const strong = totalTokens > p.l3 || (pendingStrong && totalTokens > p.l1);
+	return { tier: computeTier(totalTokens, p), method: strong ? "strong" : "normal", pendingStrong };
 }
 
 /** Zone budget line = window × this ratio (spec §11 zone-limit row). */

@@ -233,13 +233,16 @@ function zoneBlockSize(summaryTokens: number): number {
 	assert.ok(!fx.state.roundStatus!.pendingStrong, "annotation still absent under the line after one zone block");
 	assert.ok(fx.state.roundStatus!.zoneTokens > 0 && fx.state.roundStatus!.zoneTokens < limit, "fixture zone really is under the line");
 
-	accepted(await fx.state.compress({ keep: R(fx.state, ["e2", "e3"]), summary: tokenText(120) })); // S2{e1}
+	// Second round folds two of the three surviving blocks, so the projected
+	// total (one active block + two zone blocks) stays at or under L1 while
+	// the zone crosses its line.
+	accepted(await fx.state.compress({ keep: R(fx.state, ["e2"]), summary: tokenText(120) })); // S2{e1,e3}
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.zoneTokens > limit, "fixture zone really is over the line after two blocks");
 
-	// Row 6: S2 already left the active zone at or under L1 (2 blocks) while
-	// the zone stays over its line — tier=none + pending must still emit the
-	// ephemeral (projection-side only; v11 would reject a compress here).
+	// Row 6: the projected total sits at or under L1 (one active block + the
+	// zone) while the zone stays over its line — tier=none + pending must still
+	// emit the ephemeral (projection-side only; v11 would reject a compress here).
 	fx.state.projectView(fx.view);
 	let text = ephemeralText(fx);
 	assert.match(text, /\[compress-hint\] tier=none compress=normal zone=\d+ tokens/, "row 6: emitted at tier=none");

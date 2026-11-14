@@ -28,9 +28,29 @@ import { safeStderr } from "./stderr.ts";
  * (spec §7 zero tier) and tool descriptions alone rarely trigger it — desktop
  * usage data (2026-10-17) shows 2/14 spontaneous compressions vs 12/14 only
  * responding to the milestone hint. Wire this only when the ACP tools exist:
- * the text names context_status/compress_context by name.
+ * the text names context_status/compress_context by name. L3/forced stays
+ * non-deferrable. Voluntary checks gate only closure and safe preservation;
+ * requiring discovery or a unique next step would create an L2 stall. Large
+ * early exploration belongs to subagents, so those transitions are not
+ * compression triggers by themselves.
  */
-export const ACP_CONTEXT_BUDGET_PROMPT = `Context budget (ACP): when you finish a stage of work — a subtask completed, an investigation concluded, a plan approved — call context_status and fold settled blocks with compress_context before starting the next stage. Do not wait for a pressure reminder; keep recent and still-referenced blocks verbatim, summarize everything else. When a context-pressure status line appears in the conversation, respond in the same turn: context_status, then compress_context.`;
+export const ACP_CONTEXT_BUDGET_PROMPT = `Context budget (ACP): follow these rules in priority order.
+
+A final notice (L3) or a request pinned to compress_context requires compression before other work. The voluntary checks below must not defer it. On a pinned request, use the supplied manifest; do not call context_status first.
+
+Otherwise, consider compression at a settled work boundary when accumulated settled or redundant history is worth folding. This is not an obligation after every step. An exploration-to-implementation transition, plan approval, pre-implementation review, or a subagent result alone is not a compression trigger.
+
+For voluntary compression at L1 or L2, ground these safety checks in observed results and the latest user requirements. Do not print a checklist:
+- CLOSED: the current bounded step, including its required immediate validation, has an observed outcome. An edit completing does not mean it was verified; a failed validation can be an outcome. Any command or subagent result needed to close this step must have arrived; a background job handle is not its final result. A user-requested pause or handoff is also a boundary: preserve any unverified state explicitly.
+- SAFE: choose blocks individually from the current manifest. Fold blocks whose needed state can be recorded accurately; keep blocks that still require verbatim content. Preserve the latest requirements and decisions, exact errors, rejected approaches, unresolved branches, partial edits, and cross-file constraints. Keep only listed bN ids; do not list protected-tail or exempt blocks.
+
+Lack of a new discovery or a unique solution is not itself a reason to defer compression. Repeated failures may be folded when their negative results and rejected approaches survive.
+
+At an eligible boundary, call context_status for the current scope, or use its latest unconsumed result. If it reports that context is below the activation line, continue without compress_context; do not query again merely because another small step ended. Recheck after substantial history growth or a new pressure hint.
+
+Use the existing three-part summary: established findings, workspace state, and remaining actions. Cover every listed block not kept. Remaining actions must name a concrete next action or the diagnostic, decision, or pending result needed to proceed; update them after user steering. A unique solution is not required. For strong compression, also carry forward still-needed information from the old compression-zone summaries being replaced. Keep unresolved issues consistent with the remaining actions.
+
+Respect the target and summary-budget limits. Do not discard required state just to fit. A normal compression must fold at least one listed block; strong compression may instead rewrite an existing compression zone. If no safe, feasible submission exists, follow the tier's continuation rule rather than submitting a known-invalid call.`;
 
 /** Build a runtime bound to the session model's Tokenizer (spec §8). */
 export function createAcpRuntime(opts: {

@@ -528,7 +528,7 @@ export const settingsPageZh = {
     tierModeAbsolute: "绝对值",
     tierModePercent: "百分比",
     tierTitle: "L{{tier}} 档位阈值",
-    tierDesc: "活跃内容超过这条线就进入这一档，档位越高提醒越急。绝对值按 K token 填，百分比按模型窗口的占比填。",
+    tierDesc: "上下文总量（未折叠内容加已折叠摘要）超过这条线就进入这一档，档位越高提醒越急。绝对值按 K token 填，百分比按模型窗口的占比填。",
     minCompressTitle: "最小压缩量",
     minCompressDesc: "一次压缩折叠的内容少于这个值就不算成功：L2 档只提示，L3 档会继续催。能不能压缩看上面的 L1 阈值，与它无关。",
     tailUserMessagesTitle: "尾部保护区(用户消息)",

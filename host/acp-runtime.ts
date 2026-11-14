@@ -165,7 +165,7 @@ export interface AcpRoundStatus {
 	zoneTokens: number;
 	/** Active-zone tokens, post-prune values (spec §8). */
 	activeTokens: number;
-	/** Token total of the projection (zone renders + surviving active blocks; block-sum approximation). */
+	/** Token total of the projection (zone renders + surviving active blocks; block-sum approximation) — the tier axis reads this. */
 	projectedTokens: number;
 	/** Live active-block count (dashboard surfaces). */
 	activeBlocks: number;
@@ -504,7 +504,7 @@ export class AcpRuntimeState {
 		// line.
 		if (rs.tier !== "none" && !rs.pendingStrong && !forcedNow) {
 			const rank = rs.tier === "L1" ? 1 : rs.tier === "L2" ? 2 : 3;
-			const key = rank * 1_000 + milestoneFor(rs.activeTokens, this.params); // steps < 1000 keeps the pack unambiguous
+			const key = rank * 1_000 + milestoneFor(rs.projectedTokens, this.params); // steps < 1000 keeps the pack unambiguous
 			// Only a tier drop resets: an in-tier dip (prune shrink) must not
 			// re-announce a lower line it already passed.
 			if (rank < Math.floor(this.#delivered / 1_000)) this.#delivered = 0;
@@ -730,14 +730,15 @@ export class AcpRuntimeState {
 		if (adopt) this.manifest = { ids: manifestIds, consumed: false };
 		const zoneTokens = this.#zoneTokens();
 		const activeTokens = Math.round(active.reduce((n, b) => n + b.tokens, 0) * this.#ratio);
-		const plan = computeRoundPlan(activeTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
+		const projectedTokens = activeTokens + zoneTokens;
+		const plan = computeRoundPlan(projectedTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
 		const rs: AcpRoundStatus = {
 			tier: plan.tier,
 			method: plan.method,
 			pendingStrong: plan.pendingStrong,
 			zoneTokens,
 			activeTokens,
-			projectedTokens: activeTokens + zoneTokens,
+			projectedTokens,
 			activeBlocks: active.length,
 			manifestIds,
 			exempted: lines.length - keptCount,
@@ -792,11 +793,11 @@ export class AcpRuntimeState {
 				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
 			};
 		}
-		const activeTokens = Math.round(this.activeBlocks().reduce((n, b) => n + b.tokens, 0) * this.#ratio);
-		if (computeTier(activeTokens, this.params) === "none") {
+		const projectedTokens = this.projectedTokenEstimate();
+		if (computeTier(projectedTokens, this.params) === "none") {
 			return {
 				ok: false,
-				error: `Active zone is ${activeTokens} tokens, at or below the L1 activation line ${this.params.l1}; the context is too small to compress — context_status returns once the active zone grows past L1.`,
+				error: `Context total is ${projectedTokens} tokens, at or below the L1 activation line ${this.params.l1}; the context is too small to compress — context_status returns once the total grows past L1.`,
 			};
 		}
 		const adopt = !this.#manifestOverride;
@@ -902,6 +903,7 @@ export class AcpRuntimeState {
 		// The delta is (after − before) over both, so a strong reset charges the replaced old
 		// zone to the change as well.
 		const zoneTokensAfter = this.#zoneTokens();
+		const projectedTokensAfter = plan.activeTokensAfter + zoneTokensAfter;
 		return {
 			ok: true,
 			blockId: blockLabel,
@@ -910,11 +912,12 @@ export class AcpRuntimeState {
 			kept: { blocks: plan.keep.length, tokens: plan.keepTokens },
 			delta: {
 				blocks: this.zone.length - zoneBlocksBefore - plan.compressedIds.length,
-				tokens: plan.activeTokensAfter + zoneTokensAfter - (plan.activeTokensBefore + zoneTokensBefore),
+				tokens: projectedTokensAfter - (plan.activeTokensBefore + zoneTokensBefore),
 			},
 			zoneBlocksFolded: plan.method === "strong" ? zoneBlocksBefore : 0,
 			activeTokensAfter: plan.activeTokensAfter,
-			tier: plan.tierAfter,
+			projectedTokensAfter,
+			tier: computeTier(projectedTokensAfter, this.params),
 			countedAsSuccess: plan.countedAsSuccess,
 			...(plan.warning ? { warning: plan.warning } : {}),
 		};

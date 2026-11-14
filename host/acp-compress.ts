@@ -33,7 +33,9 @@ export interface CompressOutcome {
 	 * pre-compression zone for a strong reset. */
 	zoneBlocksFolded: number;
 	activeTokensAfter: number;
-	/** New tier from the post-compression active zone (spec §5.1, immediate). */
+	/** Projected context total after the write (active + rendered zone) — the tier's input. */
+	projectedTokensAfter: number;
+	/** New tier from the post-compression projected total (spec §5.1, immediate). */
 	tier: "none" | "L1" | "L2" | "L3";
 	/** False when the folded set stayed under minCompress (spec §5.2). */
 	countedAsSuccess: boolean;
@@ -114,7 +116,6 @@ export interface CompressPlan {
 	};
 	countedAsSuccess: boolean;
 	warning?: string;
-	tierAfter: "none" | "L1" | "L2" | "L3";
 }
 
 /** Six-check §6 validation + planning; a rejection leaves zero side effects. */
@@ -137,12 +138,14 @@ export function planCompression(
 	}
 	const activeBlocks = snapshot.active.reduce((n, b) => n + b.tokens, 0);
 	const activeTokens = Math.round(activeBlocks * snapshot.ratio);
-	if (computeTier(activeTokens, p) === "none") {
+	const zoneTokens = snapshot.zoneTokens;
+	const projectedTokens = activeTokens + zoneTokens;
+	if (computeTier(projectedTokens, p) === "none") {
 		return {
 			reject: {
 				ok: false,
 				code: "below-l1",
-				error: `Active zone is ${activeTokens} tokens, at or below the L1 activation line ${p.l1}; the context is too small to compress — compress_context returns once the active zone grows past L1.`,
+				error: `Context total is ${projectedTokens} tokens, at or below the L1 activation line ${p.l1}; the context is too small to compress — compress_context returns once the total grows past L1.`,
 			},
 		};
 	}
@@ -214,19 +217,18 @@ export function planCompression(
 	// §6.5 — summary budget; basis = this round's compressed set plus, for a
 	// strong reset, every old summary the zone merges in (§5.2/§11). The
 	// method is re-derived here from the same settled snapshot the round
-	// status uses (request-anchored judgment, §5.2): past L3, or riding a
-	// zone over its line with active > L1 — a pure zone reset at or under L1
-	// does not ride and stays normal. A level-3 armed force overrides to
-	// strong unconditionally (§5.2: forced compression runs strong
-	// semantics with meta.forced=true).
+	// status uses (request-anchored judgment, §5.2): projected total past L3, or
+	// riding a zone over its line with a total above L1 — a pure zone reset at
+	// or under L1 does not ride and stays normal. A level-3 armed force overrides
+	// to strong unconditionally (§5.2: forced compression runs strong semantics
+	// with meta.forced=true).
 	const compressedIds = snapshot.manifest.ids.filter((id) => byId.has(id) && !keepSet.has(id));
 	const compressedTokens = compressedIds.reduce((n, id) => n + (byId.get(id)?.tokens ?? 0), 0);
 	const activeTokensBefore = activeTokens;
-	const zoneTokens = snapshot.zoneTokens;
 	const forced = snapshot.forcedExecution;
 	const method: "normal" | "strong" = forced
 		? "strong"
-		: computeRoundPlan(activeTokensBefore, p, { tokens: zoneTokens, limitTokens: snapshot.zoneLimitTokens }).method;
+		: computeRoundPlan(projectedTokens, p, { tokens: zoneTokens, limitTokens: snapshot.zoneLimitTokens }).method;
 	// A strong reset may swallow the synthesized base boundary: its summary body
 	// is concatenated (content must not be lost), and the part it adds to the
 	// request is charged to the budget unstretched — otherwise the boundary
@@ -316,10 +318,10 @@ export function planCompression(
 			tokensAfter: activeTokensAfter,
 		} as AcpSummaryData["meta"],
 	};
-	// The active-zone floor gates entry above; once admitted, minCompress only
+	// The projected total gates entry above; once admitted, minCompress only
 	// judges the folded set — L2 adds a warning, while L3 and forced turns do
 	// not count an undersized fold as success. A pure reset folds 0 and never counts.
-	const tierBefore = computeTier(activeTokensBefore, p);
+	const tierBefore = computeTier(projectedTokens, p);
 	const countedAsSuccess = compressedTokens >= p.minCompress;
 	const warning =
 		tierBefore === "L2" && !countedAsSuccess
@@ -338,7 +340,6 @@ export function planCompression(
 			payload,
 			countedAsSuccess,
 			...(warning ? { warning } : {}),
-			tierAfter: computeTier(activeTokensAfter, p),
 		},
 	};
 }

@@ -437,14 +437,14 @@ function ephemeralText(fx: Fixture): string {
 	assert.ok(again !== null && again === first, `reset re-warns from the first line (got ${again})`);
 
 	// L2 and L3 lines each fire once and then stay silent. Climb one block at
-	// a time and count what lands (the strengthened L2 wording is the tell).
+	// a time and count what lands (runtime tier identifies L2 independently of copy).
 	let l2Hits = 0;
 	let l3Hits = 0;
 	for (let i = 0; i < 80; i++) {
 		grow(fx, 1);
 		fx.state.projectView(fx.view);
 		const tail = textOf(fx.state.lastProjected.at(-1)!);
-		if (/milestone=/.test(tail) && /Do not start new work/.test(tail)) l2Hits++;
+		if (/milestone=/.test(tail) && fx.state.roundStatus!.tier === "L2") l2Hits++;
 		if (/milestone=/.test(tail) && /Final notice \(L3\)/.test(tail)) l3Hits++;
 		if (fx.state.roundStatus!.tier === "L3" && l3Hits > 0) break;
 	}

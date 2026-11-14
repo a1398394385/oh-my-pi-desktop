@@ -254,9 +254,12 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 // Window 20_000: reserve = max(15% = 3000, default 16384) = 16384 -> guard 3616.
 // Zone render ~3200 + active 8x~100 -> projected ~4000 > 3616 at tier L2.
 const GUARD_WINDOW = 20_000;
+// Tier judgment reads the projected total, so the L3 line must sit above the
+// guard breach (~4000) for the fixture to stay below L3.
+const GUARD_PARAMS: Partial<AcpParams> = { ...FIXTURE_PARAMS, l3: 5_000 };
 
 {
-	const fx = makeForcedFixture(FIXTURE_PARAMS, 8, GUARD_WINDOW);
+	const fx = makeForcedFixture(GUARD_PARAMS, 8, GUARD_WINDOW);
 	fx.state.zone = [zoneBlock(3200, ["e0", "e1"])];
 	fx.state.projectView(fx.view);
 	assert.notEqual(fx.state.roundStatus!.tier, "L3", "the guard breach must fire below L3 (no ultimatum wait)");
@@ -267,7 +270,7 @@ const GUARD_WINDOW = 20_000;
 }
 
 {
-	const fx = makeForcedFixture(FIXTURE_PARAMS, 8, GUARD_WINDOW);
+	const fx = makeForcedFixture(GUARD_PARAMS, 8, GUARD_WINDOW);
 	fx.state.zone = [zoneBlock(3200, ["e0", "e1"])];
 	fx.state.projectView(fx.view);
 	const out = accepted(await fx.state.compress({ keep: [], summary: tokenText(50) }));

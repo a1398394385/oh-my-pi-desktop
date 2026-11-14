@@ -537,7 +537,7 @@ export const settingsPageEn = {
     tierModeAbsolute: "Absolute",
     tierModePercent: "Percent",
     tierTitle: "L{{tier}} threshold",
-    tierDesc: "The active zone enters this tier once it grows past the line, and higher tiers push harder. Absolute is in K tokens; percent is a share of the model's window.",
+    tierDesc: "The whole context (live blocks plus folded summaries) enters this tier once it grows past the line, and higher tiers push harder. Absolute is in K tokens; percent is a share of the model's window.",
     minCompressTitle: "Minimum compression",
     minCompressDesc: "A compression that folds less than this does not count as success: L2 only warns, L3 keeps pushing. Whether tools work at all depends on the L1 line above, not on this value.",
     tailUserMessagesTitle: "Protected tail (user messages)",
