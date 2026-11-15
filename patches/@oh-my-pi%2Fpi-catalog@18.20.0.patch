@@ -16,10 +16,10 @@ index 8dccede..04c048d 100644
  /** How `reader` bills replayed thinking; `signature` unless its lineage declares otherwise. */
  export declare function resolveThinkingReplayTokens(reader: ImageTokenizationTarget): ThinkingReplayTokens;
 diff --git a/src/compat/axes.ts b/src/compat/axes.ts
-index c2c7594..a62c18d 100644
+index 68ff6ef..16b51c8 100644
 --- a/src/compat/axes.ts
 +++ b/src/compat/axes.ts
-@@ -443,14 +443,15 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
+@@ -452,14 +452,15 @@ export const AXES: Readonly<Record<string, AxisDef>> = {
  	/**
  	 * How the model line bills a replayed signed thinking block as input:
  	 * `output` bills the reasoning its signature carries, at the size the turn

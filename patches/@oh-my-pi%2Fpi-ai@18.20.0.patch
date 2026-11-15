@@ -1,5 +1,5 @@
 diff --git a/src/auth/select.ts b/src/auth/select.ts
-index 4bab440..acfdb52 100644
+index 38dec22..b822c94 100644
 --- a/src/auth/select.ts
 +++ b/src/auth/select.ts
 @@ -115,26 +115,17 @@ export class CredentialSelector {

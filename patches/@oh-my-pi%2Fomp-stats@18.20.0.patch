@@ -1,5 +1,5 @@
 diff --git a/src/db.ts b/src/db.ts
-index e6a7a71..117eabe 100644
+index f8b9b46..f5788c8 100644
 --- a/src/db.ts
 +++ b/src/db.ts
 @@ -7,6 +7,8 @@ import {
@@ -11,7 +11,7 @@ index e6a7a71..117eabe 100644
  	hasRecurringTariff,
  } from "@oh-my-pi/pi-catalog/models";
  import type { ModelCost } from "@oh-my-pi/pi-catalog/types";
-@@ -118,8 +120,10 @@ const COST_UNPRICED_BACKFILL_KEY = "messages_cost_unpriced_v1";
+@@ -127,8 +129,10 @@ const COST_UNPRICED_BACKFILL_KEY = "messages_cost_unpriced_v1";
  const NO_CACHE_INPUT_BACKFILL_KEY = "cost_no_cache_input_v1";
  // Zero-cost rows are repriced from the bundled catalog once per release (the
  // value stored is the version that ran it), since only a catalog update can
@@ -21,10 +21,10 @@ index e6a7a71..117eabe 100644
 +// id fallback: rows priced before it settled at 0 for providers whose own card
 +// is a 0 subscription row, and no catalog bump would ever revisit them.
 +const CATALOG_COST_BACKFILL_KEY = "catalog_cost_backfill_id";
- function shouldResetBackfill(value: string | undefined): boolean {
- 	return value !== BACKFILL_COMPLETE && value !== BACKFILL_PENDING;
- }
-@@ -397,6 +401,24 @@ function hasBillableCost(cost: ModelCost): boolean {
+ // The Spotlight tables are filled by the parser; transcripts ingested before
+ // they existed are re-parsed once. Only files modified since the experiment
+ // shipped can hold its entries, so older cursors stay put.
+@@ -554,6 +558,24 @@ function hasBillableCost(cost: ModelCost): boolean {
  	return cost.input !== 0 || cost.output !== 0 || cost.cacheRead !== 0 || cost.cacheWrite !== 0;
  }
  
@@ -49,7 +49,7 @@ index e6a7a71..117eabe 100644
  function getBundledModelCost(provider: string, modelId: string): ModelCost | null {
  	const model = getBundledModel(provider as GeneratedProvider, modelId);
  	return model?.cost ?? null;
-@@ -423,7 +445,7 @@ function getCatalogCost(provider: string, modelId: string): ModelCost | null {
+@@ -580,7 +602,7 @@ function getCatalogCost(provider: string, modelId: string): ModelCost | null {
  		}
  	}
  
