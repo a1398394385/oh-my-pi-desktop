@@ -53,6 +53,9 @@ export const hostFlowsEn = {
     compactCancelled: "Plan approved, but compaction was cancelled — execution not dispatched. Submit a turn to continue.",
     continueWith: "Continue with",
   },
+  ask: {
+    formTitle: "The agent asks for input",
+  },
   think: {
     label: "Thinking",
     with: "{{duration}}",

@@ -548,10 +548,6 @@ export const pendingApprovals = new Map<
   {
     resolve: (v: string | undefined) => void;
     onSliderIndex?: (index: number) => void;
-    // (18.5) Ask-dialog variant: the questions pushed on the frame; the
-    // entry's resolve (session-lifecycle askDialog) parses the serialized
-    // ExtensionAskDialogSubmitResult answer itself
-    questions?: unknown[];
     // Owning session id + which user-dialog family the wait belongs to:
     // the keepalive block-probing toggles read this (keepalive.ts blockState)
     sessionId: string;
@@ -589,6 +585,16 @@ export function requestApproval(
     // Editor variant's inline-input prefill (ask's "Other" free text): the UI
     // seeds the input row with it. Frame field, rides verbatim like the rest.
     prefill?: string;
+    // input variant's grey hint. Never a value: the answer rides back separately.
+    placeholder?: string;
+    // ask round extras (base ExtensionUIDialogOptions): cursor row, marker style,
+    // already-checked rows and how many leading rows take the marker.
+    initialIndex?: number;
+    selectionMarker?: "radio" | "checkbox";
+    checkedIndices?: readonly number[];
+    markableCount?: number;
+    // formDialog variant: the parsed `<form>` the card draws whole.
+    form?: unknown;
     // Ask-tool intent metadata (the `i` field stashed off message_start): not
     // a presentation concern, but it rides this verbatim frame-field channel
     // so the ask-dialog frame keeps its exact field set.
@@ -599,11 +605,10 @@ export function requestApproval(
     plan?: { title: string; path: string; content: string };
   },
   onSliderIndex?: (index: number) => void,
-  questions?: unknown[],
-  // Pending-entry family override: blockKind derives from questions ("ask")
-  // or defaults to "approval", but the editor variant is an ask-family dialog
-  // with no questions on the frame — keepalive's blockState probes the two
-  // families through different toggles, so the classification must stay exact.
+  // Pending-entry family override: the editor/input variants are ask-family
+  // dialogs with no options beyond submit/cancel — keepalive's blockState
+  // probes the two families through different toggles, so the classification
+  // must stay exact.
   blockKind?: "approval" | "ask",
   // Deadline for this wait (automation-run dialogs, the base's ask.timeout).
   // `answer` is what the wait settles with — the ask dialog passes its
@@ -628,7 +633,6 @@ export function requestApproval(
     requestId,
     title,
     options,
-    ...(questions ? { questions } : {}),
     ...(presentation ?? {}),
   };
   const settle = (v: string | undefined) => {
@@ -639,13 +643,11 @@ export function requestApproval(
   pendingApprovals.set(requestId, {
     resolve: settle,
     onSliderIndex,
-    questions,
     sessionId,
     frame,
-    // Ask-family dialogs (the ask tool's select rounds and the rich askDialog)
-    // pass questions; the editor variant pins "ask" via the parameter; every
-    // other caller is a permission-family dialog.
-    blockKind: blockKind ?? (questions ? "ask" : "approval"),
+    // Ask-family dialogs (the ask tool's select/input/editor/form rounds) pin
+    // "ask" via the parameter; every other caller is a permission-family dialog.
+    blockKind: blockKind ?? "approval",
   });
   // Agent abort / tool cancel: on AbortSignal, settle the pending request as cancelled (undefined)
   signal?.addEventListener("abort", () => settle(undefined), { once: true });

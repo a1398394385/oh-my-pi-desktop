@@ -11,6 +11,7 @@ import {
   LayoutGrid,
   type LucideIcon,
   PlugZap,
+  ScanSearch,
   Sparkles,
   SquareChartGantt,
   Wrench,
@@ -29,7 +30,8 @@ export type DashboardSection =
   | "frustration"
   | "projects"
   | "gain"
-  | "acp";
+  | "acp"
+  | "spotlight";
 
 export interface NavItem {
   id: DashboardSection;
@@ -48,6 +50,7 @@ export function useNav(): readonly NavGroup[] {
   // The ACP section only exists while custom compaction is on: with it off no
   // session writes acpSummary entries, so the section would be permanently empty.
   const acpEnabled = useAppStore((s) => s.hostSettings?.acpEnabled === true);
+  const spotlightEnabled = useAppStore((s) => s.hostSettings?.values?.["spotlight.experiment.enabled"] === true);
   return useMemo(
     () => [
       {
@@ -74,6 +77,12 @@ export function useNav(): readonly NavGroup[] {
           { id: "frustration", label: t("settingsPage.stats.nav.frustration"), icon: Frown },
           { id: "projects", label: t("settingsPage.stats.nav.projects"), icon: FolderGit2 },
           { id: "gain", label: t("settingsPage.stats.nav.gain"), icon: Sparkles },
+          // Spotlight only reports the experiment's own sessions; with it off every
+          // card would read "no sessions", so the section stays hidden until the
+          // switch is on (same gate as the ACP section below).
+          ...(spotlightEnabled
+            ? [{ id: "spotlight" as const, label: t("settingsPage.stats.nav.spotlight"), icon: ScanSearch }]
+            : []),
         ],
       },
       ...(acpEnabled
@@ -85,6 +94,6 @@ export function useNav(): readonly NavGroup[] {
           ]
         : []),
     ],
-    [t, acpEnabled],
+    [t, acpEnabled, spotlightEnabled],
   );
 }

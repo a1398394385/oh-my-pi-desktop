@@ -671,16 +671,68 @@ export interface ApprovalResolvedFrame {
   requestId: string;
 }
 
-// Wire shape of one ask-dialog question (mirrors the base's
-// ExtensionAskDialogQuestion from pi-tui/overlays/ask-dialog; the host passes
-// it through verbatim on the approval_request frame).
-export interface AskDialogQuestionWire {
-  id: string;
-  question: string;
-  header?: string;
-  multi?: boolean;
-  recommended?: number;
-  options: { label: string; description?: string }[];
+/** Inline emphasis a form span keeps (mirrors pi-tui html-form/parse FormSpan). */
+export interface AskFormSpan {
+  text: string;
+  style?: "code" | "strong" | "em";
+}
+
+/** One answer of a choice field. */
+export interface AskFormOption {
+  value: string;
+  label: AskFormSpan[];
+  checked: boolean;
+  disabled: boolean;
+}
+
+/** Radio group (`multi: false`), checkbox group (`multi: true`) or `<select>` (`select: true`). */
+export interface AskFormChoiceField {
+  kind: "choice";
+  name: string;
+  multi: boolean;
+  select: boolean;
+  /** The UI adds a free-text "Other" answer for radio/checkbox groups of 2+ options. */
+  other: boolean;
+  label: AskFormSpan[];
+  options: AskFormOption[];
+  required: boolean;
+}
+
+/** A single-line `<input>` (`multiline: false`) or a `<textarea>`. */
+export interface AskFormTextField {
+  kind: "text";
+  name: string;
+  type: string;
+  multiline: boolean;
+  label: AskFormSpan[];
+  value: string;
+  placeholder: string;
+  required: boolean;
+  min?: number;
+  max?: number;
+  minLength?: number;
+  maxLength?: number;
+  rows: number;
+}
+
+export type AskFormField = AskFormChoiceField | AskFormTextField;
+
+/** Renderable unit of a section, in document order. */
+export type AskFormBlock =
+  | { kind: "text"; spans: AskFormSpan[]; heading: boolean }
+  | { kind: "list"; items: AskFormSpan[][]; ordered: boolean }
+  | { kind: "pre"; text: string }
+  | { kind: "table"; rows: AskFormSpan[][][]; headerRows: number }
+  | { kind: "image"; src: string; alt: string }
+  | { kind: "svg"; markup: string; alt: string }
+  | { kind: "field"; field: AskFormField; optionsEnd?: number };
+
+/** The base's parsed `HtmlForm` (pi-tui html-form/parse) exactly as the host ships it:
+ *  the UI never sees HTML, only this drawable shape. */
+export interface AskFormWire {
+  sections: { title: AskFormSpan[]; blocks: AskFormBlock[]; fieldset: boolean }[];
+  fields: AskFormField[];
+  hidden: [name: string, value: string][];
 }
 
 /** Approval request frame (host/host.ts select stamped / 2278 confirm stamped / 2301 editor stamped) */
@@ -703,10 +755,19 @@ export interface ApprovalRequestFrame {
   // field: locating the row by id/index, never by display text.
   editableIndex?: number;
   prefill?: string; // editor variant only
-  // Ask-dialog variant only (18.5 uiCtx.askDialog): the multi-question form.
-  // Mirrors the base's ExtensionAskDialogQuestion; approval_response answers
-  // with answer = JSON.stringify(ExtensionAskDialogSubmitResult).
-  questions?: AskDialogQuestionWire[];
+  // input variant: grey hint text (never a value; the answer rides back separately).
+  placeholder?: string;
+  // select variant extras the base's ask rounds send (18.20): cursor row,
+  // radio/checkbox markers on the leading `markableCount` options, and which
+  // rows are already checked. Without them a multi-select toggles blind.
+  initialIndex?: number;
+  selectionMarker?: "radio" | "checkbox";
+  checkedIndices?: readonly number[];
+  markableCount?: number;
+  // formDialog variant (18.20 uiCtx.formDialog): the model's `<form>` parsed by
+  // the host into the drawable shape. approval_response answers with
+  // answer = JSON.stringify({ kind: "submit", data, notes? }).
+  form?: AskFormWire;
   // The ask tool's `i` intent (captured by the host from tool_execution_start);
   // not rendered by the card (dropped when the head became header-pill + question),
   // kept for wire parity with the host frame

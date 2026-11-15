@@ -10,5 +10,6 @@ export * from "./ProjectsRoute";
 export * from "./ProvidersRoute";
 export * from "./ProvidersWindowUtilization";
 export * from "./RequestsRoute";
+export * from "./SpotlightRoute";
 export * from "./ToolsRoute";
 export * from "./TracesRoute";

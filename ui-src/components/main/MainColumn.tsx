@@ -15,6 +15,7 @@ import GitPage from "./git/GitPage";
 import MainSessionTree from "./tree/MainSessionTree";
 import Composer from "../Composer";
 import ApprovalCard from "../chat/ApprovalCard";
+import AskFormCard from "../chat/AskFormCard";
 import SessionStatsBar from "./SessionStatsBar";
 import QueueCard from "../composer/QueueCard";
 import GoalCard from "../composer/GoalCard";
@@ -223,7 +224,13 @@ export default function MainColumn() {
                   : undefined
               }
             >
-              {pendingApproval ? <ApprovalCard key={pendingApproval.requestId} item={pendingApproval} /> : null}
+              {pendingApproval ? (
+                pendingApproval.form ? (
+                  <AskFormCard key={pendingApproval.requestId} item={pendingApproval} />
+                ) : (
+                  <ApprovalCard key={pendingApproval.requestId} item={pendingApproval} />
+                )
+              ) : null}
               <Composer key={activePath || "composer"} inWelcome={false} blocking={Boolean(pendingApproval)} />
               {/* Traveling ring: rendered always, shown by CSS only for a titled session or in
                   bash mode (both are focus states). The rect fills the svg viewport so its

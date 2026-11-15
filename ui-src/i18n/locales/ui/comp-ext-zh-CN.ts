@@ -13,6 +13,9 @@ export const compExtZh = {
   askSubmitAll: "提交全部答案",
   askOther: "其他（自定义答案）",
   askOtherPlaceholder: "输入你的回答…",
+  // AskFormCard.tsx: 整张 HTML 表单（18.20 uiCtx.formDialog）
+  askFormRequired: "请先填写“{{name}}”",
+  askFormHint: "所有答案一起提交",
 };
 
 export default compExtZh;

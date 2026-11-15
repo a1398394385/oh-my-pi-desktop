@@ -45,3 +45,38 @@
 .ask-other { display: flex; padding: 2px 12px 2px 25px; }
 
 .ask-other .approval-inp { font-weight: 400; }
+
+/* AskFormCard (18.20 formDialog): one parsed <form> drawn whole. Section spacing
+   mirrors .ask-q's rhythm; headings/paragraphs keep the card's body type so the
+   form reads as prose with controls inline, not as a settings page. */
+.ask-form-section + .ask-form-section { margin-top: 12px; }
+
+.ask-form-heading { font-weight: 600; color: var(--text); }
+
+.ask-form-heading + p, .ask-form-heading + ul, .ask-form-heading + ol, .ask-form-heading + .ask-form-pre { margin-top: 6px; }
+
+.ask-form p, .ask-form ul, .ask-form ol { margin: 8px 0 0; color: var(--dim); }
+
+.ask-form ul, .ask-form ol { padding-left: 20px; }
+
+.ask-form li + li { margin-top: 4px; }
+
+.ask-form code { font-family: var(--code-font); font-size: var(--code-fs); }
+
+.ask-form-pre { margin: 8px 0 0; padding: 8px 10px; background: var(--panel-2); border-radius: 6px; overflow-x: auto; font-family: var(--code-font); font-size: var(--code-fs); }
+
+.ask-form-table { margin: 8px 0 0; border-collapse: collapse; font-size: var(--ui-fs-sm); }
+
+.ask-form-table th, .ask-form-table td { padding: 4px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+
+.ask-form-table th { color: var(--text); font-weight: 600; }
+
+.ask-form-img { max-width: 100%; margin-top: 8px; border-radius: 6px; }
+
+.ask-form-img-alt { margin-top: 8px; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+.ask-form-error { margin-top: 10px; color: var(--danger); font-size: var(--ui-fs-sm); }
+
+.ask-form-textarea { min-height: 64px; resize: vertical; }
+
+.ask-form-select { min-width: 180px; }

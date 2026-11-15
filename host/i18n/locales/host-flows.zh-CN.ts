@@ -56,6 +56,9 @@ export const hostFlowsZh = {
     compactCancelled: "计划已批准，但压缩被取消——未派发执行回合。提交任意回合以继续。",
     continueWith: "继续执行使用",
   },
+  ask: {
+    formTitle: "agent 请你填写表单",
+  },
   think: {
     label: "思考",
     with: "{{duration}}",

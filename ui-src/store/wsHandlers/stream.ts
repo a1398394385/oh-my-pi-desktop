@@ -108,10 +108,15 @@ export const streamHandlers = {
         editable: !!msg.editable,
         editableIndex: msg.editableIndex,
         prefill: msg.prefill ?? "",
-        // Ask-dialog variant (18.5 uiCtx.askDialog): the multi-question form;
-        // ApprovalCard renders it as one merged submit
-        questions: msg.questions,
-        // The ask tool's `i` intent (host-captured), shown above the questions
+        placeholder: msg.placeholder,
+        // Ask round extras (18.20 select): cursor row + checkbox state
+        initialIndex: msg.initialIndex,
+        selectionMarker: msg.selectionMarker,
+        checkedIndices: msg.checkedIndices,
+        markableCount: msg.markableCount,
+        // formDialog variant (18.20): the parsed <form>; AskFormCard draws it whole
+        form: msg.form,
+        // The ask tool's `i` intent (host-captured), shown above the dialog body
         intent: msg.intent,
         // Plan variant: raw plan text + title + path (the card body + the todo
         // card's output row render from it)

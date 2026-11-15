@@ -92,6 +92,9 @@ function pushCollabState(sessionId: string, rt: CollabRuntime | undefined, to?: 
 function buildContext(entry: PoolEntry, sessionId: string): InteractiveModeContext {
   const session = entry.session;
   const clearable = { clear: () => {}, disposeChildren: () => {} };
+  // The base claims/releases a guest through ctx.setCollabGuest (18.20+); the
+  // ctx is rebuilt per join anyway, so both sides read the same holder.
+  let collabGuestLink: CollabGuestLink | undefined;
   return {
     session,
     sessionManager: session.sessionManager,
@@ -99,7 +102,12 @@ function buildContext(entry: PoolEntry, sessionId: string): InteractiveModeConte
     eventBus: undefined,
     subagentEventBus: undefined,
     collabHost: undefined,
-    collabGuest: undefined,
+    get collabGuest() {
+      return collabGuestLink;
+    },
+    setCollabGuest(guest: CollabGuestLink | undefined) {
+      collabGuestLink = guest;
+    },
     statusLine: {
       // Participant join/leave + relay drops surface through this seam in the
       // TUI; here it is the live collab_state push (the "base event" the UI
@@ -170,7 +178,7 @@ async function disposeRuntime(rt: CollabRuntime, reason: string): Promise<void> 
   const { guest, host } = rt;
   rt.guest = undefined;
   rt.host = undefined;
-  rt.ctx.collabGuest = undefined;
+  rt.ctx.setCollabGuest(undefined);
   rt.ctx.collabHost = undefined;
   try {
     // guest.leave also restores the pre-join session file (SDK-side)

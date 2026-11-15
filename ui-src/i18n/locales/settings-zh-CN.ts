@@ -414,7 +414,6 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "speech.enhanced": { "label": "增强语音改写", "description": "朗读前先让 tiny/smol 小模型把回答改写成口语：描述代码、去掉链接和 markdown；失败则退回简单清理。" },
   "speech.voice": { "label": "语音朗读音色", "description": "朗读助手回答时用的 Kokoro 音色，换一个就是换一副嗓音。" },
   "providers.fetch": { "label": "抓取 provider", "description": "fetch/read 网址工具按什么顺序挑各家阅读后端。" },
-  "codexResets.autoRedeem": { "label": "Codex 自动兑换已保存的重置", "description": "自动花掉存下的 Codex 限额重置：某一轮卡住且没别的账号能顶上时，解救被 5 小时或每周额度用光的账号，并捞回快过期的额度。unset 先问一句，yes 直接花，no 都不做。" },
   "codexResets.minBlockedMinutes": { "label": "Codex 自动兑换最小封锁时长", "description": "只有自然解锁还隔着这么久（已用光的 5 小时/每周窗口里最晚的那次重置）才自动兑换，免得为省几分钟花掉稀缺额度；调大（如 360）可忽略只剩 5 小时的封锁。" },
   "codexResets.keepCredits": { "label": "Codex 自动兑换保留数", "description": "自动花费后至少还要剩这么多份已存重置（0 表示最后一份也可被自动花掉）；快过期的额度不算——留着也会过期。" },
   "codexResets.salvageHorizonHours": { "label": "Codex 重置抢救时限", "description": "已存的重置快到过期点时（这个小时数之内），只要还有值得恢复的用量就提前花掉；0 表示不提前抢救。" },
@@ -439,7 +438,6 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "providers.openai-codex.daybreak": { "label": "Codex Daybreak Blue", "description": "在符合条件的 ChatGPT 账号上自动申请 Daybreak Blue 网络访问计划；OpenAI 可能用这类会话的内容改进模型。" },
   "providers.muse-code.storeResponses": { "label": "Muse Code 存储响应", "description": "把 Muse Code 的结果存在 Meta 的服务器上：哪一轮中途断线可以接着恢复，而不是重跑。代价是提示和回复留在 Meta 那边。" },
   "providers.cacheWarming": { "label": "缓存预热", "description": "提示缓存快过期前，用只允许输出一个 token 的请求把它续上，省得下次重新算前缀。" },
-  "claudeResets.autoRedeem": { "label": "Claude 自动兑换重置", "description": "自动花掉符合条件的 Claude 重置：Cedar 只能顶自己覆盖的限额，Juniper 只能救单独的 5 小时封锁。unset 先问一句，yes 直接花，no 都不做。" },
   "claudeResets.minBlockedMinutes": { "label": "Claude 兑换最短等待", "description": "只有自然解锁还隔着这么久（已用光的覆盖窗口里最晚的那次重置）才自动兑换；只有 5 小时的重置不会顶每周或按模型算的封锁。" },
   "claudeResets.keepCredits": { "label": "Claude 兑换保留额度", "description": "至少留这么多份 Claude 重置不自动花（0 表示最后一份合格的也能被自动花掉）；这个保留数不管 5 分钟内就过期的重置。" },
   "claudeResets.salvageHorizonHours": { "label": "Claude 重置抢救窗口", "description": "服务器选中的 Cedar 重置快过期时（这个小时数之内），若它覆盖的窗口还有值得恢复的用量就提前用掉；0 表示不提前抢救。5 分钟内过期的仍会照用。" },
@@ -497,7 +495,6 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "task.speculativeLaunch": { "label": "任务提前启动", "description": "批量任务里某一项写完就立刻派它开工，不用等整批写完；若这批调用没通过校验、被拦下或参数变了，已开跑的会被中止。需任务自动放行。" },
   "task.completionProbe": { "label": "子代理完成度探测", "description": "干活中的子智能体会被问进度（2、5、10、30 分钟后各一次，之后每小时一次），估计显示在它旁边；只有交互会话里主智能体派出的会被问。" },
   "title.refreshAfterPrompts": { "label": "按提问数刷新标题", "description": "每积累这么多条提问后，让判定模型看一眼自动生成的标题还贴不贴题，不贴就重新生成。" },
-  "task.file": { "label": "子代理说明读自文件", "description": "允许 task 工具从指定文件读取子代理说明，并记下文件路径和校验值。" },
   "task.perCallModel": { "label": "单次调用指定模型", "description": "允许子代理调用时用一个精确的 provider/模型 id 指定模型：关闭、仅求值可用、或完全放开。" },
   "task.perCallModelAllow": { "label": "单次调用模型白名单", "description": "只有列在这里的模型能被单次调用指定；留空表示当前配置允许的都行，项目配置只能收紧。" },
   "worktree.onStart": { "label": "启动时新建 worktree", "description": "新开的交互会话要不要从一个新的 worktree 开始：保持现状、每次先问你，或者总在新的 wt/* 分支上开工。" },
@@ -530,6 +527,45 @@ export const SETTINGS_ZH: Record<string, { label: string; description?: string; 
   "shellCommandPrefix": { "label": "命令前缀（旧扩展）", "description": "只转发给旧扩展；OMP 原生 Shell 不套用。" },
   "async.maxJobs": { "label": "后台作业上限", "description": "同时运行的后台作业数量，超出后排队。" },
   "gc.compress": { "label": "压缩冷会话", "description": "用文件系统透明压缩就地压缩旧会话文件。" },
+
+  // ---- base 18.20: tools / find / skills / prompts ----
+  "launch.persist": { "label": "服务跨会话留存", "description": "launch 启动的命名服务在你退出会话后继续跑，下次还能接管；关掉则随会话一起收掉。" },
+  "find.verifyModel": { "label": "查找校验模型", "description": "只判断 find 的片段是否真对题；文件名排序和草图仍走判定角色。留空时两者共用判定角色。" },
+  "find.hitThreshold": { "label": "查找命中阈值", "description": "片段判定概率达到多少才报出文件，取值 0 到 1；留空用 0.2。换判定模型后按它的校准调这里。" },
+  "skills.manualSkills": { "label": "仅手动技能", "description": "选中的技能不进模型目录、不占提示词，但你能自己调用；配置文件里也能直接填通配符。" },
+  "systemPromptTemplates": { "label": "系统提示词模板", "description": "按模型选择器匹配 Handlebars 模板文件覆盖默认系统提示；换模型时重新渲染，模板缺失或写错则回落内置。" },
+
+  // ---- base 18.20: browser / providers ----
+  "browser.webkit": { "label": "WebKit 浏览器", "description": "浏览器工具用自研 WebKit 引擎跑页面，页面看到的是普通窗口、没有自动化标记；引擎拉不起来时回落到 Chromium。" },
+  "browser.webkitPath": { "label": "WebKit 引擎路径", "description": "手动指定 WebKit 引擎可执行文件的位置；留空用内置下载目录里的那份。" },
+  "providers.openaiResponsesWebsockets": { "label": "Responses 走 WebSocket", "description": "支持的 Responses 模型改用 WebSocket 长连接发请求，省掉每次建连开销；兼容性出问题时关掉。" },
+
+  // ---- base 18.20: tasks / isolation ----
+  "task.steps": { "label": "任务分步执行", "description": "子代理不再一次接一整段任务，而是拿一组有序步骤：前一步完成才给下一步，最后一步的结果就是任务结果。" },
+  "task.autoParallel": { "label": "自动并行子任务", "description": "off 不动；suggest 只在回复里提示哪些能并行；on 直接把它们合成一次并行派发。" },
+  "task.workerThreads": { "label": "子代理线程数", "description": "并发子代理最多占用几个工作线程，免得拖慢界面；设 0 全部留在主线程。" },
+  "ovnfs.path": { "label": "ovnfs 路径", "description": "指定 ovnfs 可执行文件；留空从 PATH 里找。找到后隔离子代理改用独立 checkout，搜索也走它的守护进程。" },
+
+  // ---- base 18.20: maintenance ----
+  "gc.strip": { "label": "剥离回放数据", "description": "清理长期闲置会话里的思考签名、加密推理和原生响应缓存，清完仍能在任意模型上续聊。" },
+  "gc.stripAfterDays": { "label": "剥离起始天数", "description": "会话闲置超过这么多天才算可剥离；打开剥离才生效。" },
+
+  // ---- base 18.20: per-window reset consent ----
+  "codexResets.autoRedeem5h": { "label": "Codex 自动兑换（5 小时）", "description": "只被 5 小时额度卡住、或最快到期的是 5 小时凭据时，自动花存下的重置救回。" },
+  "codexResets.autoRedeemWeekly": { "label": "Codex 自动兑换（每周）", "description": "被每周额度卡住、或最快到期的是每周凭据时，自动花存下的重置救回。" },
+  "claudeResets.autoRedeem5h": { "label": "Claude 自动兑换（5 小时）", "description": "Cedar 或 Juniper 重置遇上只用光 5 小时的封锁时，自动花掉救回。" },
+  "claudeResets.autoRedeemWeekly": { "label": "Claude 自动兑换（每周）", "description": "遇上每周封锁、或最快到期的凭据覆盖每周上限时，自动花掉救回。" },
+  "claudeResets.autoRedeemFable": { "label": "Claude 自动兑换（Fable）", "description": "Fable 的启动重置只按这条走：只为带 Fable 每周上限的封锁花，或在到期前 Fable 有用量时花。" },
+
+  // ---- base 18.20: Spotlight experiment ----
+  "spotlight.experiment.enabled": { "label": "Spotlight 实验", "description": "用 Stencil Spotlight 塑形工具输出、给 find 结果排序，并把每次塑形落进会话。" },
+  "spotlight.experiment.holdout": { "label": "留出比例", "description": "按比例随机不塑形，把本会做的裁剪记成对照，用来衡量效果。" },
+  "spotlight.experiment.scoreFree": { "label": "无评分比例", "description": "留出之外再抽一部分用无评分规则裁剪，用来区分排序本身带来的收益。" },
+  "spotlight.experiment.tools": { "label": "实验工具", "description": "参与塑形和记录的工具有哪些；不在名单里的工具返回原样结果。" },
+  "spotlight.url": { "label": "Spotlight 地址", "description": "Spotlight 排序服务的地址，默认走官方端点。" },
+  "spotlight.model": { "label": "Spotlight 模型", "description": "做塑形判断用的模型，留空用内置默认。" },
+  "spotlight.thinking": { "label": "Spotlight 思考级别", "description": "塑形请求的推理强度，级别越高越慢也越准。" },
+  "spotlight.timeoutMs": { "label": "Spotlight 超时（ms）", "description": "单次工具调用里排序最多花多久，超时就退回无评分规则。" },
   "gc.compressAfterDays": { "label": "压缩起始天数", "description": "会话闲置超过该天数后压缩。" },
 };
 
@@ -618,7 +654,6 @@ export const OPTS_ZH: Record<string, Record<string, string>> = {
   "speech.mode": { "all": "全部（消息 + 思考）", "assistant": "助手消息", "yield": "仅最终消息" },
   "speech.voice": { "af_heart": "Heart（美式女声）", "af_bella": "Bella（美式女声）", "af_nicole": "Nicole（美式女声）", "af_aoede": "Aoede（美式女声）", "af_kore": "Kore（美式女声）", "af_sarah": "Sarah（美式女声）", "am_michael": "Michael（美式男声）", "am_fenrir": "Fenrir（美式男声）", "am_puck": "Puck（美式男声）", "bf_emma": "Emma（英式女声）", "bm_george": "George（英式男声）", "bm_fable": "Fable（英式男声）" },
   "providers.fetch": { "auto": "自动", "native": "原生", "trafilatura": "Trafilatura", "lynx": "Lynx", "parallel": "Parallel", "firecrawl": "Firecrawl", "jina": "Jina" },
-  "codexResets.autoRedeem": { "unset": "未设置", "yes": "是", "no": "否" },
   "providers.fireworksTier": { "standard": "标准", "priority": "优先" },
   "providers.tinyModelDevice": { "default": "默认", "gpu": "GPU", "cpu": "CPU", "mlx": "MLX", "metal": "Metal", "webgpu": "WebGPU", "cuda": "CUDA", "dml": "DirectML", "coreml": "CoreML", "auto": "自动", "wasm": "WASM", "webnn": "WebNN", "webnn-gpu": "WebNN GPU", "webnn-cpu": "WebNN CPU", "webnn-npu": "WebNN NPU" },
   "providers.tinyModelDtype": { "default": "默认", "q4": "q4", "q4f16": "q4f16", "q8": "q8", "fp16": "fp16", "fp32": "fp32", "int8": "int8", "uint8": "uint8", "bnb4": "bnb4", "q2": "q2", "q2f16": "q2f16", "q1": "q1", "q1f16": "q1f16", "auto": "自动" },
@@ -653,6 +688,13 @@ export const OPTS_ZH: Record<string, Record<string, string>> = {
   "session.worktreeScope": { "directory": "每个工作区分开", "repo": "同一仓库合并成一行" },
   "title.refreshAfterPrompts": { "0": "关闭", "1": "每条提问", "3": "每 3 条提问", "5": "每 5 条提问", "10": "每 10 条提问" },
   "task.perCallModel": { "off": "关闭", "eval": "仅求值调用", "on": "开启" },
+  "task.autoParallel": { "off": "关闭", "suggest": "只提示", "on": "直接并行" },
+  "spotlight.thinking": { "low": "低", "med": "中", "high": "高", "max": "最高" },
+  "codexResets.autoRedeem5h": { "unset": "未设置", "yes": "是", "no": "否" },
+  "codexResets.autoRedeemWeekly": { "unset": "未设置", "yes": "是", "no": "否" },
+  "claudeResets.autoRedeem5h": { "unset": "未设置", "yes": "是", "no": "否" },
+  "claudeResets.autoRedeemWeekly": { "unset": "未设置", "yes": "是", "no": "否" },
+  "claudeResets.autoRedeemFable": { "unset": "未设置", "yes": "是", "no": "否" },
 };
 
 export const GROUPS_ZH: Record<string, string> = {

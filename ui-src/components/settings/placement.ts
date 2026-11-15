@@ -132,7 +132,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "model/Thinking", excludeKeys: ["hideThinkingBlock"] },
     { titleZh: "思考预算", titleEn: "Thinking budgets", hint: "不同思考级别下用于推理的 token 预算", hintEn: "Token budget used for reasoning at each thinking level", keys: ["thinkingBudgets.minimal", "thinkingBudgets.low", "thinkingBudgets.medium", "thinkingBudgets.high", "thinkingBudgets.xhigh", "thinkingBudgets.max"] },
     { from: "model/Sampling" },
-    { from: "model/Prompt" },
+    { from: "model/Prompt", keys: ["systemPromptTemplates"] },
     { from: "model/Retry & Fallback", keys: ["retry.enabled", "retry.baseDelayMs"] },
     { id: "advisor", from: "model/Advisor", excludeKeys: ["advisor.enabled"] },
     { from: "model/Prewalk" },
@@ -145,7 +145,9 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
       titleZh: "搜索相关设置", titleEn: "Search settings",
       keys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs"],
     },
-    { from: "providers/Services", excludeKeys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs", "speech.enabled", "speech.mode", "speech.enhanced", "speech.voice", "tts.localVoice"] },
+    // 18.18 split each provider's autoRedeem consent per rate-limit window; the
+    // five window keys stay ui-less in the base, so they join the Services card.
+    { from: "providers/Services", keys: ["codexResets.autoRedeem5h", "codexResets.autoRedeemWeekly", "claudeResets.autoRedeem5h", "claudeResets.autoRedeemWeekly", "claudeResets.autoRedeemFable"], excludeKeys: ["providers.webSearchTimeoutSeconds", "searxng.endpoint", "exa.enabled", "exa.searchDelayMs", "speech.enabled", "speech.mode", "speech.enhanced", "speech.voice", "tts.localVoice"] },
     { from: "providers/Fireworks" },
     { from: "providers/Tiny Model" },
     { from: "providers/Protocol", keys: ["providers.anthropic.slowMode"] },
@@ -213,14 +215,17 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "shell/Eval & Runtimes", keys: ["eval.autoBackground.thresholdMs"] },
   ],
   "pg-tools": [
-    { from: "tools/Available Tools", excludeKeys: ["computer.enabled", "browser.enabled"] },
+    { from: "tools/Available Tools", keys: ["launch.persist"], excludeKeys: ["computer.enabled", "browser.enabled"] },
     { from: "tools/Todos" },
     { from: "tools/Grep & Browser", excludePrefix: ["browser."], titleZh: "Grep", titleEn: "Grep" },
+    // find's judge selector carries ui metadata (tools/Find, a group nothing else
+    // claims); the probability cutoff has no ui, so it joins the same card here.
+    { from: "tools/Find", keys: ["find.hitThreshold"], titleZh: "语义查找", titleEn: "Semantic find" },
     { from: "tools/GitHub" },
     { from: "tools/IDA Pro" },
     { from: "tools/Output Limits" },
     { from: "tools/Execution", keys: ["async.maxJobs"] },
-    { from: "tools/Developer", excludeKeys: ["dev.autoqa", "dev.autoqaPush.endpoint"] },
+    { from: "tools/Developer", excludeKeys: ["dev.autoqa", "dev.autoqaPush.endpoint", "spotlight.experiment.enabled"] },
   ],
   "pg-agents": [
     { from: "tasks/Modes" },
@@ -232,7 +237,10 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
   // page's Developer group; user-facing compaction switches stay on pg-context
   "pg-developer": [
     { titleZh: "自动 QA", titleEn: "Auto QA", keys: ["dev.autoqa", "dev.autoqaPush.endpoint", "dev.autoqaPush.token", "dev.autoqaConsent"] },
-    { titleZh: "垃圾回收（GC）", titleEn: "Garbage collection", keys: ["gc.blobs", "gc.archive", "gc.wal", "gc.coldArchiveAfterDays", "gc.retainNewestGlobal", "gc.retainNewestPerCwd", "gc.stale", "gc.staleRetainNewest", "gc.staleRetainDays", "gc.compress", "gc.compressAfterDays"] },
+    { titleZh: "垃圾回收（GC）", titleEn: "Garbage collection", keys: ["gc.blobs", "gc.archive", "gc.wal", "gc.coldArchiveAfterDays", "gc.retainNewestGlobal", "gc.retainNewestPerCwd", "gc.stale", "gc.staleRetainNewest", "gc.staleRetainDays", "gc.compress", "gc.compressAfterDays", "gc.strip", "gc.stripAfterDays"] },
+    // Spotlight (18.17+): Stencil shapes tool output and ranks find results. Only
+    // the master switch carries ui metadata; the knobs beside it are ui-less.
+    { titleZh: "Spotlight 实验", titleEn: "Spotlight experiment", keys: ["spotlight.experiment.enabled", "spotlight.experiment.holdout", "spotlight.experiment.scoreFree", "spotlight.experiment.tools", "spotlight.url", "spotlight.model", "spotlight.thinking", "spotlight.timeoutMs"] },
     { titleZh: "压缩（底层）", titleEn: "Compaction (low-level)", keys: ["compaction.reserveTokens", "compaction.keepRecentTokens", "compaction.autoContinue", "compaction.remoteEndpoint", "compaction.v2RetainedMessageBudget"] },
     // Git card moved off pg-general: the base group only carries git.enabled
     // (hidden on desktop), so the visible rows are the ui-less commit.* keys
@@ -294,6 +302,9 @@ export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "cycleOrder": "pg-model",
   "skills.enabled": "pg-skills",
   "skills.ignoredSkills": "pg-skills",
+  // Rendered by the page's dedicated multi-select picker (ManualSkillsPicker.tsx), not
+  // SchemaRows; the entry is kept so search still lands on pg-skills.
+  "skills.manualSkills": "pg-skills",
   "enabledProviders": "pg-extensions",
   "disabledProviders": "pg-extensions",
   // The base marks this "Hidden from UI — users should use memory.backend
@@ -422,6 +433,21 @@ export const HIDDEN_KEYS: Record<string, true> = {
   "input.bareSlashCommands": true,
   "treeFilterMode": true,
   "autocompleteMaxVisible": true,
+  // 18.17+ TUI rendering (bash execution visualization, markdown coloring,
+  // motion/fps/spinner) and extension transcript presenters: all paint into
+  // pi-tui's transcript, which the desktop never mounts — it draws its own
+  // React message list and Lexical composer, so no consumer survives.
+  "display.shellVisualization": true,
+  "tui.colorfulMarkdown": true,
+  "tui.motion": true,
+  "tui.spinnerInterval": true,
+  "tui.maxFps": true,
+  "extensionRenderers.transcriptPresenters": true,
+  // 18.17 base auto-update installs new omp releases through the CLI's own
+  // install method and swaps the binary next launch. The desktop ships the SDK
+  // inside its bundle and updates through the Tauri updater, so the row would
+  // only ever lie.
+  "update.auto": true,
 };
 
 // Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests

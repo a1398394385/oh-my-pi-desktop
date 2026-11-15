@@ -14,7 +14,7 @@
 // caps newly added files at 800 lines.
 import type { CapabilityKeysFrame, SearchAvailabilityFrame } from "./payloads";
 import type {
-  ApprovalModeFrame, ApprovalRequestFrame, ApprovalResolvedFrame, AskDialogQuestionWire, BashChunkFrame, BashCompleteResultFrame,
+  ApprovalModeFrame, ApprovalRequestFrame, ApprovalResolvedFrame, AskFormWire, BashChunkFrame, BashCompleteResultFrame,
   BashDoneFrame, BashStartFrame, CommandOutputFrame, CommandPhaseFrame, CommandResultFrame, CommandsFrame,
   AdvisorModeFrame, ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
   FileCopiedFrame, FileDiffFrame, FileMatchesFrame, FileVersionsFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,

@@ -25,7 +25,7 @@ import {
   attachEntry,
 } from "../session-lifecycle.ts";
 import type { AcpRuntimeState } from "../acp-runtime.ts";
-import { bgJobsPayload } from "../async-jobs.ts";
+import { bgJobsPayload, type BgJobHost } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
 import { searchSessionText } from "../session-text-search.ts";
@@ -232,10 +232,14 @@ export async function handleListSessions(ws: any) {
 // selected subagent's own session (its owner scope filters the shared manager
 // down to the jobs that subagent started). A parked/finished subagent has no
 // live session → empty list, never the parent's jobs.
-function bgJobsSession(entry: PoolEntry, subagentId: unknown): PoolEntry["session"] | null {
+function bgJobsSession(entry: PoolEntry, subagentId: unknown): Partial<BgJobHost> | null {
   const id = typeof subagentId === "string" ? subagentId.trim() : "";
   if (!id) return entry.session;
-  return AgentRegistry.global().get(id)?.session ?? null;
+  // 18.20 types the registry's session as AgentSessionHandle, a read-only cross-agent
+  // view without the async-job surface. On this thread the handle is the AgentSession
+  // itself, so the job readers are still there; a worker-thread proxy has none and
+  // bgJobsPayload's optional calls then yield an empty list.
+  return (AgentRegistry.global().get(id)?.session as Partial<BgJobHost> | undefined) ?? null;
 }
 
 /** Whether this pooled session still has live work: an in-flight turn (agent_start opened the

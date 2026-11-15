@@ -14,6 +14,7 @@ import {
   ProjectsRoute,
   ProvidersRoute,
   RequestsRoute,
+  SpotlightRoute,
   ToolsRoute,
   TracesRoute,
 } from "./routes";
@@ -115,6 +116,8 @@ export function StatsShell() {
         return <GainRoute active={active} range={range} />;
       case "acp":
         return <AcpRoute active={active} range={range} />;
+      case "spotlight":
+        return <SpotlightRoute active={active} range={range} />;
     }
   };
 

@@ -146,11 +146,9 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "providers.openrouterVariant": { "label": "OpenRouter Routing", "description": "The default routing suffix appended to OpenRouter model IDs. If the model picker already names a variant, that one wins." },
   "providers.streamFirstEventTimeoutSeconds": { "label": "Stream First Event Timeout", "description": "How long to wait for the model's first stream event. -1 uses provider or environment defaults; 0 removes the watchdog." },
   "providers.streamIdleTimeoutSeconds": { "label": "Stream Idle Timeout", "description": "How long a model stream may stay silent between events. -1 uses provider or environment defaults; 0 removes the watchdog." },
-  "codexResets.autoRedeem": { "label": "Codex Auto-Redeem Saved Resets", "description": "Spends saved Codex resets: rescues accounts blocked by exhausted 5-hour or weekly windows, salvages expiring credits. unset asks first, yes spends silently, no disables both." },
   "codexResets.minBlockedMinutes": { "label": "Codex Auto-Redeem Min Block", "description": "Auto-redeem only when the natural unblock — the latest reset among the exhausted windows — is this far off. Raise it (e.g. 360) to ignore 5-hour blocks." },
   "codexResets.keepCredits": { "label": "Codex Auto-Redeem Reserve", "description": "Never auto-spend below this many saved resets; 0 lets the last one go automatically. Credits about to expire are exempt, since keeping them saves nothing." },
   "codexResets.salvageHorizonHours": { "label": "Codex Reset Salvage Horizon", "description": "Spends a saved Codex reset this many hours before it expires, as long as there is usage worth recovering. 0 turns off early salvage." },
-  "claudeResets.autoRedeem": { "label": "Claude Auto-Redeem Resets", "description": "Spends eligible Claude Cedar or Juniper resets automatically. Cedar covers only its own limits, Juniper rescues a lone 5-hour block. unset asks first, yes spends silently, no disables both." },
   "claudeResets.minBlockedMinutes": { "label": "Claude Auto-Redeem Min Block", "description": "Auto-redeem only when the natural unblock — the latest reset among the exhausted covered windows — is this far off. A 5-hour-only reset never covers a weekly or model-scoped block." },
   "claudeResets.keepCredits": { "label": "Claude Auto-Redeem Reserve", "description": "Keeps this many Claude resets banked; 0 allows the last eligible one to be spent automatically. The reserve covers early salvage, not resets expiring within 5 minutes." },
   "claudeResets.salvageHorizonHours": { "label": "Claude Reset Salvage Horizon", "description": "Uses a server-picked Cedar reset this many hours before expiry when its covered windows hold usage worth recovering. 0 disables early salvage; resets expiring within 5 minutes are still used." },
@@ -479,7 +477,6 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "task.maxRuntimeMs": { "label": "Max subagent runtime (minutes)", "description": "Hard time limit per subagent, in minutes; 0 disables it. Catches provider streams that hang and aborts the subagent with a 'timed out' reason." },
   "task.completionProbe": { "label": "Subagent Completion Probe", "description": "Asks a working subagent how complete it is, after 2, 5, 10 and 30 minutes, then hourly. The estimate shows next to the subagent." },
   "title.refreshAfterPrompts": { "label": "Refresh Title After Prompts", "description": "Every this many operator prompts, ask the judge model whether the generated title still fits the conversation, and regenerate it if not." },
-  "task.file": { "label": "Task Instructions from Files", "description": "Let the task tool read subagent instructions from a file, recording its path and checksum." },
   "task.perCallModel": { "label": "Per-Call Model", "description": "Whether a subagent call may pick its model with one exact provider/model-id selector. Project settings can turn it off but not on." },
   "task.perCallModelAllow": { "label": "Per-Call Model Allowlist", "description": "Exact model selectors a per-call model must also appear in. Empty allows every model the configuration grants." },
   "task.agentIdleTtlMs": { "label": "Agent Idle TTL", "description": "How long an idle subagent stays in memory before being parked to disk, in milliseconds. Parked agents wake up when messaged or resumed; 0 keeps them alive." },
@@ -550,6 +547,45 @@ export const SETTINGS_EN: Record<string, { label: string; description?: string; 
   "shellCommandPrefix": { "label": "Command prefix (legacy)", "description": "Forwarded to legacy extensions only; OMP's native shell never applies it." },
   "async.maxJobs": { "label": "Background job limit", "description": "Background jobs allowed to run at once; extra jobs queue." },
   "gc.compress": { "label": "Compress cold sessions", "description": "Compress old session files in place with the filesystem's transparent compression." },
+
+  // ---- base 18.20: tools / find / skills / prompts ----
+  "launch.persist": { "label": "Persist services", "description": "Named services started by launch keep running after the session ends and can be reattached later; off tears them down with the session." },
+  "find.verifyModel": { "label": "Find verify model", "description": "Judges only whether find's passages answer the query; filename and sketch ranking stay on the judge role. Unset shares the judge role." },
+  "find.hitThreshold": { "label": "Find hit threshold", "description": "Probability a verified passage needs before find reports its file, 0 to 1; unset uses 0.2. Tune it to a non-default judge's calibration." },
+  "skills.manualSkills": { "label": "Manually invoked skills", "description": "Selected skills stay out of the model catalog and the prompt, but you can still invoke them; the config file also accepts globs." },
+  "systemPromptTemplates": { "label": "System prompt templates", "description": "Model-selector patterns mapped to Handlebars template files that replace the bundled system prompt; re-rendered on model switch, falling back when missing or invalid." },
+
+  // ---- base 18.20: browser / providers ----
+  "browser.webkit": { "label": "WebKit browser", "description": "Browser tabs run in the bundled WebKit engine, where pages see a normal window with no automation flag; falls back to Chromium when the engine cannot start." },
+  "browser.webkitPath": { "label": "WebKit engine path", "description": "Location of the WebKit engine binary; empty uses the one in the download directory." },
+  "providers.openaiResponsesWebsockets": { "label": "Responses over WebSocket", "description": "Send supported Responses models over a WebSocket instead of one connection per request; turn it off if compatibility breaks." },
+
+  // ---- base 18.20: tasks / isolation ----
+  "task.steps": { "label": "Sequential task steps", "description": "Spawns take ordered steps instead of one task: the subagent gets the first, then each next once the previous finishes, and the last step's result is the task's result." },
+  "task.autoParallel": { "label": "Auto-parallel subtasks", "description": "off does nothing; suggest only points out parallelizable subtasks in the reply; on dispatches them as one parallel batch." },
+  "task.workerThreads": { "label": "Subagent worker threads", "description": "Worker threads concurrent subagents may occupy, keeping the UI responsive; 0 keeps every agent on the main thread." },
+  "ovnfs.path": { "label": "ovnfs path", "description": "ovnfs binary to use; empty looks on PATH. When found, isolated subagents get their own checkout and searches run through its daemon." },
+
+  // ---- base 18.20: maintenance ----
+  "gc.strip": { "label": "Strip replay data", "description": "Removes thinking signatures, encrypted reasoning and cached native responses from long-idle sessions; stripped sessions still resume on any model." },
+  "gc.stripAfterDays": { "label": "Strip after (days)", "description": "Sessions idle longer than this qualify for stripping; only applies while stripping is on." },
+
+  // ---- base 18.20: per-window reset consent ----
+  "codexResets.autoRedeem5h": { "label": "Codex auto-redeem (5h)", "description": "Spend saved resets on 5-hour-only blocks and on expiring credits whose fullest chat window is 5h." },
+  "codexResets.autoRedeemWeekly": { "label": "Codex auto-redeem (weekly)", "description": "Spend saved resets on weekly blocks and on expiring credits whose fullest chat window is weekly." },
+  "claudeResets.autoRedeem5h": { "label": "Claude auto-redeem (5h)", "description": "Spend Cedar or Juniper resets on 5-hour-only blocks and on expiring grants whose fullest covered limit is 5h." },
+  "claudeResets.autoRedeemWeekly": { "label": "Claude auto-redeem (weekly)", "description": "Spend resets on weekly blocks and on expiring grants whose fullest covered limit is weekly." },
+  "claudeResets.autoRedeemFable": { "label": "Claude auto-redeem (Fable)", "description": "Governs Fable launch resets alone: only for a block that includes the Fable weekly cap, or before expiry when Fable usage is above zero." },
+
+  // ---- base 18.20: Spotlight experiment ----
+  "spotlight.experiment.enabled": { "label": "Spotlight experiment", "description": "Shape tool output and rank find results with Stencil Spotlight, logging each shaped result to the session." },
+  "spotlight.experiment.holdout": { "label": "Holdout share", "description": "Share of would-be cuts held out at random so the trace records the counterfactual for the cuts applied." },
+  "spotlight.experiment.scoreFree": { "label": "Score-free share", "description": "Share of non-held-out results shaped without Spotlight, measuring what ranking adds over plain rules." },
+  "spotlight.experiment.tools": { "label": "Experiment tools", "description": "Tools whose results are shaped and journaled; a tool left out returns its plain result." },
+  "spotlight.url": { "label": "Spotlight URL", "description": "Ranking service endpoint; defaults to the official one." },
+  "spotlight.model": { "label": "Spotlight model", "description": "Model that shapes results; empty uses the bundled default." },
+  "spotlight.thinking": { "label": "Spotlight thinking", "description": "Reasoning effort for shaping requests; higher is slower and more accurate." },
+  "spotlight.timeoutMs": { "label": "Spotlight timeout (ms)", "description": "Time one ranking may spend inside a tool call before falling back to unranked rules." },
   "gc.compressAfterDays": { "label": "Compress after (days)", "description": "Compress sessions idle longer than this many days." },
 };
 
@@ -563,6 +599,13 @@ export const OPTS_EN: Record<string, Record<string, string>> = {
   "computer.backgroundFallback": { "takeover": "Takeover", "refuse": "Refuse" },
   "hindsight.recallBudget": { "low": "Low", "mid": "Mid", "high": "High" },
   "dev.autoqaConsent": { "unset": "Not asked", "granted": "Granted", "denied": "Denied" },
+  "task.autoParallel": { "off": "Off", "suggest": "Suggest only", "on": "Dispatch" },
+  "spotlight.thinking": { "low": "Low", "med": "Medium", "high": "High", "max": "Max" },
+  "codexResets.autoRedeem5h": { "unset": "Not asked", "yes": "Yes", "no": "No" },
+  "codexResets.autoRedeemWeekly": { "unset": "Not asked", "yes": "Yes", "no": "No" },
+  "claudeResets.autoRedeem5h": { "unset": "Not asked", "yes": "Yes", "no": "No" },
+  "claudeResets.autoRedeemWeekly": { "unset": "Not asked", "yes": "Yes", "no": "No" },
+  "claudeResets.autoRedeemFable": { "unset": "Not asked", "yes": "Yes", "no": "No" },
 };
 
 export const GROUPS_EN: Record<string, string> = {};

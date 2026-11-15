@@ -13,6 +13,9 @@ export const compExtEn = {
   askSubmitAll: "Submit answers",
   askOther: "Other (type your own)",
   askOtherPlaceholder: "Type your answer…",
+  // AskFormCard.tsx: one HTML form drawn whole (18.20 uiCtx.formDialog)
+  askFormRequired: "Answer “{{name}}” to submit",
+  askFormHint: "Every answer submits together",
 };
 
 export default compExtEn;

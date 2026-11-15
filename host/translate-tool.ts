@@ -3,11 +3,35 @@
 // whitelisting for the UI, and tool result summarization (diff stats,
 // output text, per-tool details). Split out of translate.ts (row-limit).
 import { editDiffString } from "@oh-my-pi/pi-natives";
+import { parseHtmlForm } from "@oh-my-pi/pi-tui/html-form/parse";
+import { fieldQuestions } from "@oh-my-pi/pi-tui/html-form/data";
 import type { TranscriptItem } from "./state.ts";
 
 // Tool device paths (xd://tui, xd://mcp__xxx, ...): reading/writing one invokes a device, not a file read/write
 export function isDevicePath(p: unknown): boolean {
   return typeof p === "string" && /^[a-z][a-z0-9+.-]*:\/\//i.test(p);
+}
+
+// ask's args (18.20) are one HTML `<form>`, not a question list; the card still
+// draws questions and their options, so parse the form here with the same parser
+// the host's formDialog uses. Shapes match what the card already renders.
+function askQuestions(html: unknown): { question: string; multi?: boolean; options?: { label: string }[] }[] | undefined {
+  if (typeof html !== "string" || !html) return undefined;
+  const form = parseHtmlForm(html);
+  const byField = fieldQuestions(form);
+  return form.fields
+    .filter((field) => field.name)
+    .map((field) => ({
+      question: byField.get(field) ?? field.name,
+      ...(field.kind === "choice"
+        ? { multi: field.multi, options: field.options.map((option) => ({ label: spansTextOf(option.label) })) }
+        : {}),
+    }));
+}
+
+/** Plain text of a form span list (labels carry inline <code>/<strong>/<em> runs). */
+function spansTextOf(spans: { text: string }[]): string {
+  return spans.map((span) => span.text).join("");
 }
 
 export function pathOf(args: any): string {
@@ -84,7 +108,7 @@ export function toolArgsForUi(name: string, args: any): Record<string, unknown> 
   if (name === "web_search") return { query: String(args.query ?? "").slice(0, 1000) };
   if (name === "read_session_context") return { query: args.query, sessionId: args.sessionId, fromTurn: args.fromTurn, toTurn: args.toTurn };
   if (name === "compress_context") return { summary: String(args.summary ?? "") };
-  if (name === "ask") return { questions: capValue(args.questions) };
+  if (name === "ask") return { questions: capValue(askQuestions(args.html)) };
   if (name === "debug") {
     return { action: args.action, program: args.program, file: args.file, line: args.line, function: args.function, expression: args.expression };
   }

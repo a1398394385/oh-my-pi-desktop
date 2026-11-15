@@ -271,6 +271,61 @@ export interface PlanOutput {
 }
 
 /** Pending approval (landed by store.ts:991-998 approval_request; consumed by ApprovalCard) */
+/** Inline emphasis a form span keeps (mirror of pi-tui html-form/parse FormSpan). */
+export interface AskFormSpan {
+  text: string;
+  style?: "code" | "strong" | "em";
+}
+
+/** Radio group (`multi: false`), checkbox group (`multi: true`) or `<select>`. */
+export interface AskFormChoiceField {
+  kind: "choice";
+  name: string;
+  multi: boolean;
+  select: boolean;
+  /** The UI adds a free-text "Other" answer for radio/checkbox groups of 2+ options. */
+  other: boolean;
+  label: AskFormSpan[];
+  options: { value: string; label: AskFormSpan[]; checked: boolean; disabled: boolean }[];
+  required: boolean;
+}
+
+/** A single-line `<input>` (`multiline: false`) or a `<textarea>`. */
+export interface AskFormTextField {
+  kind: "text";
+  name: string;
+  type: string;
+  multiline: boolean;
+  label: AskFormSpan[];
+  value: string;
+  placeholder: string;
+  required: boolean;
+  min?: number;
+  max?: number;
+  minLength?: number;
+  maxLength?: number;
+  rows: number;
+}
+
+export type AskFormField = AskFormChoiceField | AskFormTextField;
+
+/** Renderable unit of a section, in document order. */
+export type AskFormBlock =
+  | { kind: "text"; spans: AskFormSpan[]; heading: boolean }
+  | { kind: "list"; items: AskFormSpan[][]; ordered: boolean }
+  | { kind: "pre"; text: string }
+  | { kind: "table"; rows: AskFormSpan[][][]; headerRows: number }
+  | { kind: "image"; src: string; alt: string }
+  | { kind: "svg"; markup: string; alt: string }
+  | { kind: "field"; field: AskFormField; optionsEnd?: number };
+
+/** The base's parsed `HtmlForm` exactly as the host ships it (no HTML reaches the UI). */
+export interface AskFormWire {
+  sections: { title: AskFormSpan[]; blocks: AskFormBlock[]; fieldset: boolean }[];
+  fields: AskFormField[];
+  hidden: [name: string, value: string][];
+}
+
 export interface PendingApproval {
   requestId: string;
   title: string;
@@ -291,16 +346,21 @@ export interface PendingApproval {
   editable: boolean;
   editableIndex?: number; // index of the editable input row within options (editor-variant protocol field)
   prefill: string;
-  // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
-  // form; ApprovalCard renders radio/checkbox rows and one submit for all
-  questions?: AskQuestion[];
+  // input variant: grey hint text; never a value (the answer rides back separately)
+  placeholder?: string;
+  // Ask round extras (18.20 select): cursor row, marker style on the leading
+  // `markableCount` options, and which rows are already checked. Without them a
+  // multi-select toggles blind.
+  initialIndex?: number;
+  selectionMarker?: "radio" | "checkbox";
+  checkedIndices?: readonly number[];
+  markableCount?: number;
+  // formDialog variant (18.20 uiCtx.formDialog): the model's `<form>` parsed by
+  // the host; AskFormCard draws it whole and submits every answer at once.
+  form?: AskFormWire;
   // The ask tool's `i` intent (captured by the host from tool_execution_start),
-  // rendered as an intent chip above the question list
+  // rendered as an intent chip above the dialog body
   intent?: string;
-  // Ask-dialog variant only: frontend-local drafts of the per-question
-  // "Other (type your own)" custom answers (written in place by ApprovalCard
-  // like prefill, never sent as a frame field of its own)
-  otherDrafts?: string[];
   answer: string | null; // user's chosen answer; null = pending
 }
 

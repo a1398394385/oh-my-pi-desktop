@@ -1,4 +1,5 @@
-// Approval card (ask/confirm/editor/plan dialogs): same as ZCodium's PermissionDialog —
+// Approval card (confirm/editor/input/plan/select dialogs): same as ZCodium's
+// PermissionDialog —
 // an "awaiting confirmation" title + question body + numbered option rows + bottom
 // keyboard hint and confirm button.
 // Interaction mirrors ZCodium: single click selects, second click / Enter / the confirm
@@ -18,7 +19,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useAppStore } from "../../store/index";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
-import type { AskQuestion, PlanOutput } from "../../types/session";
+import type { PlanOutput } from "../../types/session";
 
 // Stable option ids sent by host-built approval frames (editor/plan variants).
 // Labels come from i18n so the wire stays language-independent; SDK-generated
@@ -63,25 +64,27 @@ interface ApprovalItem {
   slider?: { caption: string; index: number; segments: { label: string; detail: string }[] };
   editable?: boolean;
   editableIndex?: number;
+  // input variant's grey hint (placeholder), never a submitted value
+  placeholder?: string;
+  // Ask round extras (18.20 select): cursor row, marker style on the leading
+  // `markableCount` rows, and which rows are already checked
+  initialIndex?: number;
+  selectionMarker?: "radio" | "checkbox";
+  checkedIndices?: readonly number[];
+  markableCount?: number;
   requestId: string;
   // Plan variant: raw plan text + title + on-disk path, rendered as a scrollable
   // body between the title and the options
   plan?: PlanOutput;
   answer?: string | null;
   prefill?: string;
-  // Ask-dialog variant only (18.5 uiCtx.askDialog): the merged multi-question
-  // form rendered as radio/checkbox rows with one submit for all answers
-  questions?: AskQuestion[];
-  // The ask tool's `i` intent (host-captured), rendered above the questions
-  intent?: string;
-  // Frontend-local drafts of the per-question "Other" custom answers
-  // (written in place like prefill to survive full redraws)
-  otherDrafts?: string[];
 }
 
 export default function ApprovalCard({ item }: { item: ApprovalItem }) {
-  const [selected, setSelected] = useState(0);
-  const selectedRef = useRef(0); // the confirm button reads the latest option without waiting for React's next render
+  // Ask rounds (18.20) open on the row the base asked for (initialIndex): the
+  // recommended option, or the next unchecked row during a multi-select round.
+  const [selected, setSelected] = useState(item.initialIndex ?? 0);
+  const selectedRef = useRef(item.initialIndex ?? 0); // the confirm button reads the latest option without waiting for React's next render
   const select = (i: number) => {
     selectedRef.current = i;
     setSelected(i);
@@ -115,122 +118,6 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   // Plan rows the operator may not pick (context nearly full).
   const disabled = new Set(item.disabledIndices ?? []);
 
-  // ---- Ask-dialog variant (questions[]): merged radio/checkbox form ----
-  const askQs = (item.questions ?? []).filter((q): q is AskQuestion => !!q && Array.isArray(q.options) && q.options.length > 0);
-  // One selection set per question (single = exactly one index, defaulted to
-  // the recommended row; multi = any subset, empty by default). Mirrors the
-  // base's timeout auto-selection semantics.
-  const [picks, setPicks] = useState<number[][]>(() =>
-    askQs.map((q) => (q.multi ? [] : [q.recommended !== undefined && q.recommended >= 0 ? q.recommended : 0])),
-  );
-  const picksRef = useRef(picks);
-  const togglePick = (qi: number, oi: number, multi: boolean | undefined, advance = true) => {
-    if (answered) return;
-    // Single questions are exclusive with their "Other" row: picking an
-    // option drops a pending custom answer
-    if (!multi && othersRef.current[qi]) {
-      const nextO = othersRef.current.slice();
-      nextO[qi] = false;
-      othersRef.current = nextO;
-      setOthers(nextO);
-    }
-    setPicks((prev) => {
-      const next = prev.slice();
-      next[qi] = multi ? (next[qi]?.includes(oi) ? next[qi].filter((j) => j !== oi) : [...(next[qi] ?? []), oi]) : [oi];
-      picksRef.current = next;
-      return next;
-    });
-    // Single-choice pick answers the question: auto-advance to the next page,
-    // or settle the whole form when the pick lands on the last page (with no
-    // further page there is nothing to advance to — an advance-only path left
-    // the mouse without a submit, so a one-question ask could not be answered
-    // by clicking its option at all). Keyboard cursor moves pass advance=false
-    // and settle the page themselves with Enter — auto-advancing on every
-    // arrow press skipped options and submitted on the last one.
-    if (!multi && advance) advanceOrSubmit();
-  };
-  // "Other (type your own)" row per question (base-parity with the TUI dialog):
-  // single = exclusive with the options (toggling it clears the pick), multi =
-  // rides alongside checked options. Opening the row focuses its input.
-  const [others, setOthers] = useState<boolean[]>(() => askQs.map(() => false));
-  const othersRef = useRef(others);
-  const otherInps = useRef<(HTMLInputElement | null)[]>([]);
-  const pendingFocusRef = useRef(-1);
-  // Bumped on "Other" draft typing: re-renders so the answered-gates (qDoneAt)
-  // see the live draft written by the uncontrolled input
-  const [, setDraftTick] = useState(0);
-  const toggleOther = (qi: number) => {
-    if (answered) return;
-    const next = othersRef.current.slice();
-    next[qi] = !next[qi];
-    othersRef.current = next;
-    setOthers(next);
-    if (next[qi]) {
-      pendingFocusRef.current = qi;
-      if (!askQs[qi].multi) {
-        setPicks((prev) => {
-          const p = prev.slice();
-          p[qi] = [];
-          picksRef.current = p;
-          return p;
-        });
-      }
-    }
-  };
-  // Guards double submit/cancel before the approval_resolved frame lands and
-  // the entry is removed (item.answer lags one render behind)
-  const askDoneRef = useRef(false);
-  // One approval_response carrying every answer: answer = JSON of the base's
-  // ExtensionAskDialogSubmitResult (host parses; a parse failure counts as cancel)
-  const submitAll = () => {
-    if (askDoneRef.current || item.answer !== null) return;
-    askDoneRef.current = true;
-    const results = askQs.map((q, i) => {
-      const labels = (q.options ?? []).map((o) => o.label ?? "");
-      const picked = (picksRef.current[i] ?? []).filter((j) => j < labels.length && labels[j]);
-      // "Other" answer: rides the customInput field (ExtensionAskDialogResultItem)
-      const custom = othersRef.current[i] ? (item.otherDrafts?.[i] ?? "").trim() : "";
-      return {
-        id: q.id ?? String(i),
-        question: q.question ?? "",
-        options: labels,
-        multi: !!q.multi,
-        selectedOptions: picked.map((j) => labels[j]),
-        ...(custom ? { customInput: custom } : {}),
-      };
-    });
-    const answer = JSON.stringify({ kind: "submit", results });
-    writeAnswer(answer);
-  };
-  // Cancel sends a non-submit answer: the host's askDialog parser resolves
-  // only kind:"submit" payloads, anything else settles as cancelled
-  const cancelAsk = () => {
-    if (askDoneRef.current || item.answer !== null) return;
-    askDoneRef.current = true;
-    writeAnswer("cancel");
-  };
-  // ---- Pager (multi-question ask): one question per page ----
-  // Single-choice auto-advances on pick, and the pick on the last page settles
-  // the form; multi questions advance via Next/Enter and submit through the
-  // foot button, which requires every question answered.
-  // picksRef/othersRef are updated synchronously inside togglePick/toggleOther,
-  // so reading them during render yields the same values as the state.
-  const [askPage, setAskPage] = useState(0);
-  const askPageRef = useRef(0);
-  const goTo = (p: number) => {
-    askPageRef.current = p;
-    setAskPage(p);
-  };
-  // A question counts as answered with a picked option or a non-empty "Other" draft
-  const qDoneAt = (qi: number) =>
-    (picksRef.current[qi]?.length ?? 0) > 0 ||
-    (othersRef.current[qi] === true && (item.otherDrafts?.[qi] ?? "").trim().length > 0);
-  const advanceOrSubmit = () => {
-    const p = askPageRef.current;
-    if (!qDoneAt(p)) return;
-    if (p < askQs.length - 1) goTo(p + 1);
-    else if (askQs.every((_, i) => qDoneAt(i))) submitAll();
-  };
   // Write the answer back to the pending approval entry (freeze) and reply to the host
   const writeAnswer = (answer: string) => {
     useAppStore.setState((st) => {
@@ -336,13 +223,8 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
     }
   };
 
-  // Ask-form container: the mount-focus effect and the global key capture below
-  // query its rows (option radios/checkboxes and "Other" inputs)
-  const askFormRef = useRef<HTMLDivElement | null>(null);
-
   // Focus the selected row on mount (number / Enter shortcuts usable at once); do not steal
-  // an existing input focus (the user may be typing). The ask-form variant
-  // focuses its first control instead (arrow navigation usable at once).
+  // an existing input focus (the user may be typing).
   useEffect(() => {
     const ae = document.activeElement;
     // Skip only a *visible* focused editor: the composer hides the moment the
@@ -354,18 +236,10 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
       (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || (ae as HTMLElement).isContentEditable)
     )
       return;
-    const row =
-      listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]') ??
-      askFormRef.current?.querySelector<HTMLElement>("input[data-ask-row]");
+    const row = listRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
     (row?.querySelector("input") ?? row)?.focus({ preventScroll: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Pager focus: after flipping to a page, arm the keyboard on its first control
-  useEffect(() => {
-    if (answered) return;
-    askFormRef.current?.querySelector<HTMLInputElement>("input[data-ask-row]")?.focus({ preventScroll: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [askPage]);
   // ---- Global key capture: the pending card substitutes the composer ----
   // The dock hides the composer while an approval is pending (App.tsx), so the
   // card is the page's input surface: up/down step its rows and Enter answers
@@ -397,74 +271,28 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
         if (!main || !main.contains(target)) return;
         if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as HTMLElement).isContentEditable) return;
       }
-      // Digit keys quick-pick the current page's single-choice rows (options
-      // 1..n, then the "Other" row at n+1).
+      // Digit keys pick an option row directly (1..n); the list stays the only
+      // multi-state surface now that ask rounds carry their own form card.
       if (/^[1-9]$/.test(e.key)) {
-        // Typing surfaces keep their digits. The ask rows' radios/checkboxes are
-        // readOnly inputs hosting focus (the mount-focus row), so they pass.
-        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as HTMLElement).isContentEditable) {
-          const el = target as HTMLInputElement;
-          if (!(el.tagName === "INPUT" && el.readOnly)) return;
-        }
-        const q = askQs[askPageRef.current];
-        if (!q || q.multi) return;
-        const count = q.options?.length ?? 0;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || (target as HTMLElement).isContentEditable) return;
         const k = Number(e.key);
-        if (k > count + 1) return;
+        if (k > n) return;
         e.preventDefault();
         e.stopPropagation();
-        if (k === count + 1) toggleOther(askPageRef.current);
-        else togglePick(askPageRef.current, k - 1, false);
+        choose(k - 1);
         return;
       }
       if (e.key === "Enter") {
         if (target.closest("button")) return; // native activation: Cancel / slider segments / option rows
         e.preventDefault();
         e.stopPropagation();
-        if (askQs.length > 0) advanceOrSubmit();
-        else {
-          const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));
-          const i = rows.findIndex((r) => r.contains(document.activeElement ?? target));
-          choose(i >= 0 ? i : selectedRef.current);
-        }
+        const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));
+        const i = rows.findIndex((r) => r.contains(document.activeElement ?? target));
+        choose(i >= 0 ? i : selectedRef.current);
         return;
       }
       const d = e.key === "ArrowDown" ? 1 : -1;
-      if (askQs.length > 0) {
-        // Ask form: step through every form control in render order (option
-        // rows, "Other" rows, open "Other" inputs), wrapping around. An open
-        // "Other" row is reachable only through its input: keeping its radio in
-        // the list bounces the focus straight back out of that input.
-        const rows = Array.from(root.querySelectorAll<HTMLInputElement>("input[data-ask-row]")).filter((r) => {
-          const q = r.getAttribute("data-qi");
-          return r.getAttribute("data-oi") !== null || q === null || !othersRef.current[Number(q)];
-        });
-        if (rows.length === 0) return;
-        let idx = rows.findIndex((r) => r === document.activeElement);
-        if (idx < 0) {
-          // No row focused yet: seed from the current page's own pick (the
-          // recommended row by default) so the first press moves one step
-          const page = root.querySelector<HTMLElement>(".ask-q");
-          const qOpts = page ? page.querySelectorAll("input[data-oi]").length : 0;
-          const cur = askPageRef.current;
-          idx = othersRef.current[cur] ? qOpts : (picksRef.current[cur]?.[0] ?? -1);
-          if (d < 0) idx = rows.length; // wraps onto the last row below
-        }
-        const row = rows[(idx + d + rows.length) % rows.length];
-        e.preventDefault();
-        e.stopPropagation();
-        row.focus();
-        const qi = row.getAttribute("data-qi");
-        const oi = row.getAttribute("data-oi");
-        const multi = qi !== null && !!askQs[Number(qi)]?.multi;
-        if (qi !== null && oi !== null && !multi) {
-          togglePick(Number(qi), Number(oi), false, false);
-        } else if (qi !== null && oi === null && !multi && row.type !== "text") {
-          // Landing on the "Other" row opens it: single-choice drops the pick, so
-          // one row stays highlighted and Enter hands over the custom answer
-          toggleOther(Number(qi));
-        }
-      } else {
+      {
         // Option listbox: the same stepping the in-card rows use (disabled rows skipped)
         const rows = Array.from(root.querySelectorAll<HTMLElement>("[data-idx]"));
         if (rows.length === 0) return;
@@ -500,7 +328,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   // Collapsed: a slim bar in place of the card (the pending question rides as a
   // one-line summary); clicking anywhere on it restores the full card
   if (collapsed) {
-    const minLabel = item.title?.trim() || askQs[0]?.question || askQs[0]?.header || "";
+    const minLabel = item.title?.trim() || "";
     return (
       <button
         type="button"
@@ -520,41 +348,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   return (
     <div className="approval-card" ref={(el) => { cardRef.current = el; }}>
       <div className="approval-head">
-        {/* Ask variant: the current page's header pill + bold question replace the
-            generic "awaiting confirm" label (the per-page title row is gone) */}
-        {askQs.length > 0 ? (
-          <span className="ask-head-main">
-            {askQs[askPage]?.header ? <span className="ask-head-pill">{askQs[askPage].header}</span> : null}
-            <span className="ask-head-q">{askQs[askPage]?.question}</span>
-          </span>
-        ) : (
-          t("chat.awaitingConfirm")
-        )}
-        {/* Ask pager (multi-question form): page number + prev/next icon buttons,
-            left of the collapse button (Next gates on the answered set) */}
-        {askQs.length > 1 && !answered && (
-          <span className="ask-pager">
-            <span className="ask-page">{askPage + 1} / {askQs.length}</span>
-            <button
-              type="button"
-              className="approval-collapse-btn ask-page-btn"
-              title={t("compExt.askPrev")}
-              disabled={askPage === 0}
-              onClick={() => goTo(askPage - 1)}
-            >
-              <Icon name="chevronLeft" size={12} />
-            </button>
-            <button
-              type="button"
-              className="approval-collapse-btn ask-page-btn"
-              title={t("compExt.askNext")}
-              disabled={askPage >= askQs.length - 1 || !qDoneAt(askPage)}
-              onClick={advanceOrSubmit}
-            >
-              <Icon name="chevronRight" size={12} />
-            </button>
-          </span>
-        )}
+        {t("chat.awaitingConfirm")}
         {!answered && (
           <button
             type="button"
@@ -566,8 +360,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
           </button>
         )}
       </div>
-      {/* Ask variant carries its question in the head; title row is the other variants' */}
-      {askQs.length === 0 && <div className="approval-title">{item.title}</div>}
+      <div className="approval-title">{item.title}</div>
       {/* Plan-proposal body: the raw plan text between the title and the options.
           Content was captured by the host before the proposal turn aborted, so it
           is complete and independent of the local:// file handle. */}
@@ -600,113 +393,19 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
           <span className="approval-slider-detail">{item.slider.segments[sliderIndex]?.detail}</span>
         </div>
       )}
-      {askQs.length > 0 ? (
-        <div className="ask-form" role="form" ref={askFormRef}>
-          {(() => {
-            const qi = askPage;
-            const q = askQs[qi];
-            if (!q) return null;
-            return (
-            <div className="ask-q" key={q.id ?? qi}>
-              <div className="approval-list" role={q.multi ? "group" : "radiogroup"} aria-label={q.question}>
-                {(q.options ?? []).map((o, oi) => {
-                  const on = (picks[qi] ?? []).includes(oi);
-                  return (
-                    <div
-                      key={oi}
-                      className={"approval-opt ask-opt" + (on ? " selected" : "") + (answered ? " dim" : "")}
-                      // Selection rides the row's click: every activation (row text, the
-                      // checkbox itself, Space on the focused input, programmatic click)
-                      // funnels into exactly one click event here. A <label> wrapper would
-                      // double-fire — native label→input forwarding dispatches a second
-                      // click that bubbles back here — and onChange alone misses real
-                      // mouse clicks on the hidden radio in WebKit.
-                      onClick={() => togglePick(qi, oi, q.multi)}
-                    >
-                      <input
-                        type={q.multi ? "checkbox" : "radio"}
-                        name={`${item.requestId}:${qi}`}
-                        data-ask-row
-                        data-qi={qi}
-                        data-oi={oi}
-                        checked={on}
-                        disabled={answered}
-                        readOnly
-                        aria-label={o.label ?? undefined}
-                      />
-                      {/* Single-choice rows carry a number: the digit keys pick it */}
-                      {!q.multi && <span className="approval-num">{oi + 1}.</span>}
-                      <span className="approval-label">
-                        {o.label}
-                        {oi === q.recommended ? " ★" : ""}
-                        {o.description ? <span className="ask-desc">{o.description}</span> : null}
-                      </span>
-                    </div>
-                  );
-                })}
-                {/* "Other (type your own)": base parity with the TUI dialog's custom-answer row */}
-                <div
-                  className={"approval-opt ask-opt ask-other-opt" + (others[qi] ? " selected" : "") + (answered ? " dim" : "")}
-                  onClick={() => toggleOther(qi)}
-                >
-                  <input
-                    type={q.multi ? "checkbox" : "radio"}
-                    name={`${item.requestId}:${qi}`}
-                    data-ask-row
-                    data-qi={qi}
-                    checked={others[qi] ?? false}
-                    disabled={answered}
-                    readOnly
-                    aria-label={t("compExt.askOther")}
-                  />
-                  {!q.multi && <span className="approval-num">{(q.options?.length ?? 0) + 1}.</span>}
-                  <span className="approval-label">{t("compExt.askOther")}</span>
-                </div>
-                {others[qi] && (
-                  <div className="ask-other">
-                    {/* Uncontrolled input: typing only writes back the draft on
-                        item.otherDrafts (survives full redraws without re-rendering) */}
-                    <input
-                      type="text"
-                      data-ask-row
-                      className="approval-inp"
-                      placeholder={t("compExt.askOtherPlaceholder")}
-                      defaultValue={item.otherDrafts?.[qi] ?? ""}
-                      disabled={answered}
-                      ref={(el) => {
-                        otherInps.current[qi] = el;
-                        if (el && pendingFocusRef.current === qi) {
-                          pendingFocusRef.current = -1;
-                          el.focus();
-                        }
-                      }}
-                      onChange={(e) => {
-                        if (!item.otherDrafts) item.otherDrafts = [];
-                        item.otherDrafts[qi] = e.target.value;
-                        // The draft stays uncontrolled (survives full redraws), but the
-                        // pager/submit answered-gates read it at render time — bump once so
-                        // they track live typing instead of latching a stale disabled state
-                        setDraftTick((v) => v + 1);
-                      }}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                          e.preventDefault();
-                          advanceOrSubmit();
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-            );
-          })()}
-        </div>
-      ) : (
-        <div className="approval-list" role="listbox" aria-label={t("chat.confirmOptions")} ref={listRef}>
+      <div className="approval-list" role="listbox" aria-label={t("chat.confirmOptions")} ref={listRef}>
         {item.options.map((opt, i) => {
-          const num = answered && i === frozenChosen ? "✓" : `${i + 1}.`;
+          // Ask rounds mark the leading `markableCount` rows with a radio/checkbox
+          // glyph instead of the digit: the base repeats one select per toggle, so
+          // checkedIndices is the only way a checked row stays visible. Trailing
+          // rows ("Other"/"Done selecting") keep the plain cursor.
+          const markable = item.selectionMarker !== undefined && i < (item.markableCount ?? n);
+          const marker = markable
+            ? item.selectionMarker === "checkbox"
+              ? (item.checkedIndices?.includes(i) ? "☑" : "☐")
+              : (i === selected ? "◉" : "○")
+            : undefined;
+          const num = answered && i === frozenChosen ? "✓" : (marker ?? `${i + 1}.`);
           const isDisabled = disabled.has(i);
           const cls =
             "approval-opt" +
@@ -734,7 +433,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
                 <input
                   type="text"
                   className="approval-inp"
-                  placeholder={t("chat.typeToSubmit")}
+                  placeholder={item.placeholder || t("chat.typeToSubmit")}
                   defaultValue={item.prefill || ""}
                   disabled={answered}
                   ref={inpRef}
@@ -766,41 +465,17 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
           );
         })}
       </div>
+      {!answered && (
+        <div className="approval-foot">
+          <span className="approval-hint">
+            <Icon name="info" size={15} />
+            {t("chat.approvalHint")}
+          </span>
+          <button type="button" className="approval-confirm" onClick={() => choose(selectedRef.current)}>
+            {t("common.confirm")}
+          </button>
+        </div>
       )}
-      {!answered &&
-        (askQs.length > 0 ? (
-          <div className="approval-foot">
-            <span className="approval-hint">
-              <Icon name="info" size={15} />
-              {t("compExt.askMultiHint")}
-            </span>
-            <span className="approval-foot-actions">
-              <button type="button" className="approval-cancel" onClick={cancelAsk}>
-                {t("chat.approvalCancel")}
-              </button>
-              {askPage === askQs.length - 1 && (
-                <button
-                  type="button"
-                  className="approval-confirm"
-                  disabled={!askQs.every((_, i) => qDoneAt(i))}
-                  onClick={submitAll}
-                >
-                  {t("compExt.askSubmitAll")}
-                </button>
-              )}
-            </span>
-          </div>
-        ) : (
-          <div className="approval-foot">
-            <span className="approval-hint">
-              <Icon name="info" size={15} />
-              {t("chat.approvalHint")}
-            </span>
-            <button type="button" className="approval-confirm" onClick={() => choose(selectedRef.current)}>
-              {t("common.confirm")}
-            </button>
-          </div>
-        ))}
     </div>
   );
 }

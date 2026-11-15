@@ -20,32 +20,12 @@ export function approvalDeadlineMs(entry: PoolEntry): number | undefined {
 }
 
 /**
- * Ask-dialog deadline answer, mirroring the base's timedOutAskDialogResult
- * contract: every question keeps its recommended row (else the first) and is
- * flagged timedOut. Serialized because the approval channel carries answers as
- * strings (session-entry-core's parseAskAnswer parses it back).
+ * formDialog deadline answer: the form's own defaults (hidden inputs,
+ * preselected options, prefilled text), flagged timedOut — the base submits
+ * exactly that when `ask.timeout` elapses. Serialized because the approval
+ * channel carries answers as strings (session-entry-core's formDialog parses
+ * it back into `{ data, timedOut }`).
  */
-export function timedOutAskAnswer(questions: unknown[]): string {
-  const results = questions.map((raw) => {
-    const q = (raw ?? {}) as {
-      id?: unknown;
-      question?: unknown;
-      multi?: unknown;
-      recommended?: unknown;
-      options?: { label?: unknown }[];
-    };
-    const options = (q.options ?? []).map((o) => String(o?.label ?? ""));
-    const recommended = typeof q.recommended === "number" ? q.recommended : 0;
-    const pick = options[Math.min(Math.max(recommended, 0), Math.max(options.length - 1, 0))];
-    return {
-      id: q.id,
-      question: q.question,
-      options,
-      multi: q.multi === true,
-      selectedOptions: pick === undefined ? [] : [pick],
-      customInput: undefined,
-      timedOut: true,
-    };
-  });
-  return JSON.stringify({ kind: "submit", results });
+export function timedOutFormAnswer(data: Record<string, unknown>): string {
+  return JSON.stringify({ kind: "submit", data, timedOut: true });
 }

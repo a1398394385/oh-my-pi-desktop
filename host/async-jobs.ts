@@ -33,7 +33,14 @@ export interface BgJobRow {
 // case a row transitions between lists. `type`/`label` come off the snapshot item
 // itself: process-less jobs (eval cells, task rows) have no command, so the label is
 // their only title.
-export function bgJobsPayload(session: PoolEntry["session"]): BgJobRow[] {
+/** What bg_jobs reads off a session: the pooled AgentSession, or another agent's
+ *  AgentSessionHandle — 18.20's registry hands out handles, not the class. */
+export type BgJobHost = Pick<
+	PoolEntry["session"],
+	"getAsyncJobSnapshot" | "getRunningJobWidgets" | "inspectAsyncJob" | "cancelAsyncJob"
+>;
+
+export function bgJobsPayload(session: Partial<BgJobHost>): BgJobRow[] {
 	const snapshot = session.getAsyncJobSnapshot?.();
 	if (!snapshot) return [];
 	const rows = new Map<string, { id: string; status: BgJobStatus; type?: string; label?: string; caption?: string }>();

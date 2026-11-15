@@ -9,6 +9,7 @@ import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow, EditWindowHead, FormRow } from "../common";
 import SchemaRows from "../SchemaRows";
+import ManualSkillsPicker from "../ManualSkillsPicker";
 import { PAGE_PLACEMENT } from "../placement";
 import { ExtSourceTag, useExtSources, refreshExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
@@ -447,6 +448,9 @@ export default function SkillsPage() {
         </div>
       </div>
       {/* Skill editing: a row click opens the page-level editor window (see SkillEditWindow) */}
+      {/* Hand-written multi-select picker: skills.manualSkills is excluded from the
+          section's SchemaRows rows (see SPECIAL_KEY_PAGES in placement.ts). */}
+      <ManualSkillsPicker />
       <SchemaRows sections={PAGE_PLACEMENT["pg-skills"]} />
       </div>
     </div>

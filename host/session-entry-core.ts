@@ -3,7 +3,7 @@
 // (entry-core cut): the once-per-entry core subscribes the session event
 // stream (delta coalescing, todos, bg_jobs, plan dispatch, context/stats,
 // goal, cache warming, lifecycle timing, terminal agent_end wrap-up), builds
-// the approval UI context (select/confirm/editor/askDialog + extension
+// the approval UI context (select/confirm/input/editor/formDialog + extension
 // status), injects the extension runner actions/context and emits
 // session_start, and hooks dequeue / queue-change / persistence-move / MCP /
 // title listeners, torn down via entry.unsubscribe. The create/load entry
@@ -29,7 +29,7 @@ import { createSubagentView } from "./subagent-view.ts";
 import { sendQueued, releaseOneParked } from "./queue.ts";
 import { dispatchFromToolEnd } from "./plan-approve.ts";
 import { autoReviewThenApprove, rememberToolCall } from "./auto-review.ts";
-import { approvalDeadlineMs, timedOutAskAnswer } from "./dialog-deadline.ts";
+import { approvalDeadlineMs, timedOutFormAnswer } from "./dialog-deadline.ts";
 import { markTurnWrapped } from "./keepalive-host.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { handleVoiceEvent } from "./voice.ts";
@@ -37,7 +37,9 @@ import { createBgJobsRefresh } from "./async-jobs.ts";
 import { maybeRefreshSessionTitle, syncBranchTitle } from "./titles.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { safeStderr } from "./stderr.ts";
-import { getExtensionUISelectOptionLabel, type ExtensionUIContext, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
+import { getExtensionUISelectOptionLabel, type ExtensionFormDialogResult, type ExtensionUIContext, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
+import { parseHtmlForm, type HtmlForm } from "@oh-my-pi/pi-tui/html-form/parse";
+import { defaultFormData, fieldQuestions, type HtmlFormData } from "@oh-my-pi/pi-tui/html-form/data";
 import { createSessionModes } from "./mode-control.ts";
 import { cancelPrediction, requestPrediction } from "./prediction.ts";
 import { rerenderAssistantMessage } from "./assistant-text.ts";
@@ -97,7 +99,7 @@ export function detachEntryUi(ws: UiSocket, entry: PoolEntry) {
 function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unknown) {
   const bus = entryBus(entry);
   // The ask tool's `i` intent: agent-loop extracts it from the tool args and
-  // carries it on the tool_execution_start event; askDialog takes and clears
+  // carries it on the tool_execution_start event; formDialog takes and clears
   // it when the card is pushed (same-session tools are serial, a single
   // value slot cannot cross-contaminate)
   let askIntent: string | undefined;
@@ -119,7 +121,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
   const deltas = createDeltaCoalescer((p) => bus.send(JSON.stringify(stampEvent({ type: "event", sessionId, ...p }))));
   const unsubSession = entry.session.subscribe((ev) => {
     if (ev.type === "tool_execution_start") rememberToolCall(sessionId, { toolName: ev.toolName, params: ev.args });
-    // Stash the ask tool's `i` intent; attached to the askDialog frame on push
+    // Stash the ask tool's `i` intent; attached to the formDialog frame on push
     if (ev.type === "tool_execution_start" && ev.toolName === "ask" && typeof ev.intent === "string" && ev.intent.trim()) {
       askIntent = ev.intent.trim();
     }
@@ -284,6 +286,18 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       // an expired deadline resolves undefined: the base picks the recommended
       // ask option, and anything but an explicit approval denies.
       const deadlineMs = dialogOptions ? dialogOptions.timeout : approvalDeadlineMs(entry);
+      // Ask rounds (18.20) carry the cursor row, a radio/checkbox marker and the
+      // rows already checked: without them a multi-select toggles blind and the
+      // recommended row never highlights. Permission prompts pass none of these.
+      const askRound =
+        dialogOptions?.selectionMarker || dialogOptions?.initialIndex !== undefined || dialogOptions?.checkedIndices
+          ? {
+              initialIndex: dialogOptions.initialIndex,
+              selectionMarker: dialogOptions.selectionMarker,
+              checkedIndices: dialogOptions.checkedIndices,
+              markableCount: dialogOptions.markableCount,
+            }
+          : undefined;
       return autoReviewThenApprove(H, entry.session.messages, sessionId, title, labels, (t) =>
         requestApproval(
           bus,
@@ -291,10 +305,9 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
           t,
           labels,
           dialogOptions?.signal,
+          askRound,
           undefined,
-          undefined,
-          undefined,
-          undefined,
+          askRound ? "ask" : undefined,
           deadlineMs !== undefined && deadlineMs > 0 ? { ms: deadlineMs } : undefined,
         ),
       );
@@ -324,8 +337,22 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
         dialogOptions?.signal,
         { editable: true, editableIndex: 0, prefill: prefill ?? "" },
         undefined,
+        // Ask-family dialog even though no form rides the frame.
+        "ask",
+      );
+    },
+    input(title: string, placeholder?: string, dialogOptions?: any): Promise<string | undefined> {
+      // 18.20's ask fallback calls this for every single-line text field (the
+      // editor variant only covers multiline/prefilled ones). Same editable row
+      // contract as editor(); placeholder rides the frame as a hint, never a value.
+      return requestApproval(
+        bus,
+        sessionId,
+        title,
+        ["submit", "cancel"],
+        dialogOptions?.signal,
+        { editable: true, editableIndex: 0, prefill: "", placeholder: placeholder ?? "" },
         undefined,
-        // Ask-family dialog even though no questions ride the frame.
         "ask",
       );
     },
@@ -333,40 +360,45 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     // re-draws go through host/assistant-text.ts, and clicks always reach the link_activate RPC.
     rerenderMessage: (timestamp: number) => rerenderAssistantMessage(entry, sessionId, timestamp),
     getLinkClicksAvailable: () => true,
-    // (18.5) Rich ask dialog: the ask tool with a questions array surfaces
-    // here instead of per-question select() rounds. The frame reuses the
-    // approval channel (options are the submit/cancel actions; the questions
-    // ride the questions field); approval_response answers with
-    // answer = JSON.stringify(ExtensionAskDialogSubmitResult). Aborts and
-    // unknown answers resolve undefined (the base treats that as cancelled).
-    askDialog(questions: unknown[], dialogOptions?: any): Promise<unknown> {
-      const parseAskAnswer = (answer: string) => {
-        try {
-          const parsed = JSON.parse(answer) as { kind?: unknown };
-          if (parsed && parsed.kind === "submit") return parsed;
-        } catch {
-          // Malformed submissions count as cancelled, not as an error frame
-        }
-        return undefined;
-      };
+    // (18.20) The ask tool's HTML form. The base hands us the model's markup; we
+    // parse it with the same pi-tui parser the TUI and ACP hosts use, so the card
+    // draws one form and submits every answer at once. Submission answers with
+    // answer = JSON.stringify({kind:"submit", data}); a deadline submits the
+    // form's own defaults (hidden inputs, preselected options, prefilled text).
+    formDialog(html: string, dialogOptions?: any): Promise<ExtensionFormDialogResult | undefined> {
+      const form: HtmlForm = parseHtmlForm(html);
       const intent = askIntent;
       askIntent = undefined;
-      const first = (questions[0] ?? {}) as { header?: string; question?: string };
+      const first = form.fields.find((field) => field.name);
+      const title = (first && fieldQuestions(form).get(first)) || hostI18n.t("flows.ask.formTitle");
       const deadlineMs = dialogOptions?.timeout;
       return requestApproval(
         bus,
         sessionId,
-        first.header ?? first.question ?? "ask",
+        title,
         ["submit", "cancel"],
         dialogOptions?.signal,
-        { intent },
+        { form, intent },
         undefined,
-        questions,
-        undefined,
-        // An expired ask dialog answers itself: the base only treats a missing
-        // result as a cancel, so the deadline carries the recommended options.
-        deadlineMs !== undefined && deadlineMs > 0 ? { ms: deadlineMs, answer: timedOutAskAnswer(questions) } : undefined,
-      ).then((v) => (v === undefined ? undefined : parseAskAnswer(v)));
+        "ask",
+        deadlineMs !== undefined && deadlineMs > 0
+          ? { ms: deadlineMs, answer: timedOutFormAnswer(defaultFormData(form)) }
+          : undefined,
+      ).then((answer) => {
+        if (answer === undefined) return undefined;
+        try {
+          const parsed = JSON.parse(answer) as { kind?: unknown; data?: unknown; timedOut?: unknown };
+          if (parsed?.kind === "submit" && parsed.data && typeof parsed.data === "object") {
+            return {
+              data: parsed.data as HtmlFormData,
+              ...(parsed.timedOut === true ? { timedOut: true } : {}),
+            };
+          }
+        } catch {
+          // Malformed submissions count as cancelled, not as an error frame
+        }
+        return undefined;
+      });
     },
   } as ExtensionUIContext;
   entry.sessionResult.setToolUIContext(uiCtx, true);
@@ -392,8 +424,10 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
           safeStderr(hostI18n.t("errors.lifecycle.extensionSendFailed", { detail: String(err) }));
         });
       },
-      sendUserMessage: (content, options) => {
-        void entry.session.sendUserMessage(content, options);
+      sendUserMessage: async (content, options) => {
+        await entry.session.sendUserMessage(content, options).catch((err: unknown) => {
+          safeStderr(hostI18n.t("errors.lifecycle.extensionSendFailed", { detail: String(err) }));
+        });
       },
       appendEntry: (customType, data) => {
         entry.session.sessionManager.appendCustomEntry(customType, data);

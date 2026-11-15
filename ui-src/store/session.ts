@@ -929,10 +929,9 @@ export function applyEvent(msg: EventFrame): void {
     // The paths fold onto the user bubble whose prompt triggered them (attachment chips,
     // rendered by UserMsg); the row itself is replaced so the memo compares unequal.
     updateSession(msg.sessionId, (s) => {
-      const i = s.items.findLastIndex((it) => it.role === "user");
-      if (i < 0) return;
-      const cur = s.items[i] as UserItem;
-      s.items[i] = { ...cur, attachments: [...(cur.attachments ?? []), ...(msg.files || [])] };
+      const cur = findLast(s.items, (it): it is UserItem => it.role === "user");
+      if (!cur) return;
+      s.items[s.items.indexOf(cur)] = { ...cur, attachments: [...(cur.attachments ?? []), ...(msg.files || [])] };
     });
   } else if (msg.kind === "advisor") {
     // Advice batch: a row at its injection point (mid-run blocker, or the run-boundary
