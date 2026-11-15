@@ -14,6 +14,9 @@ export interface BgJobRow {
 	id: string;
 	type: string;
 	label: string | null;
+	// The model's `i` intent on the call that started the job (base AsyncJob.intent):
+	// what the job is for in the model's words, over the 120-char `label` cut.
+	intent: string | null;
 	command: string | null;
 	cwd: string | null;
 	pids: number[];
@@ -43,7 +46,10 @@ export type BgJobHost = Pick<
 export function bgJobsPayload(session: Partial<BgJobHost>): BgJobRow[] {
 	const snapshot = session.getAsyncJobSnapshot?.();
 	if (!snapshot) return [];
-	const rows = new Map<string, { id: string; status: BgJobStatus; type?: string; label?: string; caption?: string }>();
+	const rows = new Map<
+		string,
+		{ id: string; status: BgJobStatus; type?: string; label?: string; intent?: string; caption?: string }
+	>();
 	for (const job of [...(snapshot.running ?? []), ...(snapshot.recent ?? [])]) rows.set(job.id, job);
 	// One call builds the id→view map for the whole frame; the base returns [] with
 	// widgets off or no registry, so every row then gets null.
@@ -54,6 +60,7 @@ export function bgJobsPayload(session: Partial<BgJobHost>): BgJobRow[] {
 			id: job.id,
 			type: typeof job.type === "string" ? job.type : "unknown",
 			label: typeof job.label === "string" && job.label ? job.label : null,
+			intent: typeof job.intent === "string" && job.intent ? job.intent : null,
 			command: inspected?.command ?? null,
 			cwd: inspected?.cwd ?? null,
 			pids: Array.isArray(inspected?.pids) ? inspected.pids : [],

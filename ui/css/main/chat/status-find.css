@@ -9,7 +9,10 @@
   top: 56px;
   right: 14px;
   z-index: 60;
-  width: 280px;
+  /* Width follows the content: the card grows to the width of its longest todo row and
+     stops there — once no row wraps, more width is only blank space on the right. Narrower
+     windows win through max-width below, and rows then wrap as before. */
+  width: max-content;
   max-width: calc(100% - 28px);
   pointer-events: none;
   /* Right-aligned flex column: an over-wide resized card keeps its right edge pinned and overflows leftward */
@@ -52,18 +55,20 @@
 .todo .ci { color: var(--faint); font-style: normal; flex: none; }
 
 .todo.done { color: var(--faint); }
-/* Strike-through as a painted line instead of text-decoration: it can grow left→right in
-   12 discrete steps (todoStrike), which text-decoration cannot animate. `.strike` is set by
-   TodoRow only on the transition into completed, so rows mounting already done stay static. */
+/* Native strike-through: the engine draws it per line fragment, so it tracks the text
+   through a resize or a wrap without any geometry of ours (the old background-line needed
+   a 56% box-height guess that broke once the row wrapped or line-height grew). Plain
+   `line-through` is not animatable, which is the trade we took for dropping the growth
+   animation. */
 .todo.done s {
-  text-decoration: none;
-  background-image: linear-gradient(var(--todo-strike-dark), var(--todo-strike-dark));
-  background-repeat: no-repeat;
-  background-position: 0 56%;
-  background-size: 100% 1px;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  /* Continuous line: the default `auto` opens a gap at every descender (g/y/p), which reads
+     as noise in a status list where the line is the state signal. */
+  text-decoration-skip-ink: none;
+  text-decoration-color: var(--todo-strike-dark);
 }
-.todo.done s.strike { animation: todoStrike var(--dur-slow) steps(12); }
-:is([data-theme="light"], [data-theme-mode="light"]) .todo.done s { background-image: linear-gradient(var(--todo-strike-light), var(--todo-strike-light)); }
+:is([data-theme="light"], [data-theme-mode="light"]) .todo.done s { text-decoration-color: var(--todo-strike-light); }
 .todo.done .ck { color: var(--green-soft); }
 
 .todo.cur { color: var(--text); }
@@ -76,6 +81,10 @@
 .sc-plan {
   display: flex; align-items: center; gap: 7px;
   width: 100%;
+  /* The card sizes itself to its longest todo row; without this the row's nowrap title
+     would feed its full width into that computation and stretch the card across the
+     window. The title keeps its ellipsis instead. */
+  contain: inline-size;
   margin-bottom: 6px;
   padding: 6px 8px;
   border: 0; border-radius: 7px;

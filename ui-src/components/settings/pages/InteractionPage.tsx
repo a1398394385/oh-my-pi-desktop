@@ -9,7 +9,7 @@ import { useAppStore, send, toast } from "../../../store";
 import { invoke } from "../../../store/ws";
 import { saveUiPrefs } from "../../../appearance";
 import SchemaRows, { SchemaGroupTitle, SchemaRowsBare } from "../SchemaRows";
-import { PAGE_PLACEMENT } from "../placement";
+import { PAGE_PLACEMENT, type Section } from "../placement";
 import { Sel, Srow, Toggle } from "../common";
 
 /** Play the alert sound once so the user hears what the toggle does (no-op outside Tauri). */
@@ -142,6 +142,11 @@ function AskTimeoutRow() {
 // Session-behavior rows moved here from the general page: title refresh
 // (host/titles.ts) and auto-archive (host/auto-archive.ts). Both are app-level
 // settings the host reports in the settings frame, not schema rows.
+// Base title keys that still apply inside the desktop (first naming + its
+// icons); the refresh keys stay hidden (placement.ts HIDDEN_KEYS) because the
+// session overlay pins them off.
+const TITLE_SCHEMA_SECTION: Section = { keys: ["title.generator", "title.icons"] };
+
 function SessionBehaviorSections() {
   const { t } = useTranslation();
   const hs = useAppStore((s) => s.hostSettings);
@@ -197,6 +202,10 @@ function SessionBehaviorSections() {
             onChange={() => send({ type: "set_branch_titles", enabled: !btEnabled })}
           />
         </Srow>
+        {/* First-naming knobs (which model names an untitled session, which
+            icon heads the title) come from the base schema; bare rows keep them
+            in the same card as the desktop's refresh switches. */}
+        <SchemaRowsBare sections={[TITLE_SCHEMA_SECTION]} />
       </div>
       <div className="set-group-tt">{t("settingsPage.interaction.groupArchive")}</div>
       <div className="set-card">
@@ -294,10 +303,10 @@ export default function InteractionPage() {
   return (
     <div className="set-page" id="pg-interaction">
       <div className="set-tt">{t("settingsPage.nav.interaction")}</div>
+      <SessionBehaviorSections />
       <SchemaRows sections={before} />
       <DesktopAlertsSection />
       <SchemaRows sections={after} />
-      <SessionBehaviorSections />
     </div>
   );
 }

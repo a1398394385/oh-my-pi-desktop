@@ -50,7 +50,7 @@
 
 /* Aggregate usage line: one cell per stat, separated by gap alone (no separators); the cell
    rules live with the shared roster card in css/shared/agent.css. */
-.hub-usage { font-size: var(--ui-fs-sm); display: flex; flex-wrap: wrap; gap: 6px; }
+.hub-usage { font-size: var(--ui-fs-sm); display: flex; flex-wrap: wrap; gap: 9px; }
 
 .hub-usage .hub-cost { color: var(--statusLineCost, var(--accent)); }
 

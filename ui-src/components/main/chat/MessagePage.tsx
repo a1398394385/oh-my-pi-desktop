@@ -79,7 +79,9 @@ const SWITCH_SETTLE_MS = 1000;
 //    longer than GESTURE_IDLE_MS decides the owner by pointer location (stream / popup /
 //    other). While a stream-owned gesture continues, popup wheels are redirected —
 //    regardless of how the pointer moved onto it and regardless of inter-stroke pauses,
-//    because every wheel refreshes the gesture. Only after the whole gesture has been
+//    because every wheel refreshes the gesture. A wheel landing outside both the stream and
+//    any popup (sidebar list, right rail) ends the gesture at once, so that pane reacts on
+//    the same tick. Only after the whole gesture has been
 //    idle for over 1s does the popup receive wheels again (its own scroll + overscroll
 //    containment). (Pointer-transparency is not used for popups: flipping pointer-events
 //    under a hovering pointer fires pointerout and the ring-pop grace-close logic would
@@ -532,6 +534,16 @@ export default function MessagePage() {
       // First wheel after the idle gap decides the owner by pointer location
       if (!continuing) {
         gestureOwner.current = inStream ? "stream" : inPopup ? "popup" : "other";
+      } else if (!inStream && !inPopup) {
+        // The pointer has left the chat region (sidebar list, right rail): the gesture is
+        // over, so the pane under the pointer scrolls on this tick instead of waiting out
+        // GESTURE_IDLE_MS while the redirect below keeps feeding #stream.
+        gestureOwner.current = "other";
+        lastWheelAt.current = 0;
+        clearTimeout(wheelThroughTimer.current);
+        stream.classList.remove("wheel-through");
+        setOwnerCard(null);
+        return;
       }
       lastWheelAt.current = now;
       const ownerCard = wheelOwnerCard.current;

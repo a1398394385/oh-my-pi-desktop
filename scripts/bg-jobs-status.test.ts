@@ -16,6 +16,7 @@ const fakeSession = (statuses: Status[]): PoolEntry["session"] =>
         type: "eval", // process-less row: no inspect exit code to fall back on
         status,
         label: `job ${i}`,
+        intent: `intent ${i}`,
         startTime: 0,
       })),
     }),
@@ -32,5 +33,10 @@ describe("bgJobsPayload job status", () => {
   test("running stays a faithful projection of status", () => {
     const rows = bgJobsPayload(fakeSession(["running", "failed"]));
     expect(rows.map((r) => r.running)).toEqual([true, false]);
+  });
+
+  test("the model's intent rides the row", () => {
+    const rows = bgJobsPayload(fakeSession(["running", "completed"]));
+    expect(rows.map((r) => r.intent)).toEqual(["intent 0", "intent 1"]);
   });
 });

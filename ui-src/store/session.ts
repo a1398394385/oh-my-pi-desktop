@@ -17,6 +17,7 @@ import { sealRunItems, endingErrorText } from "./run-seal";
 import { saveRightSlot, restoreRightSlot } from "./right";
 import { t } from "../i18n";
 import { atMentions } from "../lib/at-mentions";
+import { splitQuote } from "../lib/conversation-quote";
 import type { ApprovalMode, EventFrame, HostRequest, MessagesFrame, PoolSessionsFrame, PromptAttachment, TurnUsage } from "../types/frames";
 import type { AssistantItem, ChatItem, LoopItem, OpenSession, ThinkingItem, ToolArgs, ToolDetails, ToolItem, UserItem } from "../types/session";
 import type { SessionItem } from "../types/session";
@@ -72,6 +73,8 @@ export interface BgJobEntry {
   id: string;
   type: string;
   label: string | null;
+  /** The model's `i` intent on the call that started the job (null for old host frames) */
+  intent: string | null;
   command: string | null;
   cwd: string | null;
   pids: number[];
@@ -490,6 +493,7 @@ export function startLocalRun(
   text: string,
   images?: UserItem["images"],
   automation?: UserItem["automation"],
+  entryId?: string,
 ): void {
   updateSession(sessionId, (s) => {
     // A live turnItemStart here means the previous run left its fold open — its runEnd never
@@ -498,7 +502,13 @@ export function startLocalRun(
     // group and the user's message is invisible until a reload (session 01a18749).
     const openRun = s.turnItemStart != null;
     if (openRun) sealRunItems(s, null);
-    s.items.push({ role: "user", text, ...(images && images.length > 0 ? { images } : {}), ...(automation ? { automation } : {}) });
+    s.items.push({
+      role: "user",
+      text,
+      ...(images && images.length > 0 ? { images } : {}),
+      ...(automation ? { automation } : {}),
+      ...(entryId ? { entryId } : {}),
+    });
     s.streaming = true;
     s.turnStartAt = Date.now();
     // This bubble opens the new run: the process after it belongs to the next fold
@@ -638,20 +648,32 @@ export function applyEvent(msg: EventFrame): void {
     // The echo also carries the @path lines the host appended for path attachments, so the
     // match strips them; a hit adopts that text (its chips render without waiting for the
     // base's fileMention read-back, which only lands at agent_end).
-    const parsed = atMentions(msg.text);
     const items = findBySessionId(msg.sessionId)?.items ?? [];
+    // Match on what a bubble shows, not on the wire text: the optimistic bubble carries the
+    // raw composer text ("@session:<path>" markers) while the echo carries the host's inlined
+    // attachment blocks, so the two never compare equal verbatim.
+    const shown = (text: string) => atMentions(splitQuote(text).body).text;
+    const mine = shown(msg.text);
     let dupe = -1;
     for (let i = items.length - 1; i >= 0; i--) {
       const it = items[i];
-      if (it.role === "user" && !it.entryId && (it.text === msg.text || it.text === parsed.text)) {
+      if (it.role === "user" && !it.entryId && shown(it.text) === mine) {
         dupe = i;
         break;
       }
     }
-    if (dupe < 0) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation);
-    else if (parsed.paths.length > 0) {
+    // A hit adopts the echo's text (it is the canonical prompt: resolved references, @path
+    // lines) so the bubble renders exactly like the reloaded transcript.
+    if (dupe < 0) startLocalRun(msg.sessionId, msg.text, msg.images, msg.automation, msg.entryId);
+    else {
+      const parsed = atMentions(msg.text);
       updateSession(msg.sessionId, (s) => {
-        s.items[dupe] = { ...(s.items[dupe] as UserItem), text: msg.text, attachments: parsed.paths };
+        s.items[dupe] = {
+          ...(s.items[dupe] as UserItem),
+          text: msg.text,
+          ...(msg.entryId ? { entryId: msg.entryId } : {}),
+          ...(parsed.paths.length > 0 ? { attachments: parsed.paths } : {}),
+        };
       });
     }
   } else if (msg.kind === "text_delta") {

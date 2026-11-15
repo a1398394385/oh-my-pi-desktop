@@ -5,9 +5,15 @@
 // of the viewport (no .sticky-user-wrap wrapper).
 import type { BashItem } from "../../types/session";
 import { Spin } from "./parts";
+import { useTypewriter } from "./typewriter";
 import { t } from "../../i18n";
 
 export default function BashRow({ item }: { item: BashItem }) {
+  // Live output is revealed by the typewriter; a settled command shows its buffer whole (an
+  // expanded historical row must not replay its output character by character).
+  const output = item.output || "";
+  const typed = useTypewriter(item.running ? output : "");
+  const shown = item.running ? typed : output;
   // Command-line status: the running spinner takes priority; error in red; cancelled in a
   // gray tag; the rest colored by exitCode
   let status;
@@ -29,7 +35,7 @@ export default function BashRow({ item }: { item: BashItem }) {
             something to show — an empty box under a still-running command is pure noise */}
         {(item.output || !item.running) && (
           <pre className="bash-out">
-            {item.output || t("chat.noOutput")}
+            {shown || t("chat.noOutput")}
             {item.truncated ? t("chat.outputTruncated") : ""}
           </pre>
         )}

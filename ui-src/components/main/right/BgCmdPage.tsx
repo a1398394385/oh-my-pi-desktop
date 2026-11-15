@@ -5,7 +5,7 @@
 // version the expanded state is held by component state, so streaming updates keep rows open
 // and show the latest output (the liftEl collapse animation is skipped along with the
 // conditional rendering).
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { JobWidgetView } from "@oh-my-pi/pi-tui/tools/job-widget";
 import { useAppStore } from "../../../store";
@@ -26,6 +26,7 @@ interface SessionItemLike {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- host tool args are an open dict (keys vary by tool kind), a genuinely unknown boundary
   args?: Record<string, any>;
   output?: string;
+  intent?: string;
   details?: unknown;
   running?: boolean;
   toolCallId?: string;
@@ -37,6 +38,8 @@ interface BgTask {
   toolCallId?: string;
   op: string;
   procName: string;
+  // The model's `i` intent on the call (snapshot intent, or the call's own `i` arg)
+  intent?: string | null;
   command: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- same as above: host tool args are an open dict
   args: Record<string, any>;
@@ -96,6 +99,7 @@ function getBgTasksForSession(
         toolCallId: it.toolCallId,
         op,
         procName,
+        intent: typeof it.intent === "string" && it.intent.trim() ? it.intent.trim() : null,
         command: taskCommand,
         args,
         output: it.output || "",
@@ -131,11 +135,15 @@ function getBgTasksForSession(
       // so they are skipped here to avoid a duplicate row for the same command
       const backgrounded = !!(it.details as { async?: unknown } | undefined)?.async;
       if (backgrounded) continue;
+      // The base reports the directory the command actually ran in (`cwd` arg or a hoisted
+      // `cd`); details only carry it when it was resolved, so fall back to the session cwd.
+      const ranCwd = (it.details as { cwd?: unknown } | undefined)?.cwd;
       const taskItem: BgTask = {
         id: it.toolCallId || `cmd_${i}`,
         toolCallId: it.toolCallId,
         op: "run",
         procName: name,
+        intent: typeof it.intent === "string" && it.intent.trim() ? it.intent.trim() : null,
         command: it.args?.command || it.text || name,
         args: it.args || {},
         output: it.output || "",
@@ -144,7 +152,7 @@ function getBgTasksForSession(
         // command can still be inspected, and the row already carries its output
         running: it.running === true,
         statusText: it.running === true ? t("right.bgRunning") : t("right.bgDone"),
-        cwd: s.cwd,
+        cwd: typeof ranCwd === "string" && ranCwd ? ranCwd : s.cwd,
         timeIndex: i,
         rawItem: it,
       };
@@ -171,6 +179,7 @@ function getBgTasksForSession(
       id: `job_${job.id}`,
       op: job.type,
       procName: job.label || job.command || job.type,
+      intent: job.intent ?? null,
       command: job.command || job.label || "",
       args: {},
       output: "",
@@ -215,9 +224,9 @@ export default function BgCmdPage() {
     return <div className="py-3 text-faint text-ui-base">{t("right.noBgCommands")}</div>;
   }
   return (
-    <div className="slist" style={{ padding: "4px 0" }}>
+    <div className="slist bgcmd-list">
       {tasks.map((task) => (
-        <Fragment key={task.id}>
+        <div key={task.id} className="bgcmd-card">
           <div
             className={"srow bgcmd-row" + (openId === task.id ? " on" : "")}
             onClick={() => setOpenId(openId === task.id ? null : task.id)}
@@ -226,8 +235,8 @@ export default function BgCmdPage() {
             <div className="stext">
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <b style={{ color: "var(--text)" }}>{task.op.toUpperCase()}</b>
-                <span className="path" title={task.command || task.procName || ""}>
-                  {task.command || task.procName || t("right.bgCommandFallback")}
+                <span className="path" title={task.intent || task.command || task.procName || undefined}>
+                  {task.intent || task.command || task.procName || t("right.bgCommandFallback")}
                 </span>
               </div>
             </div>
@@ -236,44 +245,30 @@ export default function BgCmdPage() {
               <Icon name="caretSlim" />
             </span>
           </div>
-          {openId === task.id && <BgCmdExpand task={task} onClose={() => setOpenId(null)} />}
-        </Fragment>
+          {openId === task.id && <BgCmdExpand task={task} />}
+        </div>
       ))}
     </div>
   );
 }
 
-// Expand card: head (cwd on line 1, name + collapse on line 2) + command or args + output
-function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
+// Expand card: head (name left, working dir right on one line) + command or args + output
+function BgCmdExpand({ task }: { task: BgTask }) {
   const { t } = useTranslation();
   return (
     <div className="bgcmd-expand">
-      {/* 1. Card head: working dir on line 1 (it is the long, truncating field);
-          name + collapse on line 2 */}
-      {task.cwd && (
-        <div className="bgcmd-meta-row">
-          <b className="bgcmd-meta-lbl">{t("right.workDirLabel")}</b>
-          <span className="bgcmd-meta-item wd" title={task.cwd}>
-            {task.cwd}
-          </span>
-        </div>
-      )}
+      {/* 1. Card head: name on the left, the long working dir pinned to the right */}
       <div className="bgcmd-meta-row">
         {task.procName && (
           <span className="bgcmd-meta-item name" title={task.procName}>
             <b>{t("right.nameLabel")}</b> {task.procName}
           </span>
         )}
-        <button
-          type="button"
-          className="save-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          >
-          {t("right.collapse")}
-        </button>
+        {task.cwd && (
+          <span className="bgcmd-meta-item wd" title={task.cwd}>
+            <b>{t("right.workDirLabel")}</b> {task.cwd}
+          </span>
+        )}
       </div>
       {/* Live widget for snapshot-sourced jobs: caption + whatever the job is doing now */}
       {(task.widget || task.caption) && <JobWidget view={task.widget ?? null} caption={task.caption} />}
@@ -283,21 +278,21 @@ function BgCmdExpand({ task, onClose }: { task: BgTask; onClose: () => void }) {
           <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
             <b>{t("right.commandInputLabel")}</b>
           </div>
-          <div className="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain" /* style-token-ignore */>{task.command}</div>
+          <div className="font-mono text-[length:var(--code-fs,12px)] border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain" /* style-token-ignore */>{task.command}</div>
         </>
       ) : task.args && Object.keys(task.args).length > 0 ? (
         <>
           <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
             <b>{t("right.argsLabel")}</b>
           </div>
-          <div className="font-mono text-[length:var(--code-fs,12px)] bg-panel-2 border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain" /* style-token-ignore */>{JSON.stringify(task.args, null, 2)}</div>
+          <div className="font-mono text-[length:var(--code-fs,12px)] border border-line-soft rounded-sm py-2 px-2.5 my-1.5 overflow-auto whitespace-pre-wrap break-all text-text leading-[1.5] overscroll-contain" /* style-token-ignore */>{JSON.stringify(task.args, null, 2)}</div>
         </>
       ) : null}
       {/* 3. Output and execution result */}
       <div className="bgcmd-meta-row" style={{ marginTop: "8px" }}>
         <b>{t("right.outputLabel")}</b>
       </div>
-      <pre className="max-h-[180px] overflow-y-auto overscroll-contain bg-card border border-line-soft rounded-sm py-2 px-2.5 mt-1.5 font-mono text-[length:var(--code-fs,12px)] text-dim whitespace-pre-wrap break-all" /* style-token-ignore */>{task.output || (task.running ? <Spin /> : t("right.noOutput"))}</pre>
+      <pre className="max-h-[180px] overflow-y-auto overscroll-contain border border-line-soft rounded-sm py-2 px-2.5 mt-1.5 font-mono text-[length:var(--code-fs,12px)] text-dim whitespace-pre-wrap break-all" /* style-token-ignore */>{task.output || (task.running ? <Spin /> : t("right.noOutput"))}</pre>
     </div>
   );
 }

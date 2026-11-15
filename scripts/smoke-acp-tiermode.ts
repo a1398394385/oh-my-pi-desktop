@@ -24,18 +24,20 @@ assert.equal(acpParamsFromConfig({ tierMode: "percent", l1: 10 }, 12_345).l1, 1_
 // behavior when unconfigured" decision).
 assert.equal(pct.target, ACP_DEFAULT_PARAMS.target);
 
-// --- 3. missing/invalid window: percent falls back to absolute semantics, warns once ---
+// --- 3. missing/invalid window: percent keeps the default absolute lines, warns once ---
+// The stored numbers are percentages, so reading them as token counts (25/50/75)
+// would pin every session at L3 — the fallback must drop them, not reinterpret them.
 let warned = 0;
 const stderrWrite = process.stderr.write.bind(process.stderr);
 process.stderr.write = (() => {
 	warned++;
 	return true;
 }) as typeof process.stderr.write;
-assert.equal(acpParamsFromConfig({ tierMode: "percent", l1: 25 }, 0).l1, 25);
-assert.equal(acpParamsFromConfig({ tierMode: "percent", l1: 30 }).l1, 30);
-assert.equal(acpParamsFromConfig({ tierMode: "percent", l2: 40 }, -5).l2, 40);
+assert.equal(acpParamsFromConfig({ tierMode: "percent", l1: 25 }, 0).l1, ACP_DEFAULT_PARAMS.l1);
+assert.equal(acpParamsFromConfig({ tierMode: "percent", l1: 30 }).l1, ACP_DEFAULT_PARAMS.l1);
+assert.equal(acpParamsFromConfig({ tierMode: "percent", l2: 40 }, -5).l2, ACP_DEFAULT_PARAMS.l2);
 assert.equal(warned, 1, "percent-without-window fallback warns exactly once");
-assert.equal(acpParamsFromConfig({ tierMode: "percent", l3: 50 }, 0).l3, 50);
+assert.equal(acpParamsFromConfig({ tierMode: "percent", l3: 50 }, 0).l3, ACP_DEFAULT_PARAMS.l3);
 assert.equal(warned, 1, "module-level flag suppresses repeat warnings");
 process.stderr.write = stderrWrite;
 

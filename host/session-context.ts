@@ -205,6 +205,35 @@ export async function formatSessionReference(sessionPath: string, title: string)
   return lines.join("\n");
 }
 
+// Conversation reference written by the composer's session chip: "@session:<path>",
+// quoted when the path carries whitespace. Matched and stripped before the base's own
+// @mention scan, so the marker never reaches it as prose.
+const SESSION_REF_RE = /@session:(?:"([^"]+)"|(\S+)) ?/g;
+
+/** Replace every "@session:<path>" marker with the session's turns, appended after the
+ *  user's own words so the session's first message (sidebar preview, title generation)
+ *  stays what the user wrote. Unreadable (deleted/empty) references are dropped rather
+ *  than failing the send. Shared by the prompt and edit_resend paths — both hand text to
+ *  the base, which knows nothing about the marker. */
+export async function inlineSessionRefs(text: string): Promise<string> {
+  const refPaths: string[] = [];
+  const stripped = text.replace(SESSION_REF_RE, (_m, quoted: string | undefined, plain: string | undefined) => {
+    refPaths.push(quoted ?? plain ?? "");
+    return "";
+  });
+  if (refPaths.length === 0) return text;
+  const blocks: string[] = [];
+  for (const refPath of refPaths) {
+    // Only the path travels in the text; the block title is the session file name
+    const name = refPath.split("/").pop()?.replace(/\.jsonl$/, "") || "session";
+    const block = refPath ? await formatSessionReference(refPath, name) : null;
+    if (block) blocks.push(block);
+  }
+  if (blocks.length === 0) return stripped;
+  const body = stripped.trim();
+  return body ? `${body}\n\n${blocks.join("\n\n")}` : blocks.join("\n\n");
+}
+
 function formatTurns(session: ScannedSession, fromTurn: number, toTurn: number): string {
   const { info } = session;
   const selected = session.turns.filter((turn) => turn.index >= fromTurn && turn.index <= toTurn);

@@ -208,7 +208,7 @@ export function LinkedText({ text }: { text?: string }) {
 }
 
 // ---------- Fade mask (adds .no-fade to lift the bottom blur when scrolled to bottom or content is shorter than one screen, formerly attachFadeMask) ----------
-export function FadeBox({ className, as = "div", children, html, liftRef }: { className?: string; as?: "div" | "pre"; children?: ReactNode; html?: string; liftRef?: (el: HTMLElement | null) => void }) {
+export function FadeBox({ className, as = "div", children, html, liftRef, elRef }: { className?: string; as?: "div" | "pre"; children?: ReactNode; html?: string; liftRef?: (el: HTMLElement | null) => void; elRef?: (el: HTMLElement | null) => void }) {
   const ref = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const el = ref.current;
@@ -226,7 +226,9 @@ export function FadeBox({ className, as = "div", children, html, liftRef }: { cl
   // Dynamic tag narrowing: `as` actually only takes "div" (default) / "pre" (CmdCard output body);
   // branch rendering + callback ref keeps the ref type of both concrete tags (equivalent to the former <Tag ref>)
   // liftRef (from useLift) is merged in so the collapse can measure/animate this element's height
-  const refCb = (el: HTMLElement | null) => { ref.current = el; liftRef?.(el); };
+  // elRef exposes the element itself (ArgsBox measures its own line count; liftRef is the
+  // collapse animator and must not be borrowed for that without firing its height bookkeeping)
+  const refCb = (el: HTMLElement | null) => { ref.current = el; liftRef?.(el); elRef?.(el); };
   if (as === "pre") {
     return html !== undefined
       ? <pre className={className} ref={refCb} dangerouslySetInnerHTML={{ __html: html }} />
@@ -417,11 +419,11 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
   };
   return (
     <>
-      {/* In-group compact state reuses chg-item (same spacing as edit rows inside change groups); standalone rows keep act.read */}
+      {/* In-group compact state reuses chg-item (same spacing as edit rows inside change groups); standalone rows keep act.read. The leading icon belongs to the group title row only, same as the change/terminal/device sub-rows. */}
       {/* Directory read: folder icon + the directory label (not in lookup groups, not expandable) */}
       {item.details?.isDirectory ? (
         <div className={inGroup ? "chg-item" : "act read"}>
-          <Icon name="folder" size={15} />
+          {!inGroup && <Icon name="folder" size={15} />}
           {cleanPath ? <Ellip className="path" title={cleanPath}>{cleanPath}</Ellip> : item.text || "read"}
         </div>
       ) : (
@@ -430,7 +432,7 @@ export function ReadRow({ item, inGroup }: { item: ToolItem; inGroup?: boolean }
         style={canOpen || isImage ? { cursor: "pointer" } : undefined}
         onClick={isImage ? () => openReadFileInSidebar(item, path || cleanPath) : canOpen ? toggle : undefined}
       >
-        <Icon name="file" size={15} />
+        {!inGroup && <Icon name="file" size={15} />}
         <Ellip className="path" title={cleanPath}>{item.intent || cleanPath || item.text || "read"}</Ellip>
         {cleanPath && (
           <>

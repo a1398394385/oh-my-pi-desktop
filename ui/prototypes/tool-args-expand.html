@@ -1,0 +1,214 @@
+<!doctype html>
+<!-- PROTOTYPE — throwaway. Question: how should a long tool-call args box collapse?
+     Three variants via ?variant=A|B|C, flip with ← → or the bottom bar. -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE · tool args 展开</title>
+<style>
+  :root {
+    --base: #292B2C; --card: #161616; --inset: #2B2B2B; --menu-hl: #363636;
+    --line: #3A3C3D; --line-soft: rgba(255,255,255,.06);
+    --text: #ededef; --dim: #b0b0b6; --faint: #8c8c92;
+    --command-surface: #323232; --command-text: #e5e7eb; --command-output: #a8b0ba;
+    --tint-white-120: rgba(255,255,255,.07);
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+    --line-h: 1.5; --fs: 12px;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--card); color: var(--text); font: 13.5px/1.7 var(--sans); }
+  .stream { width: 760px; margin: 0 auto; padding: 32px 0 120px; }
+  .stream h1 { font-size: 13px; font-weight: 500; color: var(--faint); margin: 0 0 24px; }
+  .prose { color: var(--dim); margin: 18px 0 6px; }
+
+  .cmd {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 20px;
+    font: 12px/1.5 var(--sans); color: var(--dim);
+    padding-right: 15px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .cmd b { color: var(--text); font-weight: 500; }
+  .cmd .tname { font-family: var(--mono); color: var(--text); }
+  .cmd .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--command-surface); flex: none; }
+
+  .cmd-card {
+    margin: -6px 0 18px; background: var(--command-surface); border-radius: 10px;
+    padding: 10px 12px; font-family: var(--mono); font-size: var(--fs);
+    color: var(--command-text); position: relative;
+  }
+  .args {
+    white-space: pre-wrap; word-break: break-all; line-height: var(--line-h);
+  }
+  .args.is-long {
+    max-height: calc(var(--line-h) * 1em * 4); overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1em), transparent);
+    mask-image: linear-gradient(to bottom, black calc(100% - 1em), transparent);
+  }
+  .args.is-long.expanded {
+    max-height: none; -webkit-mask-image: none; mask-image: none;
+  }
+  /* Variant A — button sits on the collapsed last line */
+  .v-a .expand-btn {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: 2px; height: 26px; padding: 0 12px;
+    font: 11.5px/1 var(--sans); color: var(--text);
+    background: var(--menu-hl); border: 1px solid var(--line);
+    border-radius: 999px; cursor: pointer;
+  }
+  .v-a .expand-btn:hover { background: #3f3f3f; }
+
+  /* Variant B — dedicated button row, content never covered */
+  .v-b .foot, .v-d .foot {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 22px; margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid var(--tint-white-120);
+    font: 11.5px/1 var(--sans); color: var(--faint);
+  }
+  .v-b .foot button, .v-d .foot button {
+    font: inherit; color: var(--dim); background: none; border: 0; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 4px; padding: 0;
+  }
+  .v-b .foot button:hover, .v-d .foot button:hover { color: var(--text); }
+
+  /* Variant D — same row, no rule, no line count, button left */
+  .v-d .foot { border-top: 0; justify-content: flex-start; margin-top: 4px; padding-top: 0; height: 18px; }
+  .args.is-scroll {
+    max-height: calc(var(--line-h) * 1em * 4.5); overflow-y: auto;
+    padding-right: 6px;
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1em), transparent);
+    mask-image: linear-gradient(to bottom, black calc(100% - 1em), transparent);
+    overscroll-behavior: contain;
+  }
+
+  /* Variant C — no visible button; whole card toggles, pill appears on hover */
+  .v-c .cmd-card { cursor: pointer; }
+  .v-c .hintbtn {
+    position: absolute; right: 10px; bottom: 6px;
+    font: 11.5px/1 var(--sans); color: var(--text);
+    background: var(--menu-hl); border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 10px; opacity: 0; transition: opacity .12s ease; pointer-events: none;
+  }
+  .v-c .cmd-card:hover .hintbtn { opacity: 1; }
+
+  .switcher {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: #f5f5f5; color: #111; border-radius: 999px;
+    padding: 7px 10px; box-shadow: 0 8px 28px rgba(0,0,0,.5);
+    font: 12px/1 var(--sans); user-select: none; z-index: 10;
+  }
+  .switcher button {
+    width: 26px; height: 26px; border-radius: 50%; border: 0; cursor: pointer;
+    background: #e2e2e2; color: #111; font-size: 13px; line-height: 1;
+  }
+  .switcher button:hover { background: #d2d2d2; }
+  .switcher .lbl { min-width: 190px; text-align: center; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="stream" id="stream">
+  <h1>PROTOTYPE · tool 调用的 args 卡片：折叠 / 展开全部</h1>
+</div>
+
+<div class="switcher">
+  <button id="prev" title="上一个 (←)">←</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" title="下一个 (→)">→</button>
+</div>
+
+<script>
+const VARIANTS = {
+  A: "A · 最后一行覆盖按钮",
+  B: "B · 独立按钮行",
+  C: "C · 整卡点击，悬停提示",
+  D: "D · 按钮左置，仅 4–10 行",
+};
+
+const CASES = [
+  { name: "read", summary: "path: ui-src/components/chat/ToolRow.tsx · limit: 120", rows: 2 },
+  { name: "task", summary: "subagent · 2 tasks", rows: 7 },
+  { name: "eval", summary: "python · 40 lines", rows: 28 },
+];
+
+function argsText(rows) {
+  const lines = ['{', '  "items": ['];
+  for (let i = 1; lines.length < rows - 1; i++) {
+    lines.push(`    { "id": ${i}, "path": "host/session/part-${String(i).padStart(2, "0")}.ts", "limit": 200, "offset": ${i * 200} },`);
+  }
+  lines.push('  ]', '}');
+  return lines.join("\n");
+}
+
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+function card(c, variant) {
+  const text = argsText(c.rows);
+  const long = c.rows > 4;
+  const inRange = long && c.rows <= 10;
+  let foot = "";
+  let btn = "";
+  if (variant === "A" && long) btn = `<button class="expand-btn" data-toggle data-on="收起" data-off="展开全部">展开全部</button>`;
+  if (variant === "C" && long) btn = `<span class="hintbtn" data-toggle data-on="收起" data-off="展开全部">展开全部</span>`;
+  if (variant === "B" && long) foot = `<div class="foot"><span>共 ${c.rows} 行</span><button data-toggle data-on="收起 ↑" data-off="展开全部 ↓">展开全部 ↓</button></div>`;
+  if (variant === "D" && inRange) foot = `<div class="foot"><button data-toggle data-on="收起 ↑" data-off="展开全部 ↓">展开全部 ↓</button></div>`;
+  return `
+    <div class="cmd"><span class="dot"></span><b class="tname">${c.name}</b><span>${esc(c.summary)}</span></div>
+    <div class="cmd-card ${variant === "C" ? "toggleable" : ""}">
+      <div class="args">${esc(text)}</div>
+      ${btn}${foot}
+    </div>`;
+}
+
+function render(variant) {
+  const v = VARIANTS[variant] ? variant : "A";
+  const body = CASES.map((c) => card(c, v)).join("");
+  document.getElementById("stream").innerHTML =
+    `<h1>PROTOTYPE · tool 调用的 args 卡片：折叠 / 展开全部</h1>
+     <div class="case">${body}</div>`;
+  document.body.className = "v-" + v.toLowerCase();
+  document.getElementById("lbl").textContent = VARIANTS[v];
+
+  document.querySelectorAll(".cmd-card").forEach((el, i) => {
+    const textEl = el.querySelector(".args");
+    const rows = CASES[i].rows;
+    if (rows <= 4) {
+      el.querySelectorAll(".expand-btn, .hintbtn, .foot").forEach((n) => n.remove());
+      return;
+    }
+    // D keeps the shipped internal scroll above 10 lines instead of adding a toggle.
+    if (v === "D" && rows > 10) {
+      textEl.classList.add("is-scroll");
+      return;
+    }
+    textEl.classList.add("is-long");
+    const toggle = () => {
+      const open = textEl.classList.toggle("expanded");
+      el.querySelectorAll("[data-toggle]").forEach((b) => { b.textContent = open ? b.dataset.on : b.dataset.off; });
+    };
+    el.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); toggle(); }));
+    if (v === "C") el.addEventListener("click", toggle);
+  });
+}
+
+const q = new URLSearchParams(location.search);
+let cur = VARIANTS[q.get("variant")] ? q.get("variant") : "A";
+if (!q.get("variant")) history.replaceState(null, "", "?variant=" + cur);
+
+function go(key) {
+  cur = key;
+  history.replaceState(null, "", "?variant=" + cur);
+  render(cur);
+}
+const ORDER = ["A", "B", "C", "D"];
+const step = (d) => go(ORDER[(ORDER.indexOf(cur) + d + ORDER.length) % ORDER.length]);
+document.getElementById("prev").onclick = () => step(-1);
+document.getElementById("next").onclick = () => step(1);
+addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea, [contenteditable]")) return;
+  if (e.key === "ArrowLeft") document.getElementById("prev").click();
+  if (e.key === "ArrowRight") document.getElementById("next").click();
+});
+render(cur);
+</script>
+</body>
+</html>

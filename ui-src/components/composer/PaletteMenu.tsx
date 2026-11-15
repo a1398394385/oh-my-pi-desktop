@@ -69,18 +69,61 @@ export default function PaletteMenu({ mode, items, index, loading, composerRef, 
     const composer = composerRef.current;
     const menu = menuRef.current;
     const place = () => {
-      placePaletteCard(composer, menu, slashMode ? Number.POSITIVE_INFINITY : 2.6);
-      if (slashMode && menu) menu.style.overflowY = "hidden";
+      if (!menu) return;
+      const available = placePaletteCard(composer, menu, slashMode ? Number.POSITIVE_INFINITY : 2.6);
+      if (!slashMode) return;
+      menu.style.maxHeight = "";
+      menu.style.overflowY = "hidden";
+      // Whole rows only, using the composer's live space rather than the card's
+      // previous box; the latter can retain one row too many during a zoom change.
+      menu.style.removeProperty("--slash-row");
+      const rowH = menu.querySelector<HTMLElement>(".slash-list .mi")?.offsetHeight || 40;
+      const chrome = 102; // list margins 12 + tabs 44 + footer 44 + card border 2
+      const fitRows = Math.min(5, Math.floor(((available ?? 0) - chrome) / rowH));
+      const rows = Math.max(1, fitRows);
+      if (fitRows < 1) menu.style.setProperty("--slash-row", `${Math.max(24, (available ?? 0) - chrome)}px`);
+      menu.style.setProperty("--slash-rows", String(rows));
     };
     place();
     if (!slashMode || !composer) return;
+    // WebKit settles the composer's zoomed position after the synchronous layout
+    // pass; remeasure on the next frame or the row count uses its old bottom edge.
+    let frame = 0;
+    const deferPlace = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(place);
+    };
+    deferPlace();
+    // A zoom change rescales the card without touching #composer's layout box, so
+    // ResizeObserver stays silent; applyZoom announces it (see shell.ts).
     const observer = new ResizeObserver(place);
     observer.observe(composer);
-    return () => observer.disconnect();
+    window.addEventListener("omp:zoom", deferPlace);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("omp:zoom", deferPlace);
+    };
   }, [composerRef, items.length, loading, mode, slashMode]);
 
+  // Keep the active row in view by setting the list's own scrollTop: scrollIntoView
+  // also scrolls scrollable ancestors (the chat column behind the card), which read
+  // as the whole list sinking on the first step past the visible rows. The target is
+  // an absolute content offset (never `+=`), so fractional row math cannot accumulate
+  // and each step is exactly one row; the list padding is the stop margin at both edges.
+  // offsetTop/offsetHeight already use layout px, unlike zoomed rects, so fractional
+  // visual coordinates cannot round a whole-row scroll down to 39px at 1.5x zoom.
   useLayoutEffect(() => {
-    menuRef.current?.querySelector(".mi.on")?.scrollIntoView({ block: "nearest" });
+    const list = menuRef.current?.querySelector<HTMLElement>(".slash-list, .palette-list");
+    const row = list?.querySelector<HTMLElement>(".mi.on");
+    if (!list || !row) return;
+    const cs = getComputedStyle(list);
+    const padTop = Number.parseFloat(cs.paddingTop) || 0;
+    const padBottom = Number.parseFloat(cs.paddingBottom) || 0;
+    const top = row.offsetTop - list.offsetTop;
+    const bottom = top + row.offsetHeight;
+    if (bottom > list.scrollTop + list.clientHeight - padBottom) list.scrollTop = bottom - list.clientHeight + padBottom;
+    else if (top < list.scrollTop + padTop) list.scrollTop = top - padTop;
   }, [index]);
 
   // The editor retains focus. Left/right switches tabs only for the empty-query

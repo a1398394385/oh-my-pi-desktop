@@ -39,6 +39,7 @@ export const sidebarEn = {
   running: "Running",
   hasNewResults: "New results",
   awaitingApproval: "Awaiting approval",
+  awaitingAnswer: "Awaiting answer",
   lastRunFailed: "Last run failed",
   unpin: "Unpin",
   pinSession: "Pin session",

@@ -32,6 +32,7 @@ import { PHASE_TEXT } from "../translate.ts";
 import { entriesToTranscript } from "../translate-history.ts";
 import { noteTitlePrompt } from "../titles.ts";
 import { readPluginsEnabled } from "../plugin-assets.ts";
+import { readAcpEnabled } from "../profile.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { computerModeActive, readComputerProvider, setComputerMode } from "../computer-mode.ts";
@@ -42,12 +43,7 @@ import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
-import { formatSessionReference } from "../session-context.ts";
-
-// Conversation reference written by the composer's session chip: "@session:<path>",
-// quoted when the path carries whitespace. Matched and stripped before the base's
-// own @mention scan, so the marker never reaches it as prose.
-const SESSION_REF_RE = /@session:(?:"([^"]+)"|(\S+)) ?/g;
+import { inlineSessionRefs } from "../session-context.ts";
 
 // Attachments sent by the frontend along with prompt: images as base64, text-kind as file
 // contents (legacy inline path), path-kind as absolute paths the base @-reads itself
@@ -165,8 +161,12 @@ function sendCommandsFrame(
   hideSessionCommands: boolean,
 ) {
   const computerGateOpen = settingsGet(H.settings, "computer.enabled") === true;
+  // ACP compaction owns the context while its switch is on: a base /compact writes a
+  // compaction boundary into the journal and degrades ACP for the rest of the session
+  // (spec §5.3), so the command is not offered there.
+  const acpOn = readAcpEnabled();
   const commands = list
-    .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]) && (computerGateOpen || c.name !== "computer"))
+    .filter((c) => !REMOVED_SLASH_COMMANDS[c.name] && (!hideSessionCommands || !NEW_SESSION_HIDDEN_SLASH_COMMANDS[c.name]) && (computerGateOpen || c.name !== "computer") && (!acpOn || c.name !== "compact"))
     .concat(GOAL_SLASH_COMMAND, PLAN_SLASH_COMMAND, BTW_SLASH_COMMAND);
   ws.send(
     JSON.stringify({
@@ -362,6 +362,79 @@ async function dirIsEmpty(abs: string): Promise<boolean> {
 // push); returning a string = continue through prompt with that text.
 // prompt() itself also expands file commands / custom TS commands /
 // extension commands (the agentInvoked=false signal is handled in then).
+/** Entry id of the skill-prompt row a dispatch wrote, found on the active branch:
+ *  the leaf moves on once the turn streams, so the end-of-turn settle walks back. */
+function skillEntryIdOf(entry: PoolEntry, text: string): string | null {
+  const branch: Array<{ id?: string; type?: string; customType?: string; attribution?: string; details?: { prompt?: string } }> =
+    entry.manager?.getBranch?.() ?? [];
+  for (let i = branch.length - 1; i >= 0; i--) {
+    const e = branch[i];
+    if (
+      e.type === "custom_message" &&
+      e.customType === SKILL_PROMPT_MESSAGE_TYPE &&
+      e.attribution === "user" &&
+      e.details?.prompt === text
+    ) {
+      return e.id ?? null;
+    }
+  }
+  return null;
+}
+
+/** Dispatch a `/skill:<name>` invocation as a user-attributed skill prompt:
+ *  true = claimed, false = unknown or disabled skill (caller keeps the text).
+ *  Leading and mid-prompt tokens share this path; the base's parser already
+ *  threads the surrounding prose into `args` for the mid-prompt form.
+ *
+ *  The row is drawn twice: once on dispatch so every attached channel shows it
+ *  immediately, then again with its entryId at settle. The id cannot be read
+ *  inline — promptCustomMessage resolves only when the whole run ends (the base
+ *  awaits the run), and the leaf has already moved past the message by then. */
+export function runSkillInvocation(
+  entry: PoolEntry,
+  sessionId: string,
+  parsed: { name: string; args: string; prompt: string },
+): boolean {
+  const skill = entry.session.skillsSettings?.enableSkillCommands
+    ? entry.session.skills.find((c) => c.name === parsed.name)
+    : undefined;
+  if (!skill) return false;
+  const echo = (entryId?: string): void => {
+    entryBus(entry).send(
+      JSON.stringify(
+        stampEvent({ type: "event", sessionId, kind: "user_message", text: parsed.prompt, ...(entryId ? { entryId } : {}) }),
+      ),
+    );
+  };
+  entry.transcript.push({ role: "user", text: parsed.prompt });
+  echo();
+  void buildSkillPromptMessage(skill, parsed, "user")
+    .then((built) =>
+      entry.session.promptCustomMessage(
+        {
+          customType: SKILL_PROMPT_MESSAGE_TYPE,
+          content: built.message,
+          display: true,
+          details: built.details,
+          attribution: "user",
+        },
+        { streamingBehavior: "steer" },
+      ),
+    )
+    .then(() => {
+      const entryId = skillEntryIdOf(entry, parsed.prompt);
+      if (!entryId) return;
+      // A reload rebuilt the transcript meanwhile: claim the row that is still unaddressed
+      const row = entry.transcript.findLast((t) => t.role === "user" && t.text === parsed.prompt && !t.entryId);
+      if (row) row.entryId = entryId;
+      echo(entryId);
+    })
+    .catch((err: unknown) => {
+      entryBus(entry).send(JSON.stringify(stampEvent({ type: "error", sessionId, message: String(err) })));
+    });
+  return true;
+}
+
 async function dispatchSlashInput(
   ws: { send(data: string): unknown },
   sessionId: string,
@@ -369,7 +442,14 @@ async function dispatchSlashInput(
   text: string,
 ): Promise<string | null> {
   const trimmed = text.trim();
-  if (!trimmed.startsWith("/")) return text;
+  if (!trimmed.startsWith("/")) {
+    // Mid-prompt `/skill:<name>` token (the composer's $ completion inserts it
+    // at any word start): without this the draft would reach the model as
+    // plain prose and the skill would never run.
+    const mid = parseSkillInvocation(trimmed);
+    if (mid && runSkillInvocation(entry, sessionId, mid)) return null;
+    return text;
+  }
 
   // Slash-command returns carry the typed command line so the UI can render them as a
   // command card (header = what was typed) instead of an anonymous meta row
@@ -380,28 +460,21 @@ async function dispatchSlashInput(
 
   // 1) /skill:<name>: the base's prompt() does not handle it, the host must dispatch (matching ACP #tryRunSkillCommand)
   const parsed = parseSkillInvocation(trimmed);
-  const skill = parsed && entry.session.skillsSettings?.enableSkillCommands
-    ? entry.session.skills.find((c) => c.name === parsed.name)
-    : undefined;
-  if (parsed && skill) {
-    const built = await buildSkillPromptMessage(skill, parsed, "user");
-    await entry.session.promptCustomMessage(
-      {
-        customType: SKILL_PROMPT_MESSAGE_TYPE,
-        content: built.message,
-        display: true,
-        details: built.details,
-        attribution: "user",
-      },
-      { streamingBehavior: "steer" },
-    );
-    return null;
-  }
+  if (parsed && runSkillInvocation(entry, sessionId, parsed)) return null;
 
   // 2) Removed commands: neither executed nor turned into a prompt (the list is already filtered in pushCommands; this intercepts hand-typed input)
   const removedHint = removedSlashHint(trimmed);
   if (removedHint) {
     sendCommandOutput(removedHint);
+    ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
+    return null;
+  }
+  // 2.1) /compact under ACP: the base compaction would write a boundary into the
+  // journal and degrade ACP for good (spec §5.3) — hand-typed input is closed too.
+  if (readAcpEnabled() && parseSlashCommand(trimmed)?.name === "compact") {
+    sendCommandOutput(
+      hostI18n.t("errors.removedCmd.template", { command: "compact", hint: hostI18n.t("errors.removedCmd.compactAcpOn") }),
+    );
     ws.send(JSON.stringify({ type: "command_result", sessionId, text: trimmed, consumed: true }));
     return null;
   }
@@ -635,25 +708,9 @@ async function handlePrompt(
     finalText = text ? `${textBlocks.join("\n\n")}\n\n${text}` : textBlocks.join("\n\n");
   }
   // Referenced existing sessions ride inside the prompt text as "@session:<path>"
-  // markers (composer chips). Each marker is pulled out and replaced by the
-  // session's turns, appended after the user's own words so the session's first
-  // message (sidebar preview, title generation) stays what the user wrote.
-  // Unreadable (deleted/empty) references are dropped rather than failing the send.
-  const refPaths: string[] = [];
-  finalText = finalText.replace(SESSION_REF_RE, (_m, quoted: string | undefined, plain: string | undefined) => {
-    refPaths.push(quoted ?? plain ?? "");
-    return "";
-  });
-  const sessionBlocks: string[] = [];
-  for (const refPath of refPaths) {
-    // Only the path travels in the text; the block title is the session file name
-    const name = refPath.split("/").pop()?.replace(/\.jsonl$/, "") || "session";
-    const block = refPath ? await formatSessionReference(refPath, name) : null;
-    if (block) sessionBlocks.push(block);
-  }
-  if (sessionBlocks.length > 0) {
-    finalText = finalText.trim() ? `${finalText.trim()}\n\n${sessionBlocks.join("\n\n")}` : sessionBlocks.join("\n\n");
-  }
+  // markers (composer chips); the shared resolver inlines their turns (edit_resend
+  // resolves them the same way).
+  finalText = await inlineSessionRefs(finalText);
   // Natively picked / dropped files arrive as absolute paths. Append each as an @mention so
   // the base reads it into its own fileMention message (text, images, video contact sheets and
   // binary skips are all handled there) instead of inlining the bytes into the user's prompt.

@@ -55,7 +55,6 @@ export const rightZh = {
   bgWidgetWaiting: "等待数据",
   bgWidgetNoData: "暂无数据",
   nameLabel: "名称:",
-  collapse: "收起",
   workDirLabel: "工作目录:",
   commandInputLabel: "命令 / 输入:",
   argsLabel: "参数:",

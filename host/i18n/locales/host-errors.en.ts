@@ -94,6 +94,7 @@ export const hostErrorsEn = {
     extContextSettingPage: "Toggle extended context on the settings page",
     forceRemoved: "Forced tool selection has been removed",
     useForkButton: "Use the fork button under the reply to fork the session",
+    compactAcpOn: "ACP context compression owns the context — use context_status / compress_context instead",
   },
   file: {
     notAFile: "Not a file: {{path}}",

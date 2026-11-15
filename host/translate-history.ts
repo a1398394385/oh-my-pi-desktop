@@ -6,6 +6,7 @@ import { collectFiles, isDevicePath, outReplyArgs, pathOf, summarizeResult, tool
 import type { TranscriptItem, TurnUsage } from "./wire/payloads.ts";
 import { PHASE_TEXT, isJunkPlaceholderText, errorTextOf, stripDcpTags } from "./translate.ts";
 import { BRANCH_TITLE_CUSTOM_TYPE } from "./titles.ts";
+import { isUserRequestEntry, userTurnDraft } from "@oh-my-pi/pi-tui/chat/transcript-entry";
 import { deliveryMarkerOf, deliveryMarkersForSession, type DeliveryMarker } from "./automations/delivery.ts";
 import { advisorHistoryRow } from "./translate-advisor.ts";
 import { readRunChanges } from "./run-changes.ts";
@@ -154,6 +155,22 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
       }
     }
     if (e.type !== "message") {
+      // User-attributed skill (or collab) prompt: the base treats it as a turn-initiating
+      // request, and the live path draws a user bubble for it (runSkillInvocation pushes
+      // that row), so the replay must map the same entry back. Its draft text is
+      // details.prompt — the raw content is the expanded skill body. Without this branch
+      // the generic custom_message skip below drops the bubble on every reload.
+      if (e.type === "custom_message" && isUserRequestEntry(e)) {
+        const draft = userTurnDraft(e) ?? "";
+        if (draft.trim()) {
+          const tsCustom = Date.parse(e.timestamp ?? "") || 0;
+          finalizeRun();
+          out.push({ role: "user", text: draft, entryId: e.id });
+          lastUser = out[out.length - 1];
+          run = { items: [], usage: null, startMs: tsCustom, endMs: tsCustom };
+        }
+        continue;
+      }
       if (e.type === "ttsr_injection") {
         // Historical replay: the disk entry keeps only the injected names (rule bodies are
         // never persisted), so the row carries no descriptions

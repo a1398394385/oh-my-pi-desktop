@@ -277,3 +277,40 @@ describe("translate.ts write and edit diff generation", () => {
     expect(resLn.rows[2]).toMatchObject({ kind: "added", text: "new", no: 11 });
   });
 });
+
+describe("translate.ts terminal tool details", () => {
+  const entry = (): PoolEntry =>
+    ({ cwd: "/session/dir", transcript: [], assistantDraft: "" }) as unknown as PoolEntry;
+
+  test("bash end carries the directory the command ran in", () => {
+    const e = entry();
+    translateEvent({ type: "tool_execution_start", toolName: "bash", toolCallId: "c_cwd", args: { command: "ls" } }, e);
+    const payload = translateEvent(
+      {
+        type: "tool_execution_end",
+        toolName: "bash",
+        toolCallId: "c_cwd",
+        args: { command: "ls", cwd: "/tmp/other" },
+        result: { details: { cwd: "/tmp/other" } },
+      },
+      e,
+    ) as { details?: { cwd?: string } } | null;
+    expect(payload?.details?.cwd).toBe("/tmp/other");
+  });
+
+  test("a backgrounded bash end keeps async alongside the directory", () => {
+    const e = entry();
+    translateEvent({ type: "tool_execution_start", toolName: "bash", toolCallId: "c_bg", args: { command: "sleep 9" } }, e);
+    const payload = translateEvent(
+      {
+        type: "tool_execution_end",
+        toolName: "bash",
+        toolCallId: "c_bg",
+        args: { command: "sleep 9" },
+        result: { details: { async: { jobId: "job-1" }, cwd: "/tmp/other" } },
+      },
+      e,
+    ) as { details?: { cwd?: string; async?: { jobId?: string } } } | null;
+    expect(payload?.details).toMatchObject({ async: { jobId: "job-1" }, cwd: "/tmp/other" });
+  });
+});

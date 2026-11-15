@@ -133,7 +133,7 @@
 
 /* The mask must be opaque: several derived themes set a translucent --line,
    which would let the gradient bleed through on the "unfilled" stretch */
-.think-track { position: relative; height: 20px; border-radius: 999px; background: var(--panel-2); cursor: pointer; touch-action: none; }
+.think-track { position: relative; height: 22px; border-radius: 999px; background: var(--panel-2); cursor: pointer; touch-action: none; }
 
 /* The reveal is a clip on the gradient, not an opaque overlay on top of it: an
    overlay sharing the track's exact rounded box leaves an anti-aliased seam
@@ -153,11 +153,45 @@
     color-mix(in srgb, var(--brand-4) 75%, var(--panel)));
 }
 
-.think-dot { position: absolute; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--faint); opacity: .45; }
+.think-dot { position: absolute; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--faint); opacity: .22; }
 
-.think-knob { position: absolute; top: 0; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%;
+.think-knob { position: absolute; top: 0; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%;
   background: var(--white); box-shadow: 0 1px 4px var(--tint-black-400), 0 0 0 1px var(--tint-black-60);
   transition: left 160ms ease; }
+
+/* Top tier: the gradient fills the capsule and bubbles stream right→left inside
+   it, so a maxed-out level reads as saturated rather than "just further right".
+   Sizes/pace/phase/opacity arrive as inline vars (ModelMenu generates them once
+   per menu open); the layer clips to the capsule and sits under the knob.
+   The tier dots keep their resting style — on a full gradient they are barely
+   there, and brightening them would compete with the bubbles. */
+
+.think-bubbles { position: absolute; inset: 0; border-radius: 999px; overflow: hidden; pointer-events: none; }
+
+.think-bubbles span { position: absolute; top: var(--y); left: 0; width: var(--s); height: var(--s); border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--white), var(--tint-white-750) 58%, var(--tint-white-200) 100%);
+  /* a sub-2px bubble would vanish on the gradient without a faint rim */
+  box-shadow: 0 0 2.5px color-mix(in srgb, var(--white) 55%, transparent);
+  opacity: var(--o); transform: translateX(var(--track-w, 0px));
+  animation: thinkBubble var(--d) linear var(--delay) infinite; }
+
+@keyframes thinkBubble {
+  from { transform: translateX(var(--track-w, 0px)); }
+  to { transform: translateX(-8px); }
+}
+
+/* Light surfaces: white on the pale gradient loses its edge — a hairline bubble wall */
+:is([data-theme="light"], [data-theme-mode="light"]) .think-bubbles span {
+  box-shadow: 0 0 0 .5px color-mix(in srgb, var(--text) 22%, transparent), 0 0 3px var(--tint-white-200);
+}
+
+/* Reduced motion (or motion switched off): a frozen field of dots reads as dirt
+   on the track, so the bubbles are dropped entirely — the full gradient already
+   carries the top tier. */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion="on"]) .think-bubbles { display: none; }
+}
+html[data-motion="off"] .think-bubbles { display: none; }
 
 /* Flyout utility rows: the "Model Role" entry keeps the cascade chevron, "Manage models" renders dimmed */
 .menu.flyout .mi .sub { margin-left: auto; color: var(--faint); display: inline-flex; }

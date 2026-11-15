@@ -267,6 +267,19 @@
 /* user-select:text counters .msg.user's none: only the text line boxes get the selection color, not the bubble around them */
 .user-msg-text { width: fit-content; max-width: 100%; user-select: text; -webkit-user-select: text; }
 
+/* Fold toggle for long user bubbles (UserMsg.tsx): a chevron pinned to the bubble's
+   bottom-right corner. The bubble reserves a band below its last text line — and, while
+   folded, a right slot — so the icon never sits on the text it would cover. */
+.msg.user .user-bubble.foldable:not(.folded) { padding-bottom: 26px; }
+.msg.user .user-bubble.folded { padding-right: 34px; }
+.msg.user .user-bubble > .ub-fold { position: absolute; right: 6px; bottom: 3px; }
+.msg.user .user-bubble.folded > :not(.user-msg-text):not(.ub-fold) { display: none; }
+/* Folded: the message's first line only (a wrapped first line is clipped at one line box) */
+.msg.user .user-bubble.folded .user-msg-text {
+  width: auto; max-height: 1.55em; overflow: hidden;
+  -webkit-mask-image: none; mask-image: none;
+}
+
 /* Attachment thumbnails inside the user bubble: the height cap is a fixed 75px, so a
    tall screenshot cannot inflate the bubble. The multi-image tiles use the same side
    length to stay square. */
@@ -740,6 +753,25 @@
   mask-image: none;
 }
 
+/* Folded args body (ToolRow.tsx ArgsBox, 5–10 lines): four whole lines plus the .cmd-card-foot
+   toggle row instead of an inner scrollbar. The 8px is the block's own padding-bottom — kept
+   out of the four rows so the fold never cuts a line in half. Expanded state drops the cap and
+   lets FadeBox add .no-fade on its own (content no longer overflows). */
+.cmd-card-cmd.folded { max-height: calc(1.5em * 4 + 8px); overflow: hidden; }
+.cmd-card-cmd.folded.open { max-height: none; }
+
+/* Left-aligned toggle row under a folded args body: no rule, no line count, same row metrics
+   as the caret row it replaces. */
+.cmd-card-foot { display: flex; height: 18px; margin-top: 4px; }
+
+.cmd-card-foot button {
+  display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none;
+  font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm); line-height: 1;
+  color: var(--dim); cursor: pointer;
+}
+
+.cmd-card-foot button:hover, .cmd-card-foot button:focus-visible { color: var(--text); }
+
 /* `out://` mid-call replies (items.tsx OutReply): the agent's prose as its own card, drawn
    in place of a reply `write`'s tool row (base parity: the TUI mounts the reply block, not
    the card) and after a terminal row for eval/bash replies. Surfaces and radii mirror
@@ -880,14 +912,33 @@
 .flash { animation: flashBg 1.2s ease; border-radius: 8px; }
 
 /* ── Message rail (#msgRail): a vertical strip left of the main chat area, one horizontal tick per user message ────────
-   Ticks sit 15 CSS px apart (JS-compressed when too many), 12.5 long x 1.95 thick, centred on the rail's midline. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line longest x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. The user message currently pinned at the stream top keeps its tick lit (.pin) — widths stay pointer-only. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
+   Ticks sit a fixed 11.25 CSS px apart and 12.5 long x 1.95 thick. The strip is capped at 4/6 of the stream's visible height and centred; past that the ticks scroll inside it (scrollbar hidden, both edges feathered by the mask) so the pitch never collapses into a solid block. A global mousemove assigns lengths by a Gaussian of the pointer Y's distance to each tick centre (nearest line longest x2.5, continuous through the gaps); 150ms after that peak holds still its ring-pop card appears to the right. The user message currently pinned at the stream top keeps its tick lit (.pin) — widths stay pointer-only. Music-reactive mode swaps the Gaussian for each tick's own band energy (band 0 = bass at the top). */
 #msgRail {
-  position: absolute; left: 8px; width: 22px; z-index: 60;
+  position: absolute; left: 8px; width: 33px; z-index: 60; /* ≥ tick peak length (12.5 × 2.5) so the scroller cannot clip it */
   pointer-events: none; /* the container itself doesn't block messages; ticks are individually hoverable */
 }
 
 /* Hide the left message rail when the content column margin < 65px (JS adds .rail-off to #main from the measured margin), so ticks don't crowd the content column */
 #main.rail-off #msgRail { display: none; }
+
+.rail-scroll {
+  display: flex; flex-direction: column; height: 100%;
+  overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.rail-scroll::-webkit-scrollbar { display: none; }
+
+/* Only an overflowing rail takes the wheel and shows the feather; a short stack stays
+   click-through and loses no tick length to the mask. */
+.rail-scroll.scrollable {
+  pointer-events: auto;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--black) 18px, var(--black) calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, var(--black) 18px, var(--black) calc(100% - 18px), transparent 100%);
+}
+
+/* margin auto centres the stack while it fits; once contentH exceeds the box the auto
+   margins collapse to 0 and the scroll reaches the first tick */
+.rail-track { position: relative; flex: none; margin: auto 0; }
 
 .rail-tick {
   position: absolute; left: 0; height: 4px; border-radius: 4px; /* placeholder; actual thickness/pill rounding written by JS */
@@ -900,7 +951,7 @@
 /* invisible hit pad: the 2px line itself is near-impossible to click; the pad spans the
    whole rail width and the gap to the neighbors, so a click anywhere in the tick's band
    reaches it (the rail-level click handler resolves the peak tick, not the DOM hit) */
-.rail-tick::after { content: ""; position: absolute; left: 0; width: 22px; top: -5px; bottom: -5px; }
+.rail-tick::after { content: ""; position: absolute; left: 0; width: 33px; top: -5px; bottom: -5px; }
 
 .rail-tick.pin { background: var(--text); } /* scroll-pinned message's tick: the only lit tick; pointer hover drives widths only */
 

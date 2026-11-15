@@ -19,6 +19,7 @@ export const notifyZh = {
   remoteKeySubmit: "连接",
   // Working-state text (store/session.ts)
   working: "正在处理…",
+  outputting: "正在输出",
   thinking: "正在思考",
   thinkingLabel: "思考",
   thinkingDone: "{{label}}",

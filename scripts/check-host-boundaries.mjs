@@ -83,6 +83,9 @@ const ALLOWED_EDGES = new Set([
   // rpc/prompt.ts reuses formatSessionReference for the composer's @ session attachment: a referenced session is
   // rendered by the same turn parser instead of a second JSONL reader.
   "rpc/session.ts→session-text-search.ts", "session-text-search.ts→session-context.ts", "rpc/prompt.ts→session-context.ts",
+  // edit_resend resolves the composer's "@session:<path>" markers with the same
+  // inliner the prompt path uses (the base does not know the marker).
+  "rpc/session.ts→session-context.ts",
   // GUI env bootstrap: thin entry host.ts fires the PATH augment early
   // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
   // the same idempotent-singleton promise
@@ -275,6 +278,9 @@ const ALLOWED_EDGES = new Set([
   // same frame shape); UiEvent comes from the wire payload contract.
   "session-lifecycle.ts→delta-coalesce.ts", "delta-coalesce.ts→wire/payloads.ts",
   "session-lifecycle.ts→profile.ts", "session-lifecycle.ts→assets.ts",
+  // The composer's slash list drops /compact while ACP owns the context, and hand-typed
+  // input is intercepted on the way in (acp.enabled read from omp-desktop.json).
+  "rpc/prompt.ts→profile.ts",
   "session-lifecycle.ts→queue.ts", "session-lifecycle.ts→plan.ts",
   // A12 split: the session snapshot family (goal/todos/context/stats pushes +
   // the collapsed session_created frame body) lives in session-snapshot.ts;
@@ -500,6 +506,9 @@ const ALLOWED_EDGES = new Set([
   "rpc/collab.ts→state.ts", "rpc/collab.ts→i18n/host.ts", "rpc/collab.ts→stderr.ts",
   "rpc/collab.ts→wire/frames-live.ts", "rpc/collab.ts→rpc/types.ts",
   "rpc/index.ts→rpc/collab.ts", "rpc/prompt.ts→rpc/collab.ts", "rpc/session.ts→rpc/collab.ts",
+  // edit_resend re-dispatches an edited `/skill:<name>` draft through the same
+  // user-attributed skill path the composer uses (one dispatch implementation).
+  "rpc/session.ts→rpc/prompt.ts",
   // rpc/worktree.ts: git worktree session create/status/remove over Bun.spawn
   "rpc/worktree.ts→rpc/types.ts", "rpc/index.ts→rpc/worktree.ts",
   // rpc/git-graph.ts: read-only commit graph + commit detail for the middle-column

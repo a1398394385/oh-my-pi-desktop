@@ -250,7 +250,9 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 // Window 20_000: reserve = max(15% = 3000, default 16384) = 16384 -> guard 3616.
 // Zone render ~3200 + active 8x~100 -> projected ~4000 > 3616 at tier L2.
 {
-	const fx = makeSynthFixture(FIXTURE_PARAMS, 8, 20_000);
+	// Tier judgment reads the projected total (~4000), so the L3 line sits above
+	// the guard breach for this fixture to stay at L2.
+	const fx = makeSynthFixture({ ...FIXTURE_PARAMS, l3: 5_000 }, 8, 20_000);
 	fx.state.zone = [zoneBlock(3200, [])];
 	const out = fx.state.projectView(fx.view);
 	assert.equal(fx.state.roundStatus!.tier, "L2", "guard fixture sits at L2, not L3");

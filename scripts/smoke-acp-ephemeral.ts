@@ -45,7 +45,7 @@ import {
 	createAcpProjectionExtension,
 	createCompressContextTool,
 } from "../host/acp-runtime.ts";
-import { computeRoundPlan, milestoneFor, type AcpParams } from "../host/acp-plan.ts";
+import { ACP_DEFAULT_PARAMS, acpParamsFromConfig, computeRoundPlan, milestoneFor, type AcpParams } from "../host/acp-plan.ts";
 import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { createAcpStatusTool } from "../host/acp-status-tool.ts";
 import { assertToolPairing, type AcpBlockInfo } from "../host/acp-projection.ts";
@@ -437,14 +437,14 @@ function ephemeralText(fx: Fixture): string {
 	assert.ok(again !== null && again === first, `reset re-warns from the first line (got ${again})`);
 
 	// L2 and L3 lines each fire once and then stay silent. Climb one block at
-	// a time and count what lands (the strengthened L2 wording is the tell).
+	// a time and count what lands (runtime tier identifies L2 independently of copy).
 	let l2Hits = 0;
 	let l3Hits = 0;
 	for (let i = 0; i < 80; i++) {
 		grow(fx, 1);
 		fx.state.projectView(fx.view);
 		const tail = textOf(fx.state.lastProjected.at(-1)!);
-		if (/milestone=/.test(tail) && /Do not start new work/.test(tail)) l2Hits++;
+		if (/milestone=/.test(tail) && fx.state.roundStatus!.tier === "L2") l2Hits++;
 		if (/milestone=/.test(tail) && /Final notice \(L3\)/.test(tail)) l3Hits++;
 		if (fx.state.roundStatus!.tier === "L3" && l3Hits > 0) break;
 	}
@@ -646,6 +646,26 @@ const cwdE2E = mkdtempSync(join(tmpdir(), "acp-t4-e2e-"));
 	fx.state.projectView(fx.view);
 	assert.equal(fx.state.lastBlocks[0].tokens, glm5Count, "re-binding back recomputes (memo really was cleared)");
 	console.log("ok: G tokenizer rebind — encoding swap + memo invalidation round-trip");
+}
+
+// --- H: percent tier lines follow the window handed to rebindModel ---------------
+
+{
+	// Load/branch paths build the runtime with no model, so tierMode=percent starts
+	// window-less; only rebindModel knows the window. Regression guard: the lines
+	// used to freeze at the creation-time conversion, leaving the session at L3.
+	const state = new AcpRuntimeState({
+		countTokens,
+		sink: { appendCustomEntry: () => "" },
+		getEntries: () => [],
+		params: { l1: 25, l2: 50, l3: 75 },
+		resolveParams: (window) => acpParamsFromConfig({ tierMode: "percent", l1: 25, l2: 50, l3: 75 }, window),
+	});
+	assert.equal(state.params.l3, ACP_DEFAULT_PARAMS.l3, "window-less construction keeps the default absolute lines");
+	state.rebindModel({ tokenizer: "glm5", contextWindow: 1_000_000 });
+	assert.equal(state.params.l1, 250_000, "rebind re-derives the percent lines from the real window");
+	assert.equal(state.params.l3, 750_000);
+	console.log("ok: H percent tier lines rebind — the window is only known after rebindModel");
 }
 
 console.log("\nALL ACP T4 EPHEMERAL SMOKE CHECKS PASSED");

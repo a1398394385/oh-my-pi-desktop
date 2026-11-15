@@ -8,8 +8,9 @@
 //   3. Typing a removed command by hand (including the /models alias and the /force:bash colon form) -> command_output notice + command_result(consumed)
 //   4. A removed command produces no event frames (neither executes nor lands as a prompt)
 //   5. Non-removed commands execute as usual (/context goes through the builtin dispatch)
-import { smokeEnv } from "./smoke-profile.ts";
+import { profileAgentPath, smokeEnv } from "./smoke-profile.ts";
 import { spawn } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 
 const args = process.argv.slice(2);
@@ -17,10 +18,27 @@ let child: ReturnType<typeof spawn> | null = null;
 let wsUrl = args[0];
 const createdFiles: string[] = [];
 
+// The list differs by design while ACP owns the context, so pin the switch instead
+// of trusting whatever the profile happens to hold, then restore it on exit.
+const cfgPath = profileAgentPath("omp-desktop.json");
+const cfgBackup = readFileSync(cfgPath, "utf8");
+function writeAcp(enabled: boolean): void {
+  const doc = JSON.parse(cfgBackup) as Record<string, unknown>;
+  doc.acp = { ...(doc.acp as object | undefined), enabled };
+  writeFileSync(cfgPath, JSON.stringify(doc, null, 2));
+}
+function restoreConfig(): void {
+  try {
+    writeFileSync(cfgPath, cfgBackup);
+  } catch {}
+}
+writeAcp(false);
+
 function fail(msg: string): never {
   console.error("✗ " + msg);
   if (child?.pid) child.kill("SIGTERM");
   for (const f of createdFiles) rm(f).catch(() => {});
+  restoreConfig();
   process.exit(1);
 }
 
@@ -115,7 +133,6 @@ const cases: Array<{ text: string; hint: string }> = [
   { text: "/switch deepseek/deepseek-flash", hint: "/switch 已移除" },
   { text: "/force:bash", hint: "/force 已移除" },
   { text: "/extended-context on", hint: "/extended-context 已移除" },
-  { text: "/computer status", hint: "/computer 已移除" },
   { text: "/skillful on", hint: "/skillful 已移除" },
   { text: "/prewalk", hint: "/prewalk 已移除" },
   { text: "/fast status", hint: "/fast 已移除" },
@@ -131,6 +148,15 @@ for (const c of cases) {
   console.log(`✓ ${c.text} → ${out.text}`);
 }
 
+// 3b) /computer is desktop-routed, not "removed": the toggle status line comes back
+send({ type: "prompt", sessionId, text: "/computer status", images: [] });
+const computerOut = await waitFor(
+  (f) => f.type === "command_output" && String(f.text).startsWith("电脑控制："),
+  "/computer status 的 command_output",
+);
+await waitFor((f) => f.type === "command_result" && f.text === "/computer status", "/computer status 的 command_result");
+console.log(`✓ /computer 由桌面接管：${String(computerOut.text)}`);
+
 // 4) Intercepted commands produce no event frames (no sneaky turn opened)
 const eventsAfter = seen.filter((f) => f.type === "event").length;
 if (eventsAfter !== eventsBefore) fail(`拦截的命令仍触发 ${eventsAfter - eventsBefore} 条事件帧`);
@@ -141,7 +167,44 @@ const ctxOut = await waitFor((f) => f.type === "command_output" && String(f.text
 await waitFor((f) => f.type === "command_result" && f.text === "/context", "/context 的 command_result");
 console.log(`✓ /context 照常执行：${String(ctxOut.text).split("\n")[0]}`);
 
+// 6) ACP owns the context: /compact leaves the list and hand-typed input is refused
+const nextCommands = async (label: string): Promise<CommandEntry[]> => {
+  const before = seen.filter((f) => f.type === "commands").length;
+  send({ type: "list_commands", sessionId });
+  const start = Date.now();
+  for (;;) {
+    const frames = seen.filter((f) => f.type === "commands");
+    if (frames.length > before) return frames.at(-1)!.commands ?? [];
+    if (Date.now() - start > 20_000) fail(`等待超时: ${label}`);
+    await Bun.sleep(25);
+  }
+};
+writeAcp(true);
+const acpNames = (await nextCommands("ACP 开启的 commands 清单")).map((c) => c.name);
+if (acpNames.includes("compact")) fail("ACP 开启时候选清单仍含 /compact");
+if (!acpNames.includes("todo")) fail("ACP 开启时误删了保留命令");
+send({ type: "prompt", sessionId, text: "/compact", images: [] });
+const acpOut = await waitFor(
+  (f) => f.type === "command_output" && String(f.text).includes("/compact 已移除"),
+  "ACP 开启时 /compact 的 command_output",
+);
+await waitFor((f) => f.type === "command_result" && f.text === "/compact" && f.consumed === true, "ACP 开启时 /compact 的 command_result");
+console.log(`✓ ACP 开启：清单不含 /compact，手打被拦 → ${String(acpOut.text).split("\n")[0]}`);
+writeAcp(false);
+if ((await nextCommands("ACP 关闭的 commands 清单")).some((c) => c.name === "compact") === false) {
+  fail("ACP 关闭后 /compact 没有回到清单");
+}
+console.log("✓ ACP 关闭：/compact 回到清单");
+
 console.log("\n全部断言通过");
-if (child?.pid) child.kill("SIGTERM");
+if (child?.pid) {
+  // Restore only after the child is gone: a late config flush from the host would
+  // otherwise overwrite the backup with the pinned value.
+  const { promise: exited, resolve } = Promise.withResolvers<void>();
+  child.once("exit", () => resolve());
+  child.kill("SIGTERM");
+  await exited;
+}
 for (const f of createdFiles) await rm(f).catch(() => {});
+restoreConfig();
 process.exit(0);

@@ -1,7 +1,7 @@
 // Tool rows: tool name → label kind mapping and per-label row rendering. Migrated from
 // ui/tool-labels.js (renderToolItem/toolKind + the render functions). Adding or removing a
 // tool label only touches this file.
-import { memo, useState } from "react";
+import { memo, useLayoutEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { ToolItem } from "../../types/session";
 import { bumpGroupExpand, useGroupExpandVersion, cmdExpand, devExpand } from "../../store/groupExpand";
@@ -369,6 +369,48 @@ function AskArgs({ questions }: { questions: NonNullable<NonNullable<ToolItem["a
     </div>
   );
 }
+// Args JSON body. A payload of 5–10 rendered lines folds to 4 whole lines with a left-aligned
+// "show all" row instead of an inner scrollbar: that range is short enough to read in one go,
+// and a nested scroll inside the stream's scroll chain costs a second gesture for two lines.
+// Past 10 lines the shipped 4.5-line internal scroll stays. Line count is measured, not
+// predicted: the JSON wraps at word breaks, so only the rendered height knows.
+const ARGS_FOLD_ROWS = 4;
+const ARGS_FOLD_LIMIT = 10;
+function ArgsBox({ text }: { text: string }) {
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [rows, setRows] = useState(0);
+  const [open, setOpen] = useState(false);
+  useLayoutEffect(() => {
+    if (!el) return;
+    const measure = () => {
+      const cs = getComputedStyle(el);
+      const lineHeight = Number.parseFloat(cs.lineHeight) || 18;
+      const inner = el.scrollHeight - (Number.parseFloat(cs.paddingTop) || 0) - (Number.parseFloat(cs.paddingBottom) || 0);
+      setRows(Math.round(inner / lineHeight));
+    };
+    measure();
+    // A width change (window/zoom) rewraps the payload, so the line count moves with it
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el, text]);
+  const fold = rows > ARGS_FOLD_ROWS && rows <= ARGS_FOLD_LIMIT;
+  return (
+    <>
+      <FadeBox elRef={setEl} className={"cmd-card-cmd" + (fold ? " folded" : "") + (fold && open ? " open" : "")}>
+        {text}
+      </FadeBox>
+      {fold ? (
+        <div className="cmd-card-foot">
+          <button type="button" onClick={() => setOpen(!open)}>
+            {open ? t("chat.argsCollapse") : t("chat.argsExpand")}
+            <Icon name={open ? "chevronUp" : "chevronDown"} size={12} />
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
 // input: the row's former summary (icon/label/parameters) moved into the card head, so the
 // collapsed row can lead with the model-written intent; callers that pass it keep their own
 // layout instead of the raw args JSON
@@ -390,9 +432,7 @@ function ContentCard({ item, liftRef, noInput, input }: { item: ToolItem; liftRe
       ) : item.name === "ask" && Array.isArray(item.args?.questions) ? (
         <AskArgs questions={item.args.questions} />
       ) : (
-        <FadeBox className="cmd-card-cmd">
-          {truncateText(item.args ? JSON.stringify(item.args, null, 2) : t("chat.noParams"))}
-        </FadeBox>
+        <ArgsBox text={truncateText(item.args ? JSON.stringify(item.args, null, 2) : t("chat.noParams"))} />
       )}
       {item.name !== "task" && (
         <FadeBox className="cmd-card-out" as="pre">

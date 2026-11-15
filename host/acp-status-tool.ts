@@ -34,9 +34,11 @@ export interface AcpRoundStatusFields {
  * call context_status there, so L3 must point at the manifest already in the request instead. */
 const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams, forced: boolean) => string> = {
 	L1: () =>
-		"Active-zone context is above the activation line (L1). You may continue the current task. At a natural pause, such as after completing a step, consider calling context_status and using compress_context to fold completed or settled work into a summary, while keeping anything still needed.",
+		"Context total is above the activation line (L1). Continue the current step, including its required validation. At the next settled boundary, apply the CLOSED and SAFE checks using the latest context_status manifest. Compress useful settled or redundant history when safe and feasible. Otherwise, continue the current task and reconsider after a relevant state change.",
 	L2: (p) =>
-		`Active-zone context is large (L2). Do not start new work. Compress as soon as the current step ends: call context_status for the manifest, then compress_context with the short ids (bN) to keep and a summary covering every other listed block. Keep + the protected tail must land under the target of ${p.target} tokens — putting compression off only brings the forced round closer.`,
+		`Context total is large (L2). Prioritize compression at the next settled boundary; do not interrupt the current step or its required validation. Apply the CLOSED and SAFE checks using the latest context_status manifest. Compress a safe subset promptly, keeping only listed bN ids that require verbatim content; keep + protected tail must be at most ${p.target} tokens.
+
+If no safe, feasible submission exists, take only the next bounded action of the current task needed to resolve that blocker, or await the required result, then reassess. If neither is possible, report the concrete blocker. Do not start unrelated work, repeatedly poll unchanged status, or repeat an unchanged failed submission. Lack of a new discovery or a unique solution does not justify delay.`,
 	L3: (_p, forced) =>
 		forced
 			? "Final notice (L3): context usage is critically high. This request is pinned to compress_context — compress now, before any other work, with a full summary of the listed blocks above you are not keeping."

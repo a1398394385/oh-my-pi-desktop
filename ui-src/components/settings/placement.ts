@@ -228,7 +228,7 @@ export const PAGE_PLACEMENT: Record<string, Section[]> = {
     { from: "tools/Developer", excludeKeys: ["dev.autoqa", "dev.autoqaPush.endpoint", "spotlight.experiment.enabled"] },
   ],
   "pg-agents": [
-    { from: "tasks/Modes" },
+    { from: "tasks/Modes", excludeKeys: ["title.generator", "title.icons"] },
     { from: "tasks/Subagents" },
     { from: "tasks/Isolation" },
   ],
@@ -280,6 +280,10 @@ export function expandSection(section: Section, schema: Record<string, SchemaDef
 export const SPECIAL_KEY_PAGES: Record<string, string> = {
   "hideThinkingBlock": "pg-appearance",
   "ask.timeout": "pg-interaction",
+  // Base first-naming knobs, merged into the interaction page's session-titles
+  // card (InteractionPage TITLE_SCHEMA_SECTION).
+  "title.generator": "pg-interaction",
+  "title.icons": "pg-interaction",
   "computer.enabled": "pg-computer",
   "computer.display": "pg-computer",
   "browser.enabled": "pg-computer",
@@ -448,6 +452,12 @@ export const HIDDEN_KEYS: Record<string, true> = {
   // inside its bundle and updates through the Tauri updater, so the row would
   // only ever lie.
   "update.auto": true,
+  // Base title auto-refresh paths, pinned off per desktop session by
+  // createSessionCore (host/session-lifecycle.ts) so the desktop's own
+  // judge-gated refresh owns retitling; editing them here changes only the
+  // CLI, so the rows would lie. The desktop's switches live on the general page.
+  "title.refreshAfterPrompts": true,
+  "title.refreshOnReplan": true,
 };
 
 // Preset default static map (covers all settings keys of SETTINGS_ZH); fallback when schema is not yet loaded or for offline tests
@@ -456,7 +466,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
     "power.sleepPrevention", "startup.quiet",
   ],
   "pg-interaction": [
-    "ask.timeout",
+    "ask.timeout", "title.generator", "title.icons",
     "steeringMode", "followUpMode", "interruptMode", "tui.vimMode",
     "tui.vimModeDisplay", "loop.mode", "loop.conditionTimeoutMs", "composer.recallClearedDrafts",
     "treeFilterMode", "autocompleteMaxVisible", "spelling.typoDetection",
@@ -551,7 +561,7 @@ const DEFAULT_PAGE_KEYS: Record<string, string[]> = {
   ],
   "pg-agents": [
     "plan.enabled", "plan.defaultOnStartup", "plan.autosave", "plan.autosaveDir",
-    "goal.enabled", "goal.statusInFooter", "goal.continuationModes", "title.refreshOnReplan",
+    "goal.enabled", "goal.statusInFooter", "goal.continuationModes",
     "task.eager", "task.batch", "task.enableEffort", "task.maxConcurrency",
     "task.enableLsp", "task.maxRecursionDepth", "task.maxRuntimeMs", "task.agentIdleTtlMs",
     "task.softRequestBudget", "task.softRequestBudgetNotice", "task.maxEffort", "task.prewalk",

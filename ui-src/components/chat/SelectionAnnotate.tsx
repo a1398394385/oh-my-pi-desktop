@@ -12,8 +12,12 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
 import { placeMenu } from "../../shell";
-import { REMOTE } from "../../store/layout";
 import { addAnnotation } from "../../store/annotations";
+
+// Touch-only clients (phones, tablets — remote viewers included) select through
+// long-press and drag handles: mouseup / keyup never fire reliably there and the pill
+// fights the handles, so annotating stays a pointer-device feature.
+const coarseMql = window.matchMedia("(pointer: coarse)");
 
 // Only assistant output is annotatable: message bubbles (streaming tail included)
 // and the subagent detail's submitted report (HubDetail tags its result box).
@@ -85,12 +89,20 @@ export default function SelectionAnnotate() {
   const [target, setTarget] = useState<Target | null>(null);
   const [editing, setEditing] = useState(false);
   const [comment, setComment] = useState("");
+  const [touch, setTouch] = useState(coarseMql.matches);
   const targetRef = useRef<Target | null>(null);
   const editingRef = useRef(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   targetRef.current = target;
   editingRef.current = editing;
+
+  // A tablet gaining or losing a mouse flips the pointer media query.
+  useEffect(() => {
+    const on = (e: MediaQueryListEvent) => setTouch(e.matches);
+    coarseMql.addEventListener("change", on);
+    return () => coarseMql.removeEventListener("change", on);
+  }, []);
 
   const place = useCallback(() => {
     const el = boxRef.current;
@@ -125,7 +137,7 @@ export default function SelectionAnnotate() {
   // on its text. While the comment box owns the focus, selection changes are the box's
   // own caret and must not wipe the anchored card.
   useEffect(() => {
-    if (REMOTE) return;
+    if (touch) return;
     let raf = 0;
     const refresh = () => {
       raf = 0;
@@ -156,7 +168,7 @@ export default function SelectionAnnotate() {
       document.removeEventListener("keyup", schedule);
       document.removeEventListener("scroll", onScroll, true);
     };
-  }, [place]);
+  }, [place, touch]);
 
   useEffect(() => {
     if (editing) taRef.current?.focus();
@@ -207,7 +219,7 @@ export default function SelectionAnnotate() {
     submit();
   };
 
-  if (REMOTE) return null;
+  if (touch) return null;
   return createPortal(
     editing && target ? (
       <div className="annot-card" ref={boxRef}>

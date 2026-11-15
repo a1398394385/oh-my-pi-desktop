@@ -9,6 +9,7 @@ import type { AppStore } from "./index";
 import { useAppStore } from "./index";
 import type { UiPrefs } from "./shapes";
 import type { ContextDetailFrame, GitOperationState, GitStatusFile, KeepaliveStatusFrame, LimitsResultFrame, FileMatch, PromptAttachment, SlashCommand } from "../types/frames";
+import type { QuoteNote } from "../lib/conversation-quote";
 import type { UserItem } from "../types/session";
 import type { PendingAnnotation } from "./annotations";
 import { activeOpen } from "./session";
@@ -82,7 +83,15 @@ export interface UiSlice {
       loaded into the input box and the next submit sends edit_resend instead of a prompt.
       null = not editing. Cleared on send/cancel, session switch (activateSession /
       showWelcomeScreen) and when the host rejects the edit (session_edited failure). */
-  editingEntry: { entryId: string; sessionId: string; text: string; images: NonNullable<UserItem["images"]> | null } | null;
+  editingEntry: {
+    entryId: string;
+    sessionId: string;
+    text: string;
+    images: NonNullable<UserItem["images"]> | null;
+    /** The message's quote annotations, put back in front of the composer for the edit
+     *  (the composer parks the user's own pending notes meanwhile). */
+    notes: QuoteNote[];
+  } | null;
   /** Stash of the just-sent edit_resend payload (set at send time): the session_edited
       failure landing restores it into the composer so the edited text is never lost. */
   pendingEditText: { sessionId: string; text: string; images: NonNullable<UserItem["images"]> | null } | null;

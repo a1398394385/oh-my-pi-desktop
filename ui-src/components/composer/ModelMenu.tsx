@@ -8,8 +8,8 @@
 // the other never closes); Esc / outside click / window blur close as before.
 // With a session picks go through the host; creating-new state lands in
 // localStorage.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pickModelId, pickThinkingLevel, getSupportedThinkingForModel, effZoom } from "../../store";
 import type { ModelCaps } from "../../store/models";
@@ -28,6 +28,17 @@ type ModelMenuProps = {
 const ROLES_ROW = "@roles"; // flyout entry: swaps level 1 to the role quick list
 const MANAGE_ROW = "@manage"; // flyout entry: opens the settings model page
 const THINK_ROW = "@think"; // level-1 cursor stop on the thinking slider (←/→ step the level)
+const BUBBLE_COUNT = 12; // top-tier bubbles in the thinking track
+// Lane centres (px from the capsule top, track is 22px tall) — neighbours ride
+// different lanes so approaching bubbles pass beside each other, not into each other
+const BUBBLE_LANES = [5, 11, 17];
+// One pass duration per lane. Lane-mates share it, so they can never close the
+// gap and overlap; the lanes differ a little (4.9/5.0/5.1s) so the field is not
+// one rigid conveyor. The spread stays small on purpose: cross-lane bubbles do
+// not overlap vertically, but any bigger speed delta makes them line up over
+// time, which reads as uneven spacing.
+const BUBBLE_LANE_DUR = [4.9, 5.0, 5.1];
+const BUBBLE_PER_LANE = BUBBLE_COUNT / BUBBLE_LANES.length; // slots per lane
 const HOVER_INTENT_MS = 180; // pointer cutting down to the model rows must not flash the flyout
 const LEAVE_GRACE_MS = 150; // union-leave grace, same as the old flyout close
 
@@ -297,6 +308,34 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   };
   const thLv = (lv: string) => t(`composer.thinkingLevels.${lv}`, { defaultValue: lv });
   const curIdx = Math.max(0, levels.indexOf(curThinking));
+  // At the model's ceiling the capsule turns "energised" (bubbles, see CSS)
+  const atMax = levels.length > 1 && curIdx === levels.length - 1;
+  // Per-bubble randomised size/opacity, fixed lane/phase grid; generated once per
+  // menu mount so a re-render (hover, level pick) never makes the field jump.
+  // Phase = lane-offset slot grid: the 12 bubbles start a 1/12 track apart and
+  // each lane advances at its own constant speed, so the field stays evenly
+  // spread and two bubbles can only meet across lanes (passing, not stacking).
+  const bubbles = useMemo(
+    () =>
+      Array.from({ length: BUBBLE_COUNT }, (_, i) => {
+        const laneIdx = i % BUBBLE_LANES.length;
+        const lane = BUBBLE_LANES[laneIdx];
+        const dur = BUBBLE_LANE_DUR[laneIdx]; // 4.8 / 5.0 / 5.2s per pass
+        const slot = Math.floor(i / BUBBLE_LANES.length); // 0..BUBBLE_PER_LANE-1
+        // Small jitter keeps the grid from reading as a machine; it stays far
+        // below the 1/BUBBLE_COUNT slot width, so lane-mates keep their gap
+        const phase = ((slot + laneIdx / BUBBLE_LANES.length) / BUBBLE_PER_LANE + (Math.random() - 0.5) * 0.02 + 1) % 1;
+        const size = 1.5 + Math.random() * 3; // 1.5–4.5px
+        return {
+          "--s": `${size.toFixed(1)}px`,
+          "--y": `${(lane - size / 2).toFixed(1)}px`,
+          "--d": `${dur}s`,
+          "--delay": `${(-phase * dur).toFixed(2)}s`,
+          "--o": (0.5 + Math.random() * 0.4).toFixed(2),
+        } as CSSProperties;
+      }),
+    [],
+  );
   const pct = levels.length > 1 ? (curIdx / (levels.length - 1)) * 100 : 100;
   // The knob is a ball as tall as the track riding inside the capsule: it must
   // stay fully visible at both ends, so its center (and every tier dot, end
@@ -305,7 +344,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   useLayoutEffect(() => {
     setTrackW(trackRef.current?.clientWidth ?? 0); // menu width is fixed while open, one measure is enough
   }, []);
-  const rPct = trackW > 0 ? (10 / trackW) * 100 : 0; // knob radius = 10px (track height 20px / 2)
+  const rPct = trackW > 0 ? (11 / trackW) * 100 : 0; // knob radius = 11px (track height 22px / 2)
   const clampP = (p: number) => Math.min(100 - rPct, Math.max(rPct, p));
   const knobPct = clampP(pct);
   const dotPos = levels.length > 1 ? levels.map((_, i) => clampP((i / (levels.length - 1)) * 100)) : [];
@@ -393,7 +432,9 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
                 onClick={(e) => { e.stopPropagation(); enterRow(model.id); }}>
                 <span className="ck">{curBase === model.id ? "✓" : ""}</span>
                 <span className="mi-name">{model.name}</span>
-                {modelCatalog.find((m) => m.id === model.id)?.vision ? <span className="cap-b">{t("composer.visionTag")}</span> : null}
+                {modelCatalog.find((m) => m.id === model.id)?.vision ? (
+                  <span className="cap-b ic" title={t("composer.visionTag")}><Icon name="image" size={12} /></span>
+                ) : null}
                 <CapBadges caps={modelCaps.get(model.id)} />
               </div>
             ))}
@@ -403,19 +444,27 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
             icon), revealed progressively by clipping it at the knob center;
             the ball-shaped knob (track height) rides inside the groove, its
             center snapping onto the tier dots (end dots included). Clicking or
-            dragging jumps to the nearest tier. */}
+            dragging jumps to the nearest tier. At the top tier the gradient
+            fills the whole capsule and bubbles stream inside it (the level has
+            nowhere further to go, so the track shows it as saturated). */}
         <div className={"think-sec" + (hlK === THINK_ROW ? " on" : "")} ref={setRowEl(THINK_ROW)} onClick={(e) => e.stopPropagation()}>
           <div className="think-sec-h">
             <span className="think-ht">{t("composer.reasoning")}<span className="think-cur">{thLv(levels[curIdx] ?? "off")}</span></span>
             <span className="think-keys"><kbd>⇧ Tab</kbd></span>
           </div>
-          <div className="think-track" ref={trackRef}
+          <div className={"think-track" + (atMax ? " is-max" : "")} ref={trackRef}
+            style={trackW > 0 ? ({ "--track-w": `${trackW}px` } as CSSProperties) : undefined}
             onPointerDown={onTrackDown}
             onPointerMove={onTrackMove}>
-            <div className="think-grad" style={{ clipPath: `inset(0 ${100 - knobPct}% 0 0)` }} />
+            <div className="think-grad" style={{ clipPath: `inset(0 ${100 - (atMax ? 100 : knobPct)}% 0 0)` }} />
             {dotPos.map((p) => (
               <span className="think-dot" key={p} style={{ left: p + "%" }} />
             ))}
+            {atMax && (
+              <div className="think-bubbles">
+                {bubbles.map((st, i) => <span key={i} style={st} />)}
+              </div>
+            )}
             <div className="think-knob" style={{ left: knobPct + "%" }} />
           </div>
         </div>
@@ -455,21 +504,24 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   );
 }
 
-// Capability badges at model-row tails (18.5 models frame axes): small text
-// chips for prompt-cache keepalive / built-in web search / image generation;
-// rendered only for axes the host actually reports
+// Capability badges at model-row tails (18.5 models frame axes): icon chips for
+// built-in web search / image generation, rendered only for axes the host
+// actually reports. The prompt-cache axis is deliberately not rendered (data
+// stays in the frame, the chip was dropped as noise). Labels stay as hover
+// titles — a bare icon is not self-evident.
 function CapBadges({ caps }: { caps: ModelCaps | undefined }) {
   const { t } = useTranslation();
   if (!caps) return null;
-  const badges: string[] = [];
-  if ((caps.promptCache ?? 0) > 0) badges.push(t("compExt.capCache"));
-  if (caps.webSearch) badges.push(t("compExt.capWeb"));
-  if (caps.imageGen) badges.push(t("compExt.capImg"));
+  const badges: { icon: string; label: string }[] = [];
+  if (caps.webSearch) badges.push({ icon: "search", label: t("compExt.capWeb") });
+  if (caps.imageGen) badges.push({ icon: "palette", label: t("compExt.capImg") });
   if (badges.length === 0) return null;
   return (
     <>
-      {badges.map((label) => (
-        <span className="cap-b" key={label}>{label}</span>
+      {badges.map((b) => (
+        <span className="cap-b ic" key={b.label} title={b.label}>
+          <Icon name={b.icon} size={12} />
+        </span>
       ))}
     </>
   );

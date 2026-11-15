@@ -33,6 +33,12 @@ describe("liveActivity", () => {
     expect(liveActivity(items).icon).toBe("termBox");
   });
 
+  test("the reply's own text streaming supersedes the last tool's glyph", () => {
+    const items: ChatItem[] = [{ role: "tool", text: "bash", name: "bash", running: false }];
+    expect(liveActivity(items, true)).toEqual({ icon: "writing" });
+    expect(liveActivity([think("hmm", true)], true).icon).toBe("writing");
+  });
+
   test("the newest settled tool names the activity before an older one", () => {
     const items: ChatItem[] = [
       { role: "tool", text: "read", name: "read", running: false },

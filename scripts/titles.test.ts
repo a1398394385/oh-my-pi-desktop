@@ -202,6 +202,15 @@ describe("maybeRefreshSessionTitle", () => {
 		expect(ctx.appended).toEqual([]);
 	});
 
+	test("carded title keeps its card prefix across a refresh", async () => {
+		switchOn = true;
+		const ctx = makeEntry({ generate: "Handle retry backoff", title: "◆ A7: Fix login", titleSource: "auto" });
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry);
+		await settle();
+		expect(ctx.writes).toEqual([["◆ A7: Handle retry backoff", "auto"]]);
+	});
+
 	test("branch titles on: journals the title and unlocks the header with user", async () => {
 		switchOn = true;
 		branchOn = true;

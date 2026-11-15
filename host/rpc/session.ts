@@ -28,6 +28,9 @@ import type { AcpRuntimeState } from "../acp-runtime.ts";
 import { bgJobsPayload, type BgJobHost } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
+import { runSkillInvocation } from "./prompt.ts";
+import { parseSkillInvocation } from "../bootstrap.ts";
+import { inlineSessionRefs } from "../session-context.ts";
 import { searchSessionText } from "../session-text-search.ts";
 import { appendBranchTitle, readBranchTitle, readBranchTitles } from "../titles.ts";
 import { releaseMcpForSession } from "../mcp-mount.ts";
@@ -1040,7 +1043,10 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId: msg.sessionId }));
     const entryId = String(msg.entryId ?? "");
     if (!entryId) throw new Error(hostI18n.t("errors.param.missingEntryId"));
-    const text = String(msg.text ?? "");
+    // "@session:<path>" markers come back with an edited message (the composer rebuilds
+    // them as chips); resolve them here too — the base does not know the marker — so a
+    // resend inlines exactly what the original prompt did.
+    const text = await inlineSessionRefs(String(msg.text ?? ""));
     // Images are the original message's attachments round-tripped untouched
     // (the UI can neither add nor drop any); shape-checked at this boundary.
     const rawImages: Array<{ type?: unknown; data?: unknown; mimeType?: unknown }> = Array.isArray(msg.images)
@@ -1086,6 +1092,14 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         }
       }
       markSeen(entry);
+      // Edited text may carry a `/skill:<name>` token (the user rewrote a skill
+      // message): dispatch it as a fresh skill call instead of handing the token to
+      // the model as prose. runSkillInvocation draws its own user row + echo.
+      const skillCall = parseSkillInvocation(text.trim());
+      if (skillCall && runSkillInvocation(entry, msg.sessionId, skillCall)) {
+        ws.send(JSON.stringify({ type: "session_edited", sessionId: msg.sessionId, ok: true }));
+        return;
+      }
       entry.transcript.push({ role: "user", text, ...(images.length > 0 ? { images } : {}) });
       entryBus(entry).send(
         JSON.stringify(

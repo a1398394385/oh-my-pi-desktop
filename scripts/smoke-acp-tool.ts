@@ -471,7 +471,8 @@ const secondOutcome = JSON.parse(resultText(compressResults[1].content));
 assert.equal(firstOutcome.ok, true);
 assert.equal(firstOutcome.compressed.blocks, 3, "manifest of 4 minus the kept block");
 assert.equal(firstOutcome.kept.blocks, 1);
-assert.equal(firstOutcome.tier, computeTier(firstOutcome.activeTokensAfter, state.params));
+// Post-write tier reads the projected total (active + rendered zone), not the active zone alone.
+assert.equal(firstOutcome.tier, computeTier(firstOutcome.projectedTokensAfter, state.params));
 assert.equal(secondOutcome.ok, false);
 assert.equal(secondOutcome.code, "manifest-consumed");
 console.log("ok: E tool_result stats correct; same-batch second call rejected (consumed manifest)");
