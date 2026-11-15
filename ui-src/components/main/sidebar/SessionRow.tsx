@@ -121,11 +121,11 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   // undefined/false and the row falls back to its disk/pool state instead of crashing
   const streaming = useAppStore((st) => st.openSessions.get(s.path)?.streaming ?? false);
   // Which dialog blocks this session: the FIRST pending request decides, matching the card
-  // MainColumn renders. Ask and approval are distinct states — both share one approval
-  // channel, so the array's contents (not the frame type) tell them apart.
+  // MainColumn renders. Ask and approval share one channel; 18.20's ask carries the parsed
+  // form on the frame, so its presence (not the frame type) tells them apart.
   const pendingKind = useAppStore((st) => {
     const first = st.openSessions.get(s.path)?.pendingApprovals?.[0];
-    return first ? (first.questions?.length ? "ask" : "approval") : null;
+    return first ? (first.form ? "ask" : "approval") : null;
   });
   const hasError = useAppStore((st) => {
     const o = st.openSessions.get(s.path);
