@@ -165,7 +165,7 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
         if (draft.trim()) {
           const tsCustom = Date.parse(e.timestamp ?? "") || 0;
           finalizeRun();
-          out.push({ role: "user", text: draft, entryId: e.id });
+          out.push({ role: "user", text: draft, entryId: e.id, ts: tsCustom });
           lastUser = out[out.length - 1];
           run = { items: [], usage: null, startMs: tsCustom, endMs: tsCustom };
         }
@@ -254,7 +254,7 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
       const plan = approvedPlanBody(content);
       if (plan !== undefined) {
         finalizeRun(); // The approved plan opens the execution turn, same as a user prompt
-        out.push({ role: "user", text: stripDcpTags(plan), entryId: e.id });
+        out.push({ role: "user", text: stripDcpTags(plan), entryId: e.id, ts });
         run = { items: [], usage: null, startMs: ts, endMs: ts };
         continue;
       }
@@ -296,6 +296,7 @@ export function entriesToTranscript(entries: any[], sessionPath?: string): Trans
           role: "user",
           text,
           entryId: e.id,
+          ts,
           ...(images.length > 0 ? { images } : {}),
           ...(marker ? { automation: marker } : {}),
         });

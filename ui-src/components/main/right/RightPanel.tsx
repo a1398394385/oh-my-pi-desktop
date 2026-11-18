@@ -11,6 +11,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, activeOpen, refreshGitDiff, effZoom, pathBase } from "../../../store";
+import { isImeKey } from "../../../keys";
 import Icon from "../../../Icon";
 import { toggleRightPanel } from "../../../shell";
 import { noMaximizeOnDoubleClick } from "../../../lib/titlebar-drag";
@@ -90,7 +91,7 @@ function TabOverview({ onClose }: { onClose: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     inputRef.current?.focus();
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !isImeKey(e)) onClose(); };
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
   }, [onClose]);
@@ -345,7 +346,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   useEffect(() => {
     const close = () => { setOvOpen(false); setAddOpen(false); };
     document.addEventListener("omp:close-menus", close);
-    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape" && !isImeKey(e)) close(); };
     document.addEventListener("keydown", esc);
     return () => {
       document.removeEventListener("omp:close-menus", close);

@@ -251,7 +251,7 @@ html[data-platform="macos"][data-remote="true"] {
   --black: #000;
   --tint-black-150: rgba(0, 0, 0, 0.15);
   --tint-black-50: rgba(0, 0, 0, 0.05);
-  --command-surface: #323232;
+  --command-surface: #202020;
   --command-text: #e5e7eb;
   --tint-white-120: rgba(255, 255, 255, .12);
   --command-output: #a8b0ba;

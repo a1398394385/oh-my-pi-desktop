@@ -55,7 +55,11 @@ export interface UiSlice {
   newSessionModel: string;
   newSessionThinking: string;
   newSessionPlanMode: boolean; // plan-mode intent for the next session (consumed by create_session; the host confirms via the plan_mode frame)
-  newSessionComputerMode: boolean; // computer-use intent for the next session (consumed by create_session; the host opts the fresh session in and confirms via the computer_mode frame)
+  // Computer-use intent for the next session: null = untouched, follow
+  // omp-desktop.json computer.defaultEnabled (what the host would spawn with);
+  // true/false = the user's explicit choice (consumed by create_session, which
+  // needs the explicit false to opt one session out of the default).
+  newSessionComputerMode: boolean | null;
   newSessionDirty: boolean;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   /** Pending conversation annotations per session path (store/annotations.ts): the
@@ -123,7 +127,8 @@ export interface UiSlice {
   // (saveRightSlot / restoreRightSlot), so each session remembers its own hub state.
   hubOpen: boolean;
   hubSel: string | null; // selected subagentId
-  hubMode: "flat" | "tree";
+  /** Status tab filter for the roster (flat list, "all" or a display-group key). */
+  hubStatus: string;
   hubRightWasCollapsed: boolean; // right panel state to restore on closeHub
   hubPrevTab: string | null; // rightTab to restore when the linked hub tab closes
   pendingOpenHub?: boolean; // pending hub open request during asynchronous session load
@@ -148,7 +153,7 @@ export interface UiSlice {
   openHub(): void;
   closeHub(): void;
   setHubSel(id: string | null): void;
-  toggleHubMode(): void;
+  setHubStatus(key: string): void;
   setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
   setMainViewMode(mode: "chat" | "tree"): void;
   openAutomations(): void;
@@ -236,7 +241,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   newSessionModel: "",
   newSessionThinking: "auto",
   newSessionPlanMode: false,
-  newSessionComputerMode: false,
+  newSessionComputerMode: null,
   newSessionDirty: false,
   pendingFiles: [],
   annotations: {},
@@ -273,7 +278,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   mainViewMode: "chat",
   hubOpen: false,
   hubSel: null,
-  hubMode: "flat",
+  hubStatus: "all",
   hubRightWasCollapsed: false,
   hubPrevTab: null,
   pendingOpenHub: false,
@@ -338,8 +343,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     set({ hubSel: id });
   },
 
-  toggleHubMode() {
-    set((s) => ({ hubMode: s.hubMode === "flat" ? "tree" : "flat" }));
+  setHubStatus(key) {
+    set({ hubStatus: key });
   },
 
   toast(msg, error = false) {

@@ -43,7 +43,7 @@
   cursor: pointer;
 }
 
-.auto-sel-btn .caret-svg { display: inline-flex; flex: none; margin-left: auto; color: var(--faint); }
+.auto-sel-btn .caret-svg { display: inline-flex; flex: none; margin-left: auto; color: var(--text); }
 .auto-sel-btn .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .auto-sel-ic { flex: none; color: var(--dim); }
 
@@ -110,7 +110,7 @@
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: none;
-  color: var(--faint);
+  color: var(--text);
   font-size: var(--ui-fs-sm);
   cursor: pointer;
 }
@@ -120,17 +120,22 @@
 
 /* B layout: a sticky summary card beside dense labelled form rows. */
 /* Delivery automations are read-only here (the host rejects automations_update for
-   them): the notice explains why the save button stays disabled. */
+   them): the notice explains why the save button stays disabled and offers the jump to
+   the conversation its runs land in. */
 .aued-delivery-lock {
   grid-column: 1 / -1;
   margin-bottom: 12px;
   padding: 10px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--panel-2);
+  background: var(--card-hl);
   color: var(--dim);
   font-size: var(--ui-fs-sm);
+  display: flex; align-items: center; gap: 12px;
 }
+.aued-delivery-lock .tx { flex: 1; min-width: 0; }
+/* shortcut: --card-hl carries the requested #222222 (same fill as the list pills);
+   give both a dedicated token if they ever need to diverge. */
 
 .aued-layout {
   display: grid;
@@ -168,6 +173,9 @@
 /* Dense form rows: the row grid itself lives in the shared form language
    (css/shared/form-layout.css) so every create page uses the same rhythm. */
 .aued-form { display: grid; min-width: 0; }
+/* Read-only pass over the form for delivery automations: inert drops every control from
+   the focus/pointer order, the wash states it visually. */
+.aued-form[inert] { opacity: .55; }
 .aued-field { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
 .aued-fl { flex: none; color: var(--dim); font-size: var(--ui-fs-sm); }
 .aued-field-inline { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
@@ -218,7 +226,7 @@
 
 /* Per-run computer-control toggle in the toolbar (icon + label + mini switch), same
    geometry language as the toolbar's other controls. */
-.aued-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; white-space: nowrap; }
+.aued-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; white-space: nowrap; }
 .aued-toggle:hover { background: var(--hover-fill); }
 .aued-toggle.on { color: var(--text); }
 .aued-toggle-k { position: relative; flex: none; width: 26px; height: 15px; border-radius: 999px; background: var(--panel-3); transition: background var(--dur-base) var(--swift); }
@@ -258,7 +266,7 @@
 
 /* History pager. */
 .aued-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.aued-page-btn { padding: 4px 8px; border: 0; border-radius: 6px; background: none; color: var(--dim); font-size: var(--ui-fs-sm); cursor: pointer; }
+.aued-page-btn { padding: 4px 8px; border: 0; border-radius: 6px; background: none; color: var(--text); font-size: var(--ui-fs-sm); cursor: pointer; }
 .aued-page-btn:hover:not(:disabled) { background: var(--hover-fill); color: var(--text); }
 .aued-page-btn:disabled { opacity: .4; cursor: default; }
 .aued-pages { display: inline-flex; align-items: center; gap: 2px; }

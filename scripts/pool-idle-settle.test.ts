@@ -1,8 +1,8 @@
 // Host-authoritative idle settle: the pool snapshot's busy flag is the base's isStreaming, the
-// only signal that a run which never sent turn_end(runEnd) (agent_end isTerminal:false — a bg job
-// awaiting async delivery) is over. Regression for BUG-120's precondition: the working row, the
-// stop button and the sidebar spinner stayed wedged for the whole background window because the
-// UI's streaming flag is cleared only by turn_end.
+// only signal that a run which sent only the non-terminal turn_end(settled:false) (agent_end
+// isTerminal:false — a bg job awaiting async delivery) is over. That frame keeps the run open, so
+// the working row, the stop button and the sidebar spinner stayed wedged for the whole background
+// window without this settle.
 // Run: OMP_PROFILE=omp-desktop-test bun test --pool=forks --poolOptions.forks.singleFork scripts/pool-idle-settle.test.ts
 import "./dom-stub";
 import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";

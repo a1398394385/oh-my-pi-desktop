@@ -1,5 +1,5 @@
 .icon-btn {
-  border: 0; background: transparent; color: var(--dim);
+  border: 0; background: transparent; color: var(--text);
   width: 26px; height: 26px; border-radius: var(--r-sm);
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   font-size: var(--ui-fs-base);
@@ -55,7 +55,7 @@ button:focus-visible { outline: none; background: var(--hover-fill); }
 
 .pill-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  border: 0; background: transparent; color: var(--dim);
+  border: 0; background: transparent; color: var(--text);
   font: inherit; font-size: var(--ui-fs-base);
   padding: 5px 9px; border-radius: 8px; cursor: pointer; /* ZCode ghost button rounded-lg */
   max-width: 180px; white-space: nowrap; overflow: hidden;
@@ -117,7 +117,7 @@ svg { vertical-align: middle; }
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  color: var(--dim);
+  color: var(--text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -257,7 +257,7 @@ svg { vertical-align: middle; }
 
 /* Save button = the .send language: --panel-3 base, r9 square */
 .save-btn {
-  flex: none; border: 0; background: var(--panel-3); color: var(--dim);
+  flex: none; border: 0; background: var(--panel-3); color: var(--text);
   border-radius: 9px; padding: 5px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-slow) var(--spring-press);
 }
@@ -273,7 +273,7 @@ svg { vertical-align: middle; }
 
 .save-btn:disabled:hover, .save-btn:disabled:active { background: var(--panel-3); transform: none; }
 
-.save-btn.busy svg { animation: spin .8s linear infinite; }
+.save-btn.busy svg { animation: spin 1s linear infinite; }
 
 /* Toggle switch: spring slide + press-to-squash skeuomorphism */
 .tg {
@@ -308,16 +308,16 @@ svg { vertical-align: middle; }
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; border-radius: 999px; padding: 5px 10px;
   font-size: var(--ui-fs-sm); cursor: pointer; flex: none;
-  background: transparent; color: var(--dim);
+  background: transparent; color: var(--text);
   position: relative;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
 
 .sel:hover, .sel:has(.menu.open) { background: var(--hover-fill); color: var(--text); }
 
-.sel i { color: var(--faint); font-style: normal; font-size: var(--ui-fs-sm); }
+.sel i { color: var(--text); font-style: normal; font-size: var(--ui-fs-sm); }
 
-.sel .caret-svg { color: var(--faint); transition: transform var(--dur-base) var(--spring); }
+.sel .caret-svg { color: var(--text); transition: transform var(--dur-base) var(--spring); }
 
 .sel:has(.menu.open) .caret-svg { transform: rotate(180deg); }
 
@@ -375,7 +375,7 @@ svg { vertical-align: middle; }
   border-radius: 999px;
   background: transparent;
   border: 0;
-  color: var(--dim);
+  color: var(--text);
   font-size: var(--ui-fs-sm);
   cursor: pointer;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);

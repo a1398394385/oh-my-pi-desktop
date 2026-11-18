@@ -1,6 +1,6 @@
 .wb-pill .caret {
   font-size: var(--ui-fs-sm);
-  color: var(--faint);
+  color: var(--text);
   margin-left: 2px;
   /* Same as ZCode: menu pops upward but the chevron stays pointing down (ChevronDownIcon), no expand rotation */
 }
@@ -76,7 +76,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--dim);
+  color: var(--text);
   font: inherit;
   font-size: var(--ui-fs-sm);
   white-space: nowrap;

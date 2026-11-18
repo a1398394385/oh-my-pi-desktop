@@ -49,6 +49,11 @@ const ICONS = {
   // Line-style refresh (feather rotate-cw): the unified icon for settings-page refresh buttons.
   // FA rotateRight is a solid block — too visually heavy at the same size, reads like a lit background
   refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>',
+  // Running spinner: one round-capped ring with a fixed 20% gap, rotated by its CSS host
+  // (.pend-ico / .task-indicator.loading). pathLength must stay an attribute — as a CSS property
+  // it is ignored and dasharray falls back to the real 59.7 circumference, closing the gap.
+  // The dash gap runs wider than the visual one because round caps reclaim stroke-width/2 (3.4%) at each end.
+  spinRing: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5" pathLength="100" stroke-dasharray="76 24"/></svg>',
   // Counter-clockwise circular arrow (feather rotate-ccw): prompt-cache invalidation count in the session stats bar
   cacheBreak: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
   // Line-style stacked layers (lucide layers): context compression count in the session stats bar
@@ -127,6 +132,18 @@ const ICONS = {
   // approval no longer share the unread dot.
   messageQuestion: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>',
   shieldQuestion: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M9.1 9a3 3 0 0 1 5.82 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>',
+  // ask tool row (lucide circle-help, ISC): the run is blocked on a question to the user.
+  // Deliberately not `comment`: that speech bubble already means "session reference" in the
+  // chips, and it carries no question mark; the circle pairs with shieldQuestion (approval)
+  // as "needs you: answer" vs "needs you: allow".
+  circleHelp: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>',
+  // Selection-comment chip (lucide message-square-text, ISC, lucide-static 1.17.0): a
+  // speech box with text lines — reads as "a comment about quoted text". Deliberately not
+  // `comment` (message-circle), which the session-reference chip uses.
+  messageSquareText: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/><path d="M7 11h10"/><path d="M7 15h6"/><path d="M7 7h8"/></svg>',
+  // Quoted text block chip (lucide text-quote, ISC, lucide-static 1.17.0): lines of text
+  // with an opening quote mark — the file / diff pane selection, not a file-type badge.
+  textQuote: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 5H3"/><path d="M21 12H8"/><path d="M21 19H8"/><path d="M3 12v7"/></svg>',
   // Line-style speaker with sound waves (lucide volume-2): turn-end "read this reply
   // aloud" button, drawn in the fork / copy family (stroke-width 2 / viewBox 24, 14px)
   speaker: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>',

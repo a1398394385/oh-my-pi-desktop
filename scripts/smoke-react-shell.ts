@@ -307,6 +307,14 @@ const patchPreviewSession = (patch: Record<string, unknown>) => {
   cuBtnNew?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await sleep(80);
   ok("新建页点击后本地 intent 翻转且钮点亮", store.getState().newSessionComputerMode === true && !!$("#computerBtn")?.classList.contains("on"));
+  // Desktop default-on (computer.defaultEnabled): an untouched intent already
+  // reads as ON, so a single click opts this one session out of the default
+  store.setState({ newSessionComputerMode: null, hostSettings: { computerEnabled: true, computerDefaultEnabled: true } });
+  await sleep(80);
+  ok("默认开启时新建页钮预先点亮", !!$("#computerBtn")?.classList.contains("on"));
+  $("#computerBtn")?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await sleep(80);
+  ok("默认开启时点击一次即变为显式关闭", store.getState().newSessionComputerMode === false && !$("#computerBtn")?.classList.contains("on"));
   // Closing the master gate hides the button again (render condition), regardless of the lit intent
   store.setState({ hostSettings: { computerEnabled: false } });
   await sleep(80);

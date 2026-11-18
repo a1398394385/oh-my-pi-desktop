@@ -2,7 +2,7 @@
 // title / relative time (swapped for a delete button in manage mode). Single click opens the
 // session (same chain as loadBranchSession); double-clicking the title enters inline rename in place.
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession } from "../../../store";
 import Icon from "../../../Icon";
@@ -11,6 +11,27 @@ import { confirmDialog } from "../../settings/common";
 import { fmtAgo, sessionLabel } from "./util";
 import { turnEndedWithError } from "../../../store/run-seal";
 import { motionEnabled } from "../../../shell";
+
+// Session → composer reference drag. The packaged webview has dragDropEnabled on, so the
+// HTML5 drag events never reach the UI (shell.ts note); the row draws the drag itself, the
+// same way the project reorder does. Drop hands an "omp:insert-session" event to the composer
+// element under the pointer, which appends the same @session chip the palette inserts.
+const DROP_CLASS = "session-drop-hover";
+let dropHot: HTMLElement | null = null;
+
+/** Composer element under the pointer: the input card itself, or the center column's
+ *  composer when the drop lands anywhere else in that column. */
+function composerAt(x: number, y: number): HTMLElement | null {
+  const el = document.elementFromPoint(x, y) as HTMLElement | null;
+  return el?.closest<HTMLElement>("#composer") ?? el?.closest("#main")?.querySelector<HTMLElement>("#composer") ?? null;
+}
+
+function markDropTarget(el: HTMLElement | null) {
+  if (dropHot === el) return;
+  dropHot?.classList.remove(DROP_CLASS);
+  dropHot = el;
+  dropHot?.classList.add(DROP_CLASS);
+}
 
 // Session entry (structural subset of diskProjects[].sessions / archivedSessions elements;
 // the full store-side type is defined by the P2F batch — this declares only the fields this
@@ -152,6 +173,11 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
   const unloaded = useAppStore((st) => st.unloadedPaths.has(s.path));
   const [confirmingArchive, setConfirmingArchive] = useState(false);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Drag state: a press only becomes a drag past 5px, so click-to-open and double-click
+  // rename keep working. swallowClickRef eats the click that the releasing pointerup emits
+  // (reset on the next press, so a cancelled drag cannot swallow an unrelated click).
+  const [ghost, setGhost] = useState<{ x: number; y: number } | null>(null);
+  const swallowClickRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -261,6 +287,57 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
     }
   };
 
+  const onRowPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    swallowClickRef.current = false;
+    // Mouse only: a touch drag is a scroll, and its pointercancel would flash the ghost
+    if (e.button !== 0 || e.pointerType !== "mouse" || (e.target as HTMLElement).closest("button")) return;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    let active = false;
+    // Window listeners instead of pointer capture: capture retargets the click / dblclick that
+    // follow at the row, which kills the double-click rename.
+    function detach() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("blur", onCancel);
+    }
+    function onMove(ev: PointerEvent) {
+      if (!active) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+        active = true;
+        document.body.classList.add("sess-dragging");
+      }
+      setGhost({ x: ev.clientX, y: ev.clientY });
+      markDropTarget(composerAt(ev.clientX, ev.clientY));
+    }
+    function onUp(ev: PointerEvent) {
+      detach();
+      if (!active) return;
+      active = false;
+      document.body.classList.remove("sess-dragging");
+      markDropTarget(null);
+      setGhost(null);
+      swallowClickRef.current = true; // the releasing pointerup still produces a click on the row
+      composerAt(ev.clientX, ev.clientY)?.dispatchEvent(
+        new CustomEvent("omp:insert-session", { detail: { path: s.path, title: sessionLabel(s) } }),
+      );
+    }
+    function onCancel() {
+      detach();
+      if (!active) return;
+      active = false;
+      document.body.classList.remove("sess-dragging");
+      markDropTarget(null);
+      setGhost(null);
+      swallowClickRef.current = true;
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("blur", onCancel);
+  };
+
   // A row is a div, not a button: the row hosts its own action buttons (pin, unload,
   // archive), and <button> inside <button> is invalid HTML — React logs a nesting error
   // and WebKit's tap targeting gets unreliable inside the illegal subtree.
@@ -271,7 +348,14 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
       className={"task" + (sub ? " sub" : "") + (s.path === activePath ? " on" : "") + (ctxOpen ? " ctx-open" : "") + (className ? " " + className : "")}
       data-path={s.path}
       style={style}
-      onClick={openSession}
+      onClick={() => {
+        if (swallowClickRef.current) {
+          swallowClickRef.current = false;
+          return;
+        }
+        openSession();
+      }}
+      onPointerDown={onRowPointerDown}
       onKeyDown={(e) => {
         // role=button no longer gets Enter/Space for free from the browser
         if (e.key !== "Enter" && e.key !== " ") return;
@@ -287,7 +371,7 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           {leading === "unread" ? <span className="w-[6px] h-[6px] rounded-full bg-blue" /> : null}
           {leading === "ask" ? <Icon name="messageQuestion" size={16} /> : null}
           {leading === "approval" ? <Icon name="shieldQuestion" size={16} /> : null}
-          {leading === "loading" ? <Icon name="loader" size={16} /> : null}
+          {leading === "loading" ? <Icon name="spinRing" size={16} /> : null}
         </span>
         {/* Same as ZCode: on hover Pin takes over the same leading slot; always shown in the
             pinned list or when pinned with no state. Archived sessions can't be pinned. */}
@@ -397,6 +481,12 @@ export default function SessionRow({ s, sub, showRepo, pinnedList, rowKey, renam
           </button>
           {s.modified && <span className="tm">{fmtAgo(s.modified)}</span>}
         </>
+      )}
+      {ghost && (
+        <div className="sess-drag-float" style={{ left: ghost.x + 12, top: ghost.y + 8 }}>
+          <Icon name="comment" size={14} />
+          <span>{sessionLabel(s)}</span>
+        </div>
       )}
     </div>
   );

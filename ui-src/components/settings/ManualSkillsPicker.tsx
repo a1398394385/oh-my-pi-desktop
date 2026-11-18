@@ -55,8 +55,10 @@ export default function ManualSkillsPicker(): ReactElement {
     groups.length === 0 ? (
       <div className="sel disabled">{t("settingsPage.manualSkills.empty")}</div>
     ) : (
+      // sel-up + sel-wide: this row is always the page's last row, so the menu opens
+      // upward; sel-wide supplies the max-height/scroll (66 skills overflow the viewport).
       <div
-        className="sel"
+        className="sel sel-up sel-wide"
         onClick={(e) => {
           e.stopPropagation();
           setOpen(!open);
@@ -84,15 +86,15 @@ export default function ManualSkillsPicker(): ReactElement {
       </div>
     );
 
+  // Bare .srow: the skills page renders this inside the "Skill settings" card next to the
+  // schema rows, so the picker must not bring its own .set-card.
   return (
-    <div className="set-card">
-      <div className="srow" data-key="skills.manualSkills">
-        <div className="srow-tx">
-          <b>{copy.label}</b>
-          {copy.description && <span>{copy.description}</span>}
-        </div>
-        <div className="srow-ctl">{control}</div>
+    <div className="srow" data-key="skills.manualSkills">
+      <div className="srow-tx">
+        <b>{copy.label}</b>
+        {copy.description && <span>{copy.description}</span>}
       </div>
+      <div className="srow-ctl">{control}</div>
     </div>
   );
 }

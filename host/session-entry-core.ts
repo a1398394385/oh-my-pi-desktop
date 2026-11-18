@@ -26,20 +26,23 @@ import { settleRunChanges } from "./run-changes.ts";
 import { createDeltaCoalescer } from "./delta-coalesce.ts";
 import { pushContext, maybePushSessionStats, pushSessionStats } from "./session-snapshot.ts";
 import { createSubagentView } from "./subagent-view.ts";
-import { sendQueued, releaseOneParked } from "./queue.ts";
+import { sendQueued, pumpFollowUp, driveQueuedFollowUp } from "./queue.ts";
 import { dispatchFromToolEnd } from "./plan-approve.ts";
 import { autoReviewThenApprove, rememberToolCall } from "./auto-review.ts";
-import { approvalDeadlineMs, timedOutFormAnswer } from "./dialog-deadline.ts";
+import { approvalDeadlineMs, formDeadline } from "./dialog-deadline.ts";
 import { markTurnWrapped } from "./keepalive-host.ts";
 import { snapshotMcp } from "./capabilities.ts";
 import { handleVoiceEvent } from "./voice.ts";
 import { createBgJobsRefresh } from "./async-jobs.ts";
 import { maybeRefreshSessionTitle, syncBranchTitle } from "./titles.ts";
 import { hostI18n } from "./i18n/host.ts";
+import { compactSessionWithAcp, type AcpRuntimeState } from "./acp-fallback.ts";
 import { safeStderr } from "./stderr.ts";
 import { getExtensionUISelectOptionLabel, type ExtensionFormDialogResult, type ExtensionUIContext, type ExtensionUIDialogOptions, type ExtensionUISelectItem } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { parseHtmlForm, type HtmlForm } from "@oh-my-pi/pi-tui/html-form/parse";
-import { defaultFormData, fieldQuestions, type HtmlFormData } from "@oh-my-pi/pi-tui/html-form/data";
+import { parseHtmlForm } from "@oh-my-pi/pi-tui/html-form/parse";
+import { fieldQuestions } from "@oh-my-pi/pi-tui/html-form/data";
+import { resolveFormMedia } from "./form-media.ts";
+import { formSubmission } from "./form-submission.ts";
 import { createSessionModes } from "./mode-control.ts";
 import { cancelPrediction, requestPrediction } from "./prediction.ts";
 import { rerenderAssistantMessage } from "./assistant-text.ts";
@@ -191,6 +194,10 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     // Session active-duration timing (same as the TUI status-line
     // time_spent) + cross-channel pool busy broadcast (state.ts)
     if (ev.type === "agent_start" || ev.type === "agent_end") handleRunLifecycleEvent(entry, ev);
+    // Every agent_end closes this run's change capture. A non-terminal end (queued continuation /
+    // background wait) resumes with another run, whose own anchor would otherwise swallow this
+    // run's files: the card then shows up under the wrong answer and this one has none.
+    if (ev.type === "agent_end") void settleRunChanges(entry, sessionId);
     // After a turn truly ends, push context usage (messages are final by
     // then); also calibrate the queued rows (steer consumed)
     if (ev.type === "agent_end" && ev.isTerminal !== false) {
@@ -231,22 +238,13 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       // run's finally, #cancelQueuedMessagePreparation restores live claims),
       // and every one of those restores fires onQueueChange, so the realtime
       // queue push below already mirrors the true queue state.
-      const a = entry.session.agent as any;
-      // Per-turn release: when parked entries remain, put 1 back and trigger
-      // consumption (each its own independent turn)
-      if (entry.parkedFollowUp.length > 0) {
-        for (const m of releaseOneParked(entry)) a.followUp(m);
-        // In the window where the agent_end event precedes the isStreaming reset, continue reports busy: retry once after idle
-        a.continue().catch(() => {
-          a.waitForIdle?.()
-            .then(() => a.continue())
-            .catch((err: unknown) => {
-              safeStderr(hostI18n.t("errors.lifecycle.queuedFollowUpFailed", { detail: String(err) }));
-            });
-        });
-      }
+      // Per-turn release (one independent turn each): hand the next parked
+      // message to the base and drive it; pumpFollowUp also covers the base
+      // having drained itself and paused the run (agent_pause), where this
+      // terminal branch never fires.
+      pumpFollowUp(entry);
+      driveQueuedFollowUp(entry);
       maybeRefreshSessionTitle(entry);
-      void settleRunChanges(entry, sessionId);
       // Our own title write (title_change + branchTitle) lands in the file outside
       // the poll cursor: re-anchor from 0 so the next pass rescans instead of
       // reading a stale offset (see session-poll.ts).
@@ -365,14 +363,19 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
     // draws one form and submits every answer at once. Submission answers with
     // answer = JSON.stringify({kind:"submit", data}); a deadline submits the
     // form's own defaults (hidden inputs, preselected options, prefilled text).
-    formDialog(html: string, dialogOptions?: any): Promise<ExtensionFormDialogResult | undefined> {
-      const form: HtmlForm = parseHtmlForm(html);
+    async formDialog(html: string, dialogOptions?: any): Promise<ExtensionFormDialogResult | undefined> {
+      // Resolve media before the frame ships: the card draws the form in one piece.
+      const form = await resolveFormMedia(
+        parseHtmlForm(html),
+        entry.session.sessionManager.getCwd(),
+        dialogOptions?.signal,
+      );
       const intent = askIntent;
       askIntent = undefined;
       const first = form.fields.find((field) => field.name);
-      const title = (first && fieldQuestions(form).get(first)) || hostI18n.t("flows.ask.formTitle");
-      const deadlineMs = dialogOptions?.timeout;
-      return requestApproval(
+      // The card prints every legend itself: the intent names the decision, no repeat.
+      const title = intent || (first && fieldQuestions(form).get(first)) || hostI18n.t("flows.ask.formTitle");
+      const answer = await requestApproval(
         bus,
         sessionId,
         title,
@@ -381,24 +384,10 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
         { form, intent },
         undefined,
         "ask",
-        deadlineMs !== undefined && deadlineMs > 0
-          ? { ms: deadlineMs, answer: timedOutFormAnswer(defaultFormData(form)) }
-          : undefined,
-      ).then((answer) => {
-        if (answer === undefined) return undefined;
-        try {
-          const parsed = JSON.parse(answer) as { kind?: unknown; data?: unknown; timedOut?: unknown };
-          if (parsed?.kind === "submit" && parsed.data && typeof parsed.data === "object") {
-            return {
-              data: parsed.data as HtmlFormData,
-              ...(parsed.timedOut === true ? { timedOut: true } : {}),
-            };
-          }
-        } catch {
-          // Malformed submissions count as cancelled, not as an error frame
-        }
-        return undefined;
-      });
+        formDeadline(dialogOptions?.timeout, form),
+      );
+      if (answer === undefined) return undefined;
+      return formSubmission(form, answer);
     },
   } as ExtensionUIContext;
   entry.sessionResult.setToolUIContext(uiCtx, true);
@@ -467,7 +456,7 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
       getContextUsage: () => entry.session.getContextUsage(),
       getSystemPrompt: () => entry.session.systemPrompt,
       compact: async () => {
-        await entry.session.compact();
+        await compactSessionWithAcp(entry.acpRuntime as AcpRuntimeState | undefined, entry.session);
       },
       // ctx.sessionModes: runner.initialize assigns this unconditionally, so extensions would
       // see undefined without it.
@@ -526,7 +515,17 @@ function subscribeEntryCore(sessionId: string, entry: PoolEntry, eventBus: unkno
   // frame follows each mutation instead of the turn_end-only snapshot. Bursts
   // (park + release + steer in one operation) coalesce into one microtask
   // push; turn_end keeps its explicit sendQueued as the final calibration.
-  const unsubQueueChange = entry.session.agent.onQueueChange(scheduleQueuePush);
+  // Every mutation is also the moment the base may have drained the queue to
+  // empty with messages still parked: on a microtask (this stack is the base's
+  // own splice/claim path) hand over and drive, so parked messages neither jump
+  // a fresh prompt nor strand.
+  const unsubQueueChange = entry.session.agent.onQueueChange(() => {
+    scheduleQueuePush();
+    queueMicrotask(() => {
+      pumpFollowUp(entry);
+      driveQueuedFollowUp(entry);
+    });
+  });
   // (18.4.9) Session-file transfer notice: when the base moves this session
   // to a fresh sibling file (another live process owns the old one / the old
   // file was replaced or is contested), repoint the pool entry and restart

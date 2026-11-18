@@ -63,4 +63,4 @@
 
 .agent-form-model .mp-role-sel > span:first-child { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.agent-form-model .mp-role-sel .caret-svg { margin-left: auto; display: inline-flex; color: var(--faint); }
+.agent-form-model .mp-role-sel .caret-svg { margin-left: auto; display: inline-flex; color: var(--text); }

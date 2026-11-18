@@ -8,7 +8,6 @@ import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { hostI18n } from "./i18n/host.ts";
 import { H } from "./state.ts";
-import { isProviderEnabled, isUserSourceEnabled } from "./bootstrap.ts";
 import { settingsGet } from "./settings-compat.ts";
 
 // Agent definition description: prefer the YAML frontmatter description, fall back to the H1 heading
@@ -102,23 +101,6 @@ export function hookDirRoots(): string[] {
     roots.push(path.join(nearestProjectOmpDir(cwd) ?? path.join(path.resolve(cwd), ".omp"), "hooks"));
   }
   return roots;
-}
-
-// External source switch resolution (mirrors base discovery load conditions;
-// once a source is switched off its assets no longer appear in the list):
-// - Source master switch: extensions page "Sources" -> base disabledProviders
-// - User-level external tool directory opt-in: extensions page "External tools ~/ config" -> base enabledProviders
-// - claude / codex user-level directories additionally honor skill-level
-//   compatibility switches (base skills.enableClaudeUser / enableCodexUser)
-// Project-level directories are not gated by the opt-in, only by the source
-// master switch (same as the base isUserSourceEnabled comment).
-export function isAssetSourceOn(provider: string, level: "user" | "project"): boolean {
-  if (!isProviderEnabled(provider)) return false;
-  if (level === "project") return true;
-  if (isUserSourceEnabled(provider)) return true;
-  if (provider === "claude") return settingsGet(H.settings, "skills.enableClaudeUser") === true;
-  if (provider === "codex") return settingsGet(H.settings, "skills.enableCodexUser") === true;
-  return false;
 }
 
 // All valid skill roots (global OMP/Agents/Claude/Codex/OpenCode, profile, and project levels)

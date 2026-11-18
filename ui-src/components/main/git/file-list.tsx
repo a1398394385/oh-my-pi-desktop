@@ -91,12 +91,6 @@ export default function FileList({
           onOpen={onOpen}
         />
       )}
-      renderDir={(name, depth) => (
-        <div className="gp-dir" style={{ paddingLeft: `${6 + depth * 12}px` }}>
-          <Icon name="folder" size={12} />
-          <span className="gp-dir-name">{name}</span>
-        </div>
-      )}
     />
   );
 }

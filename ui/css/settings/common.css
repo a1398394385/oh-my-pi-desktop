@@ -9,6 +9,9 @@
 /* In action rows the refresh button groups with more/new-add and skips the flush-right margin */
 .mcp-actions-wrap .pg-refresh, .skills-actions-wrap .pg-refresh { margin-left: 0; }
 
+/* Click feedback, not a loading state: one full turn must fit inside the 500ms window the pages
+   keep the .spin class for (setTimeout(() => setSpin(false), 500)), so this duration stays at .5s
+   and does not follow the global spinner slowdown. */
 .pg-refresh.spin svg { animation: spin .5s linear; }
 
 .set-card > .srow:first-child { border-top-left-radius: var(--r-card); border-top-right-radius: var(--r-card); }
@@ -223,7 +226,7 @@
 .set-back {
   display: flex; align-items: center; gap: 7px;
   /* same 34px row height as #sidebar .nav-item for the same corner position */
-  height: 34px; padding: 0 10px; color: var(--dim); cursor: pointer;
+  height: 34px; padding: 0 10px; color: var(--text); cursor: pointer;
   border-radius: 10px; font-size: var(--ui-fs-base);
   border: 0; background: var(--base); --hover-fill: var(--panel-2); width: 100%; text-align: left; font: inherit;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
@@ -397,11 +400,15 @@
 .set-item {
   display: flex; align-items: center; gap: 11px;
   padding: 10px 12px; border-radius: 10px;
-  color: var(--dim); cursor: pointer;
+  color: var(--text); cursor: pointer;
   border: 0; background: transparent; width: 100%; text-align: left; font: inherit;
   font-size: var(--ui-fs-base); font-weight: 600;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }
+
+/* Adjacent plates must not sit flush: touching fills read as one thick block. Same rhythm
+   as .set-search-results. Excluded in the narrow chip layout, where wrap gap owns the spacing. */
+#settings:not(.set-narrow) .set-item + .set-item { margin-top: 4px; }
 
 .set-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
 :is([data-theme="light"], [data-theme-mode="light"]) .set-item:hover { background: var(--tint-black-60); }
@@ -409,11 +416,9 @@
 
 .set-item .si {
   width: 20px; flex: none; display: inline-flex; justify-content: center;
-  color: var(--faint);
+  color: var(--text);
   transition: color var(--dur-snap) var(--swift);
 }
-
-.set-item:hover .si { color: var(--dim); }
 
 .set-item.on .si { color: var(--accent, var(--blue)); }
 
@@ -642,7 +647,7 @@
 
 .num-btn {
   width: 24px; height: 22px; border: 0; border-radius: 6px;
-  background: transparent; color: var(--dim); cursor: pointer;
+  background: transparent; color: var(--text); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-fast) var(--swift);
 }
@@ -665,7 +670,7 @@
 .skill-trash-btn {
   background: none;
   border: none;
-  color: var(--faint);
+  color: var(--text);
   cursor: pointer;
   padding: 4px;
   display: inline-flex;

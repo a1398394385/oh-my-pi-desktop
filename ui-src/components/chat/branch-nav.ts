@@ -38,7 +38,7 @@ export const ROOT_FORK_ID = "__roots__";
 function junkText(text: string | undefined): boolean {
   if (!text) return true;
   const t = text.trim();
-  return t === "." || t === "。" || t === "·" || t === "•";
+  return t === "" || t === "." || t === "。" || t === "·" || t === "•";
 }
 
 // Would the entry render a visible chat bubble? Only user/assistant text

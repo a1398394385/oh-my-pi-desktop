@@ -162,6 +162,11 @@
 | BUG-168 | 每轮都被要求「强力压缩」——percent 档位线在无窗口时被当成 25/50/75 token，会话永久 L3 | 2026-11-14 |
 | BUG-169 | skill 消息不是用户节点——skill 派发只写 custom_message，无 user 行/entryId，编辑置灰且重载后消失 | 2026-11-14 |
 | BUG-170 | 远程端代码块复制按钮无效——streamdown 复制按钮在非安全上下文直接 return | 2026-11-14 |
+| BUG-171 | ACP 底座接管遇 custom_message 静默让路——视图对齐漏掉真实 entryId | 2026-11-16 |
+| BUG-172 | 已发送消息的附件痕迹不全——注释、会话引用、文本附件在气泡里没有 chip | 2026-11-16 |
+| BUG-173 | ACP 接管仍落底座 soft 压缩——原始历史地板触发边界，让路原因无日志 | 2026-11-16 |
+| BUG-175 | 重排后新消息插到暂存消息前面，且暂存消息永久滞留——回填只挂 terminal agent_end | 2026-11-17 |
+| BUG-176 | run 变更卡片缺卡/挂到下一轮——变更追踪只在 terminal agent_end 结算，底座把 end 重标为非终态 | 2026-11-18 |
 ---
 
 ## 详情
@@ -489,6 +494,10 @@ React 无错误边界 → 渲染异常卸载根容器 → 深色主题下即「�
 **修复**：`host/assets.ts` 新增来源判定 `isAssetSourceOn(provider, level)`，对齐底座 discovery 的加载条件（来源主开关 `isProviderEnabled` + 用户级 opt-in `isUserSourceEnabled` + claude/codex 技能级兼容开关 `skills.enableClaudeUser` / `enableCodexUser`；项目级只受主开关约束），技能 profile/project 两级目录扫描逐源过滤；技能与 MCP 的底座补充调用去掉 `includeDisabled: true`，与运行时加载行为一致。`host/bootstrap.ts` 补导出 `isProviderEnabled`。子智能体/钩子/记忆页只扫 omp 自有目录（`assetRoots`），本就没有外部来源，无需改动；扩展页仍由底座 `getAllProvidersInfo()` 驱动，关掉的来源行仍在（`enabled=false`），可随时点回。
 
 **教训**：宿主一旦自建「枚举外部工具目录」的发现逻辑，就等于把底座 discovery 的来源/opt-in 判定复制了一份并悄悄丢掉；凡列出外部来源资产的页面，都应复用底座的来源判定（或直接吃 `loadCapability`），并且不要用 `includeDisabled` 让页面比运行时看到更多。回归防线：`scripts/probe-asset-sources.ts`（关来源/开来源/opt-in/单来源粒度四组断言，改前红、改后绿）。
+
+**2026-11-16 结构性对齐（同一根因的剩余部分）**：上面的补丁只对齐了来源开关，页面仍在用自建目录枚举，与运行时有**三类**漂移：①上溯边界按文件系统走到 home 而非 git 根，worktree 内部布局时页面会读到主工作区的 `.omp/skills`（会话读不到）；②外部 provider（`.claude`/`.codex`/`.opencode`/`.github`）被逐层上溯，而底座只在 `cwd` 直属目录读；③越 repo 根继承父级 checkout 的资产（实测 `etower-web-new` 项目在页面显示 17 个来自 `workspace/.agents/skills` 的技能，会话里为 0）。
+
+修复：三个页面改为直接吃底座加载器 —— 技能走运行时的 `extensibility/skills` `loadSkills`（含 `skills.customDirectories`/managed/命名空间去重，profile 与各项目分别调用后按 `source` 的 `provider:level` 分组），钩子走 `loadCapability("hooks")`，子代理走 `task/discovery` `discoverAgents`；排除列表（`disabledExtensions`/`ignoredSkills`/`includeSkills`）在调用时传空、由页面标 `enabled`，否则被禁用的行会从列表消失、开关无法再打开。MCP（`loadCapability("mcps")`）与插件页（`PluginManager`/`resolveActiveProjectRegistryPath`）此前已走底座，未改。
 
 ### BUG-026: 整份 ui/style.css 中文注释双重编码乱码——UTF-8 字节被按中文 ANSI/CP936 解码后回写
 
@@ -2552,3 +2561,106 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 - `ui:typecheck`、`check-i18n-keys` 全绿；`bun run check` 全绿（红灯仅为未跟踪原型页的中文注释，已改英文）。
 
 **教训**：所有剪贴板写入必须走项目内的 `copyText`（带 execCommand 兜底），不要直接用第三方组件的 clipboard 调用——远程只读席是纯 http，非安全上下文根本没有 clipboard API。这条与 BUG-163（远程终端粘贴）是同一根因的两侧：粘贴侧靠原生 paste 事件，复制侧只能靠 execCommand。
+
+### BUG-171: ACP 底座接管遇 custom_message 静默让路——视图对齐漏掉真实 entryId
+
+**日期**：2026-11-16
+
+**现象**：会话已有两次成功的 `compress_context`，中间却额外落了一条 `fromExtension:false, method:"soft"` 的底座压缩。真实会话回放显示，活跃区的 `xdev-mount-notice` 被标为 `view:0`，ACP 接管因此返回 `undefined`。
+
+**根因**：`annotateView()` 的 journal 对齐只收 `type:"message"`；底座也会把 `custom_message` 转成 LLM 消息，导致这类消息只能拿到伪 ID。`takeoverBaseCompaction()` 为避免总结错位分支，拒绝任何含伪 ID 的活跃投影，于是静默让路底座。`from` 边界也只对普通 message 使用包含语义。
+
+**修复**：`host/acp-refs.ts` 复用底座 `getMessageFromEntry()` 构造对齐 journal，让 custom/branch 等消息型 entry 都保留真实 ID；`from` 同样按该转换判断是否包含边界。`scripts/smoke-acp-takeover.ts` 在真实 `session.compact()` 链路加入 `custom_message`，并断言通知原文仍进入 ACP 摘要输入，不能用丢弃消息绕过。
+
+**验证**：新增接管用例修复前红（`takeoverCalls 0 !== 1`），修复后全绿；`acp-base-baseline.test.ts` + `acp-branch-resync.test.ts` 共 27 项通过；原始会话只读回放由 `takeoverYields:true` 变为 `false`，通知 ID 恢复为真实 `d3b700b3`；两个改动文件 LSP 诊断无错误。
+
+**教训**：view↔journal 对齐必须使用底座完整的 entry→message 语义，不能只认普通 `message`。伪 ID 是合法内部值，接管让路又故意静默，缺一个类型不会报错，只会在底座边界改变压缩路径；回归必须断言接管发生且 custom 内容未丢。
+
+### BUG-172: 已发送消息的附件痕迹不全——注释、会话引用、文本附件在气泡里没有 chip
+
+**日期**：2026-11-16
+
+**分诊**：②存量缺陷（注释与 host 内联附件自 86335f0 起即如此，与本次改动无关）。
+
+**现象**：composer 里能看到的附件在发送后的气泡里分三种情况缺失——①在助手输出里选中文本加注释（评论可留空）发送后，气泡里只有用户正文，看不到任何注释痕迹；②`@session:<path>` 会话引用发送后气泡无 chip；③粘贴的文本类附件（`kind:"text"`）发送后气泡无 chip。三者模型都正常收到，重载会话后同样不显示。
+
+**根因**：
+1. `ui-src/components/chat/UserMsg.tsx` 用 `splitQuote(item.text)` 取回 notes 后只渲染 `notes.filter((n) => n.file)`——即右侧栏文件/diff 面板那种带路径的引用块，选区注释（无 `file`）不在任何分支里。composer 的 `AnnotationChips` 早已按两类各出一 chip，气泡侧漏了同一拆分。
+2. `splitQuote` 只返回 `sessions`（`<attached-session>` 里的 title/path），气泡从没渲染过；`<attached-file>` 的名称在 `stripAttached` 里被整块丢弃，显示侧没有可用数据。
+3. 顺序坑：host 把 `<attached-file>` 块**前置**在 prompt 之前，而 `parseQuote` 要求文本以 `<conversation_quote>` 开头。于是文本附件与注释同时存在时，注释解析整体落空——气泡不但没有注释 chip，还会把 `<conversation_quote>{JSON}</conversation_quote>` 原样当正文显示。
+
+**修复**：`ui-src/lib/conversation-quote.ts` 先剥 host 内联框架再解析 quote 块，并让 `stripAttached` 顺带收集 `<attached-file name>`（`splitQuote` 新增 `files`）；`UserMsg.tsx` 按 composer 同一口径渲染全部 chip：注释两类（只读 `Chip`，hover 展示原文与评论）、文本附件、会话引用（title，同 `ChipNode` 的 `comment` 图标）。`@file` mention 与图片原本就有渲染，未动。
+
+**验证**：`scripts/conversation-quote.test.ts` 新增「host 在 quote 前缀之前前置文本附件」用例，旧解析顺序下红（`notes: []`）、修复后绿，7 项全过；happy-dom 渲染 `UserMsg`：`<attached-file>`+`<attached-session>`+注释+`@file` 四类 chip 同时出现、纯文本消息零 chip、`&quot;` 标题正确还原；`bun run ui:typecheck`、`bun run ui:build`、`bun run check` 全绿。未做 dev 实例真机点击验收。
+
+**教训**：同一个显示口径出现在两处以上时（composer 与已发送气泡），必须由同一个分类决定渲染分枝；只实现其中一类不会报错，也不会影响模型侧，bug 只在"用户以为没发出去"时暴露。另外，显示侧解析 prompt 文本时必须先剥宿主内联框架再认前缀——宿主会把 `<attached-file>` 前置到 prompt 前，任何"文本以某前缀开头"的假设在附件同存时都会失效；这类顺序契约要有用例锁住，不能靠读代码推断。
+
+### BUG-173: ACP 接管仍落底座 soft 压缩——原始历史地板触发边界，让路原因无日志
+
+**日期**：2026-11-16
+
+**状态**：已于 2026-11-17 完成根本修复：ACP owner 不再运行底座原始 journal 自动压缩；L3 三次强制失败后以 ACP preparation 驱动后备压缩。此前的让路日志与临时错误一次重试保留。原历史会话的具体接管错误无法回溯确认。
+
+**现象**：会话 `01a1e2ef-2c29-76e0-8877-6e607c4aa67e` 在 14:44:25 成功执行一次 `compress_context`（折叠 212,547 tokens，`projectedTokensAfter=7,835`），15:05:35 却落了一条 `fromExtension:false, method:"soft", tokensBefore:340484` 的底座压缩。最后一次真实 provider 请求的 `promptTokens` 仅 77,309，说明 ACP 投影已缩小实际请求，但底座仍启动了压缩边界。
+
+**根因**：已确认底座 `compactionContextTokens()` 取 provider tokens 与 `storedConversationEstimate` 的最大值，原始 journal 的估算地板可越过 ACP 投影触发底座维护；按现有设计，此时应由 `takeoverBaseCompaction()` 接管。修复前该函数对 degraded、快照/伪 ID/保留区重叠、模型缺失、摘要请求中止/error/空响应和 W4 超线等分支均静默让路，多数分支没有原因日志；macOS 宿主 stderr 采用继承输出，本次也未留持久日志。隔离真实回放已复现其中一个直接原因：ACP 接管调用同一 `bulita/gpt-6.1-terra` 生成摘要时得到 `upstream_error`（服务暂不可用），修复前该路径没有重试，得到临时错误后立即让路底座。原历史会话是否同一错误无法回溯确认。策略对照显示，该地板不是 18.20 新增：`v18.13.1` 已有相同实现。11 次 ACP、0 次底座压缩的旧会话 `01a18749-8de0-720b-93f7-c287f51b2655` 原始消息约 1,195,058 tokens，超过其 1M 窗口仍未触发，是因为当时宿主对 ACP 会话固定 `compaction.enabled=false`；`e9076b7`（2026-11-10）改为底座启动后由 ACP 接管，才重新暴露该触发口径。
+
+**修复**：`host/acp-base-takeover.ts` 新增 `yieldToBase(reason)`，所有守卫、模型错误/空响应、候选超线及取消/超时让路均输出 `[ACP] base compaction takeover yielded: <reason>`；摘要请求的外部取消与内部超时分别记录，异常仍保留原有错误日志。摘要调用用底座 `AIError.classify/retriable` 判定临时错误，响应态 error 与抛出的网络错误都在 1 秒后重试一次；两次调用共享同一个 25 秒超时 signal，第二次失败才让路，非临时错误不重试。真实回放已确认 `upstream_error` 可触发同一让路链；原历史会话因缺少当时日志，无法回溯确认是否同一分支。v15 的非消息 token 计数修复只改变 ACP 档位触发口径，不是此问题的接管修复。
+
+2026-11-17 根本修复：ACP owner 固定 `compaction.enabled=false` 与 `compaction.idleEnabled=false`，Advisor 通过既有 `advisorCompactionEnabled` 独立维护。L3 强制连续三次无成功压缩后进入持续后备，不再 re-arm 或恢复底座；后备以 ACP `projectedTokenEstimate()` 对比 `resolveModelCompactionSettings` + `resolveThresholdTokens`，达线或真实 overflow 时调用带 ACP preparation 的手动 compact。18.20.0 精确 patch 使 `CompactOptions.preparation` 跳过 raw `prepareCompaction`，底座所有回退只消费该投影。RPC、计划批准、扩展 compact 统一路由；投影异常显式失败，伪 ID、跨分支、非整轮切点及 zone/保留尾交叉均拒绝。失败按相同 journal 长度阻断紧凑重试，成功后清后备并重建基线。
+
+**验证**：用当前代码只读回放该会话至压缩前，逐请求重建 ACP 快照并以假摘要响应检查守卫，得到 `activeNull:false`、`pseudoActive:[]`、`overlapCount:0`、`degraded:false`、`takeoverReturned:true`。这排除了持久化 journal 几何必然导致让路，但未执行真实模型接管调用，不能据此断定原运行时是超时、provider error 或其他分支。预压缩 speculation 路径已排除：底座存在 `session_before_compact` 处理器时禁用该路径。新增日志断言捕获伪 ID 让路的 stderr；新增重试用例在修复前以 3 个失败确认旧行为，修复后覆盖响应态/抛出临时错误第二次成功、连续临时错误停在两次、非临时错误不重试及两次调用共享超时 signal；`acp-compaction-guard.test.ts` 23/23 通过。
+
+真实模型回放把 session tree 截断到 `5d5eebb3`，复制 `models.yml`、SQLite 认证库和配置到隔离临时目录，固定 `bulita/gpt-6.1-terra`、400K 窗口、ACP 25/50/75 与底座 85%。冷启动直接 prompt 时因尚无投影而以 `active projection is unavailable or stale` 让路，这是复制重开引入的差异；补做原会话已有的投影预热后再次进入 `reason=threshold`，ACP 接管实际返回 `summary model returned error: The service is temporarily unavailable. Please retry later. (upstream_error)`，证明真实摘要错误足以走通同一底座让路链。未做完整 `bun run check` 或桌面 dev 实例复现。
+
+2026-11-17 验证：`scripts/acp-fallback.test.ts` 18/18 通过，覆盖三次失败退出且不 re-arm、ACP 投影阈值与严格 `>`、overflow、相同历史重试阻断、guidance+preparation、伪 ID/跨分支/zone 交叉零 compact、patch 默认路径不变及投影异常拒绝；`scripts/smoke-acp-forced.ts` 全绿；patch 在临时项目经真实 `bun install` 应用并确认安装产物含新接口。完整 `bun run check` 通过。未做真实 Tauri 后备压缩。
+
+**教训**：接管/兜底链路的每个静默让路都是压缩所有权的转移，必须带机器可读原因；只记录最终 `fromExtension:false` 会让真实回归与有意降级在事后不可区分。
+
+### BUG-174: 请求中途失败后流式工具行永久转圈——error 帧不结算 preview 行
+
+**日期**：2026-11-17
+
+**状态**：已修复。
+
+**现象**：模型流式输出一次 `write` 调用时服务端返回 `upstream_error`（`The service is temporarily unavailable. Please retry later.`），卡片下方出现错误行，会话经底座自动重试后继续往下跑，但那张工具卡一直转圈不结束。
+
+**根因**：`tool_args` / `tool_preview` 帧在参数流期间就创建了 `running: true` 的行（写文件正文 / 编辑 diff 预览）。请求中途失败时该调用参数没有补全，底座不会发 `tool_execution_start`，也就永远没有 `tool_update` 来结算这张行；`turn_end` 的 `clearRunningTools` 又只在整轮结束时运行，而底座重试时这一轮还在继续，于是行一直转。
+
+**修复**：`ui-src/store/session.ts` 的 `error` 分支在插入错误行后调用 `clearRunningTools(s)`。失败发生在两次模型请求之间，此时不可能有工具真正在执行，与 `turn_end` 使用同一复位口径。
+
+**验证**：`scripts/write-stream.test.ts` 新增用例「流式 write 行 + error 帧 → `running=false` 且错误行落在其后」；临时移除该调用复现红（12 pass / 1 fail），恢复后 13/13 通过。`bun run ui:typecheck` 通过。未做真机 dev 实例的失败重试复现。既有失败 `scripts/run-seal-error.test.ts`「trailing failure … past annotation rows」与本次改动无关（`run-seal.ts` 与测试文件均未改动）。
+
+**教训**：`running` 由「开始帧置位、结束帧清除」配对维持，凡是会让结束帧缺席的路径（失败、中断、终态帧不发）都必须有复位点；预览类行在参数未补全时连开始帧都不会有，最容易被漏掉。
+
+### BUG-175: 重排后新消息插到暂存消息前面，且暂存消息永久滞留——宿主只在 terminal agent_end 回填 parked
+
+**日期**：2026-11-17
+
+**状态**：已修复。
+
+**现象**：连发 A、B 两条进入排队；把 B 重排到 A 之前，底座消费 B；此时再发 C，C 在队列卡片和实际执行里都排在 A 之前。再往后 C 也消费完，A 仍留在队列卡片里，永不执行。
+
+**根因**：宿主把 followUp 队列拆成底座队列 + 暂存区（`entry.parkedFollowUp`），视图顺序固定为「底座在前、暂存在后」（`visibleQueued`），但两者相对顺序只靠这条隐含约定。底座 18.5 起自己 drain 底座队列并继续 run（该轮结束发 `agent_pause`，wire 上即 `agent_end isTerminal:false`），宿主却只在 terminal `agent_end`（真正 run 结束）才把暂存头回填。于是出现「底座队列空 + 暂存非空」的窗口：新 prompt 由底座 append 到底座队列尾部，直接排到暂存消息之前；而暂存里的消息此时也没有释放时机，run 结束后不再有 terminal 事件，就永久滞留。回填本身用 `agent.followUp()` 追加到队尾，即使回填也会排到已在底座队列里的新消息之后。
+
+**修复**：`host/queue.ts` 新增 `pumpFollowUp`（把暂存头连同隐藏伴生消息以 `replaceQueue` **前插**到底座队首）与 `driveQueuedFollowUp`（空闲且底座有用户消息时 `continue`，`isStreaming` 时不动，busy 重试一次）。`host/rpc/prompt.ts` 在 `session.prompt()` 之前 pump，保证新消息永远 append 在暂存之后；`host/session-entry-core.ts` 的 terminal `agent_end` 分支与 `onQueueChange` 微任务都执行 pump + drive，使「底座自己 drain 走队首」也被覆盖。`releaseOneParked` 不再走 `followUp` 追加。
+
+**验证**：`scripts/queue-pump.test.ts` 4 例通过（空队交付、已有队首时不动、一次一条保 FIFO、streaming 下 prompt 排到暂存之后）；`OMP_DESKTOP_MODEL=deepseek/deepseek-flash bun run smoke:queue` 19 步全绿，新增回归链断言「丙未插队」「暂存的甲被消费（不滞留）」「消费顺序甲→丙」；`bun run check` 全绿（含宿主边界、域预算、注释语言）。未做真实桌面 dev 实例的人工复现。
+
+**教训**：一条 FIFO 被拆进两个容器时，两容器的相对顺序必须显式规定并只在单一入口维护，任何一方「在尾部追加」都会破坏它；同样不能假设队列消费只由宿主驱动——底座自己 drain 时不会发出 terminal 事件，回填/续跑必须挂到队列变更而不是某一个终态事件上。
+
+### BUG-176: run 变更卡片缺卡或挂到下一轮——变更追踪只在 terminal agent_end 结算
+
+**日期**：2026-11-18
+
+**状态**：已修复。
+
+**现象**：会话 `01a1ec78-eaf5-7585-bd18-96ad580a4d1d` 里，第二轮（"把输入框里的手动选择移除"）改了 9 个 web 文件，run 结束后回答下方没有 diff 总览卡片；同一批文件反而出现在第三轮（纯问答）的回答下方。第四轮改 6 个文件，卡片出现在第五轮。journal 证据：第二轮 anchor `b068d5f4` 后面没有任何 `desktopRunChanges` 条目，第三轮 anchor `33907954` 后的记录（`640118c8`）带的是第二轮的 9 个路径。重放 `entriesToTranscript` 得到 `b068d5f4 changes=0`、`33907954 changes=9`。
+
+**根因**：`host/run-changes.ts` 的 tracker 以会话为键、只在 `host/session-entry-core.ts` 的 `agent_end && isTerminal !== false` 分支结算，且锚点在结算时用 `findLast(assistant && entryId)` 现取。底座 `session/agent-session.ts` 的 `#flushPendingAgentEnd`（约 2067-2100 行）在 prompt-in-flight 归零时 flush 被 defer 的 `agent_end`；此时若 `queuedContinuation`（`canDrain && !queuedMessageDrainBlocked && canAutoContinueForFollowUp() && agent.hasQueuedMessages()`）或 `ircContinuation` 为真，就 `{ ...pending, isTerminal: false }` 重标后 emit——用户消息刚好在 end 生成之后、flush 之前入队即可触发（本例两条 prompt 只隔 2 秒）。于是第二轮永远没有终态 end：tracker 跨到下一轮，下一轮终态 end 才结算，锚点取到下一轮回答。同时 `translateEvent` 对 `isTerminal === false` 直接 `return null`，UI 拿不到 draft 落地与 entryId 回填，即便锚点正确也挂不上卡片。
+
+**修复**：`host/translate.ts` 的非终态 `agent_end` 不再返回 null：先 `flushAssistantDraft`，再 `backfillUserEntryIds` + `backfillAssistantEntryIds`，返回 `turn_end{settled:false}`（不带 `runEnd`/`usage`）；`host/session-entry-core.ts` 把 `settleRunChanges` 从 terminal 分支移到任何 `agent_end`（translateEvent 在同一回调里先执行，锚点已回到本段）；`ui-src/store/session.ts` 的 `settled === false` 分支落地 draft、回填 user/assistant entryId、清 running 行，但保留 `streaming`、`turnItemStart`（续跑仍属同一过程块）；`host/wire/payloads.ts` 的 `turn_end` 增加 `settled?: boolean`。历史会话里已经写坏的 anchor 不会自愈——journal 记录保持原样，需重开会话或手动改该 custom 条目。
+
+**验证**：`scripts/run-changes.test.ts` 新增用例「非终态 agent_end 结算本段，续跑不再发第二张卡」（`settled:false`、`final:true`、`assistantEntryId=a1` 且无 `runEnd`，run_changes anchor 为 a1，续跑终态后仍只有 1 条），11 例全绿；新增 `scripts/turn-end-settled.test.ts` 3 例（落地 draft 与 entryId 且保持 streaming/turnItemStart；紧随其后的 `run_changes` 精确匹配到该行；本段输出在续跑 seal 后仍在顶层——去掉 `final` 后该用例立即变红，确认它锁住的是折叠回归），全部通过；`backfill-entryids`/`pool-idle-settle`/`snapshot-transcript`/`translate-diff`/`abort-settle`/`midrun-attach-fold`/`queue-pump`/`turn-final-lift` 共 35 例全绿；`bun run check` 全绿。未做真机 dev 实例的排队续跑复现。
+
+**教训**：「终态事件」不是可靠的 run 边界——底座会把终态重标为非终态并可能不再补发终态（BUG-175 是同一机制的另一面）。以会话为键的 run 级状态必须在每次 `agent_end` 收口，锚点与 UI 的 entryId 回填也必须同刻落地，否则状态会静默漂移到下一轮。

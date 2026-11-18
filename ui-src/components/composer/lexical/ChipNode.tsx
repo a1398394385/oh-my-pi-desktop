@@ -19,6 +19,7 @@ import { createPortal } from "react-dom";
 import Icon from "../../../Icon";
 import { isDirToken } from "../../../lib/at-mentions";
 import { placeMenu } from "../../../shell";
+import { useAppStore } from "../../../store";
 
 export type SerializedChipNode = Spread<{ text: string; label?: string }, SerializedLexicalNode>;
 
@@ -33,6 +34,27 @@ type ChipKind = "file" | "command" | "skill" | "session" | "element";
 function sessionFileLabel(text: string): string {
   const raw = text.slice("@session:".length).replace(/^\"|\"$/g, "");
   return (raw.split("/").pop() ?? raw).replace(/\.jsonl$/, "");
+}
+
+/** Session chip display. The serialized token is a machine key with no title, so a chip
+ *  rebuilt from plain text (slot switch, parked draft, edit recall) has no label of its
+ *  own -- read the title from the sidebar's session list, which is what the user saw when
+ *  the reference was picked. */
+function SessionChip({ text, label }: { text: string; label?: string }) {
+  const path = text.slice("@session:".length).replace(/^"|"$/g, "");
+  const listed = useAppStore((s) => {
+    for (const p of s.diskProjects) {
+      const row = p.sessions.find((x) => x.path === path);
+      if (row) return row.title ?? null;
+    }
+    return s.archivedSessions.find((x) => x.path === path)?.title ?? null;
+  });
+  return (
+    <span className="chip chip-session">
+      <Icon name={CHIP_ICON.session} size={12} className="chip-ic" />
+      <span className="chip-t">{label ?? listed ?? sessionFileLabel(text)}</span>
+    </span>
+  );
 }
 
 function chipKindOf(text: string): ChipKind {
@@ -98,19 +120,18 @@ export class ChipNode extends DecoratorNode<JSX.Element> {
     // text; visual spacing is carried by the chip itself)
     const text = this.__text.replace(/ +$/, "");
     const kind = chipKindOf(text);
+    if (kind === "element") return <ElementChip text={text} />;
+    // Session chips resolve their title against the session list (see SessionChip)
+    if (kind === "session") return <SessionChip text={text} label={this.__label} />;
     // Skills display the bare name; the "/skill:" prefix stays in the serialized
-    // text so the host still dispatches parseSkillInvocation. Session chips show
-    // the title captured at insert time and fall back to the session file name.
+    // text so the host still dispatches parseSkillInvocation.
     const label =
       kind === "skill"
         ? text.slice("/skill:".length)
-        : kind === "session"
-          ? (this.__label ?? sessionFileLabel(text))
-          : // The slash is a composer sigil, not part of the command name
-            kind === "command"
-            ? text.replace(/^\//, "")
-            : text;
-    if (kind === "element") return <ElementChip text={text} />;
+        : // The slash is a composer sigil, not part of the command name
+          kind === "command"
+          ? text.replace(/^\//, "")
+          : text;
     return (
       <span className={`chip chip-${kind}`}>
         <Icon name={kind === "file" && isDirToken(this.__text) ? "folderOpen" : CHIP_ICON[kind]} size={12} className="chip-ic" />
@@ -146,11 +167,13 @@ function parseElement(text: string) {
   const cut = body.lastIndexOf(" ");
   const fence = rest.findIndex((line) => line.startsWith("```"));
   const end = fence < 0 ? -1 : rest.indexOf("```", fence + 1);
+  // A block cut before its closing fence still ends with the marker line
+  const html = fence < 0 ? "" : rest.slice(fence + 1, end < 0 ? rest.length : end).join("\n").replace(/\n?\[\/element\]$/, "");
   return {
     selector: cut > 0 ? body.slice(0, cut) : body,
     size: cut > 0 ? body.slice(cut + 1) : "",
     meta: fence < 0 ? rest : rest.slice(0, fence),
-    html: fence < 0 ? "" : rest.slice(fence + 1, end < 0 ? rest.length : end).join("\n"),
+    html,
   };
 }
 

@@ -62,6 +62,16 @@ const ALLOWED_EDGES = new Set([
   "acp-assembly.ts→acp-base-takeover.ts", "acp-base-takeover.ts→acp-runtime.ts",
   "acp-base-takeover.ts→acp-refs.ts", "acp-base-takeover.ts→acp-projection.ts",
   "acp-base-takeover.ts→acp-persist.ts", "acp-base-takeover.ts→stderr.ts",
+  // ACP base-compaction fallback (post-L3): the host builds the base preparation
+  // from the runtime projection and drives manual compaction with it, so the
+  // estimator/cut live on the runtime and ids come from the refs namespace.
+  "session-lifecycle.ts→acp-fallback.ts", "acp-fallback.ts→acp-runtime.ts",
+  "acp-fallback.ts→acp-refs.ts", "acp-fallback.ts→stderr.ts",
+  // Manual-compaction surfaces (RPC / extension ctx.compact / plan approval)
+  // route through the ACP preparation; plan/internal guidance is refused there.
+  "rpc/session.ts→acp-fallback.ts", "session-entry-core.ts→acp-fallback.ts",
+  "session-entry-core.ts→acp-runtime.ts", "plan-approve.ts→acp-fallback.ts",
+  "plan-approve.ts→acp-runtime.ts",
   // ACP v10 (pull mode + short refs): the bN registry + view alignment live in
   // acp-refs (journal-replayed, pure over projection/persist shapes); the
   // context_status tool surface + the status/ephemeral renders live in
@@ -83,6 +93,10 @@ const ALLOWED_EDGES = new Set([
   // rpc/prompt.ts reuses formatSessionReference for the composer's @ session attachment: a referenced session is
   // rendered by the same turn parser instead of a second JSONL reader.
   "rpc/session.ts→session-text-search.ts", "session-text-search.ts→session-context.ts", "rpc/prompt.ts→session-context.ts",
+  // The reference header carries the referenced session's own display title (title slot /
+  // header title) instead of its file name; titles.ts owns that read for the same reason it
+  // owns title writes — one place knows where a title lives.
+  "session-context.ts→titles.ts",
   // edit_resend resolves the composer's "@session:<path>" markers with the same
   // inliner the prompt path uses (the base does not know the marker).
   "rpc/session.ts→session-context.ts",
@@ -133,6 +147,8 @@ const ALLOWED_EDGES = new Set([
   "desktop-json.ts→stderr.ts", // A1: refuses merge-write over an unreadable/corrupt omp-desktop.json
   "editors.ts→stderr.ts", // editor icon decode failures land on stderr only (best-effort icon path)
   "keepalive.ts→stderr.ts", "main.ts→stderr.ts", "mcp-mount.ts→stderr.ts", "mcp-pool.ts→stderr.ts",
+  // queue.ts: an idle-run follow-up continue that still fails after the busy retry lands on stderr
+  "queue.ts→stderr.ts",
   "plan-approve.ts→stderr.ts", "profile.ts→stderr.ts", "session-lifecycle.ts→stderr.ts",
   "stats.ts→stderr.ts", // A6: rejected CORS origins are logged for misfire diagnosis
   "rpc/login.ts→stderr.ts", "rpc/models.ts→stderr.ts", "rpc/prompt.ts→stderr.ts",
@@ -166,6 +182,14 @@ const ALLOWED_EDGES = new Set([
   "mcp-mount.ts→bootstrap.ts", "mcp-mount.ts→mcp-pool.ts", "mcp-mount.ts→assets.ts", "mcp-mount.ts→state.ts",
   "session-lifecycle.ts→mcp-mount.ts", "rpc/assets.ts→mcp-mount.ts", "rpc/session.ts→mcp-mount.ts",
   "capabilities.ts→mcp-mount.ts",
+  // Mount-notice rewrite: the host collapses the base's per-tool xd:// notice to
+  // one row per MCP server, in both the provider view (context hook) and the
+  // session toast (translate). The pinned base still renders the per-tool shape;
+  // drop these edges with the base upgrade. Ownership lives in the mcp-owners
+  // leaf so the provider-view module and translate can share it without pulling
+  // in the mount registry.
+  "session-lifecycle.ts→xdev-mount-notice.ts", "translate.ts→xdev-mount-notice.ts",
+  "mcp-mount.ts→mcp-owners.ts", "session-lifecycle.ts→mcp-owners.ts", "translate.ts→mcp-owners.ts",
   // Code-owned builtin MCP servers (computer-use kimi-cu): mcp-builtin holds
   // the definitions + the pool warm-up (never read from or written to
   // mcp.json; a same-named user entry is shadowed). mcp-mount resolves
@@ -631,6 +655,14 @@ const ALLOWED_EDGES = new Set([
   // Dialog deadline policy split out of the entry-core wiring: settings read +
   // the ask-dialog auto-answer shape, used only by the approval uiCtx.
   "session-entry-core.ts→dialog-deadline.ts",
+  // Form pictures (inline `<svg>`, workspace paths) become data URIs here: the
+  // DOM card cannot read files, so the resolution belongs on the host side of the
+  // formDialog frame. Outside the session-lifecycle domain's line budget.
+  "session-entry-core.ts→form-media.ts",
+  // The formDialog answer parse (submit payload + question-level notes) lives
+  // beside it: same LOC-budget reason, and the notes fill the base's
+  // option-level shape from the parsed form.
+  "session-entry-core.ts→form-submission.ts",
   "dialog-deadline.ts→state.ts", "dialog-deadline.ts→settings-compat.ts",
   // assets.ts sheds the path-resolution leaf (asset-paths.ts, shared by both domains),
   // the MCP domain (mcp-assets.ts) and the plugins/hooks domain (plugin-assets.ts);

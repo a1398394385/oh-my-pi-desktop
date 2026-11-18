@@ -7,7 +7,7 @@
 
 .hub-detail-head .sub-dot.st-completed { color: var(--green-soft); }
 
-.hub-detail-head .sub-dot.st-failed, .hub-detail-head .sub-dot.st-aborted { color: var(--err); }
+.hub-detail-head .sub-dot.st-failed { color: var(--err); }
 
 .hub-detail-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-fs-sm); }
 
@@ -31,7 +31,7 @@
 .hub-md-toggle { display: inline-flex; gap: 2px; text-transform: none; letter-spacing: 0; }
 
 .hub-md-btn {
-  border: 0; background: transparent; color: var(--faint);
+  border: 0; background: transparent; color: var(--text);
   font: inherit; font-size: var(--ui-fs-sm); font-weight: 500; line-height: 1.2;
   padding: 2px 6px; border-radius: 6px; cursor: pointer;
 }

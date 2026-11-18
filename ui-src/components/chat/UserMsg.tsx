@@ -5,13 +5,20 @@ import { activeOpen, editQueueMsg, requeueSteerMsg, useAppStore } from "../../st
 import { useCopyFeedback } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { fileTypeIcon } from "../../../ui/icons";
-import { atMentions } from "../../lib/at-mentions";
+import { atMentions, elementLabel, isDirToken } from "../../lib/at-mentions";
 import { splitQuote } from "../../lib/conversation-quote";
 import { insertSessionRef } from "../composer/trigger";
 import ImageLightbox from "./ImageLightbox";
 import { FadeBox } from "./parts";
 import { t } from "../../i18n";
 import { Chip } from "../composer/AnnotationChips";
+
+/** Local `YYYY-MM-DD HH:MM:SS` — locale-independent, so the digits never reflow between locales. */
+function stamp(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 // Steer bubbles awaiting consumption carry edit / requeue-to-top in their own action row
 // (same row and spacing as copy); the queue card owns the followUp actions.
@@ -40,14 +47,18 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
     ro.observe(el);
     return () => ro.disconnect();
   }, [folded]);
-  // Annotations ride in the sent prompt text: the bubble shows the user's own words
-  // plus the blocks quoted from a file / diff pane (their path and line span)
-  const { body, notes, sessions } = splitQuote(item.text);
-  const blocks = notes.filter((n) => n.file);
+  // Everything the prompt carried rides in its text: the bubble shows the user's own
+  // words plus one comments chip (blocks quoted from a file / diff pane carry their
+  // path + line span inside the card), the host's inlined text attachments, and
+  // referenced sessions.
+  const { body, notes, sessions, files } = splitQuote(item.text);
   const { copied, copy } = useCopyFeedback();
   const images = item.images ?? [];
-  // @file mentions the base auto-read: chips on top, tokens stripped from the text
-  const mention = atMentions(body, item.attachments);
+  // @file mentions the base auto-read: chips on top, tokens stripped from the text.
+  // `?? []` is authoritative: the host only writes `attachments` for files it actually read,
+  // so no list means nothing was read and every `@token` here is prose (scoped package names
+  // included) and must stay visible.
+  const mention = atMentions(body, item.attachments ?? []);
   const lightboxList = images.map((img, i) => ({
     src: img.data.startsWith("data:") ? img.data : `data:${img.mimeType || "image/png"};base64,${img.data}`,
     name: t("chat.imageN", { n: i + 1 }),
@@ -80,13 +91,9 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
   return (
     <div className="msg user" data-fk={fk || undefined}>
       <div className={cls} ref={bubbleRef}>
-        {blocks.length > 0 && (
+        {notes.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
-            <Chip
-              list={blocks}
-              icon={fileTypeIcon(blocks[0].file!)}
-              label={t("composer.quoteBlocks", { count: blocks.length })}
-            />
+            <Chip list={notes} icon="messageSquareText" label={t("composer.annotateCount", { count: notes.length })} />
           </div>
         )}
         {images.length > 0 && (
@@ -117,14 +124,53 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
             })}
           </div>
         )}
-        {mention.paths.length > 0 && (
+        {(mention.paths.length > 0 ||
+          files.length > 0 ||
+          sessions.length > 0 ||
+          mention.skills.length > 0 ||
+          mention.elements.length > 0) && (
           <div className="mb-2 flex flex-wrap gap-2">
+            {mention.skills.map((name) => (
+              <span className="atchip" key={`skill-${name}`} title={`/skill:${name}`}>
+                <span className="at-ic">
+                  {/* same glyph the composer's skill chip carries (ChipNode) */}
+                  <Icon name="skills" />
+                </span>
+                <span className="at-name">{name}</span>
+              </span>
+            ))}
+            {mention.elements.map((block, i) => (
+              <span className="atchip" key={`element-${i}`} title={block}>
+                <span className="at-ic">
+                  {/* same glyph the composer's picked-element chip carries (ChipNode) */}
+                  <Icon name="squareMousePointer" />
+                </span>
+                <span className="at-name">{elementLabel(block)}</span>
+              </span>
+            ))}
             {mention.paths.map((p) => (
               <span className="atchip" key={p} title={p}>
                 <span className="at-ic">
-                  <Icon name={fileTypeIcon(p)} />
+                  <Icon name={isDirToken(p) ? "folderOpen" : fileTypeIcon(p)} />
                 </span>
                 <span className="at-name">{p.split("/").pop() || p}</span>
+              </span>
+            ))}
+            {files.map((name, i) => (
+              <span className="atchip" key={`attached-${i}`} title={name}>
+                <span className="at-ic">
+                  <Icon name={fileTypeIcon(name)} />
+                </span>
+                <span className="at-name">{name}</span>
+              </span>
+            ))}
+            {sessions.map((s, i) => (
+              <span className="atchip" key={`session-${i}`} title={s.path}>
+                <span className="at-ic">
+                  {/* same glyph the composer's session chip carries (ChipNode) */}
+                  <Icon name="comment" />
+                </span>
+                <span className="at-name">{s.title || s.path.split("/").pop()}</span>
               </span>
             ))}
           </div>
@@ -166,6 +212,9 @@ export default memo(function UserMsg({ item, fk, branch }: { item: UserItem; fk?
       </div>
       {branch || showEditBtn || body || item.pending === "steer" ? (
         <div className={"ub-actions" + (editing ? " show" : "")}>
+          {/* Send time: outside the bubble, left end of the same hover row as the icons.
+              The delivery card is skipped — its header already names the sender. */}
+          {item.ts && !delivery ? <span className="ub-time">{stamp(item.ts)}</span> : null}
           {branch}
           {item.pending === "steer" ? (
             <>

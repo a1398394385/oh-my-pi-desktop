@@ -14,6 +14,7 @@ import {
 } from "./bootstrap.ts";
 import { sessions, stampEvent, type PoolEntry } from "./state.ts";
 import { hostI18n } from "./i18n/host.ts";
+import { safeStderr } from "./stderr.ts";
 
 /** The rows the queue card actually renders — the single authority for both the
     queued frame and sessionBusy()'s "still has queued work" reason. The SDK's
@@ -94,6 +95,46 @@ function releaseOneParked(entry: PoolEntry): any[] {
   const released = entry.parkedFollowUp.slice(0, u + 1);
   entry.parkedFollowUp = entry.parkedFollowUp.slice(u + 1);
   return released;
+}
+
+// Hand the parking lot's head back to the base queue, in front of whatever it
+// already holds. Does NOT drive the run: callers that need consumption decide
+// it themselves (see driveQueuedFollowUp).
+// Ordering contract: while messages sit parked the base followUp queue must
+// start with the earliest queued message. The base drains that queue itself and
+// continues the run (agent_pause, i.e. agent_end isTerminal:false) instead of
+// ending it, so the queue can sit EMPTY while parked messages remain — in that
+// window a fresh prompt appends ahead of them (both the queue card and the
+// drain order), and a parked message nobody releases never runs at all. Callers
+// therefore pump before enqueuing and on every queue mutation.
+export function pumpFollowUp(entry: PoolEntry): void {
+  if (entry.parkedFollowUp.length === 0) return;
+  const agent = entry.session.agent;
+  // peek prepends the in-flight preparation claim, so a claimed message also
+  // counts as "the base already holds the earlier one"
+  if (agent.peekFollowUpQueue().some(isUserQueuedMessage)) return;
+  const released = releaseOneParked(entry);
+  if (released.length === 0) return;
+  // replaceQueue (not followUp) so the release lands in front of any message the
+  // base gained in the meantime, and so the mutation fires onQueueChange
+  agent.replaceQueue("followUp", [...released, ...agent.peekFollowUpQueue()]);
+}
+
+/** Drive queued follow-up work on an idle run. The base drains stranded queued
+ * messages only when a run settles, so a message handed over by pumpFollowUp
+ * afterwards waits for the next turn unless someone continues; busy runs pick
+ * the queue up at their own boundary. */
+export function driveQueuedFollowUp(entry: PoolEntry): void {
+  const agent = entry.session.agent;
+  if (entry.session.isStreaming || !agent.peekFollowUpQueue().some(isUserQueuedMessage)) return;
+  // In the window where a run end precedes the isStreaming reset, continue
+  // reports busy: retry once after idle
+  agent.continue().catch(() =>
+    agent
+      .waitForIdle?.()
+      .then(() => agent.continue())
+      .catch((err: unknown) => safeStderr(hostI18n.t("errors.lifecycle.queuedFollowUpFailed", { detail: String(err) }))),
+  );
 }
 
 // Remove the index-th user message and its immediately preceding hidden companions (image descriptions etc.); returns the filtered new array

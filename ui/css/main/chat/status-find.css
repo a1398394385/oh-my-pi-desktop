@@ -54,7 +54,10 @@
 
 .todo .ci { color: var(--faint); font-style: normal; flex: none; }
 
-.todo.done { color: var(--faint); }
+/* #todoList prefix is required, not decorative: `#todoList .todo` sets the row color with
+   id specificity, so a bare `.todo.done` never wins and finished rows stayed as bright as
+   pending ones. */
+#todoList .todo.done { color: var(--faint); }
 /* Native strike-through: the engine draws it per line fragment, so it tracks the text
    through a resize or a wrap without any geometry of ours (the old background-line needed
    a 56% box-height guess that broke once the row wrapped or line-height grew). Plain
@@ -71,7 +74,8 @@
 :is([data-theme="light"], [data-theme-mode="light"]) .todo.done s { text-decoration-color: var(--todo-strike-light); }
 .todo.done .ck { color: var(--green-soft); }
 
-.todo.cur { color: var(--text); }
+/* Same id specificity trap as .todo.done above: `#todoList .todo` outranks it. */
+#todoList .todo.cur { color: var(--text); }
 
 .todo.blocked .ci { color: var(--err); }
 
@@ -89,7 +93,7 @@
   padding: 6px 8px;
   border: 0; border-radius: 7px;
   background: transparent;
-  color: var(--dim);
+  color: var(--text);
   font-size: var(--ui-fs-base); line-height: 1.45;
   text-align: left;
   cursor: pointer;
@@ -98,7 +102,7 @@
 
 .sc-plan:hover { background: var(--hover-fill); color: var(--text); }
 
-.sc-plan svg { flex: none; color: var(--faint); }
+.sc-plan svg { flex: none; color: var(--text); }
 
 .sc-plan:hover svg { color: var(--text); }
 
@@ -109,7 +113,7 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.sc-plan svg:last-child { color: var(--faint); }
+.sc-plan svg:last-child { color: var(--text); }
 
 #capsule {
   display: flex; align-items: center; gap: 8px;

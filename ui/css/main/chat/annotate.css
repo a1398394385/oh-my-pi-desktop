@@ -4,27 +4,36 @@
    stands off highlighted text in both themes; everything else reuses the standard
    popover/chip surfaces. */
 
+/* The anchored text stays highlighted while the card's textarea owns the focus (set by
+   SelectionAnnotate through the CSS Custom Highlight API); same color as ::selection.
+   `::highlight()` is a real pseudo-element (CSS Custom Highlight API, WebKit 17.2+): the
+   CSS optimizer does not know it yet and prints a "not a valid pseudo-element" warning —
+   it still emits the rule verbatim, so do not "fix" this by wrapping or renaming it. */
+::highlight(annot-anchor) { background-color: var(--tint-accent-350); color: var(--text); }
+
 .annot-fab {
   position: fixed; left: 0; top: 0; z-index: 520;
   display: inline-flex; align-items: center;
-  padding: 3px;
-  border-radius: 999px;
-  background: var(--quote-bar-bg);
+  padding: 2px;
+  border-radius: var(--r-sm);
+  background: var(--ctl-bg);
 }
 
 .annot-fab-act {
   display: inline-flex; align-items: center; gap: 5px;
   height: 24px; padding: 0 9px;
-  border: 0; border-radius: 999px;
-  background: none; color: var(--quote-bar-fg);
-  font-family: inherit; font-size: var(--ui-fs-sm);
+  border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--text);
+  /* Body text tier, same as the composer and message chips: this bar is an action on
+     the message, not a secondary label */
+  font-family: inherit; font-size: var(--ui-fs-base);
   cursor: pointer;
 }
 
 .annot-fab-act:hover,
-.annot-fab-act:focus-visible { background: var(--quote-bar-hl); outline: none; }
+.annot-fab-act:focus-visible { background: var(--hover-fill); outline: none; }
 
-.annot-fab-act .pi-ic svg { display: block; }
+.annot-fab-act .pi-ic svg { display: block; width: 1em; height: 1em; }
 
 /* Comment card: replaces the pill once the action is clicked */
 .annot-card {
@@ -32,27 +41,48 @@
   width: 380px; max-width: calc(100vw - 16px);
   box-sizing: border-box;
   display: flex; flex-direction: column; gap: 8px;
-  padding: 12px;
+  /* 6px + the 1px border puts the buttons 7px from the card's inner edge, matching the
+     foot-to-textarea gap below. */
+  padding: 12px 12px 6px;
   background: var(--ctl-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
 }
 
-.annot-card-t { font-size: var(--ui-fs-base); color: var(--text); }
+/* Tail pointing back at the selection: a rotated square sharing the card's surface and
+   border, on the edge that faces the anchored text (data-side is set by place()). */
+.annot-card[data-side]::after {
+  content: "";
+  position: absolute; left: var(--annot-tail, 50%);
+  width: 10px; height: 10px;
+  margin-left: -5px;
+  background: var(--ctl-bg);
+  border: 1px solid var(--line);
+  transform: rotate(45deg);
+}
 
+.annot-card[data-side="top"]::after { bottom: -6px; border-top: 0; border-left: 0; }
+.annot-card[data-side="bottom"]::after { top: -6px; border-bottom: 0; border-right: 0; }
+
+/* Quoted excerpt: no fill of its own, marked by the same left vertical line as the
+   thinking expansion body (2px --line), wrapped and capped at two rows. */
 .annot-quote-row {
-  display: flex; align-items: flex-start; gap: 4px;
-  padding: 6px 8px;
-  border-radius: var(--r-sm);
-  background: var(--panel-2);
+  position: relative;
+  padding: 0 0 0 10px;
   color: var(--dim); font-size: var(--ui-fs-sm);
 }
 
-.annot-qm { flex: none; color: var(--faint); line-height: 1.4; }
+.annot-quote-row::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 2px;
+  width: 2px; border-radius: 1px;
+  background: var(--line);
+}
 
 .annot-quote-text {
-  flex: 1; min-width: 0;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+  white-space: pre-wrap; overflow-wrap: anywhere;
   line-height: 1.4;
 }
 
@@ -66,40 +96,41 @@
   color: var(--text); font-family: inherit; font-size: var(--ui-fs-base);
   line-height: 1.5;
   outline: none;
+  /* Soft wrap with vertical scroll only: a long unbroken token must not create a
+     horizontal scrollbar inside the card. */
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: hidden;
 }
 
 .annot-ta::placeholder { color: var(--faint); }
-.annot-ta:focus { border-color: var(--accent); }
 
-.annot-foot { display: flex; align-items: center; gap: 8px; }
-.annot-hint { color: var(--faint); font-size: var(--ui-fs-xs); }
+.annot-foot { display: flex; align-items: center; gap: 8px; margin-top: -1px; }
 .annot-foot .sp { flex: 1; }
+
+/* Same tier as the textarea placeholder: the hint is teaching copy, not content */
+.annot-foot-hint { color: var(--faint); font-size: var(--ui-fs-base); font-weight: normal; }
 
 .annot-btn {
   border: 0; border-radius: 7px;
-  padding: 5px 10px;
-  background: var(--panel-3); color: var(--dim);
-  font-family: inherit; font-size: var(--ui-fs-sm);
+  padding: 4px 16px;
+  background: none; color: var(--text);
+  /* Same body tier as the pill's actions: these two buttons belong to one flow.
+     nowrap keeps a narrow card from breaking the labels instead of widening them. */
+  font-family: inherit; font-size: var(--ui-fs-base);
+  font-weight: normal;
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), opacity var(--dur-snap) var(--swift);
 }
 
-.annot-btn:hover { background: var(--hover-fill); color: var(--text); }
+.annot-btn:hover { background: var(--hover-fill); }
 
-.annot-btn.primary { background: var(--accent); color: var(--white); }
-.annot-btn.primary:hover { background: var(--accent); color: var(--white); opacity: .8; }
+.annot-btn.primary { background: var(--white); color: var(--black); }
+.annot-btn.primary:hover { background: var(--white); color: var(--black); opacity: .85; }
 
 /* Pending-annotation chip: same shell as .atchip, slightly wider text budget */
 .annot-chip { max-width: 260px; cursor: default; }
 .annot-chip:hover { background: var(--menu-hl); }
 .annot-chip:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
-
-.annot-chip-n {
-  flex: none; min-width: 15px; padding: 0 4px;
-  border-radius: 999px;
-  background: var(--panel-3); color: var(--dim);
-  font-size: var(--ui-fs-xs); line-height: 15px; text-align: center;
-}
 
 /* Hover card: the quoted text + comment of every pending note */
 .annot-chip-pop {
@@ -113,29 +144,43 @@
   border-radius: var(--r-md);
 }
 
-.annot-chip-list { display: flex; flex-direction: column; gap: 10px; max-height: 200px; overflow-y: auto; }
+.annot-chip-list { display: flex; flex-direction: column; max-height: 200px; overflow-y: auto; }
 .annot-chip-item { display: flex; flex-direction: column; gap: 4px; }
 
-.annot-chip-quote { display: flex; align-items: flex-start; gap: 4px; color: var(--dim); font-size: var(--ui-fs-sm); }
+/* Separator between two notes: inset from the card's borders, with breathing room above
+   and below instead of touching either neighbour. */
+.annot-chip-item + .annot-chip-item { position: relative; margin-top: 12px; padding-top: 12px; }
+.annot-chip-item + .annot-chip-item::before {
+  content: "";
+  position: absolute; left: 2px; right: 2px; top: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.annot-chip-quote { display: flex; align-items: flex-start; gap: 6px; color: var(--dim); font-size: var(--ui-fs-sm); }
+
+/* Quote mark as an icon aligned to the first line instead of a typographic “ */
+.annot-chip-qm { flex: none; display: inline-flex; color: var(--faint); margin-top: 3px; }
+.annot-chip-qm .pi-ic svg { display: block; }
 
 .annot-chip-text {
   flex: 1; min-width: 0;
-  color: var(--text);
+  /* The quoted text stays a step dimmer and a step smaller than the comment beneath it */
+  color: var(--dim); font-size: var(--ui-fs-xs);
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  overflow: hidden; line-height: 1.4;
+  overflow: hidden; line-height: 1.45;
 }
 
 .annot-chip-x {
   flex: none; width: 16px; height: 16px; padding: 0;
   border: 0; border-radius: 4px; background: none;
-  color: var(--faint); font-size: 12px; line-height: 1; cursor: pointer;
+  color: var(--text); font-size: 12px; line-height: 1; cursor: pointer;
 }
 
 .annot-chip-x:hover { background: var(--hover-fill); color: var(--text); }
 
 .annot-chip-comment { color: var(--text); font-size: var(--ui-fs-sm); line-height: 1.5; white-space: pre-wrap; padding-left: 12px; }
 
-.annot-chip-count { color: var(--faint); font-size: var(--ui-fs-xs); }
 
 /* Pending block chip: the file-pane quote chip shares the shell above, its popover
    rows lead with the source path + line span instead of "text only" */

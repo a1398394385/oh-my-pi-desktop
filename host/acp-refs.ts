@@ -15,6 +15,7 @@
 // projection entirely — storage untouched, derived purely from the journal so
 // restarts land on the same sets with zero extra persistence.
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
+import { getMessageFromEntry } from "@oh-my-pi/pi-agent-core/compaction/messages";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import { messageFingerprint } from "./acp-fingerprint.ts";
 import { splitBlocks } from "./acp-projection.ts";
@@ -55,9 +56,12 @@ export function annotateView(view: readonly AgentMessage[], entries: readonly Se
 	let scan = entries;
 	if (from !== undefined) {
 		const at = entries.findIndex((e) => e.id === from);
-		if (at >= 0) scan = entries[at].type === "message" ? entries.slice(at) : entries.slice(at + 1);
+		if (at >= 0) scan = getMessageFromEntry(entries[at]) ? entries.slice(at) : entries.slice(at + 1);
 	}
-	const journal = scan.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message");
+	const journal = scan.flatMap((e) => {
+		const message = getMessageFromEntry(e);
+		return message ? [{ id: e.id, message }] : [];
+	});
 	const fps = journal.map((e) => messageFingerprint(e.message));
 	let ptr = 0;
 	const ids = view.map((m) => {

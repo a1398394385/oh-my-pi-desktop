@@ -119,6 +119,7 @@ export interface UserItem {
   images?: Array<{ type: "image"; data: string; mimeType: string }>; // image attachments
   attachments?: string[]; // absolute paths of the @file mentions the base auto-read for this prompt
   automation?: { id: string; title: string }; // scheduler delivery into this session (not typed input)
+  ts?: number; // send time (ms): the persisted entry's timestamp, Date.now() for the optimistic bubble
 }
 
 /** Assistant message (items.tsx:25-28 reads text; junk placeholders are not rendered) */
@@ -362,6 +363,10 @@ export interface PendingApproval {
   // The ask tool's `i` intent (captured by the host from tool_execution_start),
   // rendered as an intent chip above the dialog body
   intent?: string;
+  // Absolute epoch ms of the dialog deadline (ask.timeout): the host submits the
+  // form's defaults when it elapses, so the card counts down and disappears on
+  // approval_resolved instead of submitting anything itself.
+  expiresAt?: number;
   answer: string | null; // user's chosen answer; null = pending
 }
 

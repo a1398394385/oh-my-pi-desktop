@@ -53,7 +53,7 @@ turn 结束后,按 cadence 向 vendor 重放捕获的请求前缀(max_tokens=16�
 
 | 结果 | 动作 |
 |---|---|
-| hit(cache_read ≥ minPromptTokens) | missStreak/errorStreak 清零;smart 爬升 +30s/次(上下文 >200k 不爬并回落基础档) |
+| hit(cache_read ≥ minPromptTokens) | missStreak/errorStreak 清零;smart 爬升 +30s/次(上下文 >200k 只冻结当前每模型 TTL、不爬升，不回退设置项基础档) |
 | miss | default 模式:cadence 高于 5min 安全档则退到 5min 继续探测;已在安全档才 missStreak++,达 maxMissStreak(默认 1)pause。smart 模式:确认或清除该模型 max TTL,不轻易 pause |
 | error | 401/403 立即 pause(凭据死,等下次真实请求重捕获);其余连续 maxErrorStreak(默认 3)次 pause |
 | spendCapUsd(每会话,默认 $1,null=不限) | 超限 pause |

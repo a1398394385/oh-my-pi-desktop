@@ -23,7 +23,8 @@ function requestCreateSession(): void {
     model: st.newSessionModel || undefined,
     thinking: st.newSessionThinking || undefined,
     planMode: st.newSessionPlanMode || undefined,
-    computerMode: st.newSessionComputerMode || undefined,
+    // null (untouched) stays undefined: the host then follows computer.defaultEnabled
+    computerMode: st.newSessionComputerMode ?? undefined,
   });
   useAppStore.setState({ pendingCreate: true });
 }

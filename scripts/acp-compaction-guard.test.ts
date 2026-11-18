@@ -251,7 +251,18 @@ describe("ACP base compaction takeover", () => {
 			{ role: "user", content: "reminder not in the journal", synthetic: true, timestamp: 1 },
 		]);
 
-		expect(await h.compact(branch, "m2")).toBeUndefined();
+		const writes: string[] = [];
+		const originalWrite = process.stderr.write;
+		process.stderr.write = ((chunk: unknown) => {
+			writes.push(String(chunk));
+			return true;
+		}) as typeof process.stderr.write;
+		try {
+			expect(await h.compact(branch, "m2")).toBeUndefined();
+		} finally {
+			process.stderr.write = originalWrite;
+		}
+		expect(writes.join("")).toContain("[ACP] base compaction takeover yielded: active projection contains pseudo ids: view:");
 		expect(h.calls).toHaveLength(0);
 	});
 
@@ -475,6 +486,58 @@ describe("ACP base compaction takeover", () => {
 		const branch = conversation(["m1", "m2"]);
 		const h = harness(branch, {
 			reply: () => ({ content: [{ type: "text", text: "  \n\t " }], stopReason: "stop" }),
+		});
+		h.project(branch);
+
+		expect(await h.compact(branch, "m2")).toBeUndefined();
+		expect(h.calls).toHaveLength(1);
+	});
+
+	test("retries a transient summary error once and takes over", async () => {
+		const branch = conversation(["m1", "m2"]);
+		let replies = 0;
+		const h = harness(branch, {
+			reply: () => ++replies === 1
+				? { content: [], stopReason: "error", errorMessage: "The service is temporarily unavailable. Please retry later. (upstream_error)" }
+				: { content: [{ type: "text", text: "summary after retry" }], stopReason: "stop" },
+		});
+		h.project(branch);
+
+		expect((await h.compact(branch, "m2"))?.compaction?.summary).toBe("summary after retry");
+		expect(h.calls).toHaveLength(2);
+		expect(h.calls[0].signal).toBe(h.calls[1].signal);
+	});
+
+	test("retries a transient thrown request error once", async () => {
+		const branch = conversation(["m1", "m2"]);
+		let replies = 0;
+		const h = harness(branch, {
+			reply: () => {
+				if (++replies === 1) throw new Error("The service is temporarily unavailable. Please retry later. (upstream_error)");
+				return { content: [{ type: "text", text: "summary after thrown retry" }], stopReason: "stop" };
+			},
+		});
+		h.project(branch);
+
+		expect((await h.compact(branch, "m2"))?.compaction?.summary).toBe("summary after thrown retry");
+		expect(h.calls).toHaveLength(2);
+	});
+
+	test("yields after the second transient summary error", async () => {
+		const branch = conversation(["m1", "m2"]);
+		const h = harness(branch, {
+			reply: () => ({ content: [], stopReason: "error", errorMessage: "The service is temporarily unavailable. Please retry later. (upstream_error)" }),
+		});
+		h.project(branch);
+
+		expect(await h.compact(branch, "m2")).toBeUndefined();
+		expect(h.calls).toHaveLength(2);
+	});
+
+	test("does not retry a non-transient summary error", async () => {
+		const branch = conversation(["m1", "m2"]);
+		const h = harness(branch, {
+			reply: () => ({ content: [], stopReason: "error", errorMessage: "invalid request" }),
 		});
 		h.project(branch);
 

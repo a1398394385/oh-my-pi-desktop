@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@oh-my-pi/pi-utils";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
+import { getMessageFromEntry } from "@oh-my-pi/pi-agent-core/compaction/messages";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
 import { AcpRuntimeState, createAcpProjectionExtension } from "../host/acp-runtime.ts";
@@ -144,6 +145,11 @@ const cwd = mkdtempSync(join(tmpdir(), "acp-takeover-"));
 	// Three turns: each request captures a projection snapshot; every reply is
 	// appended after the projection, so the branch outruns the cached prefix.
 	await ask(turnText("TURN-ONE", 250), 1);
+	// A custom message must keep its journal id; a pseudo id makes takeover yield to base.
+	await session.sendCustomMessage(
+		{ customType: "xdev-mount-notice", content: "CUSTOM-NOTICE-MARKER", display: false },
+		{ deliverAs: "nextTurn" },
+	);
 	await ask(turnText("TURN-TWO", 250), 2);
 	await ask(turnText("TURN-THREE", 250), 3);
 	assert.ok(state.lastProjected.length > 0, "the ACP projection ran during the normal turns");
@@ -160,6 +166,7 @@ const cwd = mkdtempSync(join(tmpdir(), "acp-takeover-"));
 	);
 	const takeoverRequest = compactCalls[0].context.messages;
 	assert.match(textOf(takeoverRequest.at(-1)!), /Update the conversation summary/, "the sole call is the takeover prompt");
+	assert.ok(JSON.stringify(takeoverRequest).includes("CUSTOM-NOTICE-MARKER"), "custom messages reach the takeover input");
 	assert.equal(preparations.length, 1, "session_before_compact fired once");
 	const { firstKeptEntryId } = preparations[0];
 
@@ -197,7 +204,11 @@ const cwd = mkdtempSync(join(tmpdir(), "acp-takeover-"));
 	// W2: the summary model sees the active prefix only — no retained-tail text,
 	// and exactly the prefix messages (the cache extended past the last request,
 	// which is what let the takeover run at all).
-	assert.equal(takeoverRequest.length, prefixMessages.length + 1, "takeover input = active prefix + the summary prompt");
+	assert.equal(
+		takeoverRequest.length,
+		prefixEntries.filter((e) => getMessageFromEntry(e)).length + 1,
+		"takeover input = active prefix + the summary prompt",
+	);
 	const prefixWire = JSON.stringify(takeoverRequest.slice(0, -1));
 	for (const label of prefixLabels) assert.ok(prefixWire.includes(label), `the compressed prefix reached the summarizer (${label})`);
 	for (const label of retainedLabels) {

@@ -27,7 +27,9 @@ import { BrowserModePills, displayBrowserUrl, openExternal, SPECIAL_KEY_NAMES } 
 // Picked element as composer text: a data-only header (selector, box, colors,
 // font, page URL) the Agent can map back to the page, plus the markup that
 // produced it. Deliberately prose-free — it needs no translation and stays
-// editable after insertion.
+// editable after insertion. The closing `[/element]` line is what makes the
+// block recognisable as one chip wherever the user types around it
+// (lib/at-mentions the single reader).
 function pickedText(el: BrowserPickedElement, url: string): string {
   const selector = el.tag + (el.id ? `#${el.id}` : "") + el.classes.map((c) => `.${c}`).join("");
   const lines = [`[element] ${selector} ${el.w}×${el.h}`];
@@ -35,7 +37,7 @@ function pickedText(el: BrowserPickedElement, url: string): string {
   if (el.background) lines.push(`background: ${el.background}`);
   if (el.fontSize) lines.push(`font: ${el.fontSize} ${el.fontFamily}`);
   if (url) lines.push(`url: ${url}`);
-  return `${lines.join("\n")}\n\`\`\`html\n${el.html}\n\`\`\``;
+  return `${lines.join("\n")}\n\`\`\`html\n${el.html}\n\`\`\`\n[/element]`;
 }
 
 export function AgentBrowserView({ tabs, others }: { tabs: BrowserTabInfo[]; others: number }) {

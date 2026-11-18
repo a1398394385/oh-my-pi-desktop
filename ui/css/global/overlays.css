@@ -65,7 +65,7 @@
   width: 26px; height: 26px; border: 0; border-radius: var(--r-sm);
   background: transparent;
   display: flex; align-items: center; justify-content: center;
-  color: var(--dim); cursor: default;
+  color: var(--text); cursor: default;
 }
 
 .win-controls .win-btn:hover, .win-controls .win-btn:focus-visible { background: var(--hover-fill); color: var(--text); }

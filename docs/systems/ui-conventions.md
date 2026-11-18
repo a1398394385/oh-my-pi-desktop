@@ -56,7 +56,7 @@
 ## 2. 动效（全站）
 
 1. **时长/缓动/阴影只走 token**：SSOT 在 `ui/css/global/tokens.css`——时长 `--dur-fast/snap/base/sheet/slow`、缓动 `--swift/--spring/--ease-expand/enter/overshoot/pop`、按压弹簧 `--spring-press`、阴影 `--shadow-sm/md/lg/popover/panel`（深浅双值；`--shadow-popover` 为 `none`，浮层只留自身 1px 边框，不叠投影）。新写 `transition` 禁止裸时长/缓动字面量（`@keyframes` 内部除外）；存量裸值收敛见 [ui-claude-optimization-plan.md](../ui-claude-optimization-plan.md)。
-2. **spinner 统一**引用规范化 `@keyframes spin`（`ui/css/global/animations.css`），禁止新造 `rotate(360deg)` 等价 keyframes。
+2. **spinner 统一**引用规范化 `@keyframes spin`（`ui/css/global/animations.css`），禁止新造 `rotate(360deg)` 等价 keyframes。**运行中转圈形态**统一用注册表图标 `spinRing`（单环、圆头端点、固定 20% 缺口、1.25s 一圈），由宿主类（`.pend-ico`、`.task-indicator.loading`）承担旋转；缺口靠 SVG 属性 `pathLength="100"` + `stroke-dasharray` 实现，`pathLength` 写成 CSS 属性会被忽略、缺口消失。其余 spinner（启动页 `.bs-spin`、地址栏 `.bpane-spin`）仍为 CSS 边框环，时长与之一致。
 3. **reduced-motion 全局降级**已统一在 `animations.css`（`prefers-reduced-motion` + `html[data-motion="off"]` 同规则）：装饰性过渡/入场动画以 `animation/transition: none !important` 压制（**禁止用 0.01ms 时长覆写**——非零时长会激活默认 `transition-property: all`，引擎卡死 transition 会把 JS 定位的 fixed 浮层钉在旧坐标），**存活指示循环（spinner、呼吸点、骨架扫光）经 `:not()` 清单豁免保持转动**——该清单是语义的一部分，新增 `animation: ... infinite` 状态指示时须同步加入清单，勿当冗余清理。
 
 ## 3. 弹出卡片（ring-pop 系）
@@ -95,3 +95,13 @@ hover 底板走 `--hover-fill`（定义在 `ui/css/global/tokens.css`，默认 `
 3. **其余表面 = `--panel-2`**：`--base` 面（侧栏、窗口底）与 `--surface`  veil 面保持默认 `--hover-fill: var(--panel-2)`，用同一个变量的不同取值区分。
 4. **写法**：`:hover` 规则里用 `var(--hover-fill)`，不要直接写 `var(--panel-2)`；Tailwind 侧用 `hover:bg-hover-fill`（`@theme inline` 已映射 `--color-hover-fill`）。
 5. **作用域**：令牌按容器继承，所以给某个面声明 `--hover-fill: var(--menu-hl)` 时，其内部的子面必须自己显式声明（面用 `--menu-hl`，非面用 `var(--panel-2)`），否则会继承到不合适的档。`#pg-stats` 把内部 `--panel` 重定义为 `var(--panel-2)`，语义不同，已排除在统一之外。
+
+## 7. 控件前景色（按钮 / 图标 / 文字）
+
+可点击控件的静止态就是满字色，不再用次级灰做"ghost"：
+
+1. **静止态 = `--text`**：按钮、胶囊、下拉触发器、tab、芯片、行内操作按钮（`.icon-btn`、`.pill-btn`、`.q-btn`、`.sel`、`.rtab`、`.chip` 等）的前景色一律 `var(--text)`；图标走 `currentColor`，不另设透明度。
+2. **hover / `.on` 只换底板**：因为静止已是满字色，hover 通过 `--hover-fill` 底板表达，不再需要"变亮"；语义色例外（`.yolo` 橙、`.on` 的 `--accent`、danger 红）照旧。
+3. **唯一例外：模型胶囊里的思考级别**（`#thinkLabel`，`ui/css/main/composer.css`）保持 `--faint` —— 它是状态读数，不是按钮标签；`#modelLabel`（模型名）仍是 `--text`。
+4. **不进此列的内容**：`.sub` / `.mh` / `.mi.empty` / `.tm` / 计数 / 路径 / placeholder / 说明文案 / `:disabled` 态仍是 `--dim` / `--faint`；行内展开 caret（文件树、分支、项目行）跟随所在行文字色，不单独提亮。
+5. **删掉反向规则**：控件自身提亮后，`:hover` 再写 `color: var(--dim|--faint)` 会让悬停变暗，这类规则直接删除（如 `.set-item:hover .si`、`.rt-item:hover .rt-item-ic`、`.node-card:hover .ed-arrow`）。

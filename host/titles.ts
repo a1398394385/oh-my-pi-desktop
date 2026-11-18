@@ -16,6 +16,7 @@
 // flag and no desktop gate may read it while branchTitles is on. The journal
 // is the source of truth for display: a title written on branch A is simply
 // the last branchTitle on A's root→leaf path and never leaks into B.
+import type { FileEntry } from "@oh-my-pi/pi-coding-agent";
 import { readDesktopSection, writeDesktopSection } from "./desktop-json.ts";
 import { buildReplanTitleContext, buildTitleDriftTurns } from "@oh-my-pi/pi-coding-agent/session/messages";
 import { keepTitleCard } from "@oh-my-pi/pi-coding-agent/utils/title-card";
@@ -98,6 +99,19 @@ export function readBranchTitles(): boolean {
 /** Write sessionTitles.branchTitles back (merge-write preserves refresh). */
 export function writeBranchTitles(enabled: boolean): void {
 	writeDesktopSection("sessionTitles", { ...readDesktopSection("sessionTitles"), branchTitles: enabled });
+}
+
+/** Display title for a session reference, taken from the file's own entries:
+ *  the mutable title slot (first line) or the header title; unnamed sessions fall
+ *  back to the file name, as the composer chip does. */
+export function referenceTitle(entries: FileEntry[], sessionPath: string): string {
+	// Only the two leading entries can carry a title (slot line, then header).
+	for (const entry of entries.slice(0, 2)) {
+		const raw = entry as { type?: string; title?: unknown };
+		if (raw.type !== "title" && raw.type !== "session") continue;
+		if (typeof raw.title === "string" && raw.title.trim()) return raw.title.trim();
+	}
+	return sessionPath.split("/").pop()?.replace(/\.jsonl$/, "") || "session";
 }
 
 function branchTitleOf(entry: BranchTitleEntry): BranchTitleData | null {

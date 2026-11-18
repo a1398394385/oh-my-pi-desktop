@@ -157,9 +157,11 @@ function snapshotDir(entry: PoolEntry, changeId: string): string {
   return path.join(artifacts, "run-changes", changeId);
 }
 
-/** Terminal agent_end: settle the tracker, persist snapshots + the journal record, and hand the
- *  card payload back for the run_changes frame. No anchor (a run without assistant text) still
- *  persists — later runs' top-of-stack checks need the record even though no card renders. */
+/** Every agent_end (terminal or not): settle this segment's tracker, persist snapshots + the
+ *  journal record, and hand the card payload back for the run_changes frame. A non-terminal end
+ *  still ends the segment — the continuation is another run whose anchor must not adopt these
+ *  files. No anchor (a run without assistant text) still persists — later runs' top-of-stack
+ *  checks need the record even though no card renders. */
 export async function finalizeRunChanges(
   entry: PoolEntry,
   anchor: string | undefined,
@@ -227,8 +229,9 @@ export async function finalizeRunChanges(
   if (anchor) emit(anchor, files);
 }
 
-/** Terminal agent_end hook for session-entry-core (one call line, fire-and-forget): the anchor
- *  is the run-tail assistant entryId, already backfilled onto the transcript by translateEvent.
+/** agent_end hook for session-entry-core (one call line, fire-and-forget): the anchor is the
+ *  segment-tail assistant entryId, already backfilled onto the transcript by translateEvent —
+ *  translateEvent runs first in the same subscription callback, for non-terminal ends too.
  *  Emits run_changes to every attached UI; failures log and never break the run. */
 export function settleRunChanges(entry: PoolEntry, sessionId: string): void {
   const anchor = entry.transcript.findLast((t) => t.role === "assistant" && t.entryId)?.entryId;

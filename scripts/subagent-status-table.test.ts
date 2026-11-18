@@ -79,15 +79,12 @@ describe("subagent status table", () => {
   });
 
   test("roster rows order running, then terminal states, then unknown", () => {
-    const rows = buildRows(
-      [
-        ["u", sub("paused")],
-        ["a", sub("aborted")],
-        ["c", sub("completed")],
-        ["r", sub("running")],
-      ],
-      "flat",
-    );
+    const rows = buildRows([
+      ["u", sub("paused")],
+      ["a", sub("aborted")],
+      ["c", sub("completed")],
+      ["r", sub("running")],
+    ]);
     expect(rows.map((r) => r.id)).toEqual(["r", "c", "a", "u"]);
   });
 });

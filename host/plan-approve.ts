@@ -22,6 +22,8 @@ import path from "node:path";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { prompt } from "@oh-my-pi/pi-utils";
 import { CompactionCancelledError } from "@oh-my-pi/pi-agent-core/compaction";
+import { compactSessionWithAcp } from "./acp-fallback.ts";
+import type { AcpRuntimeState } from "./acp-runtime.ts";
 import { hostI18n } from "./i18n/host.ts";
 import {
   autosaveApprovedPlan,
@@ -356,7 +358,13 @@ async function approvePlan(
       // compaction wait still sees the approved plan in context.
       session.setPlanReferencePath(planFilePath);
       const guidance = prompt.render(await readSdkPrompt("plan-mode-compact-instructions.md"), { planFilePath });
-      await session.compact(undefined, { internalGuidance: guidance, suppressContinuation: true });
+      // ACP-owned sessions route plan guidance through the public
+      // customInstructions field alongside the ACP preparation, so both the
+      // takeover hook and the base fallbacks see the same directive.
+      await compactSessionWithAcp(entry.acpRuntime as AcpRuntimeState | undefined, session, {
+        internalGuidance: guidance,
+        suppressContinuation: true,
+      });
     } catch (err) {
       compactOutcome = err instanceof CompactionCancelledError ? "cancelled" : "failed";
       if (compactOutcome === "failed") {

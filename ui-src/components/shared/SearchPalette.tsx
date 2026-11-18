@@ -6,6 +6,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send, saveUnseen, hideWelcomeScreen, refreshGitDiff, activateSession, openSettings } from "../../store";
+import { isImeKey } from "../../keys";
 import { useAllSettingsItems } from "../settings/Settings";
 import Icon from "../../Icon";
 import { fmtAgo } from "../main/sidebar/util";
@@ -107,7 +108,7 @@ export default function SearchPalette() {
   // to .lp-mask surfaces, so this is the sole Esc consumer while open.
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !isImeKey(e)) {
         e.preventDefault();
         e.stopPropagation();
         useAppStore.getState().closePalette();

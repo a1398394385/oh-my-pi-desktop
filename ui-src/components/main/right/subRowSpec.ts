@@ -55,7 +55,7 @@ export function rowSpec(call: SubagentToolCall): RowSpec {
     return { icon: "upload", label: "chat.labelYield", summary: yieldSummary(call.args) };
   if (name.startsWith("mcp__")) return { icon: "plug", label: "MCP", summary: name.split("__").slice(2).join("__") };
   if (name === "web_search") return { icon: "globe", label: "chat.labelWebSearch", summary: a.query || "" };
-  if (name === "ask") return { icon: "comment", label: "chat.labelAsk", summary: "" };
+  if (name === "ask") return { icon: "circleHelp", label: "chat.labelAsk", summary: "" };
   if (name === "read_session_context")
     return {
       icon: "search",

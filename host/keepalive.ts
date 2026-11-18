@@ -68,6 +68,7 @@ import {
   SMART_STEP_MS,
   STATE_DIR,
   clearConfirmedModelTtl,
+  nextSmartCadence,
   readKeepaliveProbeConfig,
   resolveModelTtlMs,
   writeConfirmedModelTtlMs,
@@ -280,10 +281,10 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
     // Interval of the last probe that HIT in the current climb (null = nothing
     // confirmed yet); a miss consumes it to persist the confirmed TTL.
     let lastGoodTtlMs: number | null = null;
-    // Smart-mode growth hold: true while the cadence is the config file's
-    // confirmed max TTL (or the 200k guard pinned the base) — probing runs at
-    // it with climbing off; only a miss at it clears the recorded value, lifts
-    // the hold, and restarts the climb.
+    // Smart-mode growth hold: true while the cadence is frozen — either the
+    // config file's confirmed max TTL or the 200k context guard — probing runs
+    // at it with climbing off; only a miss at it clears the recorded value,
+    // lifts the hold, and restarts the climb.
     let growthHeld = false;
     const stats: Stats = { probes: 0, hits: 0, misses: 0, errors: 0, savedUsd: 0, spendUsd: 0 };
 
@@ -686,31 +687,30 @@ export function createKeepaliveExtension(opts: KeepaliveHostOptions) {
      *   climbing off; a miss there means the record is stale — clear it and
      *   restart the climb from the re-resolved cadence. The miss probe itself
      *   rebuilt the cache either way, so probing never pauses on these misses.
-     * Contexts above 200k tokens are never pushed upward and immediately revert
-     * to the base cadence, because a miss there costs too much full-price
-     * input to risk.
+     * Contexts above 200k tokens never grow: the cadence freezes at whatever
+     * the per-model resolution produced (confirmed TTL -> climbing store ->
+     * settings default). Probing at a demonstrated TTL is the safe side; only
+     * pushing past it is the expensive risk on a long context, so the
+     * settings base is NOT forced back in.
      */
     function smartAdaptAfterHit(inputTokens: number): void {
       if (!capture) return;
       const modelId = catalogId(capture.model);
-      if (inputTokens > SMART_MAX_CONTEXT_TOKENS) {
-        // Too expensive to experiment; drop to the base cadence and stop growing.
-        growthHeld = true;
-        if (currentTtlMs > config.intervalMs) {
-          currentTtlMs = config.intervalMs;
-          writeModelTtlMs(modelId, currentTtlMs);
+      if (inputTokens <= SMART_MAX_CONTEXT_TOKENS) lastGoodTtlMs = currentTtlMs;
+      const next = nextSmartCadence(currentTtlMs, inputTokens, {
+        maxIdleMs: config.maxIdleMs,
+        growthHeld,
+      });
+      growthHeld = next.growthHeld;
+      if (next.cadenceMs === currentTtlMs) {
+        if (inputTokens > SMART_MAX_CONTEXT_TOKENS) {
           debug(
-            `smart: context ${inputTokens} tokens exceeds ${SMART_MAX_CONTEXT_TOKENS / 1000}k — cadence back to the ${formatDuration(currentTtlMs)} base`,
+            `smart: context ${inputTokens} tokens exceeds ${SMART_MAX_CONTEXT_TOKENS / 1000}k — growth held at ${formatDuration(currentTtlMs)}`,
           );
         }
         return;
       }
-      lastGoodTtlMs = currentTtlMs;
-      if (growthHeld) return;
-      const roomUnderMaxIdle =
-        config.maxIdleMs === 0 || currentTtlMs + SMART_STEP_MS < config.maxIdleMs;
-      if (!roomUnderMaxIdle) return;
-      currentTtlMs += SMART_STEP_MS;
+      currentTtlMs = next.cadenceMs;
       writeModelTtlMs(modelId, currentTtlMs);
       debug(`smart: probe hit — next TTL for ${modelId} grows to ${formatDuration(currentTtlMs)}`);
     }

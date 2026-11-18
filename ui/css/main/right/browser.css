@@ -31,6 +31,9 @@
    below ~271px even short labels don't fit -> hide the pills entirely.
    Thresholds are content-box px of .bpane-bar (rail width - 32). */
 .bpane-bar .mcp-type-pill { flex: none; white-space: nowrap; }
+/* Selected pill sits on the card face, so it takes the tab-strip plate (--rtab-on),
+   not the raised --panel-3 the settings-page pills use. */
+.bpane-bar .mcp-type-pill.on { background: var(--rtab-on); }
 .bpane-bar .bmode-short { display: none; }
 @container (max-width: 349px) {
   .bpane-bar .bmode-full { display: none; }
@@ -57,7 +60,7 @@
   flex: none; width: 12px; height: 12px;
   border: 1.5px solid var(--faint); border-top-color: transparent;
   border-radius: 50%;
-  animation: spin .8s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
 .bpane-input {
@@ -136,7 +139,7 @@
   border-radius: 999px;
   border: 1px solid var(--line);
   background: transparent;
-  color: var(--dim);
+  color: var(--text);
   font-size: var(--ui-fs-sm);
   cursor: pointer;
   max-width: 120px;

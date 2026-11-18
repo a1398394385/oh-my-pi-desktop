@@ -20,6 +20,7 @@ import Icon from "../../Icon";
 import ImageLightbox, { type LightboxImage } from "../chat/ImageLightbox";
 import { armMarquee } from "../shared/models/marquee";
 import { stripQuote } from "../../lib/conversation-quote";
+import { atMentions, elementLabel } from "../../lib/at-mentions";
 
 // Horizontal scrollable queue text: wheel converts to horizontal scroll (React's
 // onWheel is passive at the root, so it rides a manual listener, same recipe as
@@ -63,7 +64,13 @@ export default function QueueCard() {
   return (
     <div className="queue-card" id="queueCard">
       {items.map((m, i) => {
-        const body = stripQuote(m.text || "");
+        // The row reads like the bubble that will follow: reference tokens (@path,
+        // /skill:, picked-element blocks) are already consumed by the host, so they stay
+        // out of the line — a message made only of references falls back to naming them.
+        const refs = atMentions(stripQuote(m.text || ""));
+        const body =
+          refs.text ||
+          [...refs.skills.map((n) => `/skill:${n}`), ...refs.elements.map(elementLabel), ...refs.paths].join(" ");
         const item: UserItem = {
           role: "user",
           text: m.text || "",

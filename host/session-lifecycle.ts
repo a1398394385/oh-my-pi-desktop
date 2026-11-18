@@ -30,6 +30,7 @@ import {
 import { GoalController, type GoalSession } from "./goal.ts";
 import { acpParamsFromConfig } from "./acp-plan.ts";
 import { createAcpRuntime, createCompressContextTool, createAcpProjectionExtension, ACP_CONTEXT_BUDGET_PROMPT } from "./acp-assembly.ts";
+import { createAcpFallbackSupervisor } from "./acp-fallback.ts";
 import { createAcpStatusTool } from "./acp-status-tool.ts";
 import { createSessionContextTools } from "./session-context.ts";
 import { createAutomationTools } from "./automations-tool.ts";
@@ -50,12 +51,14 @@ import { readPluginsEnabled, readHooksEnabled } from "./plugin-assets.ts";
 import { createKeepaliveExtension } from "./keepalive.ts";
 import { markSeen, reportKeepaliveState } from "./keepalive-host.ts";
 import { pushPlanMode, reconcilePlanMode, setPlanMode } from "./plan.ts";
-import { pushComputerMode, restoreComputerMode, setComputerMode } from "./computer-mode.ts";
+import { computerModeActive, pushComputerMode, restoreComputerMode, setComputerMode } from "./computer-mode.ts";
 import { pushAdvisorMode, readAdvisorDefaultEnabled } from "./advisor-mode.ts";
 import { pushPlanOutput, pushRestoredPlanOutput, setFreshSessionFactory } from "./plan-approve.ts";
 import { bgJobsPayload } from "./async-jobs.ts";
 import { hostI18n } from "./i18n/host.ts";
 import { mountMcpForSession } from "./mcp-mount.ts";
+import { mcpToolServer } from "./mcp-owners.ts";
+import { createXdevMountNoticeExtension } from "./xdev-mount-notice.ts";
 import { safeStderr } from "./stderr.ts";
 import { settingsGet } from "./settings-compat.ts";
 import { awaitPersistedModelRefresh } from "./models.ts";
@@ -159,6 +162,11 @@ export async function createSessionCore(
   // user's global value wins and this overlay carries per-session overrides only.
   const sessionSettings = H.settings.overlay({
     "computer.enabled": false,
+    // ACP owns context management: pin the base raw-journal auto chain
+    // (threshold/idle/overflow/incomplete) off. Manual compaction still runs
+    // only through the ACP preparation the host injects; the advisor reads the
+    // same key and is opted back in below.
+    ...(acpEnabled ? { "compaction.enabled": false, "compaction.idleEnabled": false } : {}),
     // Title refresh is desktop-owned (titles.ts: judge-gated, branch
     // aware) — pin the base's two auto-refresh paths off so they never race
     // ours; the user's global values stay untouched (the CLI keeps its own).
@@ -186,6 +194,13 @@ export async function createSessionCore(
         getEntries: () => sessionManager.getBranch(),
         getBranch: () => sessionManager.getBranch(),
         resolveParams: (window) => acpParamsFromConfig(readAcpRaw().acp, window),
+        // Full-request tier axis (spec §5.1): the base already splits the request
+        // into non-message + messages; the messages half is ACP's own projection
+        // (it rewrites the view), so only the non-message half is borrowed.
+        nonMessageTokens: () => {
+          const b = acpSession.session?.getContextBreakdown();
+          return b ? Math.max(0, b.usedTokens - b.messagesTokens) : 0;
+        },
         // Level-3 force channel (spec §5.2/§10): the named form where the face
         // supports it (openai-completions faces narrow tools internally = form
         // ②); a throw (neither form) degrades via form ③.
@@ -254,6 +269,9 @@ export async function createSessionCore(
     // Reachable only through this flag — the host-side trigger the SDK used to
     // expose (maybeStartTitleGeneration) is gone from 18.10.x.
     autoTitle: true,
+    // The pin above would silence the advisor's own gate on the same key; the
+    // patched SDK option keeps its maintenance alive.
+    ...(acpEnabled ? { advisorCompactionEnabled: true } : {}),
     agentRegistry: new AgentRegistry(), // The default global registry allows only one Main per generation; multiple sessions must pass a private instance
     sessionManager, // The host-side manager must be injected into the SDK: otherwise rename/compact/branch would go through entry.manager (an orphan instance) operating on a different session file
     // read_session_context (past session retrieval): reads only its own profile's sessions, see host/session-context.ts
@@ -319,6 +337,11 @@ export async function createSessionCore(
         // the app-wide log, so a probe failure traces back to its session
         sessionFile: () => kaHolder.entry?.session.sessionManager.getSessionFile() ?? null,
       })] : []), // prefix cache keepalive: idle sessions that are unread replay the last request, see host/keepalive.ts
+      // The pinned base renders one xd:// mount-notice row per minted MCP tool;
+      // a server mounts and unmounts as a whole, so the host collapses that to
+      // one row per server before the request leaves. Delete this with the base
+      // upgrade that renders the server row itself.
+      createXdevMountNoticeExtension(mcpToolServer),
     ] as never, // The inline extension's structural narrow type is brand-incompatible with the package's type signature, identical at runtime (same precedent as customTools)
     disableExtensionDiscovery: !(readPluginsEnabled() || readHooksEnabled()),
     enableMCP: false,
@@ -346,9 +369,15 @@ export async function createSessionCore(
   if (acpRuntime) {
     acpSession.session = session;
     acpRuntime.rebindModel(session.model);
-    session.subscribe((ev: { type: string }) => {
+    const acpFallback = createAcpFallbackSupervisor({ state: acpRuntime, session });
+    session.subscribe((ev) => {
       if (ev.type === "model_changed") acpRuntime.rebindModel(session.model);
-      else if (ev.type === "turn_end") acpRuntime.onTurnEnd();
+      else if (ev.type === "turn_end") {
+        acpRuntime.onTurnEnd();
+        // Safe point: compaction may interrupt a live turn; the base's manual
+        // compact then resumes it itself. The supervisor never re-enters.
+        acpFallback.check(ev.message.role === "assistant" ? ev.message : undefined);
+      }
     });
   }
   // Host-side runtime identity: a fresh pool UUID, deliberately NOT the disk
@@ -547,12 +576,15 @@ export async function handleCreateSession(ws: { send(data: string): unknown }, c
   // entry path as the menu toggle (persist + pushPlanMode inside)
   if (planMode) setPlanMode(ws, sessionId, entry, true);
   else pushPlanMode(ws, sessionId, entry);
-  // Session born with computer use (intent picked on the new-session page):
-  // same entry path as the composer toggle — the master gate is checked inside
-  // (closed gate surfaces a command_output hint and the frame stays off)
-  if (computerMode) {
-    void setComputerMode(ws, sessionId, entry, true).catch((err) => {
-      safeStderr(`[host] computer mode enable failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
+  // Session born with a computer-use intent picked on the new-session page.
+  // Absent (undefined) = follow the desktop default, which spawn's
+  // restoreComputerMode already applied. An explicit value is applied only when
+  // it differs from that landing state, so an explicit "on" over an already-on
+  // default never re-mounts kimi-cu — and an explicit "off" is what lets one
+  // session opt out of computer.defaultEnabled.
+  if (computerMode !== undefined && computerMode !== computerModeActive(sessionId, entry)) {
+    void setComputerMode(ws, sessionId, entry, computerMode).catch((err) => {
+      safeStderr(`[host] computer mode ${computerMode ? "enable" : "disable"} failed on new session ${sessionId.slice(0, 8)}: ${err}\n`);
     });
   }
   safeStderr(hostI18n.t("errors.lifecycle.sessionCreated", { sessionId: sessionId.slice(0, 8), cwd: workDir, model: modelStr ?? "default", thinking: thinkingLevel ?? "default", active: sessions.size }));
@@ -591,7 +623,12 @@ async function pushSessionSnapshot(
   // Per-session advisor state (the header eye relies on it, same snapshot rule)
   pushAdvisorMode(ws, sessionId, entry);
   if (req.mode === "rebuild") await entry.goal.restore(); // Goal mode restore (persisted mode_change goal/goal_paused; aligned with the TUI, no proactive re-run)
-  ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
+  // Reuse mode's transcript is the live stream (translate.ts never emits loop groups, and
+  // changes ride only the disk replay): sending it left every run added after the entry was
+  // created without its process group, the run-changes card and the turn acts row until the
+  // whole app was reloaded. Rebuild mode already holds this same folded result.
+  const messages = req.mode === "reuse" ? entriesToTranscript(entry.manager.getBranch(), entry.path) : entry.transcript;
+  ws.send(JSON.stringify({ type: "messages", sessionId, messages }));
   // Todos backlog (TodoTracker synced from the transcript branch at construction; without
   // the frame history TODOs vanish after the frontend rebuilds its objects)
   pushTodos(ws, sessionId, entry);

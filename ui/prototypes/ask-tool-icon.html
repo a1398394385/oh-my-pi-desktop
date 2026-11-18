@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ask 工具行图标 · 候选对照</title>
+<style>
+  :root {
+    color-scheme: dark;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --page: #1b1b1b;
+    --card: #202020;
+    --line: #3a3a3a;
+    --text: #e8e8e8;
+    --dim: #b6b6b6;
+    --faint: #8a8a8a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); }
+  .page { width: min(980px, calc(100% - 48px)); margin: 0 auto; padding: 52px 0 120px; }
+  header { margin-bottom: 32px; }
+  h1 { margin: 0 0 10px; font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
+  .intro { margin: 0; color: var(--faint); font-size: 13px; line-height: 1.75; }
+  .intro code { color: #cfcfcf; font-size: 12px; }
+  h2 { margin: 44px 0 8px; font-size: 13px; font-weight: 600; color: var(--faint); letter-spacing: .04em; text-transform: uppercase; }
+
+  .row {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 28px;
+    align-items: start;
+    padding: 20px 0;
+    border-top: 1px solid var(--line);
+  }
+  .row.current { opacity: .72; }
+  .name { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 600; }
+  .name b { color: var(--faint); font-weight: 500; }
+  .note { margin: 6px 0 0; color: var(--faint); font-size: 12px; line-height: 1.65; }
+  .tagline { display: inline-block; margin-top: 8px; padding: 1px 7px; border-radius: 999px; background: #2c3a2e; color: #9fd3a8; font-size: 11px; }
+  .tagline.base { background: #33302a; color: #c8b78d; }
+
+  /* Real-scale mock of the chat tool row (.act.read: 15px icon + 6px gap + ellipsized summary + chevron) */
+  .band { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .panel { width: 268px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  .panel.light { background: #fff; border-color: #dcdcdc; }
+  .panel-label { margin: 0 0 8px; color: #7d7d7d; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+
+  .act { display: flex; align-items: center; gap: 6px; padding-right: 15px; color: var(--dim); font-size: 13px; }
+  .panel.light .act { color: #4a4a4a; }
+  .act svg { flex: none; }
+  .act .sum { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .act .arrow { flex: none; display: inline-flex; color: var(--faint); }
+  .panel.light .act .arrow { color: #9a9a9a; }
+  .act + .act { margin-top: 14px; }
+
+  /* Big glyph for shape reading */
+  .sizes { display: flex; align-items: center; gap: 20px; color: var(--dim); }
+
+  /* Wall: all candidates at real 15px side by side, to check mutual distinguishability */
+  .wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .cell { display: flex; align-items: center; gap: 10px; padding: 14px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--dim); font-size: 12px; }
+  .cell svg { flex: none; }
+
+  footer { margin-top: 46px; color: var(--faint); font-size: 12px; line-height: 1.8; }
+  footer code { color: #cfcfcf; font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>ask 工具行图标 · 候选对照</h1>
+    <p class="intro">
+      场景：聊天流里模型调用 <code>ask</code> 向用户提问时的那一行（图标 15px + 问题摘要 + 箭头）。<br>
+      现有约束：<code>comment</code>（圆形气泡）已被会话引用 chip 复用，语义重复；权限审批用 <code>shieldQuestion</code>，侧栏等待态用 <code>messageQuestion</code>。<br>
+      规格：viewBox 24、stroke-width 1.5、linecap/linejoin round，与 registry 其它线性图标同族。
+    </p>
+  </header>
+
+  <h2>候选</h2>
+
+  <div class="row current">
+    <div>
+      <div class="name">现状 <b>comment</b></div>
+      <p class="note">圆形气泡，无问号。与「会话引用」chip 同形，用户看不出是提问。</p>
+      <span class="tagline base">当前</span>
+    </div>
+    <div class="band">
+      <div class="panel">
+        <p class="panel-label">聊天流（深色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="panel light">
+        <p class="panel-label">聊天流（浅色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- A · circleHelp -->
+  <div class="row">
+    <div>
+      <div class="name">A <b>circleHelp</b></div>
+      <p class="note">圆圈 + 问号（lucide circle-help）。最直白：这里要你回答一个问题。与任何现有 chip 不同形。</p>
+      <span class="tagline">推荐</span>
+    </div>
+    <div class="band">
+      <div class="panel">
+        <p class="panel-label">聊天流（深色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="panel light">
+        <p class="panel-label">聊天流（浅色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="sizes">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- B · messageQuestion -->
+  <div class="row">
+    <div>
+      <div class="name">B <b>messageQuestion</b></div>
+      <p class="note">气泡 + 问号（registry 已有，侧栏等待态同款）。语义最准，但和侧栏图标重复，且气泡与会话引用 chip 略近。</p>
+    </div>
+    <div class="band">
+      <div class="panel">
+        <p class="panel-label">聊天流（深色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="panel light">
+        <p class="panel-label">聊天流（浅色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="sizes">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- C · messageSquareQuestion -->
+  <div class="row">
+    <div>
+      <div class="name">C <b>messageSquareQuestion</b></div>
+      <p class="note">方形气泡 + 问号（自制，与 messageSquareText chip 同族）。有「对话框」感，方形也避开圆形 chip，但内部线条在 15px 下偏密。</p>
+    </div>
+    <div class="band">
+      <div class="panel">
+        <p class="panel-label">聊天流（深色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.2 8.2a2.7 2.7 0 0 1 5.1 1c0 1.8-2.3 2.4-2.3 2.4"/><path d="M12 13.6h.01"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="panel light">
+        <p class="panel-label">聊天流（浅色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.2 8.2a2.7 2.7 0 0 1 5.1 1c0 1.8-2.3 2.4-2.3 2.4"/><path d="M12 13.6h.01"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="sizes">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.2 8.2a2.7 2.7 0 0 1 5.1 1c0 1.8-2.3 2.4-2.3 2.4"/><path d="M12 13.6h.01"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.2 8.2a2.7 2.7 0 0 1 5.1 1c0 1.8-2.3 2.4-2.3 2.4"/><path d="M12 13.6h.01"/></svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.2 8.2a2.7 2.7 0 0 1 5.1 1c0 1.8-2.3 2.4-2.3 2.4"/><path d="M12 13.6h.01"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- D · listChecks -->
+  <div class="row">
+    <div>
+      <div class="name">D <b>listChecks</b></div>
+      <p class="note">清单打勾（lucide list-checks）。表达「选项表单」，与 ask 卡片的选项列表一致；缺点是不像「提问」，更像待办。</p>
+    </div>
+    <div class="band">
+      <div class="panel">
+        <p class="panel-label">聊天流（深色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="panel light">
+        <p class="panel-label">聊天流（浅色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="sizes">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- E · squareMousePointer -->
+  <div class="row">
+    <div>
+      <div class="name">E <b>squareMousePointer</b></div>
+      <p class="note">方框 + 鼠标指针（registry 已有）。强调「等你点一下」，但不像在问问题，15px 下方形也偏重。</p>
+    </div>
+    <div class="band">
+      <div class="panel">
+        <p class="panel-label">聊天流（深色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="panel light">
+        <p class="panel-label">聊天流（浅色）</p>
+        <div class="act"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg><span class="sum">Which storage should sessions use? +2</span><span class="arrow"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      </div>
+      <div class="sizes">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <h2>同尺寸并排（15px，判断彼此能否区分）</h2>
+  <div class="wall">
+    <div class="cell"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/></svg>现状 comment</div>
+    <div class="cell"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>A circleHelp</div>
+    <div class="cell"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>B messageQuestion</div>
+    <div class="cell"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.2 8.2a2.7 2.7 0 0 1 5.1 1c0 1.8-2.3 2.4-2.3 2.4"/><path d="M12 13.6h.01"/></svg>C messageSquareQuestion</div>
+    <div class="cell"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>D listChecks</div>
+    <div class="cell"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.034 12.681a.498.498 0 0 1 .647-.647l9 3.5a.5.5 0 0 1-.033.943l-3.444 1.068a1 1 0 0 0-.66.66l-1.067 3.443a.5.5 0 0 1-.943.033z"/><path d="M21 11V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6"/></svg>E squareMousePointer</div>
+  </div>
+
+  <footer>
+    选定后改动点：<code>ui/icons.js</code> 增图标（若自制）· <code>ui-src/components/chat/ToolRow.tsx</code> 的 <code>renderAsk</code> · <code>ui-src/components/main/right/subRowSpec.ts</code> 的 ask 映射。<br>
+    规格：viewBox 24 / stroke-width 1.5 / 15px 行内。
+  </footer>
+</div>
+</body>
+</html>

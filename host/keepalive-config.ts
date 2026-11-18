@@ -95,6 +95,29 @@ export const DEFAULT_PROBE_CONFIG: Readonly<ProbeConfig> = Object.freeze({
 // smart-mode constants
 export const SMART_STEP_MS = 30_000; // +30s per successful probe (per model)
 export const SMART_MAX_CONTEXT_TOKENS = 200_000; // context cap: grow only below this
+
+/**
+ * Smart-mode cadence decision after a probe hit, kept pure so the >200k guard
+ * is testable without a live extension instance.
+ *
+ * Above SMART_MAX_CONTEXT_TOKENS the cadence freezes where the per-model
+ * resolution left it (confirmed TTL → climbing store → settings default):
+ * growing past a demonstrated TTL is the expensive risk on a long context,
+ * while falling back to the settings base would throw the model's own TTL
+ * away. `growthHeld` latches until a miss clears the record.
+ */
+export function nextSmartCadence(
+  currentTtlMs: number,
+  inputTokens: number,
+  opts: { maxIdleMs: number; growthHeld: boolean },
+): { cadenceMs: number; growthHeld: boolean } {
+  if (inputTokens > SMART_MAX_CONTEXT_TOKENS || opts.growthHeld) {
+    return { cadenceMs: currentTtlMs, growthHeld: true };
+  }
+  const roomUnderMaxIdle = opts.maxIdleMs === 0 || currentTtlMs + SMART_STEP_MS < opts.maxIdleMs;
+  if (!roomUnderMaxIdle) return { cadenceMs: currentTtlMs, growthHeld: false };
+  return { cadenceMs: currentTtlMs + SMART_STEP_MS, growthHeld: false };
+}
 /**
  * default-mode safe floor: the nominal cache TTL. A miss while probing above
  * this cadence drops the cadence here and keeps probing (the miss probe

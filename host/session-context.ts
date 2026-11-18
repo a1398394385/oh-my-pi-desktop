@@ -17,6 +17,7 @@
 import { type } from "@oh-my-pi/omptype";
 import type { FileEntry, SessionInfo } from "@oh-my-pi/pi-coding-agent";
 import { FileSessionStorage, listAllSessions, loadEntriesFromFile } from "./bootstrap.ts";
+import { referenceTitle } from "./titles.ts";
 
 /** A "user question + assistant reply" pair inside a session — the minimal unit of search and expansion. */
 export interface SessionTurn {
@@ -180,14 +181,14 @@ function formatHits(hits: SessionContextHit[], query: string, scanned: number): 
   return lines.join("\n");
 }
 
-/** Render one session file as a prompt-inline reference (the composer's @
- *  session attachment): every turn, clipped, under the same character budget as an
- *  expansion. Returns null when the file holds no readable turn (empty or
- *  unparseable), so the caller can skip it instead of quoting nothing. */
-export async function formatSessionReference(sessionPath: string, title: string): Promise<string | null> {
+/** Render one session file as a prompt-inline reference (the composer's @ session
+ *  attachment); null when it holds no readable turn (the caller skips it). */
+export async function formatSessionReference(sessionPath: string): Promise<string | null> {
   const storage = new FileSessionStorage();
-  const turns = turnsFromEntries(await loadEntriesFromFile(sessionPath, storage));
+  const entries = await loadEntriesFromFile(sessionPath, storage);
+  const turns = turnsFromEntries(entries);
   if (turns.length === 0) return null;
+  const title = referenceTitle(entries, sessionPath);
   const lines = [`<attached-session title="${title.replace(/"/g, "&quot;")}" path="${sessionPath}">`];
   let used = 0;
   for (const turn of turns) {
@@ -224,9 +225,9 @@ export async function inlineSessionRefs(text: string): Promise<string> {
   if (refPaths.length === 0) return text;
   const blocks: string[] = [];
   for (const refPath of refPaths) {
-    // Only the path travels in the text; the block title is the session file name
-    const name = refPath.split("/").pop()?.replace(/\.jsonl$/, "") || "session";
-    const block = refPath ? await formatSessionReference(refPath, name) : null;
+    // Only the path travels in the text; the block header carries the session's own
+    // title, resolved from the file so the bubble chip shows what the sidebar shows.
+    const block = refPath ? await formatSessionReference(refPath) : null;
     if (block) blocks.push(block);
   }
   if (blocks.length === 0) return stripped;

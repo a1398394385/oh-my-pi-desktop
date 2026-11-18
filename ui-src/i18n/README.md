@@ -61,12 +61,16 @@ explain what a setting does.
    No "stage one", "lease", "heartbeat", "rollout", "payload", no API names
    (`WASAPI`, `ScreenCaptureKit`), no internal structure (band counts,
    singleton processes) — say "上下文", "记忆", "这一轮".
-3. **Never restate the label** — the description adds what the label cannot:
-   what changes, what breaks when it is off, when to touch it.
+3. **Never restate the label or the control's options** — the description adds
+   what the label cannot: what changes, what breaks when it is off, when to
+   touch it. The control already shows its option values, so never list them
+   again ("关、仅 eval 可用、完全放开", "off/suggest/on", "'立即中断' 或
+   '等待工具完成'") and never add where an option is available ("项目配置只能关").
+   One-line form: 「子代理调用时能否用一个精确模型 id 指定模型。」
 4. **Length** — Chinese ≤ 40 characters (≤ 60 for a genuinely complex item),
    English ≤ 25 words. A paragraph belongs in the docs, not in the row.
-5. **Facts stay put** — values, ranges, defaults, option names, timing and
-   side effects are copied from the base schema (`node_modules/@oh-my-pi/pi-coding-agent/src`)
+5. **Facts stay put** — values, ranges, defaults, timing and side effects are
+   copied from the base schema (`node_modules/@oh-my-pi/pi-coding-agent/src`)
    or the previous wording. A rewrite never invents or drops a fact.
 6. **Both languages, written separately** — the English is not a translation of
    the Chinese; each reads like its own language.

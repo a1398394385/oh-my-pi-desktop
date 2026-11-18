@@ -18,7 +18,6 @@ import type { AcpParams } from "./acp-plan.ts";
 import { signatureTokensOf } from "./acp-projection.ts";
 import type { AcpSummarySink } from "./acp-persist.ts";
 import { AcpRuntimeState } from "./acp-runtime.ts";
-import { safeStderr } from "./stderr.ts";
 
 /**
  * Proactive-compression guidance appended to ACP sessions' system prompts via
@@ -61,6 +60,8 @@ export function createAcpRuntime(opts: {
 	params?: Partial<AcpParams>;
 	/** Full param re-derivation for a context window (percent tier lines); see AcpRuntimeDeps.resolveParams. */
 	resolveParams?: (contextWindow: number) => AcpParams;
+	/** Non-message request part (system prompt + tools + skills + context); see AcpRuntimeDeps.nonMessageTokens. */
+	nonMessageTokens?: () => number;
 	/** Level-3 force channel (spec §5.2/§10): arms tool_choice on the live session. */
 	forceCompressTool?: () => void;
 	/** §5.3 degrade hook: fired once when ACP exits this session (observability; no settings write-back). */
@@ -92,6 +93,7 @@ export function createAcpRuntime(opts: {
 		getBranch: opts.getBranch,
 		// Zone line axis of the §5.2 table: window × 35% (§11); unknown window = no limit.
 		contextWindow: (opts.model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0,
+		nonMessageTokens: opts.nonMessageTokens,
 		params: opts.params,
 		resolveParams: opts.resolveParams,
 		forceCompressTool: opts.forceCompressTool,
@@ -139,10 +141,11 @@ type AcpExtensionCtx = { sessionManager: { getSessionId(): string } };
 /**
  * Request projection extension: hooks the context event and replaces the view
  * with the dual-zone projection, and takes over base compaction summarization
- * for the owning session. A projection failure must never blow up the request
- * — the original view passes through (same stance the retired nudge
- * prototype's transform took). Takeover failures likewise return undefined so
- * the base chain remains the recovery path.
+ * for the owning session. A projection failure never returns the raw journal
+ * view: ACP degrades explicitly and the request throws, because a raw view
+ * would dump the history the projection was meant to own. Takeover failures
+ * return undefined so the caller's injected preparation (or the base default
+ * for non-ACP manual compaction) handles the summary.
  *
  * Owner-only. This factory is registered as an inline extension, and the SDK
  * deliberately rebinds inline factories into child sessions (sdk.ts preparedExtensions
@@ -224,10 +227,15 @@ export function createAcpProjectionExtension(
 				return { messages: state.projectView(ev.messages) };
 			} catch (err) {
 				// projectContext self-repairs source-view pairing gaps, so reaching
-				// here means an unexpected defect; passing the original view through
-				// keeps the session usable (the provider layer re-pairs the wire).
-				safeStderr(`[ACP] projection failed, passing the original view through:`, err);
-				return { messages: ev.messages };
+				// here means an unexpected defect. ACP cannot manage context without
+				// its projection, and an ACP-owned request must never silently fall
+				// back to the raw journal view: exit explicitly (the base auto chain
+				// stays pinned off) and fail the request with the cause.
+				state.degrade(
+					`projection failed: ${err instanceof Error ? err.message : String(err)}`,
+					err,
+				);
+				throw err;
 			}
 		});
 	};

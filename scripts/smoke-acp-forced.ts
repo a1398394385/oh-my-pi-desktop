@@ -1,5 +1,5 @@
 // ACP T7 smoke: level-3 forced compression + total-volume guard line +
-// permanent degrade (spec §5.2/§5.3, acceptance 5/7). Single-process bun run.
+// force-ladder fallback (spec §5.2/§5.3, acceptance 5/7). Single-process bun run.
 //
 // Layers:
 //   A  ultimatum round attribution (acceptance 5): the delivering round is
@@ -7,7 +7,8 @@
 //      the delivered turn frees; below-min and pure-reset successes do NOT
 //      count; an unanswered ultimatum arms the force; idle never wakes it
 //   B  forced execution: armed force -> next compress runs strong semantics
-//      with meta.forced=true; a forced turn that ends without success degrades
+//      with meta.forced=true; three consecutive forced turns without success
+//      leave the ladder into fallback (no degrade, no re-arm)
 //   C  guard line (acceptance 7): projected total over window − reserve arms
 //      the force directly at a non-L3 tier (no ultimatum wait); a successful
 //      compression in the same round frees; still over after a forced success
@@ -15,16 +16,17 @@
 //   D  end-to-end ultimatum -> force -> obey: the real setForcedToolChoice
 //      channel drives the next request's tool_choice (named form), the model
 //      compresses under force, the [forced,"none"] sequence advances
-//   E  end-to-end degrade: forced turn ignored => degrade — compress rejected
-//      at the entry, ephemeral stopped, projection passes the journal view
-//      through verbatim (zone renders gone), compaction.enabled restored on
-//      the settings child, disk JSONL untouched
-//   F  end-to-end API error on the forced request => degrade (error turns emit
-//      turn_end with no tool call; the retry may succeed afterwards)
+//   E  end-to-end fallback: an ignored force retries twice, the third failure
+//      enters fallback — compress stays available, the projection keeps
+//      serving (zone renders and ephemeral intact), compaction.enabled stays
+//      pinned off, disk JSONL untouched
+//   F  end-to-end API error on the forced request counts as a failure (error
+//      turns emit turn_end with no tool call; the retry may succeed afterwards)
 //   G  restart rebuild wiring (acceptance 10 half): a base compaction entry
 //      becomes the zone root at assembly time (base baseline, no degrade, base
 //      chain left pinned); a provider-native boundary degrades only inside its
-//      branch era and recovers once the branch leaves it
+//      branch era and recovers once the branch leaves it; degrade never
+//      restores the base auto chain
 //
 // Mock-model note (D/E/F): the mock's api is "mock", for which
 // buildNamedToolChoice returns nothing — setForcedToolChoice would throw. The
@@ -69,10 +71,6 @@ function accepted(r: CompressOutcome | CompressRejection): CompressOutcome {
 	if (!r.ok) assert.fail(`expected success, got: ${JSON.stringify(r)}`);
 	return r;
 }
-function rejected(r: CompressOutcome | CompressRejection): CompressRejection {
-	if (r.ok) assert.fail(`expected a rejection, got: ${JSON.stringify(r)}`);
-	return r;
-}
 
 /** Text of a message regardless of content shape (string or block array). */
 function textOf(m: { content?: unknown }): string {
@@ -111,8 +109,7 @@ let fixtureSeq = 0;
 
 /**
  * Failure-exit fixture: journal-backed view over a fake sink that journals
- * acpSummary writes (rebuild parity), with a spying force channel and a
- * degrade hook writing to an isolated settings overlay like the assembly.
+ * acpSummary writes (rebuild parity), with a spying force channel.
  */
 function makeForcedFixture(params: Partial<AcpParams>, blocks: number, contextWindow: number, blockTokens = 100): ForcedFixture {
 	const writes: AcpSummaryData[] = [];
@@ -136,7 +133,6 @@ function makeForcedFixture(params: Partial<AcpParams>, blocks: number, contextWi
 		view.push(message);
 	}
 	const forceCalls: string[] = [];
-	const settings = Settings.isolated({}).overlay({ "compaction.enabled": false });
 	const state = new AcpRuntimeState({
 		countTokens,
 		sink,
@@ -146,7 +142,6 @@ function makeForcedFixture(params: Partial<AcpParams>, blocks: number, contextWi
 		forceCompressTool: () => {
 			forceCalls.push(`arm@${entries.length}`);
 		},
-		onDegrade: () => cfgCompactionEnabled.override(settings, true),
 	});
 	return { state, writes, entries, view, forceCalls };
 }
@@ -231,22 +226,28 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 }
 
 {
-	// Forced turn that ends without any compression -> degrade, and every §5.3
-	// effect is observable: entry rejection + verbatim projection pass-through.
+	// Three consecutive forced turns without compression leave the force ladder
+	// into persistent fallback — no degrade, no re-arm; the projection keeps
+	// serving normally.
 	const fx = makeForcedFixture(FIXTURE_PARAMS, 10, 100_000);
 	fx.state.projectView(fx.view);
-	fx.state.onTurnEnd(); // arm
+	fx.state.onTurnEnd(); // arm 1
+	assert.equal(fx.forceCalls.length, 1);
 	fx.state.projectView(fx.view); // the forced request — model never compresses
-	fx.state.onTurnEnd(); // forced-turn resolution: no success
-	assert.equal(fx.state.degraded, true, "forced turn without successful compression degrades");
-	assert.match(fx.state.degradeReason, /forced compression turn/);
-	const r = rejected(await fx.state.compress({ keep: [], summary: tokenText(10) }));
-	assert.equal(r.code, "degraded", "compress_context rejects at the entry after degrade");
-	const passthrough = fx.state.projectView(fx.view);
-	assert.equal(passthrough.length, fx.view.length, "degraded projection passes the view through verbatim");
-	assert.equal(JSON.stringify(passthrough), JSON.stringify(fx.view), "no zone render, no ephemeral, no filtering");
-	assert.ok(!JSON.stringify(passthrough).includes("[compress-hint]"), "ephemeral stopped");
-	console.log("ok: B2 forced turn without success degrades; entry rejects; projection verbatim");
+	fx.state.onTurnEnd(); // failure 1 -> retry
+	assert.equal(fx.forceCalls.length, 2);
+	fx.state.projectView(fx.view);
+	fx.state.onTurnEnd(); // failure 2 -> retry
+	assert.equal(fx.forceCalls.length, 3);
+	fx.state.projectView(fx.view);
+	fx.state.onTurnEnd(); // failure 3 -> fallback
+	assert.equal(fx.state.degraded, false, "fallback is not a degrade");
+	assert.equal(fx.state.fallbackActive(), true, "three failures enter fallback");
+	assert.match(fx.state.fallbackReason, /3 consecutive/);
+	fx.state.projectView(fx.view);
+	fx.state.onTurnEnd(); // fallback never re-arms
+	assert.equal(fx.forceCalls.length, 3, "no fourth force");
+	console.log("ok: B2 three forced failures enter fallback; no degrade and no re-arm");
 }
 
 // --- C: total-volume guard line (acceptance 7) --------------------------------------------
@@ -330,8 +331,8 @@ async function makeE2ESession(cwd: string, opts: E2EOpts) {
 			opts.handler({ context: context as unknown as MockCall["context"], options }),
 	});
 	const sessionManager = SessionManager.create(cwd);
-	// Assembly-mirroring settings: parent -> live child with compaction off;
-	// the degrade hook writes compaction.enabled back on the child (§5.3).
+	// Assembly-mirroring settings: parent -> live child with compaction off.
+	// Degrade never restores it; the base auto chain stays pinned for ACP.
 	const settings = Settings.isolated({}).overlay({ "compaction.enabled": false });
 	assert.equal(cfgCompactionEnabled.get(settings), false, "base compaction pinned off for the ACP session");
 	const forceCalls: string[] = [];
@@ -352,7 +353,6 @@ async function makeE2ESession(cwd: string, opts: E2EOpts) {
 				patched.api = saved;
 			}
 		},
-		onDegrade: () => cfgCompactionEnabled.override(settings, true),
 	});
 	const acpSession: { session?: { setForcedToolChoice(toolName: string): void } } = {};
 	// The force channel mirrors the assembly hook; the mock's "mock" api is
@@ -520,9 +520,10 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		.find((m): m is Extract<AgentMessage, { role: "toolResult" }> => m.role === "toolResult" && m.toolName === "read")!;
 	assert.equal(blocked.isError, true, "the non-compress call on a forced round is an error");
 	assert.match(textOf(blocked as never as { content: unknown }), /only compress_context is allowed on this turn/, "the error points back at the pinned call");
-	// No compress happened this turn: the forced round ends without success and
-	// the session degrades (E covers the aftermath; here we just confirm it).
-	await waitFor("degrade after the blocked force", () => e2e.state.degraded);
+	// No compress happened this turn: the forced round fails and the ladder
+	// retries the force (failure 2 of 3 still re-arms; the third enters fallback).
+	await waitFor("force re-armed after the blocked round", () => e2e.forceCalls.length >= 2);
+	assert.equal(e2e.state.degraded, false, "one blocked forced round does not degrade");
 	await e2e.session.dispose();
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
@@ -531,10 +532,10 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: D2 e2e — forced round blocked a non-compress tool host-side with a redirect error; force unanswered degrades");
+	console.log("ok: D2 e2e — forced round blocked a non-compress tool host-side with a redirect error; failure re-arms the force");
 }
 
-// --- E: e2e degrade after an ignored force (acceptance 5 degrade half) ---------------------
+// --- E: e2e fallback after three ignored forces (acceptance 5 fallback half) ---------------
 
 {
 	const cwd = mkdtempSync(join(tmpdir(), "acp-t7-e-"));
@@ -574,36 +575,38 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	assert.equal(summaryEntries().length, 1);
 	assert.equal(summaryEntries()[0].data.meta.forced, undefined, "the voluntary compress is not marked forced");
 
-	// Snapshot the raw journal before the degrade path runs: the §5.3 assertion
-	// is that degrade never rewrites any stored message (the base chain's
-	// summaries read the original full text).
+	// Snapshot the raw journal before the fallback path runs: the base auto
+	// chain stays pinned off and never rewrites stored messages.
 	const fileBefore = await Bun.file(e2e.sessionManager.getSessionFile()!).text();
 
 	// Round 3: past L3 again, ultimatum ignored -> force armed.
 	await e2e.session.prompt(bulkTurn("round two"));
 	assert.equal(e2e.forceCalls.length, 1, "ultimatum ignored -> force armed");
 
-	// Round 4: the forced request is ignored too -> permanent degrade.
+	// Rounds 4-6: each forced request is ignored. The first two re-arm, the
+	// third enters persistent fallback (no degrade, no fourth force).
 	await e2e.session.prompt("continue");
+	assert.equal(e2e.forceCalls.length, 2, "forced failure 1 re-arms");
+	await e2e.session.prompt("continue");
+	assert.equal(e2e.forceCalls.length, 3, "forced failure 2 re-arms");
+	await e2e.session.prompt("continue");
+	assert.equal(e2e.forceCalls.length, 3, "forced failure 3 enters fallback without a fourth force");
 
-	assert.equal(e2e.state.degraded, true, "forced turn ignored -> degrade (spec §5.2 terminal state)");
-	assert.match(e2e.state.degradeReason, /forced compression turn/);
-	assert.equal(cfgCompactionEnabled.get(e2e.settings), true, "degrade restored compaction.enabled on the live settings child");
-	const r = rejected(await e2e.state.compress({ keep: [], summary: tokenText(10) }));
-	assert.equal(r.code, "degraded", "compress_context rejects at the entry (tools cannot be unregistered)");
+	assert.equal(e2e.state.degraded, false, "fallback is not a degrade");
+	assert.equal(e2e.state.fallbackActive(), true, "three failed forced rounds enter fallback");
+	assert.match(e2e.state.fallbackReason, /3 consecutive/);
+	assert.equal(cfgCompactionEnabled.get(e2e.settings), false, "the base auto chain stays pinned off");
 
-	// Post-degrade request: projection off — verbatim view, no ephemeral.
-	await e2e.session.prompt(bulkTurn("round four")); // post-degrade request: projection off
+	// Post-fallback request: the projection still serves (tier ephemeral intact),
+	// and compress_context is not rejected at the entry.
+	await e2e.session.prompt(bulkTurn("round four"));
 	const wire = JSON.stringify(e2e.calls.at(-1)!.context.messages);
-	assert.ok(!wire.includes("[compress-hint]"), "ephemeral stopped after degrade");
-	assert.ok(!wire.includes("[acp-summary"), "zone renders gone after degrade (projection off)");
-	assert.ok(wire.includes("round four"), "the new turn passes through verbatim");
+	assert.ok(wire.includes("[compress-hint]"), "the projection keeps steering after fallback");
+	assert.ok(wire.includes("round four"), "the new turn passes through the projection");
 
-	// Disk: the journal still carries every original message and the compaction
-	// block byte-for-byte (degrade rewrites nothing; the base chain's
-	// summaries read the original full text).
+	// Disk: the journal is untouched; ACP never rewrote stored messages.
 	const fileAfter = await Bun.file(e2e.sessionManager.getSessionFile()!).text();
-	assert.ok(fileAfter.startsWith(fileBefore), "the pre-degrade journal is a byte-identical prefix of the post-degrade one");
+	assert.ok(fileAfter.startsWith(fileBefore), "the pre-fallback journal is a byte-identical prefix of the post-fallback one");
 	assert.ok(fileAfter.includes('"customType":"acpSummary"'), "the compaction block stays on disk");
 	await e2e.session.dispose(); // same as D: no post-exit session-file resurrection
 	await e2e.sessionManager.close();
@@ -617,10 +620,10 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: E e2e — ignored force degrades; entry rejects; ephemeral/projection off; compaction restored; journal untouched");
+	console.log("ok: E e2e — three ignored forces enter fallback; projection keeps serving; journal untouched");
 }
 
-// --- F: e2e API error on the forced request -> degrade (acceptance 5) ----------------------
+// --- F: e2e API error on the forced request counts as one failure (acceptance 5) ------------
 
 {
 	const cwd = mkdtempSync(join(tmpdir(), "acp-t7-f-"));
@@ -647,13 +650,16 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	await e2e.session.prompt(bulkTurn("task one")); // ultimatum ignored -> force armed
 	assert.equal(e2e.forceCalls.length, 1);
 	await e2e.session.prompt("continue"); // forced request; first attempt API-errors
-	assert.equal(e2e.state.degraded, true, "an API-error forced turn degrades (turn_end fires with no tool call)");
-	assert.match(e2e.state.degradeReason, /forced compression turn/);
-	assert.equal(cfgCompactionEnabled.get(e2e.settings), true, "base compaction restored");
-	// The degraded session keeps serving requests through the verbatim view even
-	// while the base retry machinery finishes its attempt.
-	await e2e.session.prompt("final turn");
-	assert.ok(!JSON.stringify(e2e.calls.at(-1)!.context.messages).includes("[compress-hint]"), "no ephemeral after degrade");
+	assert.equal(e2e.state.degraded, false, "an API-error forced turn counts as one failure, not a degrade");
+	assert.equal(e2e.forceCalls.length, 2, "the failed forced round re-arms the force");
+	assert.equal(cfgCompactionEnabled.get(e2e.settings), false, "the base auto chain stays pinned off");
+	// The next forced attempt obeys: the model compresses and the ladder clears.
+	await e2e.session.prompt("continue");
+	await waitFor("forced compress after the API-error retry", () =>
+		e2e.sessionManager.getEntries().some((e) => e.type === "custom" && (e as { customType?: string }).customType === "acpSummary"),
+	);
+	assert.equal(e2e.state.degraded, false, "a later successful forced round leaves ACP active");
+	assert.equal(e2e.state.fallbackActive(), false, "a success never enters fallback");
 	await e2e.session.dispose(); // same as D: no post-exit session-file resurrection
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
@@ -666,7 +672,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: F e2e — API error on the forced request degrades; degraded session keeps serving verbatim");
+	console.log("ok: F e2e — API error on the forced request counts as a failure and re-arms; the retry obeys");
 }
 
 // --- G: restart rebuild wiring (acceptance 10 half, spec §9.1/§5.3) ------------------------
@@ -691,7 +697,6 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		getEntries: () => healthy.getEntries(),
 		contextWindow: 100_000,
 		params: FIXTURE_PARAMS,
-		onDegrade: () => cfgCompactionEnabled.override(settingsA, true),
 	});
 	// The exact assembly lines from host/session-lifecycle.ts.
 	stateA.resyncToBranch(healthy.getBranch());
@@ -714,7 +719,6 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		getEntries: () => based.getEntries(),
 		contextWindow: 100_000,
 		params: FIXTURE_PARAMS,
-		onDegrade: () => cfgCompactionEnabled.override(settingsB, true),
 	});
 	stateB.resyncToBranch(based.getBranch());
 	assert.equal(stateB.degraded, false, "a base compaction entry is the baseline at restart, not a degrade");
@@ -749,13 +753,12 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		params: FIXTURE_PARAMS,
 		onDegrade: () => {
 			degradeCalls++;
-			cfgCompactionEnabled.override(settingsC, true);
 		},
 	});
 	stateC.resyncToBranch(native.getBranch());
 	assert.equal(stateC.degraded, true, "a provider-native boundary still degrades inside its era");
 	assert.match(stateC.degradeReason, /native/i);
-	assert.equal(cfgCompactionEnabled.get(settingsC), true, "base compaction chain restored for the degraded era");
+	assert.equal(cfgCompactionEnabled.get(settingsC), false, "degrade never restores the base auto chain");
 	const passthrough = stateC.projectView([{ role: "user", content: "plain", timestamp: 0 } as never as AgentMessage]);
 	assert.equal(passthrough.length, 1, "degraded sessions project verbatim");
 	assert.ok(!stateC.roundStatus, "no round status while the native boundary is current");

@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { ChatItem, LoopItem } from "./chat-types";
 import { useAppStore } from "../../store/index";
+import { isImeKey } from "../../keys";
 import { isJunkPlaceholder } from "../../store/session";
 import { stripQuote } from "../../lib/conversation-quote";
 import { t } from "../../i18n";
@@ -144,7 +145,7 @@ export default function FindBar({ streamRef }: { streamRef: RefObject<HTMLDivEle
         if (!st.activePath || !st.openSessions.get(st.activePath) || st.isCreatingNew || st.settingsOpen) return;
         e.preventDefault();
         setOpen(true);
-      } else if (e.key === "Escape" && open) {
+      } else if (e.key === "Escape" && open && !isImeKey(e)) {
         close();
       }
     };

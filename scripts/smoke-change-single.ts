@@ -102,13 +102,19 @@ const ok = (cond: boolean, label: string) => {
 
 await sleep(100);
 
-// ---- Collapsed: label + file chips + counts + arrow, no body ----
+// ---- Collapsed: label + file chips + per-file counts + arrow, no body ----
 const row = document.querySelector(".act.change");
 ok(row !== null, "multi-file event renders the change row");
 ok((row?.querySelector(".lbl")?.textContent ?? "").includes("3"), "row labels the file count");
-ok(row?.querySelectorAll(".f-ic").length === 3, "row lists one chip per file");
-ok((row?.querySelector(".add")?.textContent ?? "") === "+3", "row shows the added line count");
-ok((row?.querySelector(".del")?.textContent ?? "") === "−3", "row shows the removed line count");
+const chips = [...(row?.querySelectorAll(".f-ic") ?? [])];
+ok(chips.length === 3, "row lists one chip per file");
+// Counts hang off each chip instead of trailing the whole row (the totals would hide which file grew)
+const chipText = (i: number) => chips[i]?.parentElement?.textContent ?? "";
+ok(chipText(0).includes("a.ts") && chipText(0).includes("+1") && !chipText(0).includes("−"), "first chip shows its own +1");
+ok(chipText(1).includes("b.ts") && chipText(1).includes("+1") && chipText(1).includes("−1"), "second chip shows +1 −1");
+ok(chipText(2).includes("c.ts") && chipText(2).includes("+1") && chipText(2).includes("−2"), "third chip shows +1 −2");
+ok(chipText(2).includes("−2") && !chipText(2).includes("−3"), "no event totals trailing the last chip");
+ok(row?.querySelectorAll(".chips-lane .sep").length === 2, "dim dot separates adjacent file entries");
 ok(row?.querySelector(".ed-arrow") !== null, "row carries the expand arrow");
 ok(document.querySelector(".chg-body") === null, "row starts collapsed");
 // Per-file diffs ride the item, so expanding must not hit the host

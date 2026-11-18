@@ -41,7 +41,7 @@
   border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: spin .9s linear infinite;
+  animation: spin 1.125s linear infinite;
 }
 
 .bs-skip {
@@ -55,5 +55,5 @@
 @media (prefers-reduced-motion: reduce) {
   html:not([data-motion="on"]) #bootSplash { animation: none; }
   html:not([data-motion="on"]) #bootSplash.out { transition: none; }
-  html:not([data-motion="on"]) .bs-spin { animation-duration: 2.4s; }
+  html:not([data-motion="on"]) .bs-spin { animation-duration: 3s; }
 }

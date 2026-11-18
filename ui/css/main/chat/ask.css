@@ -14,6 +14,12 @@
 
 .ask-page { color: var(--faint); font-size: var(--ui-fs-sm); padding-right: 2px; }
 
+/* Deadline countdown (ask.timeout): the host answers with the form's defaults
+   when it elapses, so this only reports the remainder — in the foot hint, and on
+   the collapsed summary bar. Tabular digits keep the number from shifting the
+   line as it shrinks. */
+.ask-deadline { flex: none; color: var(--faint); font-size: var(--ui-fs-sm); font-variant-numeric: tabular-nums; }
+
 .ask-page-btn:disabled { opacity: .35; cursor: default; }
 
 .ask-page-btn:disabled:hover { background: transparent; color: var(--faint); }
@@ -22,44 +28,78 @@
 
 /* Single-choice rows draw no marker: the row's .selected plate is the only state
    signal; the radio stays in the DOM for focus/arrow navigation, visually hidden
-   (selection rides the row div's click — see ApprovalCard — not native label
-   forwarding, which real mouse clicks don't take through a pointer-events:none
-   control). Multi checkboxes size to the row's font (native default is smaller). */
+   (the row is a <label>, so a click anywhere on it reaches the control). Multi
+   checkboxes size to the row's font (native default is smaller). */
 .ask-opt input { flex: none; margin: 0; accent-color: var(--accent); }
-.ask-opt input[type="radio"] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ask-opt input[type="radio"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .ask-opt input[type="checkbox"] { width: 1em; height: 1em; }
+
+/* "Other" row: the label picks it, the text field beside it holds the answer. */
+.ask-other-pick { display: inline-flex; flex: none; align-items: center; gap: 12px; cursor: pointer; }
 
 .ask-opt .ask-desc { display: block; color: var(--faint); font-size: var(--ui-fs-sm); }
 
-/* Keyboard cursor plate: the row hosting the focused control takes a hover-level
-   highlight so global arrow navigation stays visible on multi questions and
-   "Other" rows (where the checked --select plate lives elsewhere); :not(.selected)
-   keeps the stronger checked plate winning on the row that owns both */
-.ask-opt:has(input:focus):not(.selected) { background: var(--panel-2); }
-/* ask form: "Other" custom-answer row (dimmed label, lit when selected) and
-   its inline input, indented to align with the option labels */
+/* Keyboard cursor plate: the row hosting the focused control takes the same highlight
+   as hover — arrow keys move the pick, so a ring on top of the plate reads as noise.
+   :not(.selected) keeps the stronger checked plate winning on the row that owns both. */
+.ask-opt:has(input:focus):not(.selected) { background: var(--hover-fill); }
+/* ask form: "Other" custom-answer row (dimmed label, lit when selected) with its
+   input inline after the label, as the base draws `Other: <text>` on one row */
 .ask-other-opt .approval-label { color: var(--dim); }
 
 .ask-other-opt.selected .approval-label { color: var(--text); }
 
-.ask-other { display: flex; padding: 2px 12px 2px 25px; }
+.ask-other-opt .ask-other-inp { flex: 1; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 400; outline: none; }
 
-.ask-other .approval-inp { font-weight: 400; }
+.ask-other-opt .ask-other-inp::placeholder { color: var(--faint); font-weight: 400; }
 
-/* AskFormCard (18.20 formDialog): one parsed <form> drawn whole. Section spacing
-   mirrors .ask-q's rhythm; headings/paragraphs keep the card's body type so the
-   form reads as prose with controls inline, not as a settings page. */
-.ask-form-section + .ask-form-section { margin-top: 12px; }
+/* Question-level note (single-choice fields): the base's option notes flattened to
+   one ghost row under the group's last control. It submits only when typed into, so
+   the row reads as an affordance rather than as another answer. */
+.ask-note { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-radius: var(--r-lg); }
 
-.ask-form-heading { font-weight: 600; color: var(--text); }
+.ask-note:focus-within { background: var(--hover-fill); }
 
-.ask-form-heading + p, .ask-form-heading + ul, .ask-form-heading + ol, .ask-form-heading + .ask-form-pre { margin-top: 6px; }
+.ask-note .pi-ic { flex: none; color: var(--faint); }
 
-.ask-form p, .ask-form ul, .ask-form ol { margin: 8px 0 0; color: var(--dim); }
+/* Typed into: the icon lights up (the only "this will be sent" signal). */
+.ask-note:has(.ask-note-inp:not(:placeholder-shown)) .pi-ic { color: var(--text); }
+
+.ask-note-inp { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-weight: 400; }
+
+.ask-note-inp::placeholder { color: var(--faint); font-weight: 400; }
+
+/* Required field marker: the base appends a red ` *` to the label */
+.ask-req { margin-left: 3px; color: var(--danger); font-weight: 400; }
+
+/* AskFormCard (18.20 formDialog): the model's one <form> drawn whole. One column and
+   three levels, so the parts stay recognizable without extra chrome:
+   section (legend + blocks) → question (legend + control) → option rows.
+   Spacing follows proximity: 8 inside a question, 16 between questions, 24 between
+   sections; no borders or nesting beyond the card itself. */
+.ask-form { display: flex; flex-direction: column; gap: 24px; }
+
+.ask-form-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+
+/* Section legend heads its question group, so it carries the question weight — one
+   size below the card title; only the context paragraphs stay dim. The 8px below it
+   stacks with the section gap: 16px total from the legend to the first option row, so
+   the selected plate never looks glued to the heading. */
+.ask-form-heading { padding: 0; margin-bottom: 8px; font-size: var(--ui-fs-base); font-weight: 600; color: var(--text); }
+
+.ask-form p, .ask-form ul, .ask-form ol { margin: 0; color: var(--dim); }
 
 .ask-form ul, .ask-form ol { padding-left: 20px; }
 
 .ask-form li + li { margin-top: 4px; }
+
+/* One question = one <fieldset>: legend on top, control below. `.ask-field` wins over
+   the shared `.ask-q` row spacing (ToolRow's per-field rounds keep theirs). */
+.ask-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
+
+.ask-field + .ask-field { margin-top: 16px; }
+
+.ask-field > .approval-label { font-weight: 600; }
 
 .ask-form code { font-family: var(--code-font); font-size: var(--code-fs); }
 

@@ -276,6 +276,10 @@ html[data-motion="off"] .dock.has-session-accent:focus-within .dock-ring { displ
   min-width: 260px;
 }
 
+/* Session drag over this input card: accent wash marks where the reference chip lands (the
+   row adds the class while the pointer is inside, so it is not composer state) */
+#composer.session-drop-hover { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 12px; }
+
 /* Message-editing hint row (a bubble's edit button hands the message to this box): the
    input itself carries the edited text, so this row is the only statement of the mode.
    Filled block: its inset comes from #composer's padding, so its edges never touch the
@@ -546,7 +550,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .q-btn {
   flex: none; width: 20px; height: 20px; border-radius: 6px;
   display: inline-flex; align-items: center; justify-content: center;
-  color: var(--faint); cursor: pointer; border: 0; background: none; padding: 0;
+  color: var(--text); cursor: pointer; border: 0; background: none; padding: 0;
   line-height: 0;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift), transform var(--dur-slow) var(--spring-press);
 }
@@ -635,12 +639,14 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   border: 1px solid var(--line-soft);
   border-radius: 8px;
   padding: 4px 8px;
-  font-size: var(--ui-fs-xs); color: var(--dim);
+  /* Match the composer body text (#input uses --ui-fs-md): a chip is an attachment
+     of the message, not a secondary label. */
+  font-size: var(--ui-fs-md); color: var(--text);
 }
 
-.atchip .at-ic { flex: none; display: inline-flex; align-items: center; color: var(--faint); line-height: 1; }
+.atchip .at-ic { flex: none; display: inline-flex; align-items: center; color: var(--text); line-height: 1; }
 
-.atchip .at-ic svg { display: block; width: 12px !important; height: 12px !important; }
+.atchip .at-ic svg { display: block; width: 1em !important; height: 1em !important; }
 
 .atchip .at-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1; display: inline-flex; align-items: center; }
 
@@ -649,7 +655,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
   width: 15px; height: 15px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%; border: 1px solid var(--line-soft);
-  background: var(--panel); --hover-fill: var(--menu-hl); color: var(--dim);
+  background: var(--panel); --hover-fill: var(--menu-hl); color: var(--text);
   cursor: pointer; font-size: 10px; line-height: 1;
 }
 
@@ -679,6 +685,10 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 /* model names vary in length; the model button flexes with its content, exempt from the shared 180px cap */
 #modelBtn { max-width: none; }
 
+/* The thinking level rides the model pill as its own run: the model name takes the control's
+   full text color, the level stays one step lighter — it is a status readout, not the label. */
+#thinkLabel { color: var(--faint); white-space: nowrap; flex: none; }
+
 /* model provider icon (same glyph as the settings page): shown only when the model button shrinks to icon-only */
 #modelIcon { display: none; }
 
@@ -687,7 +697,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
    where they must keep their full labels -- an unscoped rule would collapse them there too. */
 #composer.bar-1 .cbar #modeLabel, #composer.bar-1 .cbar #modeBtn .caret-svg { display: none; }
 
-#composer.bar-3 .cbar #modelLabel, #composer.bar-3 .cbar #modelBtn .caret-svg { display: none; }
+#composer.bar-3 .cbar #modelLabel, #composer.bar-3 .cbar #thinkLabel, #composer.bar-3 .cbar #modelBtn .caret-svg { display: none; }
 
 #composer.bar-3 .cbar #modelIcon { display: inline; }
 
@@ -708,7 +718,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .bg-task-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 8px; border-radius: 999px;
-  color: var(--dim); cursor: pointer;
+  color: var(--text); cursor: pointer;
   max-width: none;
   transition: background var(--dur-snap) var(--swift), color var(--dur-snap) var(--swift);
 }

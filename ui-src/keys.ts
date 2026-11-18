@@ -41,6 +41,13 @@ export const DOUBLE_ESC_MS = 500;
 let doubleEscTimer: TimerHandle | undefined;
 let escArmedAction: "clear" | "tree" | "git" | null = null;
 
+/** WebKit marks IME keystrokes `keyCode === 229` with isComposing already false (BUG-031): an
+ *  IME dismissing its candidate window sends such an Esc, which no Esc consumer may act on. */
+export function isImeKey(e: { isComposing?: boolean; keyCode?: number; nativeEvent?: { isComposing?: boolean; keyCode?: number } }): boolean {
+  const k = e.nativeEvent ?? e;
+  return k.isComposing === true || k.keyCode === 229;
+}
+
 /** Global Esc routing:
  *  1. git manage page: two esc presses close it;
  *  2. tree page: one esc switches back to messages;
@@ -48,7 +55,8 @@ let escArmedAction: "clear" | "tree" | "git" | null = null;
  *  4. composer empty: two esc presses summon the tree (while generating, the
  *     first press aborts generation).
  */
-function handleEsc(): boolean | undefined {
+function handleEsc(e?: KeyboardEvent): boolean | undefined {
+  if (e && isImeKey(e)) return false; // the IME is dismissing its candidate window, not the app
   const st = useAppStore.getState();
   if (st.settingsOpen || st.findOpen) return false; // settings / find bar consumes Esc first
   if (document.querySelector(".menu.open")) {
@@ -549,6 +557,9 @@ let autoExpandedProjects: Set<string> | null = null;
 function setCommandPressed(on: boolean): void {
   const st = useAppStore.getState();
   if (st.isCommandPressed === on) return;
+  // Settings switch: when off, holding the modifier does nothing at all (no
+  // widening, no transient expansion, no badges)
+  if (on && st.uiPrefs.holdSidebarHints === false) return;
   if (!on || !st.narrow) widenSidebarForHints(on);
   if (!on) {
     if (autoExpandedProjects) {

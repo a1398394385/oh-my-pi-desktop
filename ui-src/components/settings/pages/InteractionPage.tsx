@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import { invoke } from "../../../store/ws";
 import { saveUiPrefs } from "../../../appearance";
+import { MOD } from "../../../platform";
 import SchemaRows, { SchemaGroupTitle, SchemaRowsBare } from "../SchemaRows";
 import { PAGE_PLACEMENT, type Section } from "../placement";
 import { Sel, Srow, Toggle } from "../common";
@@ -150,6 +151,13 @@ const TITLE_SCHEMA_SECTION: Section = { keys: ["title.generator", "title.icons"]
 function SessionBehaviorSections() {
   const { t } = useTranslation();
   const hs = useAppStore((s) => s.hostSettings);
+  const prefs = useAppStore((s) => s.uiPrefs);
+  // uiPrefs row (not a host setting): the hold gesture is pure frontend state
+  const hintsOn = prefs.holdSidebarHints !== false;
+  const setHints = (on: boolean) => {
+    useAppStore.setState((st) => ({ uiPrefs: { ...st.uiPrefs, holdSidebarHints: on } }));
+    saveUiPrefs();
+  };
   const titleRefreshKnown = typeof hs?.sessionTitleRefresh === "boolean";
   const titleRefreshEnabled = titleRefreshKnown && !!hs?.sessionTitleRefresh;
   const titleRefreshPrompts = hs?.sessionTitleRefreshPrompts ?? 1;
@@ -164,6 +172,13 @@ function SessionBehaviorSections() {
     <>
       <div className="set-group-tt">{t("settingsPage.interaction.groupTitleRefresh")}</div>
       <div className="set-card">
+        <Srow
+          title={t("settingsPage.interaction.holdHintsTitle", { mod: MOD })}
+          desc={t("settingsPage.interaction.holdHintsDesc", { mod: MOD })}
+          dataKey="app.holdSidebarHints"
+        >
+          <Toggle on={hintsOn} onChange={() => setHints(!hintsOn)} />
+        </Srow>
         <Srow
           title={t("settingsPage.interaction.titleRefreshTitle")}
           desc={t("settingsPage.interaction.titleRefreshDesc")}

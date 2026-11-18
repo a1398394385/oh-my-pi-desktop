@@ -727,8 +727,10 @@ export type AskFormBlock =
   | { kind: "svg"; markup: string; alt: string }
   | { kind: "field"; field: AskFormField; optionsEnd?: number };
 
-/** The base's parsed `HtmlForm` (pi-tui html-form/parse) exactly as the host ships it:
- *  the UI never sees HTML, only this drawable shape. */
+/** The base's parsed `HtmlForm` (pi-tui html-form/parse) as the host ships it: the UI
+ *  never sees HTML, only this drawable shape. Pictures arrive rewritten as `image`
+ *  data URIs (inline `<svg>`, workspace paths) — see `resolveFormMedia` in
+ *  host/session-entry-core.ts, because the renderer cannot read files. */
 export interface AskFormWire {
   sections: { title: AskFormSpan[]; blocks: AskFormBlock[]; fieldset: boolean }[];
   fields: AskFormField[];
@@ -776,6 +778,11 @@ export interface ApprovalRequestFrame {
   // proposal turn aborts). Drives the approval card's plan body and the todo
   // card's "plan output" row; absent on every other approval variant.
   plan?: { title: string; path: string; content: string };
+  // Absolute epoch ms of the dialog deadline (ask.timeout / automation dialog
+  // timeouts): the host answers with the form defaults when it elapses. Absolute
+  // rather than remaining ms so a frame replayed to a UI attaching mid-dialog
+  // (replayPendingApprovals) keeps its true countdown. Absent = waits forever.
+  expiresAt?: number;
   hi?: string; // stamped frame
   seq?: number;
 }

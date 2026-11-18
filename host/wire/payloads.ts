@@ -488,7 +488,8 @@ export type TranscriptItem = {
   entryId?: string;
   endMs?: number;
   // Assistant rows: reply timestamp + block index, the address a renderer re-draw
-  // (ctx.ui.rerenderMessage) uses to find the row it must replace
+  // (ctx.ui.rerenderMessage) uses to find the row it must replace.
+  // User rows: send time only (block stays unset)
   ts?: number;
   block?: number;
   // Turn-final assistant text (stopReason "stop" on disk): a delivered output, not
@@ -604,7 +605,7 @@ export type UiEvent =
       running?: boolean;
     }
   | { kind: "tool_details"; name: string; toolCallId?: string; details?: unknown } // in-flight refresh from a returned async tool (task spawn progress); carries no terminal semantics
-  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean; final?: boolean } // final: this turn ended stopReason "stop" — its settled text is a delivered output (loop-group lift marker)
+  | { kind: "turn_end"; usage?: TurnUsage | null; userEntryId?: string; assistantEntryId?: string; runEnd?: boolean; final?: boolean; settled?: boolean } // final: this turn ended stopReason "stop" — its settled text is a delivered output (loop-group lift marker); settled:false = non-terminal end (queued continuation / background wait): land the output and its entryIds, keep the run open
   | { kind: "thinking_level"; configured?: string; resolved?: string }
   | { kind: "mention"; files: string[] } // @-mention read-back: paths the base auto-read; the UI folds them onto the issuing user bubble
   | { kind: "advisor"; notes: AdvisorNote[] } // one delivered advice batch (base customType "advisor"); rendered at its injection point

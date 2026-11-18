@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useAppStore } from "../../store/index";
+import { isImeKey } from "../../keys";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 import type { PlanOutput } from "../../types/session";
@@ -255,7 +256,7 @@ export default function ApprovalCard({ item }: { item: ApprovalItem }) {
   useEffect(() => {
     if (answered) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.isComposing || e.keyCode === 229) return; // IME composition owns every key
+      if (isImeKey(e)) return; // IME composition owns every key
       if (collapsedRef.current) return; // collapsed: the card yields the keyboard to the page
       if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (e.key !== "ArrowUp" && e.key !== "ArrowDown" && e.key !== "Enter" && !/^[1-9]$/.test(e.key)) return;

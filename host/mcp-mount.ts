@@ -25,6 +25,7 @@ import { connectToServer, disconnectServer, listTools, MCPTool } from "./bootstr
 import { acquireSharedMcpConnection } from "./mcp-pool.ts";
 import { loadAllMcpScoped, type McpServerAsset } from "./mcp-assets.ts";
 import { builtinServerAsset } from "./mcp-builtin.ts";
+import { rememberToolOwners } from "./mcp-owners.ts";
 import { H, stampEvent, type PoolEntry } from "./state.ts";
 import { safeStderr } from "./stderr.ts";
 import { hostI18n } from "./i18n/host.ts";
@@ -258,6 +259,7 @@ async function doMountMcpForSession(sessionId: string, entry: PoolEntry): Promis
   entry.mcpReleases.push(...holds);
   sessionMounts.set(sessionId, new Map([...carried, ...fresh]));
   const surface = flattenMounts(sessionMounts.get(sessionId)!);
+  rememberToolOwners(surface);
   mountedRegistry.set(sessionId, { servers: statuses.sort((a, b) => a.name.localeCompare(b.name)), tools: surface.length });
   // refreshMCPTools returns a promise: an async rejection escapes a sync
   // try/catch, so observe it with .catch() instead of try { void ... } catch.
@@ -288,6 +290,7 @@ export function releaseMcpForSession(sessionId: string, entry: PoolEntry): void 
   const mounts = sessionMounts.get(sessionId);
   if (mounts) {
     for (const m of mounts.values()) {
+      rememberToolOwners(m.tools);
       try {
         m.release();
       } catch {}
@@ -358,6 +361,7 @@ export async function mountServerForSession(sessionId: string, entry: PoolEntry,
     perSession = perSession ?? new Map();
     perSession.set(name, { tools: minted, release: hold });
     sessionMounts.set(sessionId, perSession);
+    rememberToolOwners(minted);
     upsertRegistry(sessionId, name, "connected");
     entry.session.refreshMCPTools(flattenMounts(perSession)).catch((err) => {
       safeStderr(`[mcp-mount] mid-session mount refresh failed for session ${sessionId.slice(0, 8)}: ${err}\n`);
@@ -383,6 +387,7 @@ export function unmountServerForSession(sessionId: string, entry: PoolEntry, nam
   const mount = perSession?.get(name);
   if (!perSession || !mount) return false;
   perSession.delete(name);
+  rememberToolOwners(mount.tools);
   try {
     mount.release();
   } catch {}

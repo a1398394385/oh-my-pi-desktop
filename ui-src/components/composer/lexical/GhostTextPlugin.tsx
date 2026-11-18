@@ -41,6 +41,7 @@ import { setPredictionOpen } from "../../../store/session";
 import type { CompletionResult } from "../../../store/session";
 import { $flattenText, $flattenWithCaret } from "./flat";
 import { $createGhostNode, $findGhostNode } from "./GhostNode";
+import { paletteCardOpen } from "./paletteCard";
 import { isBashMode } from "../trigger";
 
 // Typing pause before a completion request fires (input settled)
@@ -247,7 +248,7 @@ export default function GhostTextPlugin({ typeaheadOpenRef }: Props) {
     const unregisterTab = editor.registerCommand(
       KEY_TAB_COMMAND,
       (ev) => {
-        if (typeaheadOpenRef.current) return false; // palette Tab accepts a candidate
+        if (typeaheadOpenRef.current || paletteCardOpen()) return false; // palette Tab accepts a candidate
         const suggestion = editor.read(() => $findGhostNode())?.__suggestion;
         if (suggestion === undefined) return false;
         // A prediction insert also opens the alternatives card (one Tab, not two)

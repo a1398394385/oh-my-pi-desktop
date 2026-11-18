@@ -8,49 +8,22 @@
 
 #agentHub.hub-empty { align-items: flex-start; }
 
-/* Keybind bar pinned at the top: kbd chip + action label per shortcut */
-.hub-keys {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px;
-  padding: 6px 10px;
-  border: 1px solid var(--line); border-radius: var(--r-md);
-  background: var(--panel); --hover-fill: var(--menu-hl);
-}
+/* Top bar: title, status pills, back button. No plate of its own — the pills are the only
+   chrome (the old keybind row's background and hints are gone; the shortcuts still work). */
+.hub-topbar { display: flex; align-items: center; gap: 10px; min-width: 0; }
 
-.hub-keys .hub-title { font-weight: 600; margin-right: 6px; }
+.hub-topbar .hub-title { font-weight: 600; flex: none; }
 
-.hub-key { display: inline-flex; align-items: center; gap: 5px; color: var(--dim); font-size: var(--ui-fs-sm); }
+/* Status pills: the automations list's capsule language (.al-filters/.al-pill, see
+   automations-list.css). Only the strip container differs — no top margin, and it wraps
+   instead of clipping when the panel cannot hold all five. */
+.al-filters.hub-tabs { flex: 0 1 auto; min-width: 0; margin-top: 0; }
 
-.hub-key kbd {
-  padding: 1px 6px; border-radius: 4px;
-  border: 1px solid var(--line); background: var(--panel-2);
-  font-family: var(--mono); font-size: var(--code-fs, 12px); color: var(--text);
-}
-
-/* Roster header: Roster · Flat / By parent · status counts */
-.hub-head { display: flex; align-items: baseline; flex-wrap: wrap; margin-top: 4px; }
-
-.hub-mode {
-  border: 0; background: none; padding: 0 2px; cursor: pointer;
-  font: inherit; font-size: var(--ui-fs-sm); color: var(--faint);
-}
-
-.hub-mode.on { color: var(--accent); font-weight: 600; }
-
-/* Status counts wear the roster pills' colors (blue / green-ink / red / neutral) and are
-   separated by spacing alone — the colors already group them, a "·" glyph only adds noise. */
-.hub-head .hub-st { margin-left: 12px; }
-
-.hub-head .hub-st.st-running { color: var(--blue); }
-
-.hub-head .hub-st.st-completed { color: var(--green-ink); }
-
-.hub-head .hub-st.st-failed { color: var(--err); }
-
-.hub-head .hub-st.st-aborted { color: var(--faint); }
+.al-filters.hub-tabs .al-pill { flex: none; white-space: nowrap; }
 
 /* Aggregate usage line: one cell per stat, separated by gap alone (no separators); the cell
    rules live with the shared roster card in css/shared/agent.css. */
-.hub-usage { font-size: var(--ui-fs-sm); display: flex; flex-wrap: wrap; gap: 9px; }
+.hub-usage { font-size: var(--ui-fs-sm); display: flex; flex-wrap: wrap; gap: 2.5px; }
 
 .hub-usage .hub-cost { color: var(--statusLineCost, var(--accent)); }
 

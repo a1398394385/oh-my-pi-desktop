@@ -17,8 +17,8 @@
 //    flattened plain text); on text change, notifies the outer layer to refresh
 //    (send button ready state / bash-mode class, equivalent to the old notify in
 //    onInput);
-//  · Handles (focus / setText / clear) exposed to Composer via handleRef,
-//    replacing the old taRef operations.
+//  · Handles (focus / setText / clear / insertSession) exposed to Composer via
+//    handleRef, replacing the old taRef operations.
 import { useEffect, useImperativeHandle, useRef } from "react";
 import type { Ref, RefObject } from "react";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
@@ -26,6 +26,8 @@ import {
   $getRoot,
   $getSelection,
   $createParagraphNode,
+  $createTextNode,
+  $isElementNode,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_ARROW_UP_COMMAND,
@@ -38,13 +40,18 @@ import {
 import type { PasteCommandType } from "lexical";
 import { useAppStore } from "../../../store";
 import { editQueueMsg } from "../../../store/session";
-import { $flattenText, $setText } from "./flat";
+import { $flattenText, $setText, $selectAfter } from "./flat";
+import { $createChipNode } from "./ChipNode";
+import { insertSessionRef } from "../trigger";
 import { saveDraft, getDraftText, recallHistory, resetHistoryCursor } from "./draft";
+import { paletteCardOpen } from "./paletteCard";
 
 export type ComposerHandle = {
   focus(): void;
   setText(text: string): void;
   clear(): void;
+  /** Append a conversation-reference chip (sidebar row drag), same chip the @ palette inserts */
+  insertSession(sessionPath: string, title: string): void;
 };
 
 type Props = {
@@ -93,6 +100,26 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
           root.clear();
           root.append($createParagraphNode());
         }),
+      // Drop target for the sidebar session drag: the chip goes to the end of the
+      // prompt, separated by one space so the serialized "@session:<path>" never
+      // glues onto the prose (flat text is what the host receives).
+      insertSession: (sessionPath: string, title: string) => {
+        editor.update(() => {
+          const root = $getRoot();
+          const last = root.getLastChild();
+          let para;
+          if ($isElementNode(last)) para = last;
+          else {
+            para = $createParagraphNode();
+            root.append(para);
+          }
+          if (!/(^|\s)$/.test($flattenText())) para.append($createTextNode(" "));
+          const chip = $createChipNode(insertSessionRef(sessionPath), title);
+          para.append(chip);
+          $selectAfter(chip);
+        });
+        editor.focus();
+      },
     }),
     [editor],
   );
@@ -101,7 +128,7 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
   useEffect(
     () => {
       const recallStep = (ev: KeyboardEvent, dir: 1 | -1): boolean => {
-        if (typeaheadOpenRef.current) return false;
+        if (typeaheadOpenRef.current || paletteCardOpen()) return false;
         const target = recallHistory(draftKeyRef.current, dir);
         if (!target) return false;
         ev.preventDefault();
@@ -125,7 +152,9 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
         editor.registerCommand(
           KEY_ENTER_COMMAND,
           (ev) => {
-            if (typeaheadOpenRef.current) return false;
+            // The card's open flag is a frame behind the render: ask the DOM, or an
+            // Enter meant to accept a candidate sends the prompt instead.
+            if (typeaheadOpenRef.current || paletteCardOpen()) return false;
             if (!ev || ev.shiftKey) return false;
             // IME candidate commit: WebKit (WKWebView) dispatches compositionend
             // before this Enter's keydown, so isComposing is already false (BUG-031);
@@ -164,7 +193,7 @@ export default function ComposerPlugin({ draftKey, handleRef, onTextChange, send
         editor.registerCommand(
           KEY_ARROW_UP_COMMAND,
           (ev) => {
-            if (typeaheadOpenRef.current) return false;
+            if (typeaheadOpenRef.current || paletteCardOpen()) return false;
             if (!ev || !ev.altKey || ev.ctrlKey || ev.metaKey) return false;
             const st = useAppStore.getState();
             const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;

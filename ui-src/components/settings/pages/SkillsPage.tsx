@@ -8,9 +8,10 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, send, toast } from "../../../store";
 import Icon from "../../../Icon";
 import { confirmDialog, emptyRow, EditWindowHead, FormRow } from "../common";
-import SchemaRows from "../SchemaRows";
+import { SchemaGroupTitle, SchemaRowsBare } from "../SchemaRows";
 import ManualSkillsPicker from "../ManualSkillsPicker";
 import { PAGE_PLACEMENT } from "../placement";
+
 import { ExtSourceTag, useExtSources, refreshExtSources } from "../ExtSourceTag";
 import ScopeSel from "../ScopeSel";
 import { claimDropdown, releaseDropdown } from "../../../lib/dropdownExclusive";
@@ -212,6 +213,9 @@ export default function SkillsPage() {
   // (see onToggle), so field subscriptions notice it
   const agentAssets = useAppStore((s) => s.agentAssets);
   const hostSettings = useAppStore((s) => s.hostSettings);
+  // Skill settings card (single section): the page renders it bare so the manualSkills picker
+  // joins the same card instead of standing alone under the list.
+  const skillSection = PAGE_PLACEMENT["pg-skills"][0];
   // Skills master switch (base skills.enabled, defaults to on); when off the rest of the page's controls are dimmed and disabled
   const skillsEnabled = hostSettings?.skillsEnabled !== false;
   const [scope, setScope] = useState("profile"); // "profile" / "project:<cwd>"
@@ -447,11 +451,13 @@ export default function SkillsPage() {
               ))}
         </div>
       </div>
-      {/* Skill editing: a row click opens the page-level editor window (see SkillEditWindow) */}
-      {/* Hand-written multi-select picker: skills.manualSkills is excluded from the
-          section's SchemaRows rows (see SPECIAL_KEY_PAGES in placement.ts). */}
-      <ManualSkillsPicker />
-      <SchemaRows sections={PAGE_PLACEMENT["pg-skills"]} />
+      {/* Skill settings card: schema rows plus the hand-written manualSkills picker share one
+          card (skills.manualSkills stays out of the section's keys, see placement.ts). */}
+      <SchemaGroupTitle sections={[skillSection]} />
+      <div className="set-card">
+        <SchemaRowsBare sections={[skillSection]} />
+        <ManualSkillsPicker />
+      </div>
       </div>
     </div>
   );

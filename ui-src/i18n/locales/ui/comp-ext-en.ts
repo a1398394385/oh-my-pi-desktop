@@ -11,11 +11,14 @@ export const compExtEn = {
   askPrev: "Previous",
   askNext: "Next",
   askSubmitAll: "Submit answers",
-  askOther: "Other (type your own)",
+  askOther: "Other:",
   askOtherPlaceholder: "Type your answer…",
   // AskFormCard.tsx: one HTML form drawn whole (18.20 uiCtx.formDialog)
   askFormRequired: "Answer “{{name}}” to submit",
   askFormHint: "Every answer submits together",
+  askFormDeadline: "Submits the default answers in {{s}}s",
+  askFormDeadlineShort: "{{s}}s",
+  askFormNote: "(optional) add a note, sent with your answer",
 };
 
 export default compExtEn;

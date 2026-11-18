@@ -218,19 +218,102 @@ const steps: Step[] = [
   },
   {
     name: "越界重排 → 权威空快照",
-    match: (msg) => {
+    match: (msg, ctx) => {
       if (msg.type !== "queued") return false;
       assert(
         texts(msg.followUp).length === 0 && texts(msg.steering).length === 0,
         `越界重排校准帧应回空队列,实际: ${JSON.stringify(msg.followUp)}`,
       );
       console.log("  越界重排 → 收到空队列校准帧 ✓");
+      // Start the parking-order regression: a fresh turn gives the next two
+      // prompts a streaming run to queue behind
+      ws.send(
+        JSON.stringify({
+          type: "prompt",
+          sessionId: ctx,
+          text: "从 301 数到 500，每个数字单独一行，不要输出其他内容。",
+        }),
+      );
+      return true;
+    },
+  },
+  // Regression (queue parking order): the base drains its own followUp queue and
+  // pauses the run instead of ending it, so the queue can sit EMPTY with messages
+  // still parked. A prompt arriving in that window used to append ahead of the
+  // parked ones (queue card and drain order), and a parked message nobody released
+  // never ran at all.
+  {
+    name: "回归：新轮 turn_start 后排队甲乙",
+    match: (msg, ctx) => {
+      if (msg.type !== "event" || msg.kind !== "turn_start") return false;
+      ws.send(JSON.stringify({ type: "prompt", sessionId: ctx, text: TXT_A }));
+      ws.send(JSON.stringify({ type: "prompt", sessionId: ctx, text: TXT_B }));
+      return true;
+    },
+  },
+  {
+    name: "回归：乙提到首位（跨暂存边界）",
+    match: (msg, ctx) => {
+      if (msg.type !== "queued" || !sameTexts(texts(msg.followUp), [TXT_A, TXT_B])) return false;
+      ws.send(JSON.stringify({ type: "reorder_queued", sessionId: ctx, from: 1, to: 0 }));
+      return true;
+    },
+  },
+  {
+    name: "回归：重排后 [乙甲]",
+    match: (msg) => {
+      if (msg.type !== "queued" || !sameTexts(texts(msg.followUp), [TXT_B, TXT_A])) return false;
+      console.log("  重排后 [乙甲]（乙在底座队列、甲在暂存）");
+      return true;
+    },
+  },
+  {
+    name: "回归：乙消费后立刻发丙",
+    match: (msg, ctx) => {
+      if (msg.type !== "steer_consumed" || !sameTexts(consumedTexts(msg.texts), [TXT_B])) return false;
+      // TXT_B leaving the base queue leaves it empty with TXT_A still parked: the window under test
+      ws.send(JSON.stringify({ type: "prompt", sessionId: ctx, text: TXT_C }));
+      return true;
+    },
+  },
+  {
+    name: "回归：丙不插到暂存的甲前面",
+    match: (msg) => {
+      if (msg.type !== "queued") return false;
+      const order = texts(msg.followUp);
+      if (!order.includes(TXT_C)) return false;
+      assert(
+        !order.includes(TXT_A) || order.indexOf(TXT_A) < order.indexOf(TXT_C),
+        `暂存消息必须排在新消息之前,实际: ${JSON.stringify(order)}`,
+      );
+      console.log("  丙未插队 ✓");
+      return true;
+    },
+  },
+  {
+    name: "回归：暂存的甲被消费（不滞留）",
+    match: (msg) => {
+      if (msg.type !== "steer_consumed" || !sameTexts(consumedTexts(msg.texts), [TXT_A])) return false;
+      console.log("  暂存的甲被消费 ✓");
+      return true;
+    },
+  },
+  {
+    name: "回归：丙被消费，且甲先于丙",
+    match: (msg) => {
+      if (msg.type !== "steer_consumed" || !sameTexts(consumedTexts(msg.texts), [TXT_C])) return false;
+      // Every consumption after the reordered head (TXT_B) must be the parked TXT_A
+      // first, then TXT_C; earlier rounds' texts sit before that head
+      const after = consumedOrder.slice(consumedOrder.lastIndexOf(TXT_B) + 1).filter((t) => t === TXT_A || t === TXT_C);
+      assert(sameTexts(after, [TXT_A, TXT_C]), `消费顺序必须甲先丙后,实际: ${JSON.stringify(after)}`);
+      console.log("  消费顺序甲→丙 ✓");
       return true;
     },
   },
 ];
 
 const frameCounts: Record<string, number> = {};
+const consumedOrder: string[] = [];
 let ctx = "";
 let passed = 0;
 
@@ -238,6 +321,7 @@ ws.onmessage = (ev) => {
   const msg = asWireMsg(JSON.parse(String(ev.data)));
   if (!msg) return;
   frameCounts[msg.type] = (frameCounts[msg.type] ?? 0) + 1;
+  if (msg.type === "steer_consumed") consumedOrder.push(...consumedTexts(msg.texts));
   if (msg.type === "error") fail(`收到 error: ${String(msg.message)}`);
   if (msg.type === "session_created") {
     ctx = String(msg.sessionId ?? "");

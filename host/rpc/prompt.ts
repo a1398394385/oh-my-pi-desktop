@@ -36,7 +36,7 @@ import { readAcpEnabled } from "../profile.ts";
 import { pushContext } from "../session-lifecycle.ts";
 import { handlePlanCommand } from "../plan.ts";
 import { computerModeActive, readComputerProvider, setComputerMode } from "../computer-mode.ts";
-import { sendQueued, parkFollowUpTail, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue, handleReorderQueued } from "../queue.ts";
+import { sendQueued, parkFollowUpTail, pumpFollowUp, handlePeekQueued, handleDropQueued, handleSendNow, handleRequeue, handleReorderQueued } from "../queue.ts";
 import { refreshAllSessionLists } from "./session";
 import { btwAsk } from "../btw.ts";
 import { hostI18n } from "../i18n/host.ts";
@@ -783,6 +783,11 @@ async function handlePrompt(
   // counts, steers and queued follow-ups included — same accounting as the
   // base's #noteTitleDrift.
   noteTitlePrompt(entry);
+  // Ordering contract (see pumpFollowUp): the base queue can be empty while
+  // parked messages remain, so this prompt would otherwise append ahead of
+  // them in both the queue card and the drain order. Hand the parked head back
+  // before enqueuing; the park below re-parks it behind this prompt.
+  pumpFollowUp(entry);
   entry.session
     .prompt(finalText, {
       ...(images.length > 0 ? { images } : {}),
@@ -815,7 +820,9 @@ async function handlePrompt(
 function handleGetMessages(ws: any, sessionId: string) {
   const entry = sessions.get(sessionId);
   if (!entry) throw new Error(hostI18n.t("errors.session.notFound", { sessionId }));
-  ws.send(JSON.stringify({ type: "messages", sessionId, messages: entry.transcript }));
+  // Same rebuilt layout as the attach snapshot: entry.transcript is the live stream (no loop
+  // groups, no run-changes rows), so a wholesale replace from it would flatten every turn.
+  ws.send(JSON.stringify({ type: "messages", sessionId, messages: entriesToTranscript(entry.manager.getBranch(), entry.path) }));
 }
 
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pathBase, openSessionByPath, send } from "../../store";
+import { isImeKey } from "../../keys";
 import Icon from "../../Icon";
 import WindowControls from "../WindowControls";
 import BranchMenu from "../welcome/BranchMenu";
@@ -10,6 +11,7 @@ import type { SessionInfo } from "./sidebar/SessionRow";
 import { IS_WINDOWS, MOD } from "../../platform";
 import { termGroupKey } from "./right/termTabs";
 import { noMaximizeOnDoubleClick } from "../../lib/titlebar-drag";
+import { sessionAccentColor } from "../../lib/session-color";
 
 // Middle-column topbar: sidebar toggle + session title + project/branch chips
 // + right panel toggle (the old index.html chat-head structure)
@@ -83,6 +85,10 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
         pending: diskRow ? !!diskRow.pending : true,
       }
     : null;
+
+  // Same accent slot as the composer ring: the live session title first, the list row as
+  // fallback (an auto title can land in diskProjects before the opened session's copy).
+  const collabAccent = sessionAccentColor(session?.title || diskRow?.title);
 
   // Branch chip data: fetch on session switch (isGit comes with the session
   // object; a non-git cwd gets the isGit:false reply which hides the chip)
@@ -222,16 +228,18 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           onRename={() => setRenaming(true)}
         />
       )}
-      {/* Collab entry (host/join/leave live-sharing for the open session); tinted while a room is live */}
+      {/* Collab entry (host/join/leave live-sharing for the open session). While a room is
+          live it wears the session's random accent (same slot as the composer ring and the
+          advisor computer icon); --green only stands in until the session has a title. */}
       {ctxEntry && !renaming && (
         <button
           type="button"
           className="icon-btn"
           title={t("collab.entry")}
-          style={collabState?.role ? { color: "var(--green)" } : undefined}
+          style={collabState?.role ? { color: collabAccent ?? "var(--green)" } : undefined}
           onClick={() => collabOpenDialog()}
         >
-          <Icon name="globe" size={15} />
+          <Icon name="users" size={15} />
         </button>
       )}
       {/* Advisor toggle (right of the collab entry): lit like the composer's computer icon when
@@ -333,7 +341,7 @@ function HeaderTitleRename({ entry, onDone }: { entry: SessionInfo; onDone: () =
           e.preventDefault();
           finish(true);
         } else if (e.key === "Escape") {
-          finish(false);
+          if (!isImeKey(e)) finish(false);
         }
       }}
       onBlur={() => finish(false)}

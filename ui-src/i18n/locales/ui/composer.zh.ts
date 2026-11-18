@@ -78,15 +78,12 @@ export const composerZh = {
   // prompt_dropped handler: 消息未到达模型即被取消
   cancelledBeforeSend: "已取消，消息已放回输入框",
   // SelectionAnnotate.tsx / AnnotationChips.tsx: selection comments over assistant output
-  annotateAction: "注释",
-  annotateTitle: "添加注释 · 评论可选",
-  annotatePlaceholder: "写下评论（可选），和这段原文一起发给模型",
-  annotateHint: "留空也可添加 · Shift + ↵ 换行",
-  annotateAdd: "添加注释 ↵",
-  annotateCount: "{{count}} 条注释",
+  annotateAction: "评论",
+  annotatePlaceholder: "（可选）写下评论，和这段原文一起发给模型",
+  annotateHint: "留空也可添加",
+  annotateAdd: "添加评论 ↵",
+  annotateCount: "{{count}} 条评论",
   // SelectionAnnotate.tsx / AnnotationChips.tsx: file / diff pane selections
-  attachSelection: "附加到对话",
-  quoteBlocks: "选中的文本块 {{count}}",
 };
 
 export default composerZh;

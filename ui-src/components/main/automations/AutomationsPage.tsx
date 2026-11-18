@@ -193,6 +193,19 @@ export default function AutomationsPage() {
     [automations, statusFilter],
   );
 
+  // Filter-pill counts: same projection the filter itself uses, so a pill's number and its
+  // list can never disagree.
+  const filterCounts = useMemo(() => {
+    const c: Record<StatusFilter, number> = { all: automations.length, active: 0, completed: 0, failed: 0 };
+    for (const a of automations) {
+      const kind = automationStatusKind(a);
+      // "paused" rows file under the active pill, which is what the filter does too
+      const key: StatusFilter = kind === "paused" ? "active" : kind;
+      c[key]++;
+    }
+    return c;
+  }, [automations]);
+
   if (view.mode !== "list") {
     // Edit view holds the live row when the list refreshes underneath it (host may rewrite
     // fields on every reconcile); fall back to the captured object if the row vanished.
@@ -240,6 +253,7 @@ export default function AutomationsPage() {
             <button key={f} type="button" className={"al-pill" + (statusFilter === f ? " on" : "")} aria-pressed={statusFilter === f}
               onClick={() => setStatusFilter(f)}>
               {t(FILTER_LABELS[f])}
+              <span className="al-pill-n">{filterCounts[f]}</span>
             </button>
           ))}
         </div>

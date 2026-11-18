@@ -4,6 +4,8 @@
 // ask-dialog auto-answer shape) stays one greppable place.
 import type { PoolEntry } from "./state.ts";
 import { settingsGet } from "./settings-compat.ts";
+import { defaultFormData } from "@oh-my-pi/pi-tui/html-form/data";
+import type { HtmlForm } from "@oh-my-pi/pi-tui/html-form/parse";
 
 /**
  * Permission-approval deadline for a session, in ms: an automation run carries
@@ -28,4 +30,15 @@ export function approvalDeadlineMs(entry: PoolEntry): number | undefined {
  */
 export function timedOutFormAnswer(data: Record<string, unknown>): string {
   return JSON.stringify({ kind: "submit", data, timedOut: true });
+}
+
+/**
+ * The formDialog inactivity deadline: the base hands the ms value in its dialog
+ * options, and an elapsed deadline submits the form's own defaults. Absent or 0
+ * means the dialog waits for the user.
+ */
+export function formDeadline(timeout: unknown, form: HtmlForm): { ms: number; answer: string } | undefined {
+  return typeof timeout === "number" && timeout > 0
+    ? { ms: timeout, answer: timedOutFormAnswer(defaultFormData(form)) }
+    : undefined;
 }

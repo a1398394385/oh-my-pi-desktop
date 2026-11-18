@@ -196,4 +196,4 @@ html[data-motion="off"] .think-bubbles { display: none; }
 /* Flyout utility rows: the "Model Role" entry keeps the cascade chevron, "Manage models" renders dimmed */
 .menu.flyout .mi .sub { margin-left: auto; color: var(--faint); display: inline-flex; }
 
-.menu.flyout .mi.mgmt { color: var(--dim); }
+.menu.flyout .mi.mgmt { color: var(--text); }

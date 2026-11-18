@@ -732,7 +732,7 @@
 }
 
 :is(#pg-stats, .stats-scope) .traces-spin {
-	animation: spin 900ms linear infinite;
+	animation: spin 1125ms linear infinite;
 }
 
 :is(#pg-stats, .stats-scope) .traces-toolbar {

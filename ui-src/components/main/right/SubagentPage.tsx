@@ -1,13 +1,15 @@
-// Subagent page: the Agent Hub roster (shared component, no hub keybind bar / back button)
-// with click-into-detail; the detail reuses the Agent Hub inspector (HubDetail from
-// HubDetailPage) under a back-to-list button.
-// Detail skeleton (must keep): #rightBody gets the detail class, rb-head fixed (back button),
-// scrolling rb-scroll carries the inspector.
-import { useEffect, useReducer } from "react";
+// Subagent page: roster cards only — no header, no aggregate line (the Agent Hub carries
+// those). A card click swaps the list for that child's transcript, read-only: the same row
+// renderer the middle column uses, with nothing writable attached.
+// Detail skeleton (must keep): rb-head fixed (back + stop), scrolling rb-scroll carries rows.
+import { useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import Icon from "../../../Icon";
 import { useAppStore, setBump } from "../../../store";
-import { HubDetail } from "./HubDetailPage";
-import { HubRow, RosterHead, useRosterRows, useRosterTick } from "../../shared/agent/subRoster";
+import { loadSessionInBackground } from "../../../store/session";
+import { renderItems } from "../../chat/items";
+import { HubRow, useRosterRows, useRosterTick } from "../../shared/agent/subRoster";
+import { sendSubagentControl } from "../../shared/agent/hubExt";
 import type { SubagentState } from "../../../types/session";
 
 // Repaint once per second while any visible subagent streams: host durationMs only arrives
@@ -26,7 +28,6 @@ export default function SubagentPage() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
-  const hubMode = useAppStore((st) => st.hubMode);
   // Detail view hides the roster, whose tick would otherwise repaint the whole page every
   // second next to the detail's own clock.
   useRosterTick(selectedSubagent ? undefined : s);
@@ -48,29 +49,25 @@ export default function SubagentPage() {
     return <SubagentDetail sub={s.subagents.get(selectedSubagent)!} subagentId={selectedSubagent} sessionId={s.sessionId} />; // the has() on the previous line guarantees presence
   }
   return (
-    <>
-      <RosterHead s={s} />
-      <div className="hub-list" role="listbox">
-        {rows.map((row) => (
-          <HubRow
-            key={row.id}
-            row={row}
-            flat={hubMode === "flat"}
-            selected={false}
-            onSelect={() => openDetail(row.id)}
-            onOpen={() => openDetail(row.id)}
-            sessionId={s.sessionId}
-            t={t}
-          />
-        ))}
-      </div>
-    </>
+    <div className="hub-list" role="listbox">
+      {rows.map((row) => (
+        <HubRow
+          key={row.id}
+          row={row}
+          stats={false}
+          selected={false}
+          onSelect={() => openDetail(row.id)}
+          onOpen={() => openDetail(row.id)}
+          sessionId={s.sessionId}
+          t={t}
+        />
+      ))}
+    </div>
   );
 }
 
-// Detail: back-to-list pinned at top; the Agent Hub inspector (shared with the hub tab's
-// linked detail page) scrolls beneath it. Back switches immediately (same as the gitdiff /
-// file details — no collapse animation)
+// Detail: back-to-list on the left, stop only while the child still streams. The body is the
+// child transcript rendered read-only through the middle column's own row renderer.
 function SubagentDetail({ sub, sessionId, subagentId }: { sub: SubagentState; sessionId: string; subagentId: string }) {
   const { t } = useTranslation();
   useTick(!!sub.streaming);
@@ -79,16 +76,49 @@ function SubagentDetail({ sub, sessionId, subagentId }: { sub: SubagentState; se
   // no subscription — the kids-in class survives until the next render, the entrance animation
   // isn't cut short (the first frame after the old notify was true)
   const kids = !!useAppStore.getState().animateSubKids;
+  const path = sub.sessionFile ?? null;
+  const session = useAppStore((st) => (path ? st.openSessions.get(path) : undefined));
+  const boxRef = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  // A child transcript is not resident until someone opens it: load it in the background so
+  // the middle column keeps showing whatever the user was working on.
+  useEffect(() => {
+    if (path && !session) loadSessionInBackground(path);
+  }, [path, session]);
+  const items = session?.items;
+  // Nested prefix ("ro:"): the top-level branch of renderItems owns the shared branch
+  // context (the middle column sets it), and a read-only copy must neither read nor rewrite
+  // that context — the distinct prefix keys every lookup out of it.
+  const rows = useMemo(() => (items ? renderItems(items, "ro:", []) : []), [items]);
+  // Follow the tail while the child streams unless the reader scrolled away.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (box && follow.current) box.scrollTop = box.scrollHeight;
+  });
   return (
     <>
-      <div className={"rb-head" + (kids ? " kids-in" : "")}>
-        <button className="self-start mb-1.5 border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-hover-fill hover:text-text" onClick={() => setBump({ selectedSubagent: null })}>
+      <div className={"rb-head sub-msg-head" + (kids ? " kids-in" : "")}>
+        <button className="border-0 bg-transparent text-dim text-ui-sm cursor-pointer py-0.5 px-1.5 rounded-sm hover:bg-hover-fill hover:text-text" onClick={() => setBump({ selectedSubagent: null })}>
           {t("right.backToList")}
         </button>
+        {sub.streaming ? (
+          <button type="button" className="hub-ibtn" title={t("right.subStopSession")} onClick={() => sendSubagentControl(sessionId, subagentId, "cancel")}>
+            <Icon name="stopSolid" size={12} />
+          </button>
+        ) : null}
       </div>
-      <div className={"rb-scroll" + (kids ? " kids-in" : "")}>
-        {/* key: switching subagents must remount, or the previous one's markdown view mode sticks */}
-        <HubDetail key={subagentId} sub={sub} subagentId={subagentId} sessionId={sessionId} t={t} />
+      <div
+        className={"rb-scroll sub-msg-stream" + (kids ? " kids-in" : "")}
+        ref={boxRef}
+        onScroll={() => {
+          const box = boxRef.current;
+          if (box) follow.current = box.scrollHeight - box.scrollTop - box.clientHeight < 32;
+        }}
+      >
+        {!path ? <div className="placeholder">{t("right.subNoTranscript")}</div> : null}
+        {path && !session ? <div className="placeholder">{t("right.subMessagesLoading")}</div> : null}
+        {path && session && !items?.length ? <div className="placeholder">{t("right.subMessagesEmpty")}</div> : null}
+        {rows}
       </div>
     </>
   );

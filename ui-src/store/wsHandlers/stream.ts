@@ -118,6 +118,9 @@ export const streamHandlers = {
         form: msg.form,
         // The ask tool's `i` intent (host-captured), shown above the dialog body
         intent: msg.intent,
+        // Host-owned deadline (ask.timeout): the card counts down to the automatic
+        // default-answer submit; absent = the dialog waits for the user.
+        expiresAt: msg.expiresAt,
         // Plan variant: raw plan text + title + path (the card body + the todo
         // card's output row render from it)
         plan: msg.plan,

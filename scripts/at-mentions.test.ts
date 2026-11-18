@@ -2,7 +2,7 @@
 // else (Chinese text glued to the @ never triggers a read, so its token must stay visible).
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/at-mentions.test.ts --pool=forks --poolOptions.forks.singleFork
 import { describe, expect, test } from "bun:test";
-import { atMentions, isDirToken, splitRefs } from "../ui-src/lib/at-mentions.ts";
+import { atMentions, elementLabel, isDirToken, splitRefs } from "../ui-src/lib/at-mentions.ts";
 
 describe("atMentions", () => {
   test("strips a standalone mention line and keeps the prose", () => {
@@ -33,6 +33,85 @@ describe("atMentions", () => {
     const r = atMentions("说 @/a.md 和 @/b.md", ["/a.md"]);
     expect(r.paths).toEqual(["/a.md"]);
     expect(r.text).toBe("说 和 @/b.md");
+  });
+
+  test("an empty known list keeps every @token as prose (the base read nothing)", () => {
+    const r = atMentions("从 @etower/shared 导入，再跑 @etower/core", []);
+    expect(r.paths).toEqual([]);
+    expect(r.text).toBe("从 @etower/shared 导入，再跑 @etower/core");
+  });
+
+  test("an inline-code mention resolves without the closing backtick", () => {
+    const r = atMentions("改 `@src/a.ts` 里的判断", ["src/a.ts"]);
+    expect(r.paths).toEqual(["src/a.ts"]);
+  });
+
+  test("strips /skill: invocations and keeps the prose between them apart", () => {
+    const r = atMentions("/skill:frontend-design /skill:modern-web-guidance 这两个 skill 优化一下");
+    expect(r.skills).toEqual(["frontend-design", "modern-web-guidance"]);
+    expect(r.text).toBe("这两个 skill 优化一下");
+  });
+
+  test("an inline skill token leaves the words on both sides separated", () => {
+    const r = atMentions("看下 /skill:repo-review 然后总结");
+    expect(r.skills).toEqual(["repo-review"]);
+    expect(r.text).toBe("看下 然后总结");
+  });
+
+  test("namespaced skill names stay whole", () => {
+    const r = atMentions("/skill:acme/review 看看");
+    expect(r.skills).toEqual(["acme/review"]);
+    expect(r.text).toBe("看看");
+  });
+
+  test("a draft owned by another sigil keeps its /skill: tokens literal", () => {
+    expect(atMentions("/compact /skill:x").skills).toEqual([]);
+    expect(atMentions("! ls /skill:x").skills).toEqual([]);
+    expect(atMentions("$ ls /skill:x").skills).toEqual([]);
+  });
+});
+
+describe("picked-element blocks", () => {
+  // AgentBrowserView.pickedText writes the header lines + fenced html as one block; the
+  // bubble shows it as a single chip and the markup never leaks into the skill / @ passes.
+  const prompt = [
+    "改成这样",
+    "",
+    "[element] div#hero.row 1200×400",
+    "color: rgb(0, 0, 0)",
+    "url: https://x.test/",
+    "```html",
+    '<div id="hero">/skill:fake @not-a-file</div>',
+    "```",
+    "",
+    "谢谢",
+  ].join("\n");
+
+  test("strips the whole block and leaves the prose around it", () => {
+    const r = atMentions(prompt);
+    expect(r.elements.length).toBe(1);
+    expect(r.text).toBe("改成这样\n\n谢谢");
+    expect(r.skills).toEqual([]);
+    expect(r.paths).toEqual([]);
+  });
+
+  test("chip label is the selector without the box size", () => {
+    expect(elementLabel(atMentions(prompt).elements[0])).toBe("div#hero.row");
+  });
+
+  test("a marked block is recognised mid-line", () => {
+    const r = atMentions("改一下 x[element] div#a 10×10\n```html\n<div>a</div>\n```\n[/element] 谢谢");
+    expect(r.elements.length).toBe(1);
+    expect(r.text).toBe("改一下 x 谢谢");
+  });
+
+  test("a legacy block stays line-anchored (no marker, prose could forge it)", () => {
+    expect(atMentions("改一下 x[element] div#a 10×10\n```html\n<div>a</div>\n```").elements).toEqual([]);
+  });
+
+  test("chip label skips the closing marker", () => {
+    const marked = atMentions("x\n[element] div#a 10×10\n```html\n<div>a</div>\n```\n[/element]").elements[0];
+    expect(elementLabel(marked)).toBe("div#a");
   });
 });
 
@@ -96,6 +175,15 @@ describe("splitRefs (editor backfill)", () => {
       { text: "\n\n继续 " },
       { kind: "file", path: "/b.ts", token: "@/b.ts" },
     ]);
+  });
+
+  // Marked blocks (current pickedText writes `[/element]`) are found anywhere, so a chip
+  // the user moved mid-line comes back as a chip on edit.
+  test("a marked block mid-line round-trips as one chip", () => {
+    const marked = `${element}\n[/element]`;
+    const text = `前面${marked}后面`;
+    expect(splitRefs(text)).toEqual([{ text: "前面" }, { kind: "element", token: marked }, { text: "后面" }]);
+    expect(roundTrip(text)).toBe(text);
   });
 });
 

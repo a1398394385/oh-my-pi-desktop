@@ -82,17 +82,17 @@
 
 .mcp-form-sel-btn:disabled { opacity: .5; cursor: default; }
 
-.mcp-form-sel-btn .caret-svg { margin-left: auto; display: inline-flex; color: var(--faint); }
+.mcp-form-sel-btn .caret-svg { margin-left: auto; display: inline-flex; color: var(--text); }
 
 .mcp-edit-card .frm-pair .sel.mcp-form-sel { width: 220px; max-width: 100%; }
 .mcp-edit-card .frm-pair .sel.mcp-form-sel > .menu { left: 0; right: auto; }
 
 /* Collapsible env / headers section */
-.mcp-env-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; background: none; border: 0; color: var(--dim); font-size: var(--ui-fs-sm); cursor: pointer; }
+.mcp-env-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 2px 0; background: none; border: 0; color: var(--text); font-size: var(--ui-fs-sm); cursor: pointer; }
 
 .mcp-env-toggle:hover { color: var(--text); }
 
-.mcp-env-toggle .caret-svg { display: inline-flex; color: var(--faint); }
+.mcp-env-toggle .caret-svg { display: inline-flex; color: var(--text); }
 
 .mcp-env-toggle + .mcp-form-textarea { margin-top: 8px; }
 

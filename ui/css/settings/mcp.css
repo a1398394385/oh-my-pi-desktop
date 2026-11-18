@@ -311,7 +311,7 @@
   border: 1px solid var(--line-soft);
   border-radius: 8px;
   background: var(--inset); --hover-fill: var(--menu-hl);
-  color: var(--dim);
+  color: var(--text);
   cursor: pointer;
 }
 

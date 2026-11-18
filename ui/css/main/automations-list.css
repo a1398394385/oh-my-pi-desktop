@@ -42,11 +42,18 @@
 .al-pill {
   border: 0; background: none; cursor: pointer;
   min-height: 26px; padding: 3px 12px; border-radius: 999px;
-  font-size: var(--ui-fs-sm); font-weight: 500; color: var(--dim);
+  font-size: var(--ui-fs-sm); font-weight: 500; color: var(--text);
 }
 .al-pill:hover { background: var(--hover-fill); color: var(--text); }
-/* Selected pill = the .mcp-type-pill.on house language (surface, not accent) */
-.al-pill.on { background: var(--panel-3); color: var(--text); font-weight: 500; }
+/* Selected pill = the .mcp-type-pill.on house language (surface, not accent); the fill is
+   the right-column tab plate, per the requested #2E2E2E (46,46,46) */
+.al-pill.on { background: var(--rtab-on); color: var(--text); font-weight: 500; }
+
+/* Trailing member count inside a pill (automations list and the Agent Hub roster share the
+   capsule row): faint while unselected, full text color on the active pill */
+.al-pill-n { margin-left: 5px; color: var(--faint); }
+
+.al-pill.on .al-pill-n { color: var(--text); }
 
 /* Card grid: fixed two columns, 15px gutters both axes (user spec) */
 .al-grid {
@@ -68,10 +75,13 @@
   transition: box-shadow var(--dur-snap) var(--swift);
 }
 .al-card:hover { box-shadow: inset 0 0 0 1px var(--line); }
-/* Completed (terminal) cards read as inert: the whole card dims to the disabled-control
-   opacity; still clickable into the edit view, so hover keeps its ring lift */
-.al-card.done { opacity: .5; }
-.al-card.done:hover { opacity: .65; }
+/* Completed (terminal) cards read as inert: only the inner content dims to the
+   disabled-control opacity, so the card ring keeps its fixed color instead of fading
+   with it; still clickable into the edit view, so hover keeps its ring lift */
+.al-card.done .al-card-main,
+.al-card.done .al-card-ctl { opacity: .5; }
+.al-card.done:hover .al-card-main,
+.al-card.done:hover .al-card-ctl { opacity: .65; }
 /* House focus highlight (global controls rule covers the buttons): cards mirror their hover ring. */
 .al-card:focus-visible { box-shadow: inset 0 0 0 1px var(--line); }
 
@@ -89,25 +99,35 @@
   overflow: hidden; min-height: 2.8em;
 }
 
-/* Bottom row: status/schedule badge left, run-count pill right */
+/* Bottom row: status/schedule badge left, delivery + run-count pills grouped right */
 .al-card-meta { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+/* One skeleton for all three bottom pills (box, radius, inset, type) so they line up at the
+   same height; only ink and fill differ per status. */
+.al-badge,
+.al-delivery,
+.al-runcount {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 8px; font-size: var(--ui-fs-sm);
+}
 /* Active badge: green text (--green-ink, light/dark aware) on a green-tinted card surface
    (color-mix of --green into --card reproduces the previous per-theme values); paused/completed
-   reuse the neutral gray pair (.gray, same as the run-count pill); failed keeps the error tint. */
+   reuse the neutral gray pair (.gray); failed keeps the error tint. */
 .al-badge {
-  display: inline-flex; align-items: center; gap: 5px; min-width: 0;
-  padding: 3px 10px; border-radius: 8px;
-  font-size: var(--ui-fs-sm); color: var(--green-ink); background: color-mix(in srgb, var(--green) 12%, var(--card));
+  min-width: 0;
+  color: var(--green-ink); background: color-mix(in srgb, var(--green) 12%, var(--card));
 }
 .al-badge.gray { color: var(--faint); background: var(--panel-2); }
 .al-badge.err { color: var(--err); background: color-mix(in srgb, var(--err) 12%, transparent); flex: none; }
 .al-badge-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Delivery pill: the run wakes an existing conversation instead of spawning a session
-   (agent-created automations only; the UI editor cannot create or convert them) */
-.al-delivery { flex: none; font-size: var(--ui-fs-sm); color: var(--dim); background: var(--inset); --hover-fill: var(--menu-hl); border: 1px solid var(--line); border-radius: 8px; padding: 2px 9px; }
+   (agent-created automations only; the UI editor cannot create or convert them).
+   The auto left margin parks it against the row's right end, just left of the run count. */
+.al-delivery { flex: none; margin-left: auto; color: var(--dim); background: var(--card-hl); }
 
-/* Run-count pill: same neutral gray pair, pinned to the row's right end */
-.al-runcount { flex: none; font-size: var(--ui-fs-sm); color: var(--faint); background: var(--panel-2); border-radius: 8px; padding: 3px 10px; }
+/* Run-count pill: pinned to the row's right end */
+.al-runcount { flex: none; color: var(--faint); background: var(--card-hl); }
+/* shortcut: the pill fill rides --card-hl because its dark value is the requested #222222;
+   give the pills their own token if the two ever need to diverge. */
 
 /* Card controls: site-wide toggle language + ⋯ menu. The pair floats over the card's
    top-right corner so the bottom meta row (run-count pill) reaches the card's right

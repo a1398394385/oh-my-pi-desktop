@@ -159,7 +159,7 @@ html[data-motion="off"] #welcomeTitle { animation: none; background-position: 15
 
 .wb-pill svg {
   flex: none;
-  color: var(--dim);
+  color: var(--text);
 }
 
 /* thinking row expand: the right-pointing chevron rotates 90° in place to point down */

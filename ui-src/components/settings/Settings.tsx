@@ -15,7 +15,7 @@ import type { AppLang } from "../../i18n";
 import { buildKeyToPageMap, HIDDEN_KEYS } from "./placement";
 import { LoginBanner, LoginPrompt } from "./common";
 import WindowControls from "../WindowControls";
-import { IS_WINDOWS, modDown } from "../../platform";
+import { IS_WINDOWS, MOD, modDown } from "../../platform";
 import { noMaximizeOnDoubleClick } from "../../lib/titlebar-drag";
 
 // Settings pages are lazy chunks: 27 static page imports dragged every settings
@@ -199,6 +199,7 @@ export function useAllSettingsItems() {
       { key: "app.autoArchive", label: t("settingsPage.interaction.archiveAutoTitle"), description: t("settingsPage.interaction.archiveAutoDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
       { key: "app.autoArchiveRetention", label: t("settingsPage.interaction.archiveRetentionTitle"), description: t("settingsPage.interaction.archiveRetentionDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
       { key: "app.branchTitles", label: t("settingsPage.interaction.branchTitlesTitle"), description: t("settingsPage.interaction.branchTitlesDesc"), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
+      { key: "app.holdSidebarHints", label: t("settingsPage.interaction.holdHintsTitle", { mod: MOD }), description: t("settingsPage.interaction.holdHintsDesc", { mod: MOD }), pageId: "pg-interaction", pageTitle: t("settingsPage.nav.interaction") },
     );
     return items;
   }, [schema, t, settings]);

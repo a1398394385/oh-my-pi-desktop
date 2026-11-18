@@ -13,6 +13,7 @@ describe("conversation quote", () => {
       body: "继续",
       notes: [{ text: "当前", comment: "注释测试" }],
       sessions: [],
+      files: [],
     });
   });
 
@@ -28,11 +29,11 @@ describe("conversation quote", () => {
 
   test("passes plain prompts through and builds nothing without notes", () => {
     expect(stripQuote("plain")).toBe("plain");
-    expect(splitQuote("plain")).toEqual({ body: "plain", notes: [], sessions: [] });
+    expect(splitQuote("plain")).toEqual({ body: "plain", notes: [], sessions: [], files: [] });
     expect(buildQuotePrefix([])).toBe("");
   });
 
-  test("cuts the host's attachment framing, so its @ mentions never become chips", () => {
+  test("cuts the host's attachment framing and keeps what the bubble needs to redraw", () => {
     const prompt =
       '<attached-file name="a.ts">\nexport const a = 1;\n</attached-file>\n\n看这个\n\n' +
       '<attached-session title="sess-1" path="/tmp/sess-1.jsonl">\n\n### user\n@cli 里\n\n</attached-session>';
@@ -40,8 +41,41 @@ describe("conversation quote", () => {
       body: "看这个",
       notes: [],
       sessions: [{ title: "sess-1", path: "/tmp/sess-1.jsonl" }],
+      files: ["a.ts"],
     });
   });
+
+  test("finds the quote block when the host prepended a text attachment", () => {
+    // Host order: <attached-file> blocks go before the prompt, and the prompt itself
+    // starts with the quote prefix — the prefix is only first after that framing is cut.
+    const prompt =
+      '<attached-file name="a.ts">\nexport const a = 1;\n</attached-file>\n\n' +
+      buildQuotePrefix([{ text: "当前", comment: "注释测试" }]) +
+      "继续";
+    expect(splitQuote(prompt)).toEqual({
+      body: "继续",
+      notes: [{ text: "当前", comment: "注释测试" }],
+      sessions: [],
+      files: ["a.ts"],
+    });
+  });
+
+
+  test("keeps a note whose own text quotes the attachment tags", () => {
+    // A user annotating this very module writes `<attached-file>` inside the note; the
+    // framing cut must only fire on line starts, or the quote block is eaten with it.
+    const prompt =
+      buildQuotePrefix([{ text: "a", comment: "为什么要用 <attached-file>?" }]) +
+      '<attached-file name="x.ts">\nbody\n</attached-file>\n\n' +
+      "看这个";
+    expect(splitQuote(prompt)).toEqual({
+      body: "看这个",
+      notes: [{ text: "a", comment: "为什么要用 <attached-file>?" }],
+      sessions: [],
+      files: ["x.ts"],
+    });
+  });
+
 
   test("drops an unterminated attachment tail (truncated message)", () => {
     expect(stripQuote("hi\n\n<attached-session title=\"t\" path=\"/p\">\n\n### user\npartial")).toBe("hi");

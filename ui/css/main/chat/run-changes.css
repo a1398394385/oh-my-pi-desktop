@@ -27,8 +27,10 @@
    the card header is a headline, --dim made it recede behind the stat chips beside it */
 .rchg-title { font-size: var(--ui-fs-md); color: var(--text); font-weight: 400; }
 .rchg-sum { display: inline-flex; gap: 6px; font-family: var(--mono); font-size: var(--code-fs); }
-.rchg-sum .add { color: var(--green-soft); }
-.rchg-sum .del { color: var(--red); }
+/* Same tokens as the chat rows' inline counts (--green-soft / --red); regular weight was the
+   only difference that made the card's numbers read paler than +n/−n on an edit row */
+.rchg-sum .add, .rchg-counts .add { color: var(--green-soft); font-weight: 500; }
+.rchg-sum .del, .rchg-counts .del { color: var(--red); font-weight: 500; }
 .rchg-chev {
   margin-left: auto;
   display: inline-flex;
@@ -81,8 +83,6 @@
   color: var(--faint);
 }
 .rchg-counts { flex: none; display: inline-flex; gap: 6px; font-family: var(--mono); font-size: var(--code-fs); }
-.rchg-counts .add { color: var(--green-soft); }
-.rchg-counts .del { color: var(--red); }
 
 .rchg-btns { flex: none; display: inline-flex; gap: 4px; }
 /* Pills carry the header's own surface, so they read as buttons on the darker list plate */
@@ -92,7 +92,7 @@
   padding: 2px 9px;
   border-radius: var(--r-sm);
   font-size: var(--ui-fs-md);
-  color: var(--dim);
+  color: var(--text);
   cursor: pointer;
 }
 .rchg-btn:hover:not(:disabled) { background: var(--rchg-btn-hl); color: var(--text); }
@@ -119,3 +119,11 @@
   font-size: var(--ui-fs-xs);
   color: var(--faint);
 }
+
+/* Automation this turn created (AutomationCard.tsx): the automations list card pulled into the
+   chat column as a long bar above the change card. Only the two things the chat flow changes are
+   overridden — the list card's min height (it reserves room for a prompt line the chat copy
+   omits) and the head's right gutter (it reserves room for a ⋯/toggle column that is not there).
+   Both selectors out-specify automations-list.css regardless of import order. */
+.al-card.chg-auto { margin: 16px 0; min-height: 0; }
+.al-card.chg-auto .al-card-head { padding-right: 0; }

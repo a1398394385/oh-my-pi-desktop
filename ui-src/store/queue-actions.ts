@@ -63,7 +63,7 @@ export function sendNowQueueMsg(s: OpenSession, item: SessionItem, index?: numbe
     if (ni >= 0 && next.queued && ni < next.queued.length) next.queued.splice(ni, 1);
     next.steering = next.steering ?? [];
     next.steering.push({ text: item.text, ...(images ? { images } : {}) });
-    next.items.push({ role: "user", text: item.text, pending: "steer", ...(images ? { images } : {}) });
+    next.items.push({ role: "user", text: item.text, pending: "steer", ts: Date.now(), ...(images ? { images } : {}) });
   });
 }
 

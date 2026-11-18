@@ -68,7 +68,7 @@ export default function MainSessionTree() {
   if (stale) {
     return (
       <div className="flex-1 flex items-center justify-center text-faint text-ui-base">
-        <Icon name="refresh" className="animate-spin mr-2" size={16} />
+        <Icon name="refresh" className="animate-spin mr-2 [animation-duration:1.25s]" size={16} />
         {t("chat.loadingTree")}
       </div>
     );

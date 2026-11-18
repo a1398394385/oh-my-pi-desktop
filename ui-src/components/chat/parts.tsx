@@ -5,7 +5,7 @@
 // old module instead of being rewritten.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import type { ChatItem, ToolItem } from "../../types/session";
+import type { ChatItem, SessionItem, ToolItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { patchSessionItem } from "../../store/session";
 import { invoke } from "../../store/ws";
@@ -28,15 +28,27 @@ type TimerHandle = ReturnType<typeof setTimeout>;
 
 // ---------- Item-level write channel (zustand migration: copy-replace + _v bump, replacing the old "mutate + notify") ----------
 
+/** Reference search through a session's entries, piercing loop groups: a row inside a folded
+ *  process block is not a top-level entry, so a flat `items.includes` misses it. */
+function containsEntry(list: SessionItem[], target: unknown): boolean {
+  return list.some((it) => it === target || (it.role === "loop" && !!it.items && containsEntry(it.items, target)));
+}
+
 /** Locates an item by reference in the current session (piercing loop groups) and
  *  copy-replaces it: for item-level toggles such as expand/collapse state. The `it` passed
  *  to the patch callback is a copied entry of the same shape; read the current value and invert it. */
 export function patchActiveItem<T extends object>(item: T, patch: (it: T) => void): void {
   const st = useAppStore.getState();
-  const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
-  if (!s) return;
+  const active = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+  // The row may belong to a session other than the active one: the right sidebar renders a
+  // child transcript read-only while the user keeps working elsewhere. Match by reference and
+  // fall back to wherever the item actually lives.
+  const owner = active && containsEntry(active.items, item)
+    ? active
+    : [...st.openSessions.values()].find((o) => containsEntry(o.items, item)) ?? active;
+  if (!owner) return;
   // The props item is the current store entry reference (reference matching is naturally unique); route the copy through unknown to hand it back to the same-shape callback
-  patchSessionItem(s.sessionId, (it) => it === item, (it) => {
+  patchSessionItem(owner.sessionId, (it) => it === item, (it) => {
     patch(it as unknown as T);
     migrateGroupExpand(item as unknown as ToolItem, it as unknown as ToolItem);
   });
@@ -89,16 +101,15 @@ export function patchGroupSub(sub: ToolItem, patch: (it: ToolItem) => void): voi
   });
 }
 
-// ---------- Unified placeholder while a tool result is pending (spinner + ellipsis) ----------
+// ---------- Unified placeholder while a tool result is pending (spinner only) ----------
 // The criterion is fixed to item.running (tool frame arrived, tool_update not yet): every
 // tool's output slot renders this before the result arrives. Rows must not infer running
 // state from missing content — missing content may mean "not yet arrived" or "never present"
 // (directory reads, empty results); only running distinguishes them (same-root lesson as BUG-016)
 export function Spin() {
   return (
-    <span className="flex-none inline-flex items-center gap-[6px] text-dim text-ui-base" role="status">
-      <Icon name="loader" size={15} className="pend-ico" />
-      …
+    <span className="flex-none inline-flex items-center text-dim text-ui-base" role="status">
+      <Icon name="spinRing" size={15} className="pend-ico" />
     </span>
   );
 }
@@ -296,14 +307,33 @@ export function Counts({ item }: { item: Pick<ToolItem, "added" | "removed"> }) 
 // at expansion time: a row expanded while the tool was still running (which fell back to the
 // git-diff cache) switches to the real per-call diff the moment it arrives.
 export function ownDiffOf(item: ToolItem, path: string): string | undefined {
+  return perFileDiffOf(item, path) ?? item.diffContent;
+}
+
+// One file's diff inside a multi-file event (details.perFileResults), without the diffContent fallback
+function perFileDiffOf(item: ToolItem, path: string): string | undefined {
   const perFiles = (item.details as { perFileResults?: { path?: string; diff?: unknown }[] } | undefined)?.perFileResults;
-  if (Array.isArray(perFiles) && path) {
-    const match = perFiles.find((f) =>
-      typeof f?.path === "string" && (f.path === path || f.path.endsWith("/" + path) || path.endsWith("/" + f.path)),
-    );
-    if (match && typeof match.diff === "string") return match.diff;
+  if (!Array.isArray(perFiles) || !path) return undefined;
+  const match = perFiles.find((f) =>
+    typeof f?.path === "string" && (f.path === path || f.path.endsWith("/" + path) || path.endsWith("/" + f.path)),
+  );
+  return match && typeof match.diff === "string" ? match.diff : undefined;
+}
+
+// Per-file +n/−n for the chip list of a multi-file event: item.added/removed are the whole
+// event's totals, so the counts are recounted from each file's own diff. Nothing when a file
+// carries no diff (delete / rename / binary) — a 0/0 badge next to its name would be a lie.
+export function FileCounts({ item, path }: { item: ToolItem; path: string }) {
+  const diff = perFileDiffOf(item, path);
+  if (!diff) return null;
+  let added = 0;
+  let removed = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) continue; // headers, same rule as the host's diffStats
+    if (line.startsWith("+")) added++;
+    else if (line.startsWith("-")) removed++;
   }
-  return item.diffContent;
+  return <Counts item={{ added, removed }} />;
 }
 
 // ---------- Brief diff body for the edit row's inline expansion (formerly buildEditBrief) ----------

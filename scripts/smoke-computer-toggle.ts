@@ -95,6 +95,11 @@ const modeFrames: boolean[] = [];
 let kimiInstalled = false;
 let kimiMounted = false;
 let kimiUnmounted = false;
+// Desktop default-on round (the user's report): with computer.defaultEnabled
+// on, a new-session page click that turns the icon off must spawn a dark
+// session, and an untouched intent must spawn a lit one.
+let defaultOffSid = "";
+let defaultOnSid = "";
 
 function send(obj: unknown) {
   ws.send(JSON.stringify(obj));
@@ -140,10 +145,50 @@ ws.onmessage = (ev: MessageEvent) => {
   // two frames race across awaits — settle both before asserting).
   if (msg.type === "computer_mode" && msg.sessionId === sessionId && stage === 7 && msg.enabled === false) {
     if (kimiInstalled && kimiMounted && !kimiUnmounted) return; // wait for the unmount frame
-    clearTimeout(timer);
     console.log("kimi round frames:", modeFrames.join(","));
-    restore();
     console.log("✓ kimi provider: /computer on mounts kimi-cu, the icon turns it off");
+    // Back to the default provider before the default-on round: the kimi branch
+    // cannot light the icon when KimiCU is not installed on this machine
+    stage = 8;
+    send({ type: "set_computer_provider", provider: "default" });
+    return;
+  }
+  if (msg.type === "settings" && stage === 8) {
+    if (msg.settings?.computerProvider !== "default") fail(`provider switch back failed: ${msg.settings?.computerProvider}`);
+    stage = 9;
+    console.log("step 9: open the desktop default (set_computer_default enabled=true)");
+    send({ type: "set_computer_default", enabled: true });
+    return;
+  }
+  if (msg.type === "settings" && stage === 9) {
+    if (msg.settings?.computerDefaultEnabled !== true) fail("set_computer_default did not land in the settings frame");
+    stage = 10;
+    console.log("step 10: create_session computerMode:false (the new-session page's explicit off)");
+    send({ type: "create_session", cwd: fixtureCwd, computerMode: false });
+    return;
+  }
+  if (msg.type === "session_created" && stage === 10 && !defaultOffSid) {
+    defaultOffSid = msg.sessionId;
+    return;
+  }
+  if (msg.type === "session_created" && stage === 11 && !defaultOnSid) {
+    defaultOnSid = msg.sessionId;
+    return;
+  }
+  // The spawn default pushes an on frame first; the explicit off lands after it
+  if (msg.type === "computer_mode" && msg.sessionId === defaultOffSid && stage === 10) {
+    if (msg.enabled === true) return;
+    console.log("✓ explicit off on the new-session page wins over computer.defaultEnabled");
+    stage = 11;
+    console.log("step 11: create_session without the intent (the default must apply)");
+    send({ type: "create_session", cwd: fixtureCwd });
+    return;
+  }
+  if (msg.type === "computer_mode" && msg.sessionId === defaultOnSid && stage === 11) {
+    if (msg.enabled !== true) fail("untouched intent under computer.defaultEnabled spawned a dark session");
+    clearTimeout(timer);
+    console.log("✓ desktop default still applies when the intent is untouched");
+    restore();
     process.exit(0);
   }
   if (msg.type === "computer_mode" && msg.sessionId === sessionId) {

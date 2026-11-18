@@ -95,9 +95,9 @@ body:has(#right.collapsed) #center { margin-right: var(--shell-gap); }
 body:has(#sidebar.collapsed) .chat-head {
   padding-left: 78px;
 }
-/* Header advisor toggle (right of the collab globe): ON state stays calm — soft green
-   like a live collab room, no accent highlight / no selection background; the color
-   alone marks the enabled state */
+/* Header advisor toggle (right of the collab entry): ON state stays calm — soft green, no
+   accent highlight / no selection background; the color alone marks the enabled state. The
+   collab entry wears the session accent, so --green here stays the advisor's own marker */
 .chat-head .advisor-toggle.on {
   background: transparent;
   color: var(--green);
@@ -228,7 +228,8 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
 .subagent-return-btn {
   display: inline-flex; align-items: center; gap: 6px; height: 28px;
   padding: 0 12px; font-size: var(--ui-fs-sm); border-radius: 6px;
-  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  /* Inset plate (rgb 43,43,43 in dark) — the same recessed fill as input fields */
+  background: var(--inset); border: 1px solid var(--line); color: var(--text);
   cursor: pointer; flex: none;
 }
 

@@ -25,6 +25,7 @@ import {
   attachEntry,
 } from "../session-lifecycle.ts";
 import type { AcpRuntimeState } from "../acp-runtime.ts";
+import { compactSessionWithAcp } from "../acp-fallback.ts";
 import { bgJobsPayload, type BgJobHost } from "../async-jobs.ts";
 import { keepaliveStatusPayload, markSeen } from "../keepalive-host.ts";
 import { relayGuestAbort } from "./collab.ts";
@@ -366,7 +367,7 @@ const idleSweepTimer = setInterval(() => sweepIdlePoolSessions(), IDLE_SWEEP_INT
 idleSweepTimer.unref?.();
 export const sessionHandlers: Record<string, RpcHandler> = {
   async create_session(ws, msg) {
-    await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true, msg.computerMode === true);
+    await handleCreateSession(ws, msg.cwd, msg.model, msg.thinking, msg.planMode === true, typeof msg.computerMode === "boolean" ? msg.computerMode : undefined);
     // The other channel (phone vs desktop) holds no session_created frame for
     // this pool entry, so its sidebar only learns about it from this list push.
     await refreshAllSessionLists(ws);
@@ -784,7 +785,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       return;
     }
     try {
-      await entry.session.compact();
+      await compactSessionWithAcp(entry.acpRuntime as AcpRuntimeState | undefined, entry.session);
       // Branch-scoped: compact rewrites the active path, abandoned sibling
       // branches must not resurface in the chat
       entry.transcript = entriesToTranscript(entry.manager.getBranch(), entry.path);

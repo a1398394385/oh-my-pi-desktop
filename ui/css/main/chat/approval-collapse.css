@@ -6,7 +6,7 @@
   flex: none; width: 22px; height: 22px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; border: 0; border-radius: 6px;
-  color: var(--faint); cursor: pointer;
+  color: var(--text); cursor: pointer;
 }
 
 .approval-collapse-btn:hover { background: var(--hover-fill); color: var(--text); }

@@ -12,7 +12,7 @@ import type { RunChangeFile } from "../host/wire/payloads.ts";
 import type { PoolEntry } from "../host/state.ts";
 
 type Emitted = { anchor: string; files: RunChangeFile[] };
-type JournalEntry = { type: string; customType?: string; data?: unknown; id?: string };
+type JournalEntry = { type: string; customType?: string; data?: unknown; id?: string; message?: unknown };
 
 function fakeEntry(cwd: string) {
   const entries: JournalEntry[] = [];
@@ -270,5 +270,61 @@ describe("run-changes tracking + revert", () => {
     expect(rc.entryId).toBe("a1"); // anchored to the run-tail assistant entry backfilled by agent_end
     expect(rc.files?.[0].path).toBe(abs);
     expect(rc.files?.[0].created).toBe(true);
+  });
+
+  test("non-terminal agent_end closes the segment: the continuation does not inherit its files", async () => {
+    const cwd = await tmpdir();
+    const { entry, entries } = fakeEntry(cwd);
+    const abs = path.join(cwd, "seg.txt");
+    const sent: Array<Record<string, unknown>> = [];
+    const { promise: gotFrame, resolve: frameArrived } = Promise.withResolvers<void>();
+    Object.assign(entry, {
+      transcript: [
+        { role: "user", text: "hi" },
+        { role: "assistant", text: "working", turnFinal: true },
+      ],
+      assistantDraft: "",
+      thinkingDraft: "",
+      thinkingStartedAt: null,
+      uiSockets: new Set([
+        {
+          send(data: string) {
+            sent.push(JSON.parse(data));
+            if (sent.some((f) => f.kind === "run_changes")) frameArrived();
+          },
+        },
+      ]),
+    });
+    entries.push(
+      { type: "message", id: "u1", message: { role: "user", content: [{ type: "text", text: "hi" }] } },
+      { type: "message", id: "a1", message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "working" }] } },
+    );
+    translateEvent({ type: "tool_execution_start", toolName: "write", toolCallId: "t1", args: { path: abs, content: "x\n" } }, entry);
+    await settle();
+    await fsp.writeFile(abs, "x\n");
+    translateEvent({ type: "tool_execution_end", toolName: "write", toolCallId: "t1", args: { path: abs, content: "x\n" }, result: {} }, entry);
+
+    // Queued continuation: the base re-tags the end non-terminal, so no terminal end follows this
+    // segment. Its card must still anchor to this segment's output, not the next run's.
+    const frame = translateEvent({ type: "agent_end", isTerminal: false, messages: [] }, entry);
+    expect(frame).toMatchObject({ kind: "turn_end", settled: false, final: true, assistantEntryId: "a1" });
+    expect(frame).not.toHaveProperty("runEnd");
+    settleRunChanges(entry, "sid");
+    await gotFrame;
+    const first = sent.find((f) => f.kind === "run_changes") as { entryId?: string; files?: RunChangeFile[] };
+    expect(first.entryId).toBe("a1");
+    expect(first.files?.[0].path).toBe(abs);
+
+    // The continuation is a run of its own: it edits nothing, so it must not re-emit a card.
+    entry.transcript.push({ role: "user", text: "next" }, { role: "assistant", text: "answer" });
+    entries.push(
+      { type: "message", id: "u2", message: { role: "user", content: [{ type: "text", text: "next" }] } },
+      { type: "message", id: "a2", message: { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "answer" }] } },
+    );
+    const end = translateEvent({ type: "agent_end", isTerminal: true, messages: [] }, entry);
+    expect(end).toMatchObject({ kind: "turn_end", runEnd: true, assistantEntryId: "a2" });
+    settleRunChanges(entry, "sid");
+    await settle();
+    expect(sent.filter((f) => f.kind === "run_changes")).toHaveLength(1);
   });
 });

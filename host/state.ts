@@ -616,6 +616,8 @@ export function requestApproval(
   // the wait resolves undefined = deny (the base treats anything but an
   // explicit approval as denied). The deadline also pushes approval_resolved so
   // every attached UI drops the card, which an abort alone does not do.
+  // The frame carries it as `expiresAt` (absolute) so the card can count down;
+  // the UI never submits on its own — this timer is the only one.
   deadline?: { ms: number; answer?: string },
 ): Promise<string | undefined> {
   const requestId = crypto.randomUUID();
@@ -634,6 +636,8 @@ export function requestApproval(
     title,
     options,
     ...(presentation ?? {}),
+    // Countdown source for the card: absolute so a replayed frame keeps the truth.
+    ...(deadline && deadline.ms > 0 ? { expiresAt: Date.now() + deadline.ms } : {}),
   };
   const settle = (v: string | undefined) => {
     clearTimeout(timer);

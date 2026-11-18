@@ -1,12 +1,11 @@
-// Agent Hub middle card (TUI parity): replaces the chat stream while open. Roster of the
-// session's subagents in Flat/By-parent modes with the TUI's row layout (status glyph +
-// name, model badge right, task line, metrics line), an aggregate usage summary, and the
-// keybind bar at the top. Selection links to the right sidebar's hub detail page; Enter
-// bridges into the regular subagent tab; x kills via kill_subagent.
+// Agent Hub middle card: replaces the chat stream while open. Flat roster of the session's
+// subagents (projected rows from subRoster), status filter pills in the top bar, and the
+// aggregate usage summary above the list. Selection links to the right sidebar's hub detail
+// page; Enter bridges into the regular subagent tab; x kills via kill_subagent.
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../store";
-import { HubRow, RosterHead, useRosterRows, useRosterTick, openSubagentSession } from "../shared/agent/subRoster";
+import { HubRow, HubUsage, StatusTabs, useRosterRows, useRosterTick, openSubagentSession } from "../shared/agent/subRoster";
 
 const DOUBLE_LEFT_MS = 500;
 
@@ -14,7 +13,6 @@ export default function AgentHub() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const hubSel = useAppStore((st) => st.hubSel);
-  const hubMode = useAppStore((st) => st.hubMode);
   // Repaint the age column once per second while anything streams
   useRosterTick(s);
   const rows = useRosterRows(s);
@@ -57,10 +55,6 @@ export default function AgentHub() {
           else lastLeftAt.current = now;
           return;
         }
-        case "t":
-          e.preventDefault();
-          st.toggleHubMode();
-          return;
         case "Enter": {
           e.preventDefault();
           e.stopPropagation();
@@ -99,33 +93,20 @@ export default function AgentHub() {
     );
   }
 
-  const hints: [string, string][] = [
-    ["j/k", t("right.hubKeySelect")],
-    ["⏎", t("right.hubKeyOpen")],
-    ["t", t("right.hubKeyTree")],
-    ["x", t("right.hubKeyKill")],
-    ["←←/Esc", t("right.hubKeyClose")],
-  ];
-
   return (
     <div id="agentHub">
-      {/* Keybind bar at the top (requirement: every shortcut's action shown here) */}
-      <div className="hub-keys">
+      {/* Top bar: title, status filter pills, back button. No plate of its own — the pills
+          carry the only chrome (the old keybind row's background and hints are gone; the
+          shortcuts themselves still work). */}
+      <div className="hub-topbar">
         <span className="hub-title">{t("right.hubTitle")}</span>
-        {hints.map(([key, label]) => (
-          <span className="hub-key" key={key}>
-            <kbd>{key}</kbd>
-            {label}
-          </span>
-        ))}
+        <StatusTabs s={s} />
         {backBtn}
       </div>
-      {/* Roster header: mode toggle + status counts, then the aggregate usage line */}
-      <RosterHead s={s} />
-      {/* Roster rows */}
+      <HubUsage s={s} />
       <div className="hub-list" role="listbox">
         {rows.map((row) => (
-          <HubRow key={row.id} row={row} flat={hubMode === "flat"} selected={row.id === hubSel} onSelect={() => useAppStore.getState().setHubSel(row.id)} sessionId={s.sessionId} t={t} />
+          <HubRow key={row.id} row={row} stats selected={row.id === hubSel} onSelect={() => useAppStore.getState().setHubSel(row.id)} sessionId={s.sessionId} t={t} />
         ))}
       </div>
     </div>

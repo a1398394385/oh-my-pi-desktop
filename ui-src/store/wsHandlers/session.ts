@@ -1,9 +1,9 @@
 // Session lifecycle-domain frames: list/archive splitting, creation and activation, title sync,
 // external writes, model and thinking level, rename/archive/stop/compact receipts, fork and
 // entry-tree navigation. Moved over from store/ws.ts onMessage.
-import { useAppStore } from "../index";
+import { useAppStore, type AppStore } from "../index";
 import { REMOTE } from "../ws";
-import { activateSession, clearBranchingMarks, activeOpen, dispatchPrompt, landPoolSessions, settleAbortedRunLater, updateSession } from "../session";
+import { activateSession, clearBranchingMarks, activeOpen, consumeBackgroundLoad, dispatchPrompt, landPoolSessions, settleAbortedRunLater, updateSession } from "../session";
 import { pathOfSessionId } from "../session-lookup";
 import { pushInputHistory } from "../../components/composer/lexical/draft";
 import { SUCCESS_FLASH_MS } from "../../components/main/sidebar/util";
@@ -49,6 +49,20 @@ function applyForkReceipt(msg: { ok: boolean; error?: string; newPath?: string; 
 // whether the user already closed it), so they survive the replace on a re-open.
 function carriedModelFallback(prev: OpenSession | undefined): Pick<OpenSession, "modelFallback" | "modelFallbackDismissed"> {
   return prev ? { modelFallback: prev.modelFallback, modelFallbackDismissed: prev.modelFallbackDismissed } : {};
+}
+
+/**
+ * A reload/rebuild of the same path mints a new pool UUID, and the old entry's
+ * keepalive snapshot stays keyed in `keepaliveStatus` forever (the context card only
+ * deletes the key it is about to query). A card opened between the two generations then
+ * shows the stale probes / nextProbeAt. Drop the old key when its slot is replaced.
+ */
+function dropStaleKeepalive(s: AppStore, path: string, nextId: string): Partial<AppStore> {
+  const prev = s.openSessions.get(path)?.sessionId;
+  if (!prev || prev === nextId || !(prev in s.keepaliveStatus)) return {};
+  const keepaliveStatus = { ...s.keepaliveStatus };
+  delete keepaliveStatus[prev];
+  return { keepaliveStatus };
 }
 
 export const sessionHandlers = {
@@ -189,6 +203,7 @@ export const sessionHandlers = {
     // view stays open, and no welcome-page intents are consumed.
     if (msg.automation) {
       useAppStore.setState((s) => ({
+        ...dropStaleKeepalive(s, msg.path, msg.sessionId),
         openSessions: new Map(s.openSessions).set(msg.path, {
           sessionId: msg.sessionId,
           cwd: msg.cwd,
@@ -232,6 +247,7 @@ export const sessionHandlers = {
         if (live) break;
       }
       return {
+        ...dropStaleKeepalive(s, msg.path, msg.sessionId),
         openSessions: new Map(s.openSessions).set(msg.path, {
           ...carriedModelFallback(s.openSessions.get(msg.path)),
           sessionId: msg.sessionId,
@@ -254,7 +270,7 @@ export const sessionHandlers = {
           todos: [],
           goal: null, // goal state (set by the host goal frame; shown in the session status card's goal section)
           planMode: s.newSessionPlanMode, // seeded from the create intent; the host's plan_mode frame confirms right after
-          computerMode: s.newSessionComputerMode, // seeded from the create intent; the host's computer_mode frame confirms right after
+          computerMode: s.newSessionComputerMode ?? false, // seeded from the create intent; the host's computer_mode frame confirms right after
           title: msg.title ?? null,
           isSubagent: Boolean(msg.isSubagent),
           parentPath: msg.parentPath,
@@ -263,13 +279,15 @@ export const sessionHandlers = {
         isCreatingNew: false,
         automationsOpen: false, // any session taking over the main column closes the tasks view
         newSessionPlanMode: false, // intent consumed by the created session
-        newSessionComputerMode: false, // intent consumed by the created session
+        newSessionComputerMode: null, // intent consumed by the created session; back to following the desktop default
       };
     });
     // selectedFile/selectedSubagent are NOT pre-cleared here: activateSession → restoreRightSlot
     // owns them (fresh session without slot = cleared; reloaded session = slot restored;
-    // clearing first would wipe the outgoing session's just-saved slot)
-    activateSession(msg.path);
+    // clearing first would wipe the outgoing session's just-saved slot).
+    // A background load (right sidebar's read-only child transcript) only needs the entry in
+    // openSessions — activating it would yank the middle column away from the user's work.
+    if (!consumeBackgroundLoad(msg.path)) activateSession(msg.path);
     useAppStore.getState().refreshGitDiff(); // the right-panel Git Diff page needs git status data; prefetch early
     const st3 = useAppStore.getState();
     if (st3.pendingOpenHub) {

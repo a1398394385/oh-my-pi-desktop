@@ -162,3 +162,108 @@ index 059ef1e..9357ae4 100644
  			return false;
  		}
  		const compactionMethod = methods.includes("remote") ? "remote" : "soft";
+diff --git a/src/extensibility/extensions/types.ts b/src/extensibility/extensions/types.ts
+--- a/src/extensibility/extensions/types.ts
++++ b/src/extensibility/extensions/types.ts
+@@ -42,7 +42,7 @@
+ 	ToolApproval,
+ 	ToolLoadMode,
+ } from "@oh-my-pi/pi-agent-core";
+-import type { CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
++import type { CompactionPreparation, CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
+ import type { ContextUsage } from "@oh-my-pi/pi-tui/status-line/types";
+ import type { LoopConditionConfig } from "@oh-my-pi/pi-tui/status-line/loop";
+ import type { LivePhase } from "@oh-my-pi/pi-tui/apps/live-visualizer";
+@@ -548,6 +548,14 @@
+ 	 * skipped, so the switch does not land on a placeholder summary.
+ 	 */
+ 	readerModel?: Model;
++	/**
++	 * A host-derived compaction preparation (an ACP projection) to use instead
++	 * of the base's own `prepareCompaction` over the raw journal. When set, the
++	 * base consumes exactly this object and never recomputes one from journal
++	 * messages, including across method fallbacks. Omitted = the default
++	 * behavior.
++	 */
++	preparation?: CompactionPreparation;
+ }
+ 
+ /**
+diff --git a/dist/types/extensibility/extensions/types.d.ts b/dist/types/extensibility/extensions/types.d.ts
+--- a/dist/types/extensibility/extensions/types.d.ts
++++ b/dist/types/extensibility/extensions/types.d.ts
+@@ -13,7 +13,7 @@
+ import type * as TypeBox from "@oh-my-pi/omptype/typebox";
+ import type * as zod from "@oh-my-pi/omptype/zod";
+ import type { AgentMessage, AgentToolResult, AgentToolUpdateCallback, ThinkingLevel, ToolApproval, ToolLoadMode } from "@oh-my-pi/pi-agent-core";
+-import type { CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
++import type { CompactionPreparation, CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
+ import type { ContextUsage } from "@oh-my-pi/pi-tui/status-line/types";
+ import type { LoopConditionConfig } from "@oh-my-pi/pi-tui/status-line/loop";
+ import type { LivePhase } from "@oh-my-pi/pi-tui/apps/live-visualizer";
+@@ -342,6 +342,14 @@
+      * skipped, so the switch does not land on a placeholder summary.
+      */
+     readerModel?: Model;
++    /**
++     * A host-derived compaction preparation (an ACP projection) to use instead
++     * of the base's own `prepareCompaction` over the raw journal. When set, the
++     * base consumes exactly this object and never recomputes one from journal
++     * messages, including across method fallbacks. Omitted = the default
++     * behavior.
++     */
++    preparation?: CompactionPreparation;
+ }
+ /**
+  * Context passed to extension event handlers.
+diff --git a/src/session/session-maintenance.ts b/src/session/session-maintenance.ts
+--- a/src/session/session-maintenance.ts
++++ b/src/session/session-maintenance.ts
+@@ -1236,6 +1236,11 @@
+ 		onCommitted?: () => void,
+ 	): Promise<CompactionResult> {
+ 		const ownsCompactionController = retryController === undefined;
++		// A host-owned context strategy (ACP) hands over the exact preparation it
++		// derived from its own projection. The base must not recompute one from
++		// the raw journal for this pass: every method and fallback below consumes
++		// this object, and the journal stays a source of ids only.
++		const injectedPreparation = options?.preparation;
+ 		if (
+ 			this.#handoffCleanup ||
+ 			(this.#compactionAbortController && this.#compactionAbortController !== retryController)
+@@ -1336,6 +1341,11 @@
+ 				!customInstructions &&
+ 				!options?.internalGuidance
+ 			) {
++				if (injectedPreparation) {
++					throw new Error(
++						"Injected compact preparation is not supported by experimental context management.",
++					);
++				}
+ 				const result = await this.#compactExperimentalContext(
+ 					activeModel,
+ 					compactionAbortController,
+@@ -1374,7 +1384,11 @@
+ 			selectedMethodIndex = methods.findIndex((method, index) => index >= methodOffset && runsManually(method));
+ 			const selectedMethod = methods[selectedMethodIndex];
+ 			if (!selectedMethod) {
+-				throw new Error("No configured compaction method can run manually.");
++				throw new Error(
++					injectedPreparation
++						? "No configured compaction method can run with an injected preparation."
++						: "No configured compaction method can run manually.",
++				);
+ 			}
+ 			// `/compact snapcompact` pins the order to snapcompact alone, so its
+ 			// blockers name the `/compact` mode of the next manual method (remote or
+@@ -1420,7 +1434,9 @@
+ 				);
+ 			}
+ 			const pathEntries = this.#host.sessionManager.getBranch();
+-			const preparation = prepareCompaction(pathEntries, effectiveSettings, activeModel, this.#tokenizer);
++			const preparation =
++				injectedPreparation ??
++				prepareCompaction(pathEntries, effectiveSettings, activeModel, this.#tokenizer);
+ 			if (!preparation) {
+ 				// Check why we can't compact
+ 				const lastEntry = pathEntries[pathEntries.length - 1];

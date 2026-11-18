@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, send } from "../../../store";
 import { appLocale } from "../../../lib/locale";
-import { DOUBLE_ESC_MS } from "../../../keys";
+import { DOUBLE_ESC_MS, isImeKey } from "../../../keys";
 import { pushInputHistory, recallHistory, resetHistoryCursor } from "../../composer/lexical/draft";
 import Icon from "../../../Icon";
 import MdSurface from "../../chat/MdSurface";
@@ -97,7 +97,7 @@ function Composer({
             // routing, which would abort the main turn / arm the tree because it reads the
             // main composer's draft only.
             if (e.key === "Escape") {
-              if (!draft.trim()) return;
+              if (isImeKey(e) || !draft.trim()) return;
               e.stopPropagation();
               const now = Date.now();
               if (now - escAtRef.current > DOUBLE_ESC_MS) {

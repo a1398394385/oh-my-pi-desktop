@@ -4,18 +4,19 @@
 // module — no imports; every consumer (runtime, assembly, smokes) shares this
 // single decision source.
 //
-// Since T6 the §5.2 table runs on both axes: the tier axis reads the projected
-// context total (active blocks + rendered zone), and the zone-size axis
-// (rendered zone tokens vs window × 35%) drives the pending-strong state —
-// strong execution semantics for the next compress once the total is past L1
-// (riding) or past L3 (always). T7 reuses the same table for the failure exits:
-// the L3 tier anchors the ultimatum round and the guard line is judged against
-// the window lines derived from the same contextWindow (in acp-runtime).
+// Since T6 the §5.2 table runs on both axes: the tier axis reads the full
+// request total (non-message context + active blocks + rendered zone, see
+// AcpRuntimeDeps.nonMessageTokens), and the zone-size axis (rendered zone
+// tokens vs window × 35%) drives the pending-strong state — strong execution
+// semantics for the next compress once the total is past L1 (riding) or past
+// L3 (always). T7 reuses the same table for the failure exits: the L3 tier
+// anchors the ultimatum round and the guard line is judged against the window
+// lines derived from the same contextWindow (in acp-runtime).
 
 // ---- parameters (spec §11; defaults are the SSOT table values) -----------------
 
 export interface AcpParams {
-	/** Prompt tiers by projected context tokens (active + rendered zone); boundaries are strict-greater (spec §5.1). */
+	/** Prompt tiers by full request tokens (non-message context + active blocks + rendered zone); boundaries are strict-greater (spec §5.1). */
 	l1: number;
 	l2: number;
 	l3: number;

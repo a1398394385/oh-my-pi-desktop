@@ -112,6 +112,13 @@ export interface AcpRuntimeDeps {
 	getBranch?: () => readonly SessionEntry[];
 	/** Session model context window (spec §11 zone line = window × 35%; §5.3 guard line = window − reserve); 0/unknown = neither line. */
 	contextWindow?: number;
+	/**
+	 * Non-message part of the request (system prompt + tools + skills + injected
+	 * context), from the base's own breakdown. The tier axis judges the real
+	 * request size, so this is added to the message-side total; absent = 0
+	 * (messages-only, the pre-fix behavior the smokes rely on).
+	 */
+	nonMessageTokens?: () => number;
 	params?: Partial<AcpParams>;
 	/**
 	 * Re-derives the full param set for a context window. Required for
@@ -134,8 +141,8 @@ export interface AcpRuntimeDeps {
 	forceCompressTool?: () => void;
 	/**
 	 * Degrade side effect (spec §5.3/§10): fired once when ACP exits this
-	 * session, after the projection and tools have already stopped. The host
-	 * needs no settings write-back (the base chain was never disabled); smokes
+	 * session, after the projection and tools have already stopped. The base
+	 * auto chain stays pinned off at assembly (no settings write-back); smokes
 	 * and future surfaces observe the reason here.
 	 */
 	onDegrade?: (reason: string) => void;
@@ -165,7 +172,7 @@ export interface AcpRoundStatus {
 	zoneTokens: number;
 	/** Active-zone tokens, post-prune values (spec §8). */
 	activeTokens: number;
-	/** Token total of the projection (zone renders + surviving active blocks; block-sum approximation) — the tier axis reads this. */
+	/** Full request size — non-message context (system prompt, tools, skills, injected context) + active blocks + rendered zone — the tier axis reads this. */
 	projectedTokens: number;
 	/** Live active-block count (dashboard surfaces). */
 	activeBlocks: number;
@@ -177,6 +184,12 @@ export interface AcpRoundStatus {
 }
 
 export class AcpRuntimeState {
+	/**
+	 * Consecutive forced-round failures before the L3 ladder gives up: the
+	 * first two re-arm the force, the third enters the persistent fallback where
+	 * the host drives the base's manual compaction from this projection.
+	 */
+	static readonly FORCE_FAILURE_LIMIT = 3;
 	/** Rebuilt by #applyWindow whenever the window changes (percent tier lines are window-relative). */
 	params: AcpParams;
 	readonly compressed = new Set<string>();
@@ -236,6 +249,22 @@ export class AcpRuntimeState {
 	#forcedExecution = false;
 	/** Forced success: the next projection must come back under the guard line or degrade (spec §5.3). */
 	#expectRelief = false;
+	/**
+	 * Persistent fallback after FORCE_FAILURE_LIMIT consecutive failed forced
+	 * rounds. The L3 ladder stops arming; the host watches the base threshold
+	 * from this runtime's projection and drives a manual base compaction with an
+	 * ACP preparation. Only a successful fallback compaction clears it.
+	 */
+	fallback = false;
+	/** Why fallback was entered, or the last fallback compaction failure (observability). */
+	fallbackReason = "";
+	/** Consecutive forced rounds that ended without a successful compression. */
+	#forcedFailures = 0;
+	/**
+	 * Entry count when the last fallback compaction attempt failed. A same-history
+	 * retry is a tight loop, so the host only retries after the branch changes.
+	 */
+	#fallbackAttemptEntries = -1;
 	/** bN short-ref registry + context_status-pair facts, replayed from the journal (spec §3/§6 v10, host/acp-refs.ts). */
 	#refs = new AcpRefBook();
 	/** [compress-hint] injections since the last accepted compress (stats telemetry, reset on success). */
@@ -595,11 +624,23 @@ export class AcpRuntimeState {
 		if (this.degraded) return;
 		const req = this.#requestSeq;
 		const success = this.#successAt === req;
+		if (success) this.#forcedFailures = 0;
 		if (this.#forcedFor > 0 && req === this.#forcedFor) {
 			this.#forcedFor = 0;
 			this.#forcedExecution = false;
 			if (!success) {
-				this.degrade(`forced compression turn produced no successful compression (request ${req}, spec §5.2)`);
+				this.#forcedFailures++;
+				if (this.#forcedFailures < AcpRuntimeState.FORCE_FAILURE_LIMIT) {
+					return this.#armForce(
+						`forced turn without compression, retry ${this.#forcedFailures}/${AcpRuntimeState.FORCE_FAILURE_LIMIT} (request ${req})`,
+					);
+				}
+				// The ladder gave up: no degrade (the base raw chain stays pinned
+				// off), no more forcing. The host's fallback supervisor takes over
+				// from the ACP projection.
+				this.fallback = true;
+				this.fallbackReason = `forced compression failed ${this.#forcedFailures} consecutive rounds (request ${req})`;
+				safeStderr(`[ACP] ${this.fallbackReason}; entering fallback (base manual compaction with an ACP preparation)`);
 				return;
 			}
 			// Relief expectation (spec §5.3): the next projection must come in
@@ -614,6 +655,9 @@ export class AcpRuntimeState {
 			this.#forcedExecution = false;
 			return;
 		}
+		// Fallback never re-arms the force: a new failed round would just repeat
+		// the three failures. The host owns recovery from here.
+		if (this.fallback) return;
 		if (this.#guardAt === req) return this.#armForce(`projected total over the guard line at request ${req}`);
 		if (this.#ultimatumAt === req) return this.#armForce(`L3 ultimatum unanswered by the turn of request ${req}`);
 	}
@@ -626,6 +670,50 @@ export class AcpRuntimeState {
 	 */
 	forcedRoundActive(): boolean {
 		return this.#forcedFor > 0 && this.#forcedFor === this.#requestSeq;
+	}
+
+	/** True after the L3 force ladder gave up; the host drives base manual compaction. */
+	fallbackActive(): boolean {
+		return this.fallback && !this.degraded;
+	}
+
+	/** Consecutive failed forced rounds (0 after any successful compression). */
+	forcedFailureCount(): number {
+		return this.#forcedFailures;
+	}
+
+	/**
+	 * A failed fallback compaction must not be retried on the same history: that
+	 * is a tight loop with no new information. Only a branch change (a new turn
+	 * or a user message) re-opens the attempt.
+	 */
+	fallbackAttemptAllowed(): boolean {
+		return this.#fallbackAttemptEntries !== this.#deps.getEntries().length;
+	}
+
+	/** A committed ACP fallback compaction: leave fallback and clear every ladder counter. */
+	onFallbackCompactionSucceeded(): void {
+		this.fallback = false;
+		this.fallbackReason = "";
+		this.#forcedFailures = 0;
+		this.#fallbackAttemptEntries = -1;
+		this.#forcedFor = 0;
+		this.#forcedExecution = false;
+		this.#expectRelief = false;
+		this.#guardAt = 0;
+		this.#ultimatumAt = 0;
+	}
+
+	/**
+	 * A failed fallback compaction: stay in fallback, record the explicit error,
+	 * and block a same-history retry. Never degrade into the base raw chain — the
+	 * base auto chain stays pinned off for ACP sessions.
+	 */
+	onFallbackCompactionFailed(reason: string, err?: unknown): void {
+		this.fallback = true;
+		this.fallbackReason = reason;
+		this.#fallbackAttemptEntries = this.#deps.getEntries().length;
+		safeStderr(`[ACP] fallback compaction failed; staying in fallback: ${reason}`, err);
 	}
 
 	/**
@@ -656,7 +744,7 @@ export class AcpRuntimeState {
 		if (this.degraded) return;
 		this.degraded = true;
 		this.degradeReason = reason;
-		safeStderr(`[ACP] degraded for this session; the base compaction chain takes over: ${reason}`, err);
+		safeStderr(`[ACP] degraded for this session; base auto compaction stays pinned off: ${reason}`, err);
 		try {
 			this.#deps.onDegrade?.(reason);
 		} catch (hookErr) {
@@ -730,7 +818,8 @@ export class AcpRuntimeState {
 		if (adopt) this.manifest = { ids: manifestIds, consumed: false };
 		const zoneTokens = this.#zoneTokens();
 		const activeTokens = Math.round(active.reduce((n, b) => n + b.tokens, 0) * this.#ratio);
-		const projectedTokens = activeTokens + zoneTokens;
+		// Real request size (spec §5.1): the non-message context rides every request too.
+		const projectedTokens = (this.#deps.nonMessageTokens?.() ?? 0) + activeTokens + zoneTokens;
 		const plan = computeRoundPlan(projectedTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
 		const rs: AcpRoundStatus = {
 			tier: plan.tier,
@@ -764,7 +853,7 @@ export class AcpRuntimeState {
 	/** Current same-counter estimate for the takeover result and W4 candidate check. */
 	projectedTokenEstimate(): number {
 		const active = this.activeBlocks().reduce((n, b) => n + b.tokens, 0);
-		return Math.round(active * this.#ratio) + this.#zoneTokens();
+		return (this.#deps.nonMessageTokens?.() ?? 0) + Math.round(active * this.#ratio) + this.#zoneTokens();
 	}
 
 	countProjectedMessages(messages: readonly AgentMessage[]): number | undefined {
@@ -790,7 +879,7 @@ export class AcpRuntimeState {
 		if (this.degraded) {
 			return {
 				ok: false,
-				error: "ACP is degraded for this session; the base compaction chain owns context management (spec §5.3).",
+				error: "ACP is degraded for this session; context management is frozen and the base auto chain stays disabled (spec §5.3).",
 			};
 		}
 		const projectedTokens = this.projectedTokenEstimate();
@@ -863,6 +952,7 @@ export class AcpRuntimeState {
 				zone: this.zone,
 				baseSummary: this.#baseSummary,
 				zoneTokens: zoneTokensBefore,
+				nonMessageTokens: this.#deps.nonMessageTokens?.() ?? 0,
 				zoneLimitTokens: this.#zoneLimitTokens,
 				forcedExecution: this.#forcedExecution,
 				ratio: this.#ratio,
@@ -898,12 +988,16 @@ export class AcpRuntimeState {
 		for (const id of plan.compressedIds) this.compressed.add(id);
 		this.manifest!.consumed = true;
 		this.#forcedExecution = false;
-		if (plan.countedAsSuccess) this.#successAt = this.#requestSeq;
+		if (plan.countedAsSuccess) {
+			this.#successAt = this.#requestSeq;
+			this.#forcedFailures = 0;
+		}
 		// Projected context after the write (spec §4): active zone + the zone as it now stands.
 		// The delta is (after − before) over both, so a strong reset charges the replaced old
 		// zone to the change as well.
 		const zoneTokensAfter = this.#zoneTokens();
-		const projectedTokensAfter = plan.activeTokensAfter + zoneTokensAfter;
+		// Non-message context is untouched by a compression: add it back for the tier judgment.
+		const projectedTokensAfter = (this.#deps.nonMessageTokens?.() ?? 0) + plan.activeTokensAfter + zoneTokensAfter;
 		return {
 			ok: true,
 			blockId: blockLabel,

@@ -57,14 +57,14 @@
 .fv-open-chev {
   display: inline-flex; align-items: center;
   padding: 0 5px; border: 0; border-left: 1px solid var(--line);
-  background: none; color: var(--dim); cursor: pointer;
+  background: none; color: var(--text); cursor: pointer;
 }
 
 .fv-open-btn:hover, .fv-open-chev:hover { background: var(--hover-fill); }
 
 .fv-open-chev:hover { color: var(--text); }
 
-.fv-open-btn .pi-ic, .fv-open-chev .pi-ic { color: var(--dim); }
+.fv-open-btn .pi-ic, .fv-open-chev .pi-ic { color: var(--text); }
 
 .fv-open-ic { width: 14px; height: 14px; object-fit: contain; border-radius: 3px; }
 

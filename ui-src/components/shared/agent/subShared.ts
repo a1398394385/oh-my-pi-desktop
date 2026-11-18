@@ -78,13 +78,14 @@ export function currentProgress(sub: SubagentState): string {
 // aborted) and progress frames (pending|running|completed|failed|aborted).
 export type SubStatus = "started" | "pending" | "running" | "completed" | "failed" | "aborted";
 
-// Display groups shared by the roster pills, the header counts and the hub detail head.
-// "unknown" is a status neither vocabulary knows (a newer base state) and must never pose
-// as running.
+// Display groups shared by the roster dots, the status tabs and the hub detail head. Four
+// user-facing states: a run that was aborted stays distinct from one that failed.
+// "unknown" is a status neither vocabulary knows (a newer base state) and must never pose as
+// running.
 export type StGroup = "running" | "completed" | "failed" | "aborted" | "unknown";
 
 // One row per status: roster sort weight (running first, as the TUI Agent Hub orders them) and
-// display group. Every consumer reads this table, so the ordering and the pills cannot drift
+// display group. Every consumer reads this table, so the ordering and the dots cannot drift
 // apart; a status added above without a row fails the build.
 const ST_ROWS: Record<SubStatus, { order: number; group: StGroup }> = {
   started: { order: 0, group: "running" },

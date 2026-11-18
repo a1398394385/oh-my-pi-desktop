@@ -259,7 +259,7 @@ export default function ProjGroup({ p, ty, isDragSelf, dragging, onPointerDownHe
                 showWelcomeScreen(p.cwd);
               }}
             >
-              <Icon name="plus" size={14} />
+              <Icon name="messagePlus" size={14} />
             </button>
             {/* Narrow (remote phones): the ⋯ menu only holds "remove project", which is a
                 desktop-only action — the button is not rendered at all. */}

@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../store";
+import { isImeKey } from "../../keys";
 import { setPredictionOpen } from "../../store/session";
 import { getDraftText } from "./lexical/draft";
 import { placePaletteCard } from "./place";
@@ -43,6 +44,7 @@ export default function PredictionList({ composerRef, draftKey, onPick }: Props)
   useEffect(() => {
     if (!open || !choices || !sessionId) return;
     const onKey = (e: KeyboardEvent) => {
+      if (isImeKey(e)) return; // IME candidate dismissal, not a prediction key
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();

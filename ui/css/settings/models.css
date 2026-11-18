@@ -138,7 +138,7 @@
 /* effort-level chips (multi-select): pill outline, accent fill when picked */
 .mpw-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 3px 0 1px; }
 
-.mpw-chip { padding: 3px 10px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
+.mpw-chip { padding: 3px 10px; border: 1px solid transparent; border-radius: 999px; background: none; color: var(--text); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--dur-snap) var(--swift); }
 
 .mpw-chip:hover { background: var(--hover-fill); color: var(--text); }
 
@@ -172,7 +172,7 @@
 /* Quick-switch (ctrl+p cycleOrder) row controls: same 22px geometry as .mp-role-clear so the
    control column aligns across rows; arrows/reorder are neutral actions, hover highlights only */
 .mp-cycle-btn {
-  border: 0; background: none; color: var(--faint); cursor: pointer; padding: 4px;
+  border: 0; background: none; color: var(--text); cursor: pointer; padding: 4px;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 4px; transition: color var(--dur-snap), transform var(--dur-fast);
 }

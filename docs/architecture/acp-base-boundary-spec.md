@@ -1,23 +1,24 @@
-# ACP × 底座压缩：写侧接管 + 读侧认边界 Spec
+# ACP × 底座压缩：ACP preparation 后备 + 读侧认边界 Spec
 
-**Status**: READY（v3.6，2026-11-10）· 已实施
-**审阅记录**: v2 一轮独立审阅 NOT READY（7 项已闭环）→ v3 一轮 NOT READY（8 项阻断已按反例修订）→ v3.1 一轮独立审阅 NOT READY（5 项阻断已按反例修订）→ v3.2 设计问答发现保留尾部重复风险（已修订）→ v3.3 一轮独立审阅 NOT READY（4 项合同缺口已按反例修订）→ v3.4 一轮独立审阅 NOT READY（3 项阻断已按反例修订）→ v3.5 全量复审 NOT READY（4 项阻断已按反例修订）→ **v3.6 独立复审 READY**
+**Status**: v4.0（2026-11-17）· 已实施；真实 Tauri 后备压缩待验收
+**审阅记录**: v2 一轮独立审阅 NOT READY（7 项已闭环）→ v3 一轮 NOT READY（8 项阻断已按反例修订）→ v3.1 一轮独立审阅 NOT READY（5 项阻断已按反例修订）→ v3.2 设计问答发现保留尾部重复风险（已修订）→ v3.3 一轮独立审阅 NOT READY（4 项合同缺口已按反例修订）→ v3.4 一轮独立审阅 NOT READY（3 项阻断已按反例修订）→ v3.5 全量复审 NOT READY（4 项阻断已按反例修订）→ v3.6 独立复审 READY → v4.0 用户拍板改为 ACP preparation 后备压缩（已实施）
 **决策 SSOT**: `.agents/notes/0009-acp-base-compaction-baseline.md`
 **取代**: 本文件 v1/v2（只做读侧建模，底座仍自己总结）；同时取代 BUG-129 的「cancel 守卫」行为
 
 ## 0. 一句话
 
-底座判断「该压了」时，**由 ACP 用自己的投影生成摘要并交回底座落盘**；ACP 读侧把这条压缩边界当成 zone 的根块。**ACP 是唯一总结者，底座只做边界账本。**
+ACP 正常压缩行为不变；L3 连续三次强制失败后，由 ACP 按自身投影决定后备压缩时机，并向底座手动 compact 提供完整 preparation。**ACP 拥有上下文与切点，底座只执行、回退、落盘；任何失败都不得退回原始 journal 消息视图。**
 
 ## 1. 术语
 
 | 词 | 含义 |
 |---|---|
-| 接管 | ACP 通过 `session_before_compact` 返回 `compaction`，使底座跳过自己的 LLM 总结 |
+| ACP preparation | ACP 从自身投影构造的 `CompactionPreparation`：包含压缩输入、保留切点、连续保留尾部、既有摘要与有效 token 数；原始 journal 仅提供真实 entry ID |
+| 后备压缩 | L3 三次失败后，ACP 投影超过底座阈值或真实溢出时调用的 `session.compact({ preparation })`；底座回退也只能消费该 preparation |
 | 边界条目 | 分支上最新 `compaction` entry 的 `firstKeptEntryId` 所指条目；保留尾部从它开始，故它在 journal 中位于 compaction entry 之前 |
 | 基线块 | 由该 compaction entry 合成的 ACP zone 根块（不落盘，纯推导） |
 | 活跃区 | ACP 投影中未被任何块覆盖、可能被压缩的部分 |
-| 让路 | ACP 不返回 `compaction`，底座按原路径自己总结 |
+| 禁止让路 | ACP 会话不得通过 `undefined` 让底座从原始 journal 准备或总结；失败必须取消/显式报错并保持 ACP 后备状态 |
 
 ### 1.1 状态模型与硬不变量
 
@@ -28,7 +29,7 @@
 | 同分支普通追加 | R/C/Z/X/T 不变；V 只在完整 id 前缀匹配时增量续接 |
 | ACP normal | 追加 acpSummary；Z 追加、X 并入，新块 T 取自身 `createdAt`；R/C 不变 |
 | ACP strong | Z 由存活 strong 替换、X 并入全部覆盖，新块 T 取该代 `createdAt`；吞基线时 `supersedesBase` 稳定继承 |
-| base 接管或让路落盘 | 都追加 compaction；重同步后 C 更新，旧 Z/X/T 按 R1/R4 重建；V 因追加区含边界而失效 |
+| ACP 后备压缩落盘 | 追加 compaction；重同步后 C 更新，旧 Z/X/T 按 R1/R4 重建；V 因追加区含边界而失效 |
 | reset | R 更新、C 清空、Z/X/T 清空；V 失效 |
 | 切分支、回退、重启 | 从目标当前分支重算 R/C/Z/X/T；V 失效，不继承旧分支缓存 |
 
@@ -36,43 +37,37 @@
 
 1. **单事实源**：R/C/Z/X/T 必须能仅从当前分支重建；运行态、重启与回退不得依赖进程内残留。
 2. **连续保留**：底座保留区是从 `firstKeptEntryId` 起的原始连续后缀；压缩模型只接收其前的活跃前缀，zone 只作 `previousSummary`。
-3. **覆盖不丢**：原始块不得同时作为已折叠覆盖与活跃正文重复出现；块退出 Z 时，其覆盖必须由存活块继承，否则让路。
+3. **覆盖不丢**：原始块不得同时作为已折叠覆盖与活跃正文重复出现；块退出 Z 时，其覆盖必须由存活块继承，否则拒绝本次压缩。
 4. **身份与时间分离**：`supersedesBase` 是稳定基线身份；`historyRewriteAt` 是当前存活摘要最近一次改写前缀的时间，二者不得互相推导。
 5. **不对齐就不写**：无法证明分支、真实 id、连续切点或完整覆盖时，不写部分接管结果；历史无法安全投影时才 degrade。
 
 ## 2. 写侧契约
 
-### W1 接管点
+### W1 触发与入口
 
-`host/acp-assembly.ts` 的 `session_before_compact` handler（仅 owner 会话）：
-
-- 由「返回 `{cancel:true}`」改为「返回 `{ compaction }`」。
-- `auto_compaction_start` / `auto_compaction_end` handler 保留为观测与状态同步，**不再 cancel**。
-- 依据：钩子在底座 LLM 总结之前触发（`session-maintenance.ts:1370-1394`）；返回值 `compaction` 被原样采用（`shared-events.ts:474-483`、`session-maintenance.ts:3853-3865`）；此路径落盘的 entry **没有 `method` 字段**（`session-maintenance.ts:1596`）。
-- **两层期限**：ACP 模型调用使用独立的 25s 取消期限，短于扩展 handler 的 30s 上限（`extensibility/extensions/runner.ts:136`，`EXTENSION_HANDLER_TIMEOUT_MS`）。将 `event.signal` 与该期限合成后显式传给 `completeSimple`；到期后等请求确认中止，再返回 `undefined` 让路，不重试。底座 30s 超时只通过 `Promise.race` 停止等待，不会中断 handler，也不会改写 `event.signal`，因此只能作为最后护栏，不能兼任模型请求的取消机制。
-- **副作用**：只要 `session_before_compact` 有 handler，底座会关闭投机压缩与阈值延迟（`session-maintenance.ts:2261,2354,2589`）。接管上线后 base 的投机路径失效，需在 R9 记录。
+- ACP owner 固定 `compaction.enabled=false`；底座 threshold/idle/overflow/incomplete 不得从原始 journal 启动自动压缩。Advisor 通过既有 `advisorCompactionEnabled` 独立保留自身维护。
+- L3 强制连续三次无成功压缩后进入持续后备状态；后备中每轮以 ACP 完整投影对比 `resolveThresholdTokens(model.contextWindow, resolveModelCompactionSettings(...))`，严格 `>`。
+- 达到后备线或真实上下文溢出时，宿主在安全点调用 `session.compact({ preparation })`。手动 compact 会中断活跃回合，调用方必须防止重入并保留既有续跑语义。
+- 18.20.0 patch 给 `CompactOptions` 增加可选 preparation；传入后跳过 `prepareCompaction(rawBranch)`，未传时 CLI 默认行为不变。
+- `session_before_compact` 若仍用于生成结果，失败必须 `{ cancel:true }` 或抛错，不得返回 `undefined` 让路原始底座链。
 
 ### W2 输入构造
 
-- 输入消息 = ACP 投影活跃区中的**压缩前缀**，不是整个活跃区：由 runtime 在 `projectView` 时缓存（`lastSource` / `lastBlocks` / `zone`），新增 runtime 方法 `activeZoneMessages(branchEntries)`、`zoneRenderText()` 供钩子取用，**钩子不另造投影算法**。当前 `AcpExtensionCtx` 只有 `{ sessionManager: { getSessionId() } }`（`host/acp-assembly.ts:113`），需扩到能拿到 state 句柄。
-- **快照允许同分支追加，不要求 leaf 相等**：`projectView` 记录当时完整 branch entry id 序列与 leaf。`activeZoneMessages(branchEntries)` 取数时：当前 leaf 相同则直接复用；缓存的 entry id 序列是当前分支的严格前缀时，由 runtime 将缓存 leaf 之后的新增消息以真实 journal entry id 追加到 `lastSource` / `lastBlocks`，沿用 `annotateView` / `splitBlocks` 的同一 id、块拆分与计数规则，并把快照推进到当前 leaf。正常回复落盘、随后的 post-turn threshold 与手动 `/compact` 都走这条续接路径。
-- **切分支或不可续接则失效**：缓存序列不是当前分支前缀、追加区含有 `compaction` / `reset_boundary`、或新增消息无法获得真实 journal id 时，直接让路；不得仅凭 leaf 不同就放行，也不得拿旧分支投影凑输入。`resyncToBranch()` 仍立即使快照失效。
-- **保留尾部不得进入摘要正文**：快照续接后，按 `event.branchEntries` 中 `preparation.firstKeptEntryId` 的位置，把活跃区切成「切点之前的压缩前缀」与「从切点开始的连续保留尾部」；只有压缩前缀送进压缩模型。底座保留的是连续原始消息后缀，ACP 不得把这部分同时写进摘要，否则重建后摘要与原文重复。活跃区消息若不能用真实 journal entry id 与该切点对齐，直接让路。
-- **旧摘要与保留尾部交叉覆盖时让路**：把待吞 zone 各块的 `compressedIds` 通过 `lastBlocks` 的 `sourceId` 映射回 journal entry id；若与 `firstKeptEntryId` 起的保留 entry id 集合相交，则不得把整个 zone 放进 `previousSummary`，也不裁剪部分摘要，直接让路。否则旧块退出 zone 后，其在保留尾部的覆盖集合会丢失，原文与摘要重复。
-- **不使用** `preparation.messagesToSummarize`（journal 原文，正是要避免的）。
-- `previousSummary` = 通过交叉覆盖检查后，zone 全部块按 journal 顺序渲染的文本 → 传给压缩模型作为「已有摘要」，使其只处理增量。
-- 压缩模型：使用**当前对话模型**，经现有 `completeSimple` 通道（`host/auto-review.ts:187` 是最接近的现成用法），不新增配置（Q2 已确认）。
+- runtime 复用 `lastSource` / `lastBlocks` / `zone` 与 `activeZoneMessages(branchEntries)`，不得另造第二套投影。快照仍只允许真实 entry ID 的同分支前缀续接；伪 ID、跨分支、追加区含 compaction/reset 或无法对齐时拒绝压缩。
+- ACP 自行选择 `firstKeptEntryId`，并构造 `messagesToSummarize`、`turnPrefixMessages`、`recentMessages`、`recentEntryIds`、`lastSummarizedEntryId`、`isSplitTurn`、`fileOps` 与 `settings`。这些字段不得从底座 raw preparation 复制。
+- 保留区必须是从 `firstKeptEntryId` 起的连续原始 journal 后缀；压缩模型只接收其前的 ACP 投影前缀。`previousSummary` 取通过覆盖检查的 zone 渲染文本，旧 zone 不得与保留正文重复。
+- 待吞 zone 的 `compressedIds` 经 `sourceId` 映射后若与保留尾部相交，整次拒绝，不裁剪摘要；`firstKeptEntryId` 为空、不在当前分支或保留区不连续时同样拒绝。
+- `tokensBefore` 使用 ACP 完整投影估值；压缩模型仍使用当前对话模型，不新增模型配置。
 
-### W3 产出
+### W3 产出与回退
 
 ```ts
 { compaction: { summary, firstKeptEntryId, tokensBefore } }
 ```
 
-- `summary` = 纯摘要正文（不带 header）。底座会把它放进 transcript；读侧渲染时再加 `[acp-base]` 前缀，两侧都可读。
-- **`firstKeptEntryId` 直接沿用 `preparation.firstKeptEntryId`**，ACP 不自己选边界。理由：该 id 由底座基于 branch 算出（`session-maintenance.ts:1358` 的 `prepareCompaction`），必然存在、且与底座下一次切分完全同源；自选 id 会引入「id 不在分支上 → 底座不校验就落盘 → 视图保留区整段消失」的静默丢历史（`session-manager.ts:3684-3712` 无校验；`session-context.ts:600-608` 找不到即丢弃保留区）。`preparation.firstKeptEntryId` 为空（session 需迁移的路径）→ 让路。
-- `tokensBefore` = ACP 的 `projectedTokens` 估值（**估算口径，不是 provider 上报**；宿主侧没有 provider 上报字段）。auto 路径上底座会用 `branchTokensBefore` 覆写该值（`session-maintenance.ts:5976-5980`、`:6035-6039`），下游只用于展示（`session-context.ts:550-551`），读侧不得依赖其精确值。
-- `shortSummary` 不填；`details` / `preserveData` 不填（避免读侧误判为原生回放）。
+- `summary` 为纯摘要正文，`firstKeptEntryId` 与 `tokensBefore` 来自 ACP preparation；`shortSummary`、`details`、`preserveData` 默认不填，避免误判为 provider 原生回放。
+- 若使用底座 methodOrder 回退，所有方法只能消费同一份 ACP preparation；不得在任一方法失败后重新调用 `prepareCompaction(rawBranch)`。某方法不支持外部 preparation 时必须明确拒绝或跳过。
+- 全部方法失败、ACP 摘要失败或空摘要时保持后备状态并显式报错，不落空 compaction、不写 acpSummary、不让路原始 journal。
 
 ### W4 压后复核（启发式，非硬保证）
 
@@ -81,38 +76,38 @@
 - 目标线 = recovery band，即 `floor(resolveThresholdTokens(...) * COMPACTION_RECOVERY_BAND)`（`pi-agent-core/src/compaction/compaction.ts:214`，底座 `#compactionCreatedHeadroom` 同口径 `session-maintenance.ts:4326-4335`）。
 - 估算量必须是**候选压缩结果**，不是压缩前的 `projectedTokens`：用同一消息计数器计算 `countMessages([候选基线的 [acp-base] 渲染消息, ...从 firstKeptEntryId 起实际保留的原始消息]) + 非消息开销`（system prompt + tool schema；能复用底座 `computeNonMessageTokens` 就复用，否则按现有估算）。候选基线承接旧 zone，因此旧 zone 不得再计一次；保留尾部必须按实际保留原文计数，不得使用压前活跃区总量代替。
 - 阈值必须用 per-model 解析（`session/model-compaction-threshold.ts:26` 的 `resolveModelCompactionSettings`），不能直接用全局 `CompactionSettings`。
-- 不达标 → **让路**。该复核是启发式：即使通过，底座下一轮仍可能再次触发，此时由 W5 让路兜底。
+- 不达标 → 拒绝本次候选并保持后备，不得让路底座。该复核是启发式：通过后若下一次请求仍超线，只能再次使用新的 ACP preparation。
 
-### W5 护栏：任一失败即让路
+### W5 护栏：任一失败即拒绝本次压缩
 
 | 条件 | 原因 |
 |---|---|
 | `preparation.firstKeptEntryId` 为空或不在 `getBranch()` 的 id 集合内 | 底座不校验，落盘坏 id 会让保留区整段消失 |
-| 活跃区缓存缺失；缓存 entry id 序列不是当前分支前缀；追加区含 compaction/reset；新增消息无真实 journal id | 只允许同前缀追加续接；切分支或无法安全更新快照时让路 |
+| 活跃区缓存缺失；缓存 entry id 序列不是当前分支前缀；追加区含 compaction/reset；新增消息无真实 journal id | 只允许同前缀追加续接；切分支或无法安全更新快照时拒绝本次压缩 |
 | 待吞 zone 的 `compressedIds` 与保留尾部 entry id 集合相交 | 交叉覆盖无法由新基线完整继承；吞并让原文与摘要重复 |
 | 活跃区消息无法按真实 journal entry id 与 `firstKeptEntryId` 对齐 | 无法区分压缩前缀与保留尾部；继续会把保留消息重复写进摘要 |
 | 压缩前缀为空且 zone 没有可承接的既有摘要 | 没有可落盘的新基线内容 |
 | `event.signal.aborted`，或 ACP 25s 期限触发 | 用户取消或接管超时；先确认模型请求已中止 |
 | handler 30s 超时 | 外层只停止等待；不能替代 ACP 的主动取消 |
 | W4 不达标 | 见上 |
-| 模型调用失败，或返回的 `summary.trim()` 为空 | 让路；空摘要会抹掉整个压缩前缀，不能因 W4 候选很小而落盘 |
+| 模型调用失败，或返回的 `summary.trim()` 为空 | 拒绝并保持后备；空摘要会抹掉整个压缩前缀，不能因 W4 候选很小而落盘 |
 
-让路 = handler 返回 `undefined`（不带 `compaction`、不带 `cancel`）。所有护栏都在返回接管结果前检查。
+所有护栏都在返回结果前检查；拒绝 = 不落盘、显式报错、保持 ACP 后备状态。不得用 handler `undefined` 把同一请求交还底座原始路径。
 
 ### W6 与 ACP 日常压缩的关系
 
 - ACP 自己的 normal / strong 压缩（写 `acp-summary` custom entry）**保持不变**，平时由 ACP 分层触发。
-- 底座触发时由 ACP 出结果写 compaction entry，且**不再同时写 acpSummary**（避免一次压缩两条记录）。
+- 后备压缩由 ACP 达线或真实溢出触发，写 compaction entry，且**不同时写 acpSummary**；成功后清除三次失败计数与后备状态并从新边界重建。
 - 后果：这次压缩不进入 `acp-stats` / `acp-gain`（记入 R9 已知偏差）。
 
 ### W7 guard 变更的影响面
 
-BUG-129 落地的 guard 语义（threshold/idle 取消、overflow/incomplete 先 degrade 再放行）被本 Spec 取代：
+v4.0 取代此前所有「底座启动、ACP 接管、失败让路」语义：
 
-- threshold / idle：**接管**（W1-W5），不再取消。
-- overflow / incomplete：**接管**；接管失败则让路，底座原路径继续（仍是 overflow 恢复）。
-- 手动 `/compact`：**接管**；接管失败则让路。
-- `degrade()` 不再由 guard 触发；改由读侧兜底（R5）在遇到无法建模的历史时触发。
+- threshold / idle：ACP owner 中关闭，不根据原始 journal 触发。
+- overflow / incomplete：只把真实失败作为 ACP 后备触发信号，不进入底座原始恢复链。
+- 程序调用手动 compact：必须携带 ACP preparation；失败取消或抛错，不让路。RPC `compact_session`、计划批准压缩与扩展 `ctx.compact()` 等既有入口若不能提供 ACP preparation，必须显式拒绝，不得成为 raw 绕过点。
+- `degrade()` 不得重新打开底座压缩或原始视图透传；无法安全投影时显式失败，reset/回退离开不支持边界后才允许恢复。
 
 ## 3. 读侧契约
 
@@ -176,7 +171,7 @@ strong 压缩时：
 
 ### R5 兜底
 
-下列情形 `degraded: true`、`zone: []`、投影原样透传：
+下列情形 `degraded: true`、`zone: []`，ACP 工具与投影请求显式失败，不得原始视图透传：
 
 - `getAnthropicCompactionPayload(entry.preserveData)` 命中（`pi-agent-core/compaction/anthropic.ts`）。
 - `entry.preserveData?.openaiRemoteCompaction` 存在（保留条目只存在于 payload 中）。
@@ -211,38 +206,39 @@ degraded 也是当前分支、当前 reset 时代的派生状态，不是进程�
 
 | # | 场景 | 判据 | 承载 |
 |---|---|---|---|
-| 1 | 底座发 `session_before_compact`（mock 模型） | ACP 返回 `compaction`；底座不调用自己的总结（无 fold 请求）；落盘 entry 的 `method === undefined`、`firstKeptEntryId === preparation.firstKeptEntryId`；送进压缩模型的输入来自 ACP 投影（尺寸显著小于同分支 journal 原文） | 新 smoke |
+| 1 | ACP 后备调用 `session.compact({ preparation })`（mock 模型） | patch 跳过 raw `prepareCompaction`；所有摘要与回退输入来自 ACP preparation；落盘 `firstKeptEntryId` 与 ACP 切点一致；未传 preparation 的默认 compact 仍走底座原路径 | patch 探针 + 新 smoke |
 | 2 | 接管输入的构造 | 送进压缩模型的消息 = ACP 投影活跃区中位于 `firstKeptEntryId` 之前的压缩前缀（不含 journal 原文、不含 zone 块正文、不含保留尾部）；`previousSummary` 含 zone 渲染 | 新单测 |
-| 3 | 保留尾部为伪 id | handler 让路（不返回 compaction），底座走原路径 | 新单测 |
-| 4 | W4 不达标 | 让路，不返回 compaction | 新单测 |
-| 5 | signal 中止 | 让路；无部分写入 | 新单测 |
+| 3 | 保留尾部为伪 id | 拒绝本次压缩，不落 compaction，不调用原始底座路径 | 新单测 |
+| 4 | W4 不达标 | 拒绝候选并保持后备，不落 compaction | 新单测 |
+| 5 | signal 中止 | 拒绝；无部分写入，无迟到摘要请求 | 新单测 |
 | 6 | 分支 `[m1…m70, compaction(firstKept=m65), m71]` | `zone=[base]`；`compressedIds` 含 m1…m64、**不含 m65**；`annotateView` 从 m65 起扫 | 新单测 |
 | 7 | 同 #6 投影 | 分别验收：① m65…m71 都保留真 journal id，不退化成 `view:`；② `activeTokens` 包含全部未压缩的 m65…m71，而非只算 m71；③ manifest 只列扣除保护尾部、伪 id 和状态对之后的候选。另构造 m65…m70 受尾部保护的用例：它们仍计入 `activeTokens`，但不要求进入 manifest | 新单测 |
 | 8 | 边界后有一条 acpSummary | `zone=[base, summary]`；边界前的 acpSummary 不出现 | 新单测 |
 | 9 | 分支回退到边界之前 | 无基线；旧 acpSummary 恢复；不 degraded | 新单测 |
 | 10 | 两次 base 压缩 | 只取最新一条 | 新单测 |
 | 11 | `/clear`：分别构造 `[compaction, reset_boundary, m11]` 与 `[A(acpSummary), reset_boundary, m11…m80]` | 最新 reset 后无 compaction 时无基线；旧 A 不进 zone，`compressedBlockIds` 为空，投影只含 reset 后消息；`annotateView` 从 reset id 起扫，m11…m80 均保留真实 journal id，不退化成 `view:`。前后都无 compaction 时，reset id 变化仍触发重建；旧 A 不得复活 | 新单测 |
-| 12 | 原生回放三形态（anthropic payload / openaiRemoteCompaction / snapcompact），随后 reset 或回退到边界前并重启 | 各自在原分支时代 degraded、投影原样透传；离开该时代后运行态与重启都恢复非 degraded，不得保留进程内永久锁 | 新单测 |
+| 12 | 原生回放三形态（anthropic payload / openaiRemoteCompaction / snapcompact），随后 reset 或回退到边界前并重启 | 各自在原分支时代 degraded、ACP 请求显式失败且不透传原始视图；离开该时代后运行态与重启都恢复非 degraded，不得保留进程内永久锁 | 新单测 |
 | 13 | strong 吞基线 | `meta.supersedesBase === base id`；重建后 zone 无 base；新摘要正文含基线 summary；`historyRewriteAt === strong.meta.createdAt`，而非基线时间 | 新单测 + `smoke-acp-strong.ts` |
 | 14 | 吞基线后回退 | 回退到该 strong 之前 → 基线复活 | 新单测 |
 | 15 | 投影输出 | 无 `compactionSummary`；首块 `[acp-base]` 无数字；`timestamp` / `historyRewriteAt` 均为等于 `Date.parse(entry.timestamp)` 的有限毫秒数；用带 `thinking.prefixBinding` 的模型实际跑 `transformMessages`，确认边界前保留尾部的旧 bound-thinking 被剥离；`assertToolPairing` 通过 | 新单测 + `acp-projection-pairing.test.ts` |
 | 16 | 保险线与 drift | 基线入 zone 后 projected 不误触 relief；`#ratio` 仍在 0.7–1.6 | `acp-drift.test.ts` 增例 |
 | 17 | 回归 | `smoke-acp-tool` / `-strong` / `-persist` / `-synth` / `-forced` / `-projection` / `-tiermode` / `acp-drift` / `acp-projection-pairing` / `acp-branch-resync` / `acp-compaction-guard` 全绿；`bun run check`、`host:build` | 命令 |
-| 18 | 真机 | overflow 触发 → ACP 接管 → 落盘 → 下一请求 `context_status` 可用 → 重启后 zone 一致 | 手工 |
-| 19 | ACP 模型调用超过 25s | `completeSimple` 收到由 `event.signal` 与 ACP 期限合成的 signal，并实际观察到 abort；请求结束后 handler 才让路，底座随后走原路径；底座开始自己的总结时不存在仍未结束的 ACP 请求，也没有迟到写入。另验证外层 30s 超时只停止等待，不被当作请求取消证据 | 新单测 |
+| 18 | 真机 | L3 三次失败后继续会话；ACP 投影达线或 overflow 触发 → ACP preparation 落盘 → 下一请求 `context_status` 可用 → 重启后 zone 一致；全程无 raw auto compaction | 手工 |
+| 19 | ACP 模型调用超过 25s | `completeSimple` 收到由 `event.signal` 与 ACP 期限合成的 signal，并实际观察到 abort；请求结束后 handler 拒绝本次压缩，底座不得开始原始 journal 总结，不存在迟到写入。另验证外层 30s 超时只停止等待，不被当作请求取消证据 | 新单测 |
 | 20 | W4 口径 | 目标线 = recovery band、阈值走 per-model 解析；估算量 = 候选基线渲染 + 实际保留消息 + 非消息开销，旧 zone 不重复计数。构造压前投影 110K、开销 10K、目标线 80K、候选摘要 8K、保留尾部 20K：必须按候选 38K 通过，不得按压前 120K 拒绝；另构造候选结果超过目标线的拒绝用例 | 新单测 |
 | 21 | strong 拼接收费 | 拼接基线正文后不被 `summary-over-budget` 拒绝；新上限 = 基线渲染 token + 折算后的新摘要 | 新单测 |
-| 22 | 分支 A 投影后切到 B，未再次 `projectView` 就 `/compact` | 缓存 entry id 序列不是 B 的前缀 → 让路；A 的活跃区不得送进压缩模型；`getEntries()` 尾部即使留有兄弟分支的 compaction，也不得改变 B 的基线判断 | 新单测 + `acp-branch-resync.test.ts` |
+| 22 | 分支 A 投影后切到 B，未再次 `projectView` 就触发后备压缩 | 缓存 entry id 序列不是 B 的前缀 → 拒绝本次压缩；A 的活跃区不得送进压缩模型；`getEntries()` 尾部即使留有兄弟分支的 compaction，也不得改变 B 的基线判断 | 新单测 + `acp-branch-resync.test.ts` |
 | 23 | 基线 B 时间 1000 → strong S1 时间 2000 吞 B → strong S2 时间 3000 吞 S1 → 重启与逐级回退 | S1/S2 的 `supersedesBase` 均为 B；`historyRewriteAt` 分别为 2000/3000，重启后仍为 3000 且 B 不复活；回退到 S2 前、S1 后恢复 2000；回退到 S1 前时 B 才复活并恢复 1000。用带 `thinking.prefixBinding` 的模型实际跑 `transformMessages`，确认各代按各自重写时间剥离失效签名 | 新单测 + `smoke-acp-strong.ts` |
 | 24 | 文件 `[m1,m2,m3,m4,A(acpSummary 覆盖 m1,m2),m5]` 上接管 | ① `firstKept=m4` 时，模型新增输入只有 m3，`previousSummary` 承接 A，m4/m5 不得进入摘要；C 追加在 m5 后，投影为 `[C,m4,m5]`，A 不单独渲染且 m4/m5 各只出现一次。② `firstKept=m3` 时，新增压缩前缀为空，C 只承接 A，投影为 `[C,m3,m4,m5]`；不得要求跳过 m4 来构造非连续保留区 | 新单测 + 新 smoke |
-| 25 | 请求前 `projectView` 后，同分支追加正常 assistant 回复，再触发 post-turn threshold；另在追加后手动 `/compact` | leaf 已推进但缓存 entry id 序列仍是当前分支前缀：runtime 续接追加消息并推进快照，不得仅因 leaf 不同让路；新增回复必须按 `firstKeptEntryId` 进入压缩前缀或连续保留尾部（最新回复通常属于保留尾部），不得丢失或重复，并计入 W4 的对应部分。追加区含 compaction/reset 或缓存不是前缀时仍让路 | 新单测 + 新 smoke |
-| 26 | A 的 `compressedIds` 覆盖 `{m1,m4}`，底座 `firstKept=m3` | A 与保留尾部 `{m3,m4,m5}` 在 m4 交叉：handler 让路，不返回 compaction，不调用 ACP 摘要写入；不得吞并 A 后让 m4 原文与摘要同时出现 | 新单测 |
-| 27 | `completeSimple` 正常返回空字符串或纯空白，其他检查均通过 | 返回前让路，不落盘空 compaction，不调用底座接管结果；随后由原路径总结 | 新单测 |
+| 25 | 请求前 `projectView` 后，同分支追加正常 assistant 回复，再触发 ACP 后备压缩 | leaf 已推进但缓存 entry id 序列仍是当前分支前缀：runtime 续接追加消息并推进快照，不得仅因 leaf 不同拒绝；新增回复必须按 `firstKeptEntryId` 进入压缩前缀或连续保留尾部（最新回复通常属于保留尾部），不得丢失或重复，并计入 W4 的对应部分。追加区含 compaction/reset 或缓存不是前缀时拒绝本次压缩 | 新单测 + 新 smoke |
+| 26 | A 的 `compressedIds` 覆盖 `{m1,m4}`，ACP `firstKept=m3` | A 与保留尾部 `{m3,m4,m5}` 在 m4 交叉：拒绝本次压缩，不调用 ACP 摘要写入或原始底座路径；不得吞并 A 后让 m4 原文与摘要同时出现 | 新单测 |
+| 27 | `completeSimple` 正常返回空字符串或纯空白，其他检查均通过 | 返回前拒绝，不落盘空 compaction，不调用原始底座路径；保持后备并显式报错 | 新单测 |
 | 28 | 基线 C 时间 1000 → 保留 assistant 时间 2000 且带有效 bound-thinking → normal N 时间 5000 | N 渲染体 `historyRewriteAt=5000`；运行与重启一致；实际跑 `transformMessages`，确认该签名按 N 的重写时间失效 | 新单测 + `acp-projection-pairing.test.ts` |
+| 29 | ACP owner 的 RPC `compact_session`、计划批准压缩、扩展 `ctx.compact()` 与投影异常 | 能提供 ACP preparation 时才允许 compact；否则显式拒绝。任何路径都不得调用无 preparation 的 raw compact 或原始视图透传，非 ACP 会话行为不变 | 新单测 |
 
 ## 5. 不做的事
 
-- 不改 `@oh-my-pi/pi-coding-agent`，不加 patch。
+- 只修改绑定 18.20.0 的 `pi-coding-agent` patch，为手动 compact 接收外部 preparation；不改其他上游包，不改变未传 preparation 的 CLI 默认行为。
 - 不新增 RPC / 能力 / 远程规则项。
 - 不新增 journal entry 类型。
 - 不实现原生回放与 snapcompact 归档的基线化（一律 degrade）。
@@ -253,7 +249,7 @@ degraded 也是当前分支、当前 reset 时代的派生状态，不是进程�
 
 | # | 问题 | 当前状态 | Decider | 门禁 |
 |---|---|---|---|---|
-| Q1 | ACP 是否主动调用 `session.compact()` 制造边界 | **已确认：不主动调用（2026-11-10）**。触发权仍归底座；底座 threshold 同时使用存储上下文估值与 provider 用量，因此即使 ACP 投影很小，原始 journal 仍可能触发 base 压缩。边界不局限于 overflow / 手动场景 | 用户 | 已关闭 |
+| Q1 | ACP 是否主动调用 `session.compact()` 制造边界 | **v4.0 已确认：主动调用（2026-11-17）**。仅限 L3 三次失败后的后备状态，由 ACP 投影达到底座阈值或真实溢出触发，并传入 ACP preparation；旧「底座启动、ACP 接管」决策被取代 | 用户 | 已关闭 |
 | Q2 | 接管时用哪个模型出摘要 | **已确认：使用当前对话模型（2026-11-10）**，经 `completeSimple`，不新增配置 | 用户 | 已关闭 |
 | Q3 | `acp-stats` 是否要读 compaction entry 补统计 | 本 Spec 不做（R9） | 用户（后续任务） | 不阻塞本 Spec |
 
@@ -296,3 +292,5 @@ degraded 也是当前分支、当前 reset 时代的派生状态，不是进程�
 | 27 | 原生边界 degraded 在 reset/回退后与重启结果不一致 | R5/R9 将 degraded 限定为当前分支时代派生状态；验收 #12 |
 
 实施验证（2026-11-10）：58 项相关单测、11 个 ACP 冒烟中 10 个通过；真实 DeepSeek manual `session.compact()` 已验证接管摘要、保留尾部去重与压缩后追问。`smoke-acp-ephemeral.ts` 在未触及的 tokenizer rebind 断言失败（两种计数均为 1601），`acp-stats.test.ts` 另有既有定价偏差。未覆盖：真实 threshold 自动、overflow 与 incomplete 入口；字段持久化、重启与回退已由 smoke 覆盖。
+
+实施验证（2026-11-17，v4.0）：`scripts/acp-fallback.test.ts` 18/18、`scripts/smoke-acp-forced.ts`、完整 `bun run check` 全绿；18.20.0 patch 已在临时项目通过真实 `bun install` 应用，并验证安装产物含 preparation 接口。覆盖三次失败退出、ACP 阈值/overflow、相同历史重试阻断、RPC/计划/扩展共享路由、guidance 保留、投影异常拒绝及三类几何护栏。未做真实 Tauri 后备压缩与真实 overflow。

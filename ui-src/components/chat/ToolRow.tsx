@@ -501,7 +501,7 @@ function renderAsk(item: ToolItem) {
   const first = qs[0]?.question || item.text || "";
   const summary = qs.length > 1 ? `${first} +${qs.length - 1}` : first;
   const title = qs.map((q) => q?.question || "").filter(Boolean).join("\n");
-  return <ExpandableRow item={item} iconName="comment" label={t("chat.labelAsk")} summary={summary} summaryTitle={title || summary} />;
+  return <ExpandableRow item={item} iconName="circleHelp" label={t("chat.labelAsk")} summary={summary} summaryTitle={title || summary} />;
 }
 // Session-history row (read_session_context): search mode shows the query, expand mode the session id + turn range
 function renderSessionContext(item: ToolItem) {

@@ -1,9 +1,9 @@
-// Pending annotation chips above the composer: one aggregated pill per kind —
-// text quoted from the file / diff pane ("N selected blocks"), and selection
-// comments over assistant output (first snippet + a count when there are
-// several), mirroring the attachment chips in AttachRow. Hover/focus shows the
-// quoted text and comment of every pending note; × clears that kind, per-row ×
-// drops just that note.
+// Pending annotation chips above the composer: one aggregated pill — selection comments
+// over assistant output and text quoted from the file / diff pane both count as comments
+// ("N comments") — mirroring the attachment chips in AttachRow. The pill carries only the
+// count, never the quoted body: hover/focus shows the quoted text and comment of every
+// pending note (rows from a pane lead with their path:lines), × clears all of them,
+// per-row × drops just that note.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -11,7 +11,6 @@ import { placeMenu } from "../../shell";
 import { removeAnnotation, type PendingAnnotation } from "../../store/annotations";
 import type { QuoteNote } from "../../lib/conversation-quote";
 import { pathBase } from "../../store/utils";
-import { fileTypeIcon } from "../../../ui/icons";
 import Icon from "../../Icon";
 
 // Clearance from the chip to its hover card: 6px read as touching the composer card's
@@ -21,34 +20,17 @@ const EDGE = 8;
 
 export default function AnnotationChips({ list }: { list: PendingAnnotation[] }) {
   const { t } = useTranslation();
-  // File-pane quotes carry their path, output comments do not: two chips so neither
-  // kind hides the other's count.
-  const blocks = list.filter((a) => a.file);
-  const notes = list.filter((a) => !a.file);
+  // One chip for every pending note: the hover card labels each row with its own source
+  // path, so splitting by kind would only hide half the count.
+  if (list.length === 0) return null;
   return (
-    <>
-      {blocks.length > 0 && (
-        <Chip
-          list={blocks}
-          icon={fileTypeIcon(blocks[0].file!)}
-          label={t("composer.quoteBlocks", { count: blocks.length })}
-          footer={t("composer.quoteBlocks", { count: blocks.length })}
-          onRemove={(a) => removeAnnotation(a.id)}
-          onClear={() => blocks.forEach((a) => removeAnnotation(a.id))}
-        />
-      )}
-      {notes.length > 0 && (
-        <Chip
-          list={notes}
-          icon="comment"
-          label={notes[0].text}
-          footer={t("composer.annotateCount", { count: notes.length })}
-          count={notes.length > 1 ? notes.length : undefined}
-          onRemove={(a) => removeAnnotation(a.id)}
-          onClear={() => notes.forEach((a) => removeAnnotation(a.id))}
-        />
-      )}
-    </>
+    <Chip
+      list={list}
+      icon="messageSquareText"
+      label={t("composer.annotateCount", { count: list.length })}
+      onRemove={(a) => removeAnnotation(a.id)}
+      onClear={() => list.forEach((a) => removeAnnotation(a.id))}
+    />
   );
 }
 
@@ -58,16 +40,12 @@ export function Chip<T extends QuoteNote>({
   list,
   icon,
   label,
-  footer,
-  count,
   onRemove,
   onClear,
 }: {
   list: readonly T[];
   icon: string;
   label: string;
-  footer?: string;
-  count?: number;
   onRemove?: (note: T) => void;
   onClear?: () => void;
 }) {
@@ -119,7 +97,6 @@ export function Chip<T extends QuoteNote>({
         <span className="at-name" title={label}>
           {label}
         </span>
-        {count ? <span className="annot-chip-n">{count}</span> : null}
         {onClear ? (
           <button type="button" className="atchip-x" title={t("common.delete")} onClick={onClear}>
             ×
@@ -146,7 +123,9 @@ export function Chip<T extends QuoteNote>({
                     </div>
                   ) : null}
                   <div className="annot-chip-quote">
-                    <span className="annot-qm">“</span>
+                    <span className="annot-chip-qm">
+                      <Icon name="textQuote" size={12} />
+                    </span>
                     <span className="annot-chip-text">{a.text}</span>
                     {onRemove ? (
                       <button type="button" className="annot-chip-x" title={t("common.delete")} onClick={() => onRemove(a)}>
@@ -158,7 +137,6 @@ export function Chip<T extends QuoteNote>({
                 </div>
               ))}
             </div>
-            {footer ? <div className="annot-chip-count">{footer}</div> : null}
           </div>,
           document.body,
         )}

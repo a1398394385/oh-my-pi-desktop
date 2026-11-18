@@ -81,6 +81,8 @@ export interface CompressSnapshot {
 	baseSummary?: string;
 	/** Rendered token total of the live zone (memoized by the runtime). */
 	zoneTokens: number;
+	/** Non-message request part (system prompt + tools + skills + context); the tier gate judges the full request. */
+	nonMessageTokens: number;
 	/** Zone budget line (§11): window × 35%, 0 = no limit. */
 	zoneLimitTokens: number;
 	/** Armed level-3 force: the next compress executes forced-strong (§5.2). */
@@ -139,7 +141,8 @@ export function planCompression(
 	const activeBlocks = snapshot.active.reduce((n, b) => n + b.tokens, 0);
 	const activeTokens = Math.round(activeBlocks * snapshot.ratio);
 	const zoneTokens = snapshot.zoneTokens;
-	const projectedTokens = activeTokens + zoneTokens;
+	// Full request size: non-message context + active blocks + rendered zone (spec §5.1).
+	const projectedTokens = snapshot.nonMessageTokens + activeTokens + zoneTokens;
 	if (computeTier(projectedTokens, p) === "none") {
 		return {
 			reject: {

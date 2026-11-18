@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, useMemo, useC
 import type { ChangeEvent, MouseEvent, Ref } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, setBump, send } from "../store";
+import { isImeKey } from "../keys";
 import { bgJobsKey } from "../store/session";
 import { invoke } from "../store/ws";
 import { REMOTE } from "../remote";
@@ -161,6 +162,11 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     (st) => st.hostSettings?.computerProvider === "kimi" && st.hostSettings?.kimiCuInstalled === true,
   );
   const computerIconOn = computerGateOn || kimiProviderOn;
+  // Welcome page lighting: an untouched intent (null) follows the desktop
+  // default-on switch, so the icon shows what create_session would actually
+  // spawn with — and one click can turn that default off for this session only.
+  const computerDefaultOn = useAppStore((st) => st.hostSettings?.computerDefaultEnabled === true);
+  const computerBtnOn = hasSession ? computerMode : (newSessionComputerMode ?? (computerDefaultOn && computerGateOn));
   // Voice input availability: dictation switch on + local model cached (the
   // snapshot normally arrives with the settings page, so the composer asks once).
   // Remote clients have no microphone (http is not a secure context).
@@ -378,6 +384,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     if (!editingEntry || !el) return;
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== "Escape" || taOpenRef.current) return;
+      if (isImeKey(ev)) return; // IME dismissing its candidate window, not leaving edit mode
       ev.preventDefault();
       ev.stopPropagation();
       endEdit();
@@ -1004,6 +1011,20 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     return () => window.removeEventListener("omp:zoom", fit);
   }, []);
 
+  // ---- Session-reference insert: a sidebar session row dropped on the input
+  // card dispatches on THIS element, so a composer in another pane (BTW side
+  // chat, welcome page) never picks it up ----
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const insert = (ev: Event) => {
+      const { path, title } = (ev as CustomEvent<{ path: string; title: string }>).detail;
+      lexRef.current?.insertSession(path, title);
+    };
+    el.addEventListener("omp:insert-session", insert);
+    return () => el.removeEventListener("omp:insert-session", insert);
+  }, []);
+
   // ---- cbar button states ----
   // The pill must name the smart row too: with the gate on, "write" is not what
   // the next tool call will experience.
@@ -1039,9 +1060,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
   const thinkLabel = hasSession
     ? (thinking === "auto" && autoResolved ? `${thLv("auto")} · ${thLv(autoResolved)}` : thinking ? thLv(thinking) : t("composer.thinkFallback"))
     : newSessionThinking ? thLv(newSessionThinking) : t("composer.thinkFallback");
-  // Merged pill: model name · thinking level (the ":level" suffix is stripped
-  // by modelShort — the level now lives only in thinkLabel)
-  const modelThinkLabel = `${modelName} · ${thinkLabel}`;
+  // The thinking level renders as its own faint run inside the model pill (#thinkLabel):
+  // it is a status readout, so it must not ride the button label's full text color.
   // Narrow (phone) layout: the permission/model pills render in their own bar below
   // the input instead of the nowrap toolbar (see pillBar below).
   const narrow = useAppStore((st) => st.narrow);
@@ -1108,7 +1128,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       onClick={toggleMenu("mode")}
     >
       <Icon name={modeMeta.icon} id="modeIcon" />
-      <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+      <span id="modeLabel">{modeMeta.label}</span> <Icon name="caret" className="caret-svg" />
     </button>
   );
   // Slash-command echo card: only for the session that produced it (a session switch hides it)
@@ -1137,7 +1157,8 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
       onClick={toggleMenu("model")}
     >
       <span id="modelIcon">{model ? PROV_IC[model.split("/")[0]] || "✦" : "✦"}</span>
-      <span id="modelLabel">{modelThinkLabel}</span> <Icon name="caret" className="caret-svg" style={{ color: "var(--faint)" }} />
+      <span id="modelLabel">{modelName}</span>
+      <span id="thinkLabel">{thinkLabel}</span> <Icon name="caret" className="caret-svg" />
     </button>
   );
 
@@ -1249,12 +1270,12 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
               button shows for either the master gate or the Kimi provider. */}
           {computerIconOn && (
             <button
-              className={"pill-btn computer-btn" + ((computerMode || (!hasSession && newSessionComputerMode)) ? " on" : "")}
+              className={"pill-btn computer-btn" + (computerBtnOn ? " on" : "")}
               id="computerBtn"
-              title={(computerMode || (!hasSession && newSessionComputerMode)) ? t("composer.computerOnTitle") : t("composer.computerOffTitle")}
+              title={computerBtnOn ? t("composer.computerOnTitle") : t("composer.computerOffTitle")}
               onClick={() => {
                 if (sessionId) send({ type: "set_computer_mode", sessionId, enabled: !computerMode });
-                else setBump({ newSessionComputerMode: !newSessionComputerMode });
+                else setBump({ newSessionComputerMode: !computerBtnOn });
               }}
             >
               <Icon name="computer" size={15} />

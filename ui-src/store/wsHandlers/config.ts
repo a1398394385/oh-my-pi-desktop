@@ -26,8 +26,8 @@ function applyHostSettings(settings: SettingsPayload): void {
   useAppStore.setState({ hostSettings: settings });
   // Master gate closed: drop any pending create intent so a session born
   // after this never carries a stale computerMode:true
-  if (settings.computerEnabled !== true && useAppStore.getState().newSessionComputerMode) {
-    useAppStore.setState({ newSessionComputerMode: false });
+  if (settings.computerEnabled !== true && useAppStore.getState().newSessionComputerMode !== null) {
+    useAppStore.setState({ newSessionComputerMode: null });
   }
 }
 

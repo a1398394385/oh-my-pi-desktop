@@ -247,9 +247,20 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
 
       {tab === "settings" ? (
         <div className="aued-layout">
-          {initial?.deliverTo ? (
-            <div className="aued-delivery-lock">{t("autoEdit.deliveryLocked")}</div>
-          ) : null}
+          {initial?.deliverTo && (
+            <div className="aued-delivery-lock">
+              <span className="tx">{t("autoEdit.deliveryLocked")}</span>
+              {/* The notice tells users the task is agent-owned; the button hands them the
+                  conversation its runs land in, so they can see what it does. */}
+              <button type="button" className="aued-open"
+                onClick={() => {
+                  openSessionByPath(initial!.deliverTo!.sessionPath, initial!.cwd);
+                  onBack(); // the session takes over the main view; drop the editor state
+                }}>
+                {t("settingsPage.automations.openSessionBtn")}
+              </button>
+            </div>
+          )}
           <aside className="aued-summary">
             <div className="aued-summary-head">
               {!isNew && stKind && (
@@ -283,7 +294,7 @@ export function AutomationEditView({ initial, onBack, onSaved }: {
             )}
           </aside>
 
-          <div className="aued-form frm-rows">
+          <div className="aued-form frm-rows" inert={!!initial?.deliverTo}>
             <section className="frm-row">
               <div className="frm-label">
                 <strong>{t("autoEdit.basicInfo")}</strong>

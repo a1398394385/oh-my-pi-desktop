@@ -104,7 +104,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 .nav-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
 :is([data-theme="light"], [data-theme-mode="light"]) .nav-item:hover { background: var(--tint-black-60); }
-.nav-item svg { color: var(--dim); flex: none; display: block; }
+.nav-item svg { color: var(--text); flex: none; display: block; }
 /* Rounded-rect segmented card: a recessed surface carrying three equal slots,
    the active one filled with an inset chip. */
 .seg {
@@ -128,7 +128,7 @@ body:has(#sidebar.collapsed) #left-resizer {
   transition: left var(--dur-snap) var(--spring), width var(--dur-snap) var(--spring);
 }
 .seg button {
-  border: 0; background: transparent; color: var(--dim);
+  border: 0; background: transparent; color: var(--text);
   font: inherit; font-size: var(--ui-fs-base);
   padding: 4px 12px; border-radius: var(--r-sm); cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -341,7 +341,7 @@ body:has(#sidebar.collapsed) #left-resizer {
    unread dot, which fills the same 16px slot in blue. */
 .task-indicator.ask { color: var(--blue); }
 .task-indicator.approval { color: var(--orange); }
-.task-indicator.loading svg { animation: spin 1s linear infinite; }
+.task-indicator.loading svg { animation: spin 1.25s linear infinite; }
 /* automation badge: inline, just left of the relative-time label; hover hides it along with the label */
 .task-auto {
   flex: none;
@@ -487,7 +487,7 @@ body:has(#sidebar.collapsed) #left-resizer {
 }
 :is([data-theme="light"], [data-theme-mode="light"]) .proj-add-pop { box-shadow: 0 12px 32px var(--tint-black-180); }
 .proj-add-pop .pa-btn {
-  flex: none; border: 0; background: var(--panel-3); color: var(--dim);
+  flex: none; border: 0; background: var(--panel-3); color: var(--text);
   border-radius: 8px; padding: 6px 12px; font-size: var(--ui-fs-sm); cursor: pointer;
 }
 .proj-add-pop .pa-btn:hover, .proj-add-pop .pa-btn:focus-visible { background: var(--button-hover-dark); color: var(--text); }
@@ -661,4 +661,23 @@ body:has(#sidebar.collapsed) #left-resizer {
   background: var(--err);
   border-color: transparent;
   color: var(--white);
+}
+
+/* Session → composer reference drag: the ghost follows the pointer (label = session title),
+   the drop target carries the accent wash (composer.css). Selection stays off body-wide
+   during the drag, same reason as the project reorder above. */
+.sess-drag-float {
+  position: fixed; z-index: 900; pointer-events: none;
+  display: flex; align-items: center; gap: 6px;
+  max-width: 260px; padding: 5px 10px;
+  background: var(--panel-2); color: var(--accent);
+  border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: 0 10px 26px var(--tint-black-450);
+  font-size: var(--ui-fs-base);
+}
+.sess-drag-float span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.sess-dragging, body.sess-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-user-drag: none !important;
 }

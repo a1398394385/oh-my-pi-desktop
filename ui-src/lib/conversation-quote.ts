@@ -38,7 +38,9 @@ export function buildQuotePrefix(notes: QuoteNote[]): string {
 // what the user wrote, so it never reaches a display surface. Attribute values may hold a
 // `>` (a legacy title carried a whole nested block), hence the quoted-value run; a block
 // cut at an unterminated opening tag (a truncated message) loses that tail too.
-const ATTACHED_RE = /<attached-(?:file|session)(?:\s+[\w-]+="[^"]*")*\s*>[\s\S]*?(?:<\/attached-(?:file|session)>|$)/g;
+// The opening tag must start a line: a note whose text or comment quotes these tags
+// (a user annotating this very module) must not cut the prompt apart.
+const ATTACHED_RE = /(?:^|\n)<attached-(?:file|session)(?:\s+[\w-]+="[^"]*")*\s*>[\s\S]*?(?:<\/attached-(?:file|session)>|$)/g;
 
 /** The @ session references a sent prompt carries, in prompt order (a backfill
  *  puts them back as "@session:<path>" so the host re-inlines them). */
@@ -51,19 +53,36 @@ function sessionRefs(block: string): SessionRefs {
   return path ? [{ title: attr("title"), path }] : [];
 }
 
-function stripAttached(text: string): { body: string; sessions: SessionRefs } {
+/** File bodies the host inlined as `<attached-file name="…">` (a text-kind
+ *  attachment: a pasted file's content). Only the name survives the framing, so
+ *  the bubble can show the same chip the composer had. */
+export type AttachedFiles = string[];
+
+function attachedFileName(block: string): string {
+  const name = block.match(/^<attached-file\s+name="([^"]*)"/)?.[1] ?? "";
+  return name.replace(/&quot;/g, '"');
+}
+
+function stripAttached(text: string): { body: string; sessions: SessionRefs; files: AttachedFiles } {
   const sessions: SessionRefs = [];
+  const files: AttachedFiles = [];
   const body = text
-    .replace(ATTACHED_RE, (block: string) => {
+    .replace(ATTACHED_RE, (matched: string) => {
+      // Keep the newline the pattern consumed so the surrounding lines stay apart
+      const block = matched.startsWith("\n") ? matched.slice(1) : matched;
       sessions.push(...sessionRefs(block));
-      return "";
+      if (block.startsWith("<attached-file")) {
+        const name = attachedFileName(block);
+        if (name) files.push(name);
+      }
+      return matched.startsWith("\n") ? "\n" : "";
     })
     // A preview/title truncates mid-header, leaving no closing `>` to match: drop the tail
-    .replace(/<attached-(?:file|session)[\s\S]*$/, "")
+    .replace(/(?:^|\n)<attached-(?:file|session)[\s\S]*$/, (matched) => (matched.startsWith("\n") ? "\n" : ""))
     .replace(/[ \t]*\n[ \t]*(?=\n|$)/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  return { body, sessions };
+  return { body, sessions, files };
 }
 
 interface RawNote {
@@ -74,12 +93,21 @@ interface RawNote {
   lines?: unknown;
 }
 
-/** Split a sent prompt back into the user body, its quote block and the session
- *  references the host inlined. Every display surface goes through here, so the
- *  host's attachment framing is cut once instead of in each consumer. */
-export function splitQuote(text: string): { body: string; notes: QuoteNote[]; sessions: SessionRefs } {
-  const { body, notes } = parseQuote(text);
-  return { ...stripAttached(body), notes };
+/** Split a sent prompt back into the user body, its quote block, and what the
+ *  host inlined (<attached-session> refs, <attached-file> text attachments).
+ *  Every display surface goes through here, so the host's attachment framing is
+ *  cut once instead of in each consumer. */
+export function splitQuote(text: string): {
+  body: string;
+  notes: QuoteNote[];
+  sessions: SessionRefs;
+  files: AttachedFiles;
+} {
+  // Order matters: the host prepends its <attached-file> blocks to the prompt, so the
+  // quote prefix only sits at the start after that framing is cut.
+  const attached = stripAttached(text);
+  const { body, notes } = parseQuote(attached.body);
+  return { body, notes, sessions: attached.sessions, files: attached.files };
 }
 
 function parseQuote(text: string): { body: string; notes: QuoteNote[] } {

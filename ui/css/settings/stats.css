@@ -142,7 +142,7 @@
   border-radius: var(--r-sm);
   background: transparent;
   border: none;
-  color: var(--dim);
+  color: var(--text);
   font-size: var(--ui-fs-base);
   cursor: pointer;
   text-align: left;
@@ -687,7 +687,7 @@
   border-radius: var(--r-sm);
   background: var(--panel-2);
   border: 1px solid var(--line);
-  color: var(--dim);
+  color: var(--text);
   font-size: 12px;
   cursor: pointer;
   box-shadow: inset 0 0 0 1px var(--line);
@@ -799,7 +799,7 @@
 }
 
 :is(#pg-stats, .stats-scope) .spin {
-  animation: spin 1s linear infinite;
+  animation: spin 1.25s linear infinite;
 }
 
 

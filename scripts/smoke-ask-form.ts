@@ -47,6 +47,9 @@ const { createRoot } = await import("react-dom/client");
 const { useAppStore } = await import("../ui-src/store");
 const { default: AskFormCard } = await import("../ui-src/components/chat/AskFormCard");
 import type { AskFormField, AskFormWire } from "../ui-src/types/session";
+// Pure logic, no window/document: safe to load before happy-dom installs globals.
+import { parseHtmlForm } from "@oh-my-pi/pi-tui/html-form/parse";
+import { formSubmission } from "../host/form-submission.ts";
 
 // ---- Seed: one session with a pending formDialog approval ----
 const radio: AskFormField = {
@@ -87,6 +90,17 @@ const port: AskFormField = {
   required: true,
   rows: 1,
 };
+// A second question group: the card pages one group at a time.
+const mode: AskFormField = {
+  kind: "choice",
+  name: "mode",
+  multi: false,
+  select: false,
+  other: false,
+  label: [{ text: "Mode" }],
+  required: false,
+  options: [{ value: "fast", label: [{ text: "Fast" }], checked: true, disabled: false }],
+};
 const form: AskFormWire = {
   sections: [
     {
@@ -94,13 +108,22 @@ const form: AskFormWire = {
       fieldset: true,
       blocks: [
         { kind: "text", spans: [{ text: "Confirm these settings" }, { text: " (fill the required fields first)", style: "em" }], heading: false },
+        // Pictures the host inlined (inline svg / workspace paths arrive as data URIs);
+        // a source it could not resolve keeps its path and falls back to the alt text.
+        { kind: "image", src: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==", alt: "inlined" },
+        { kind: "image", src: ".local/missing.png", alt: "unreachable" },
         { kind: "field", field: radio },
         { kind: "field", field: checks },
         { kind: "field", field: port },
       ],
     },
+    {
+      title: [{ text: "Runtime" }],
+      fieldset: true,
+      blocks: [{ kind: "field", field: mode }],
+    },
   ],
-  fields: [radio, checks, port],
+  fields: [radio, checks, port, mode],
   hidden: [["token", "t0"]],
 };
 
@@ -161,6 +184,37 @@ ok(document.querySelector(".ask-form") !== null, "form container renders");
 ok((document.querySelector(".ask-form-heading")?.textContent ?? "") === "Deploy settings", "section title renders");
 ok((document.querySelectorAll(".ask-form p").length ?? 0) === 1, "context paragraph renders above the fields");
 ok(document.querySelectorAll(".ask-q").length === 3, "three fields render (radio, checkbox group, text)");
+ok(document.querySelector("form.ask-form") !== null, "the card is a real form (submit button needs no key handler)");
+ok(document.querySelectorAll("fieldset.ask-field").length === 3, "each question is its own fieldset");
+ok(document.querySelector("fieldset.ask-field > legend") !== null, "the question label is the fieldset legend");
+ok(document.querySelector(".ask-page")?.textContent === "1/2", "the pager shows the position");
+ok(document.querySelector(".ask-head-q")?.textContent === "Deploy settings", "the head carries the ask title");
+ok(document.querySelector(".approval-title") === null, "the title is not printed twice");
+
+// ---- Collapse to a summary bar and back ----
+document.querySelector<HTMLElement>(".ask-collapse-btn")?.click();
+await sleep(60);
+ok(document.querySelector(".approval-min") !== null, "the card collapses to one bar");
+ok(document.querySelector(".ask-form") === null, "the collapsed card drops the form");
+document.querySelector<HTMLElement>(".approval-min")?.click();
+await sleep(60);
+ok(document.querySelector("form.ask-form") !== null, "clicking the bar brings the form back");
+
+// ---- One page per question group: the next question is not on this page ----
+document.querySelectorAll<HTMLElement>(".ask-page-btn")[1]?.click();
+await sleep(50);
+ok(document.querySelector(".ask-page")?.textContent === "2/2", "next turns the page");
+ok(document.querySelectorAll(".ask-q").length === 1, "the page shows only its own question");
+ok(document.querySelector(".ask-form-heading")?.textContent === "Runtime", "the page shows its own heading");
+document.querySelectorAll<HTMLElement>(".ask-page-btn")[0]?.click();
+await sleep(50);
+ok(document.querySelectorAll(".ask-q").length === 3, "previous returns to the first page");
+const pictured = document.querySelector<HTMLImageElement>(".ask-form-img");
+ok(pictured?.src.startsWith("data:image/svg+xml") === true, "an inlined picture draws");
+ok(
+  document.querySelector(".ask-form-img-alt")?.textContent === "unreachable",
+  "an unresolvable source falls back to its alt text",
+);
 
 const radios = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
 ok(radios.length === 3, "radio group = 2 options + Other");
@@ -196,12 +250,29 @@ await sleep(80);
 ok(sent.length === 1, "one approval_response leaves the card");
 const reply = sent[0]!;
 ok(reply.type === "approval_response" && reply.requestId === "r1", "the reply targets this request");
-const parsed = JSON.parse(reply.answer!) as { kind: string; data: Record<string, unknown> };
+const parsed = JSON.parse(reply.answer!) as { kind: string; data: Record<string, unknown>; notes?: unknown };
 ok(parsed.kind === "submit", "submission is a submit payload");
 ok(parsed.data.token === "t0", "hidden input rides into the data");
 ok(parsed.data.env === "b", "single choice submits the picked value");
 ok(JSON.stringify(parsed.data.checks) === JSON.stringify(["y", "x"]), "checkbox group submits every checked value");
 ok(parsed.data.port === 8081, "numeric field submits a number");
+ok(parsed.notes === undefined, "an empty note row stays out of the submission");
+
+// ---- Question-level note: one row on the single-choice field, and it rides the
+// submission trimmed. Multi-select and text fields carry no row.
+sent.length = 0;
+root.render(React.createElement(AskFormCard, { key: "note", item: { ...entry, answer: null } }));
+await sleep(80);
+ok(document.querySelectorAll(".ask-note").length === 1, "only the single-choice field carries a note row");
+type(document.querySelector<HTMLInputElement>(".ask-note-inp")!, "  keep the JSONL copy  ");
+type(document.querySelector<HTMLInputElement>(".ask-q input[type='number']")!, "8082");
+await sleep(80);
+document.querySelector<HTMLButtonElement>(".approval-confirm")?.click();
+await sleep(100);
+const noted = JSON.parse(sent[0]!.answer!) as { notes?: { name: string; text: string }[] };
+ok(noted.notes?.length === 1, "a typed note rides the submission");
+ok(noted.notes![0]!.name === "env", "the note names its field");
+ok(noted.notes![0]!.text === "keep the JSONL copy", "the note text is trimmed");
 
 // ---- A typed Other answer is exclusive with the radio pick ----
 useAppStore.setState({
@@ -220,10 +291,161 @@ root.render(React.createElement(AskFormCard, { item: { ...entry, answer: null } 
 await sleep(60);
 document.querySelectorAll<HTMLElement>(".ask-other-opt")[0]?.click();
 await sleep(50);
-ok(document.querySelector(".ask-other input") !== null, "the Other row opens its input");
+ok(document.querySelector(".ask-other-opt input.ask-other-inp") !== null, "the Other row carries its input");
 ok(
   [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')].slice(0, 2).every((r) => !r.checked),
   "opening Other drops the radio pick",
 );
+ok(document.querySelector(".ask-req") !== null, "a required field marks its label");
+ok(document.querySelector(".approval-num") === null, "option rows draw no index number");
+
+// ---- Esc cancels: the form owns the key, the card is not a modal ----
+// Fresh root: the earlier submit set the card's done flag, and a settled card
+// ignores further answers by design.
+root.unmount();
+sent.length = 0;
+const escRoot = createRoot(document.getElementById("host")!);
+escRoot.render(React.createElement(AskFormCard, { item: { ...entry, answer: null } }));
+await sleep(60);
+document
+  .querySelector("form.ask-form")!
+  .dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+await sleep(60);
+ok(sent.length === 1 && sent[0]!.answer === "cancel", "Esc cancels the form");
+escRoot.unmount();
+
+// ---- A single pick advances the page; the last page submits on pick ----
+const q1: AskFormField = {
+  kind: "choice",
+  name: "one",
+  multi: false,
+  select: false,
+  other: false,
+  label: [{ text: "Question one" }],
+  required: true,
+  options: [
+    { value: "a", label: [{ text: "A" }], checked: false, disabled: false },
+    { value: "b", label: [{ text: "B" }], checked: false, disabled: false },
+  ],
+};
+const q2: AskFormField = {
+  kind: "choice",
+  name: "two",
+  multi: false,
+  select: false,
+  other: false,
+  label: [{ text: "Question two" }],
+  required: true,
+  options: [
+    { value: "c", label: [{ text: "C" }], checked: false, disabled: false },
+    { value: "d", label: [{ text: "D" }], checked: false, disabled: false },
+  ],
+};
+const paged: AskFormWire = {
+  sections: [
+    { title: [{ text: "First" }], fieldset: true, blocks: [{ kind: "field", field: q1 }] },
+    { title: [{ text: "Second" }], fieldset: true, blocks: [{ kind: "field", field: q2 }] },
+  ],
+  fields: [q1, q2],
+  hidden: [],
+};
+sent.length = 0;
+useAppStore.setState({
+  openSessions: new Map([
+    [
+      "/p/s1",
+      {
+        ...useAppStore.getState().openSessions.get("/p/s1")!,
+        pendingApprovals: [{ ...entry, form: paged, title: "Two questions", answer: null }],
+      },
+    ],
+  ]),
+});
+const pickRoot = createRoot(document.getElementById("host")!);
+pickRoot.render(
+  React.createElement(AskFormCard, { item: useAppStore.getState().openSessions.get("/p/s1")!.pendingApprovals![0] }),
+);
+await sleep(80);
+ok(document.querySelector(".ask-page")?.textContent === "1/2", "two question groups make two pages");
+document.querySelector<HTMLInputElement>('input[aria-label="A"]')?.click();
+await sleep(80);
+ok(sent.length === 0, "a pick on a middle page does not submit");
+ok(document.querySelector(".ask-page")?.textContent === "2/2", "a pick advances to the next page");
+document.querySelector<HTMLInputElement>('input[aria-label="C"]')?.click();
+await sleep(120);
+ok(sent.length === 1, "a pick on the last page submits");
+const auto = JSON.parse(sent[0]!.answer!) as { kind: string; data: Record<string, unknown> };
+ok(auto.kind === "submit" && auto.data.one === "a" && auto.data.two === "c", "the submission carries both picks");
+pickRoot.unmount();
+
+// ---- Enter follows a click's rule: confirm the answer, turn the page, submit
+// only on the last page (the browser's implicit submit would settle page one) ----
+sent.length = 0;
+useAppStore.setState({
+  openSessions: new Map([
+    [
+      "/p/s1",
+      {
+        ...useAppStore.getState().openSessions.get("/p/s1")!,
+        pendingApprovals: [{ ...entry, form: paged, title: "Two questions", answer: null }],
+      },
+    ],
+  ]),
+});
+const enterRoot = createRoot(document.getElementById("host")!);
+enterRoot.render(
+  React.createElement(AskFormCard, { item: useAppStore.getState().openSessions.get("/p/s1")!.pendingApprovals![0] }),
+);
+await sleep(80);
+const pressEnter = (el: Element | null) =>
+  el?.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+pressEnter(document.querySelector('input[aria-label="A"]'));
+await sleep(80);
+ok(sent.length === 0, "Enter on a middle page does not submit");
+ok(document.querySelector(".ask-page")?.textContent === "2/2", "Enter confirms the pick and turns the page");
+pressEnter(document.querySelector('input[aria-label="C"]'));
+await sleep(120);
+ok(sent.length === 1, "Enter on the last page submits");
+const byEnter = JSON.parse(sent[0]!.answer!) as { kind: string; data: Record<string, unknown> };
+ok(byEnter.data.one === "a" && byEnter.data.two === "c", "Enter submits the picks a click would");
+enterRoot.unmount();
+
+// ---- Deadline countdown: the foot names what the host will do, the collapsed
+// bar keeps showing the remainder. No submit from the card itself (the host's
+// timer is the only one), so nothing may reach the socket here.
+sent.length = 0;
+const cdRoot = createRoot(document.getElementById("host")!);
+cdRoot.render(React.createElement(AskFormCard, { item: { ...entry, answer: null, expiresAt: Date.now() + 12_000 } }));
+await sleep(80);
+const hint = document.querySelector(".approval-hint")?.textContent ?? "";
+ok(/^\d+s 后按默认答案提交$/.test(hint), "the foot reports the auto-submit deadline");
+ok(!hint.includes("所有答案一起提交"), "the deadline replaces the plain hint");
+document.querySelector<HTMLElement>(".ask-collapse-btn")?.click();
+await sleep(60);
+const cd = document.querySelector(".approval-min .ask-deadline")?.textContent ?? "";
+ok(/^\d+s$/.test(cd), "the collapsed bar keeps the countdown");
+ok(sent.length === 0, "the countdown never submits on its own");
+cdRoot.unmount();
+
+// ---- Host side: the answer parse fills the base's option-level shape from the
+// parsed form, because the card only knows the field name and the typed text.
+const wired = parseHtmlForm(`<form><fieldset><legend>Deploy settings</legend>
+<label><input type="radio" name="env" value="a" checked> Env A</label>
+<label><input type="radio" name="env" value="b"> Env B</label>
+</fieldset></form>`);
+const submitWithNote = formSubmission(
+  wired,
+  JSON.stringify({ kind: "submit", data: { env: "b" }, notes: [{ name: "env", text: "staging only" }] }),
+);
+ok(submitWithNote?.data.env === "b", "the host passes the answers through");
+ok(submitWithNote?.notes?.[0]?.question === "Deploy settings", "the note names its question");
+ok(submitWithNote?.notes?.[0]?.option === "Env B", "the note names the picked option");
+ok(submitWithNote?.notes?.[0]?.value === "b", "the note carries the wire value");
+ok(submitWithNote?.notes?.[0]?.text === "staging only", "the note text survives the parse");
+ok(
+  formSubmission(wired, JSON.stringify({ kind: "submit", data: { env: "b" } }))?.notes === undefined,
+  "no notes leaves the field out",
+);
+ok(formSubmission(wired, JSON.stringify({ kind: "cancel" })) === undefined, "a non-submit payload cancels");
 
 console.log("ask form smoke passed ✓");

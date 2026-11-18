@@ -3,16 +3,18 @@
 // selection; it opens a small card with the quoted excerpt and an optional
 // comment. Submitting stores a pending note (store/annotations) that the
 // composer renders as a chip and the send path prepends to the prompt.
-// In the file / diff panes the same pill attaches the selection instead: no
-// comment card, the note carries the absolute path and line span of the text
-// (the pane tags its rows with data-annot-file / data-line).
+// The file / diff panes trigger the same pill and the same card; their note
+// additionally carries the absolute path and line span of the text, which is
+// the only difference (the pane tags its rows with data-annot-file / data-line).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
+import { isImeKey } from "../../keys";
 import { placeMenu } from "../../shell";
 import { addAnnotation } from "../../store/annotations";
+import { useAppStore, effZoom } from "../../store";
 
 // Touch-only clients (phones, tablets — remote viewers included) select through
 // long-press and drag handles: mouseup / keyup never fire reliably there and the pill
@@ -35,6 +37,23 @@ interface Target {
   lines?: string;
   /** Live range: the pill follows its text when the stream scrolls. */
   range: Range;
+}
+
+// Focusing the textarea collapses the document selection, so the anchored text would lose
+// its highlight while the card is open. The CSS Custom Highlight API keeps drawing it
+// independently of the selection (WebKit 17.2+; absent registries are a silent no-op).
+const ANCHOR_HIGHLIGHT = "annot-anchor";
+function setAnchorHighlight(range: Range | null): void {
+  // lib.dom has no CSS Custom Highlight API types yet; this one cast is that gap.
+  const g = globalThis as unknown as {
+    Highlight?: new (r: Range) => object;
+    CSS?: { highlights?: Map<string, object> };
+  };
+  const registry = g.CSS?.highlights;
+  const Ctor = g.Highlight;
+  if (!registry || !Ctor) return;
+  if (range) registry.set(ANCHOR_HIGHLIGHT, new Ctor(range.cloneRange()));
+  else registry.delete(ANCHOR_HIGHLIGHT);
 }
 
 function annotatableRoot(node: Node | null): HTMLElement | null {
@@ -129,6 +148,13 @@ export default function SelectionAnnotate() {
     // Below-the-selection fallback must stay on screen: r.bottom alone can be negative
     // while the selection is only half visible.
     const top = above >= EDGE ? above : Math.min(r.bottom + GAP, maxTop);
+    // The tail points at the selection: on the card's bottom edge when the card sits
+    // above the text, on its top edge otherwise. Measured in visual px, stored in layout
+    // px (the card lives under #center's zoom), clamped so it never leaves the card.
+    const z = effZoom();
+    const tail = Math.min(Math.max((r.left + r.width / 2 - left) / z, 12), b.width / z - 12);
+    el.dataset.side = above >= EDGE ? "top" : "bottom";
+    el.style.setProperty("--annot-tail", `${tail}px`);
     placeMenu(el, left, Math.max(top, EDGE));
   }, []);
 
@@ -174,25 +200,54 @@ export default function SelectionAnnotate() {
     if (editing) taRef.current?.focus();
   }, [editing]);
 
-  const close = () => {
+  // Switching sessions replaces the stream under the card: its selection no longer
+  // exists in the visible transcript, so the card (and the pill) goes with it.
+  const activePath = useAppStore((st) => st.activePath);
+  const pathRef = useRef(activePath);
+  useEffect(() => {
+    if (pathRef.current === activePath) return;
+    pathRef.current = activePath;
     setEditing(false);
     setComment("");
     setTarget(null);
-    window.getSelection()?.removeAllRanges();
-  };
+    setAnchorHighlight(null);
+  }, [activePath]);
 
-  // Esc closes the card before any global abort route sees it
+  const close = useCallback(() => {
+    setEditing(false);
+    setComment("");
+    setTarget(null);
+    setAnchorHighlight(null);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
+  // A press anywhere outside the card cancels it: the selection it edits is gone once the
+  // user moves on. Presses inside the card (textarea drag, buttons) are its own.
+  useEffect(() => {
+    if (!editing) return;
+    const onDown = (e: PointerEvent) => {
+      const el = boxRef.current;
+      if (el && e.target instanceof Node && el.contains(e.target)) return;
+      close();
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [editing, close]);
+
+  // Esc closes the card before any global abort route sees it. An IME Esc (isImeKey) only
+  // cancels the candidate window: swallow it, keep the card.
   useEffect(() => {
     if (!editing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
       e.preventDefault();
+      if (isImeKey(e)) return;
       close();
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [editing]);
+  }, [editing, close]);
 
   useLayoutEffect(() => {
     if (target) place();
@@ -223,9 +278,7 @@ export default function SelectionAnnotate() {
   return createPortal(
     editing && target ? (
       <div className="annot-card" ref={boxRef}>
-        <div className="annot-card-t">{t("composer.annotateTitle")}</div>
         <div className="annot-quote-row">
-          <span className="annot-qm">“</span>
           <span className="annot-quote-text">{target.text}</span>
         </div>
         <textarea
@@ -237,7 +290,7 @@ export default function SelectionAnnotate() {
           onKeyDown={onTaKeyDown}
         />
         <div className="annot-foot">
-          <span className="annot-hint">{t("composer.annotateHint")}</span>
+          <span className="annot-foot-hint">{t("composer.annotateHint")}</span>
           <span className="sp" />
           <button type="button" className="annot-btn" onClick={close}>
             {t("common.cancel")}
@@ -249,17 +302,10 @@ export default function SelectionAnnotate() {
       </div>
     ) : target ? (
       <div className="annot-fab" ref={boxRef} onMouseDown={(e) => e.preventDefault()}>
-        {target.file ? (
-          <button type="button" className="annot-fab-act" onClick={submit}>
-            <Icon name="comment" size={13} />
-            {t("composer.attachSelection")}
-          </button>
-        ) : (
-          <button type="button" className="annot-fab-act" onClick={() => setEditing(true)}>
-            <Icon name="comment" size={13} />
-            {t("composer.annotateAction")}
-          </button>
-        )}
+        <button type="button" className="annot-fab-act" onClick={() => { setAnchorHighlight(target.range); setEditing(true); }}>
+          <Icon name="messageSquareText" />
+          {t("composer.annotateAction")}
+        </button>
       </div>
     ) : null,
     document.body,

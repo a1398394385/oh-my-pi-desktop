@@ -12,6 +12,8 @@ import { collectFiles, isDevicePath, outReplyArgs, pathOf, summarizeResult, tool
 import type { TurnUsage, TranscriptItem, PoolEntry } from "./state.ts";
 import { advisorEvent, advisorHistoryRow } from "./translate-advisor.ts";
 import { renderAssistantText } from "./assistant-text.ts";
+import { mcpToolServer } from "./mcp-owners.ts";
+import { rewriteXdevMountNoticeToast } from "./xdev-mount-notice.ts";
 import { trackRunToolStart, trackRunToolEnd } from "./run-changes.ts";
 
 // Compat regex for journals written by the retired ACP nudge prototype: old
@@ -155,7 +157,9 @@ function thinkingLabel(sec: number): string {
 export function isJunkPlaceholderText(text?: string | null): boolean {
   if (!text) return true;
   const t = text.trim();
-  return t === "." || t === "。" || t === "·" || t === "•";
+  // Whitespace-only text is an invisible row that still breaks the read-only run scan
+  // (a blank assistant item is neither readonly nor thinking), so reads never fold.
+  return t === "" || t === "." || t === "。" || t === "·" || t === "•";
 }
 
 // user message content (string or blocks) → plain text, same extraction scope as the base's branch()
@@ -386,7 +390,14 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       const message = typeof ev.message === "string" ? ev.message : "";
       if (!message) return null;
       const level = ev.level === "warning" || ev.level === "error" ? ev.level : "info";
-      return { kind: "notice", level, message, source: typeof ev.source === "string" ? ev.source : undefined };
+      // The base builds the xd:// mount toast from minted tool names; collapse it
+      // to one entry per MCP server (see host/xdev-mount-notice.ts).
+      return {
+        kind: "notice",
+        level,
+        message: rewriteXdevMountNoticeToast(message, mcpToolServer),
+        source: typeof ev.source === "string" ? ev.source : undefined,
+      };
     }
     case "message_end": {
       if (ev.message?.role === "assistant") entry.assistantMessage = ev.message;
@@ -549,9 +560,24 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       return { kind: "tool_update", name: ev.toolName, toolCallId: ev.toolCallId, replies, running: true };
     }
     case "agent_end":
-      // isTerminal === false means maintenance/async delivery will keep running; not a true end
-      if (ev.isTerminal === false) return null;
       flushAssistantDraft(entry);
+      // isTerminal === false: a continuation (queued prompt / background delivery) resumes the
+      // same run. This segment's output is still finished, so settle it — the draft and the
+      // entryIds must land now, otherwise the next run's turn_end backfills them onto the wrong
+      // rows and this run's file-change card has nothing to anchor to.
+      if (ev.isTerminal === false) {
+        const settledUser = backfillUserEntryIds(entry);
+        // The segment's own stop mark travels with the frame: a settled continuation that ended
+        // stopReason "stop" is a delivered output and must stay out of the next run's loop group.
+        const tail = entry.transcript.findLast((t) => t.role === "assistant");
+        return {
+          kind: "turn_end",
+          settled: false,
+          final: tail?.turnFinal === true,
+          userEntryId: settledUser,
+          assistantEntryId: backfillAssistantEntryIds(entry, settledUser),
+        };
+      }
       // 3c: an interrupted turn can strand a pre-read snapshot (≤2MB) — sweep this session's at terminal end
       for (const [k, v] of pendingWrites) if (v.owner === entry) pendingWrites.delete(k);
       for (const [k, v] of writeStreams) if (v.owner === entry) writeStreams.delete(k);

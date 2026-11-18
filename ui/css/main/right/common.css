@@ -54,7 +54,7 @@
 .rtab {
   position: relative; flex: 1 1 0; min-width: 56px; max-width: 156px; height: 28px;
   display: inline-flex; align-items: center; gap: 5px;
-  border: 0; background: none; color: var(--dim);
+  border: 0; background: none; color: var(--text);
   font: inherit; font-size: var(--ui-fs-sm);
   padding: 0 6px 0 8px; border-radius: 7px; cursor: pointer;
   transition: background var(--dur-snap), color var(--dur-snap);
@@ -71,7 +71,7 @@
 
 .rtab.drag-over { background: var(--panel-2); }
 
-.rtab-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--faint); line-height: 1; }
+.rtab-ic { display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--text); line-height: 1; }
 
 .rtab-ic svg { display: block; }
 
@@ -90,7 +90,7 @@
 .rtab-x {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border-radius: 5px;
-  color: var(--faint); opacity: 0; transition: opacity var(--dur-snap);
+  color: var(--text); opacity: 0; transition: opacity var(--dur-snap);
   line-height: 0;
 }
 
@@ -136,16 +136,37 @@
 
 .rb-head { flex: none; padding: 0; }
 
+/* Subagent transcript detail: back on the left, stop (running only) pushed to the right; the
+   rows below reuse the middle column's renderer, so the type scale matches it. */
+.sub-msg-head { display: flex; align-items: center; gap: 6px; padding: 0 2px 6px; }
+
+.sub-msg-head > .hub-ibtn { margin-left: auto; }
+
+.sub-msg-stream { padding: 0 2px 12px; font-size: var(--ui-fs-base); }
+
+/* Rows fill the panel: the sidebar has no separate reading column, so content must follow
+   whatever width the user drags it to (a viewport-based cap froze the width and left one
+   large empty side). */
+.sub-msg-stream .msg.user .user-bubble { max-width: 82%; }
+
+/* .msg.user's 90px top gap separates it from the previous answer; the first row of a
+   transcript has nothing above it (the middle column pads its stream instead). */
+.sub-msg-stream > .msg.user:first-child { margin-top: 0; }
+
+/* Read-only transcript: the bubble keeps copy, drops the edit-and-resend action that would
+   open the composer's edit state. */
+.sub-msg-stream .ub-actions .ub-edit-btn { display: none; }
+
 .rb-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
 }
 
 .placeholder { color: var(--faint); font-size: var(--ui-fs-base); padding: 12px 10px; }
 
-/* Unified placeholder while a tool result is pending (Spin in components/chat/parts.jsx): loader icon spinning + ellipsis.
+/* Unified placeholder while a tool result is pending (spinRing in components/chat/parts.jsx): single-gap ring spinning + ellipsis.
    Serves two kinds of spots — inline in tool rows with no output slot (grep/glob/MCP/todo/terminal group rows),
    and the dashed placeholder inside expansion bodies (.placeholder in .cmd-card-out / .ed-brief) */
-.pend-ico { display: inline-flex; animation: spin 1s linear infinite; }
+.pend-ico { display: inline-flex; animation: spin 1.25s linear infinite; }
 
 .pend-ico svg { display: block; }
 
@@ -181,9 +202,7 @@
 
 .rt-item.off { opacity: .4; cursor: default; }
 
-.rt-item-ic { display: inline-flex; align-items: center; flex: none; color: var(--faint); }
-
-.rt-item:hover .rt-item-ic { color: var(--dim); }
+.rt-item-ic { display: inline-flex; align-items: center; flex: none; color: var(--text); }
 
 .rt-item.off .rt-item-ic, .rt-item.off:hover .rt-item-ic { color: var(--faint); }
 

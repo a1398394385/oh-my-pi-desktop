@@ -243,7 +243,8 @@ ok(
   composerWrites.length === 1 &&
     composerWrites[0].includes("[element] div.picked 365×23") &&
     composerWrites[0].includes('<div class="picked">hello world</div>') &&
-    composerWrites[0].includes("url: https://example.com/live"),
+    composerWrites[0].includes("url: https://example.com/live") &&
+    composerWrites[0].trimEnd().endsWith("[/element]"),
   JSON.stringify(composerWrites[0] ?? null),
 );
 ok("picker: picker closes after the commit", !($(".bpane-liveview")?.className ?? "").includes("picking"));

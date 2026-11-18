@@ -10,7 +10,7 @@ import { sendSubagentControl } from "./hubExt";
 export function SubControls({ sessionId, agentId, onOpen }: { sessionId: string; agentId: string; onOpen: () => void }) {
   const { t } = useTranslation();
   return (
-    <span className="hub-row-acts" onClick={(e) => e.stopPropagation()}>
+    <span className="hub-row-acts" data-prio="2" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
         className="hub-ibtn"

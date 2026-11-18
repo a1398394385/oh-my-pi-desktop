@@ -295,7 +295,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   display: inline-flex; align-items: center; gap: 5px;
   height: 26px; padding: 0 8px;
   border: 1px solid transparent; border-radius: var(--r-md);
-  background: none; color: var(--dim);
+  background: none; color: var(--text);
   font: inherit; font-size: var(--ui-fs-sm);
   cursor: pointer; max-width: 220px;
 }
@@ -313,7 +313,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
 .gp-chip-x {
   flex: none;
   display: inline-flex; align-items: center;
-  color: var(--faint); cursor: pointer;
+  color: var(--text); cursor: pointer;
 }
 
 .gp-chip-x:hover { color: var(--text); }
@@ -351,7 +351,7 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
   flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   width: 18px; height: 18px; padding: 0;
-  border-radius: 4px; background: none; color: var(--faint);
+  border-radius: 4px; background: none; color: var(--text);
 }
 
 .ctx-menu .gp-menu-clear:hover { background: var(--hover-fill); color: var(--text); }
@@ -547,9 +547,23 @@ body.gp-resizing-y, body.gp-resizing-y * { cursor: row-resize !important; user-s
 
 .gp-dir {
   display: flex; align-items: center; gap: 6px;
-  padding: 3px 6px;
-  color: var(--dim); font-size: var(--ui-fs-sm);
+  width: 100%; padding: 3px 6px;
+  border: 0; border-radius: var(--r-sm, 5px);
+  background: none; color: var(--dim);
+  font: inherit; font-size: var(--ui-fs-sm); text-align: left;
+  cursor: pointer;
 }
+
+.gp-dir:hover { background: var(--hover-fill); color: var(--text); }
+
+.gp-tree-caret {
+  flex: none; width: 10px;
+  display: inline-flex; align-items: center;
+  color: var(--faint);
+}
+
+.gp-tree-caret svg { transition: transform var(--dur-sheet) var(--swift); }
+.gp-tree-caret.open svg { transform: rotate(90deg); }
 
 .gp-dir-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

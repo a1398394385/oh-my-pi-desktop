@@ -12,6 +12,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, pickModelId, pickThinkingLevel, getSupportedThinkingForModel, effZoom } from "../../store";
+import { isImeKey } from "../../keys";
 import type { ModelCaps } from "../../store/models";
 import { REMOTE } from "../../store/layout";
 import type { TimerHandle } from "../../store";
@@ -196,6 +197,7 @@ export default function ModelMenu({ btnRef, composerRef, onClose }: ModelMenuPro
   // open (SessionTreeStream's arrow navigation does).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isImeKey(e)) return; // IME candidate dismissal, not a menu key
       if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
       // A sigil-completion panel riding the same editor (palette / bash card)
       // owns the keys while open — yield, same rule as ComposerPlugin's

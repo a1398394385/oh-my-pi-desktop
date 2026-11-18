@@ -79,16 +79,12 @@ export const composerEn = {
   cancelledBeforeSend: "Cancelled — message restored to the input",
   // SelectionAnnotate.tsx / AnnotationChips.tsx: selection comments over assistant output
   annotateAction: "Comment",
-  annotateTitle: "Add comment · Comment optional",
   annotatePlaceholder: "Write a comment (optional) — sent with the quoted text",
-  annotateHint: "Optional · Shift + ↵ for a new line",
+  annotateHint: "Optional too",
   annotateAdd: "Add comment ↵",
   annotateCount_one: "{{count}} comment",
   annotateCount_other: "{{count}} comments",
   // SelectionAnnotate.tsx / AnnotationChips.tsx: file / diff pane selections
-  attachSelection: "Attach to chat",
-  quoteBlocks_one: "{{count}} selected block",
-  quoteBlocks_other: "{{count}} selected blocks",
 };
 
 export default composerEn;

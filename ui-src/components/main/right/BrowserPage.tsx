@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../../Icon";
 import { useAppStore, invoke, toast, type TimerHandle } from "../../../store";
+import { isImeKey } from "../../../keys";
 import { t } from "../../../i18n";
 import { AgentBrowserView } from "./AgentBrowserView";
 import { copyText, SUCCESS_FLASH_MS } from "../sidebar/util";
@@ -259,7 +260,7 @@ function ManualBrowserView() {
             onChange={(e) => setAddr(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") submitAddr();
-              if (e.key === "Escape") setAddr(current ? displayBrowserUrl(current) : "");
+              if (e.key === "Escape" && !isImeKey(e)) setAddr(current ? displayBrowserUrl(current) : "");
             }}
             onFocus={(e) => e.target.select()}
           />

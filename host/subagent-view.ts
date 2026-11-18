@@ -290,6 +290,7 @@ interface HistEntry {
   parentSession?: string;
   model?: string;
   modelRole?: string; // session_init: explicit pre-expansion role alias (e.g. "smol"), resolvedModel stays concrete
+  thinkingLevel?: string; // thinking_level_change: resolved level (configured: null means inherited)
   readOnly?: boolean;
   message?: {
     role?: string;
@@ -326,6 +327,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
   let lastContextTokens = 0; // final assistant turn's totalTokens — terminal context size (same semantics as the executor's progress.contextTokens)
   let model: string | null = null;
   let modelRole: string | undefined;
+  let thinkingLevel: string | undefined;
   let result: string | undefined;
   let error: string | undefined;
   let task: string | undefined;
@@ -354,6 +356,10 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
       continue;
     }
     if (e.type === "model_change" && !model) model = e.model ?? null;
+    // The live progress frame carries the level as a `:<level>` suffix on resolvedModel (the
+    // base's own display form); the transcript keeps it in its own entry, so a replay rebuilds
+    // the same string. Last entry wins — a mid-run switch settles on the level that ran.
+    if (e.type === "thinking_level_change" && typeof e.thinkingLevel === "string") thinkingLevel = e.thinkingLevel;
     if (e.type === "message" && e.message) {
       const ts = Date.parse(e.timestamp ?? "") || 0;
       if (ts > lastTs) lastTs = ts;
@@ -428,7 +434,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
       tokens: { input, output, cacheRead, cacheWrite, total },
       contextTokens: lastContextTokens || undefined,
       contextWindow: modelRegistryContextWindow(model),
-      resolvedModel: model,
+      resolvedModel: model && thinkingLevel ? `${model}:${thinkingLevel}` : model,
       modelRole,
     },
     toolEvents,

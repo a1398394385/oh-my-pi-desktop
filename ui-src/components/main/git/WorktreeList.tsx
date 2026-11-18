@@ -90,12 +90,6 @@ export default function WorktreeList({
               renderRow={(row, depth) =>
                 fileRow(row, depth, row.file.path.slice(row.file.path.lastIndexOf("/") + 1))
               }
-              renderDir={(name, depth) => (
-                <div className="gp-dir" style={{ paddingLeft: `${26 + depth * 12}px` }}>
-                  <Icon name="folder" size={12} />
-                  <span className="gp-dir-name">{name}</span>
-                </div>
-              )}
             />
           ))}
       </div>
