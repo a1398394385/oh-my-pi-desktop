@@ -45,7 +45,8 @@ const MOTION_MODES: Record<string, true> = { system: true, on: true, off: true }
  * the file section stays a typed projection, never a passthrough blob.
  */
 const PREFS_FIELDS: Record<string, (v: unknown) => unknown> = {
-  agentProcessStyle: v => (v === "standard" || v === "detailed" || v === "expanded" || v === "all" || v === "concise" ? v : undefined),
+  // "all" was removed from the style list; a stored value lands on the nearest surviving one
+  agentProcessStyle: v => (v === "all" ? "expanded" : v === "standard" || v === "detailed" || v === "expanded" || v === "concise" ? v : undefined),
   uiFont: v => (typeof v === "string" ? v : undefined),
   uiFontSize: v => (typeof v === "number" && Number.isInteger(v) && v >= 11 && v <= 18 ? v : undefined),
   codeFontSize: v => (typeof v === "number" && Number.isInteger(v) && v >= 10 && v <= 18 ? v : undefined),
@@ -58,6 +59,7 @@ const PREFS_FIELDS: Record<string, (v: unknown) => unknown> = {
   railMusicDevice: v => (typeof v === "string" ? v : undefined),
   notifyDesktop: v => (typeof v === "boolean" ? v : undefined),
   notifySound: v => (typeof v === "boolean" ? v : undefined),
+  holdSidebarHints: v => (typeof v === "boolean" ? v : undefined),
   terminalInheritProfile: v => (typeof v === "boolean" ? v : undefined),
   terminalShared: v => (typeof v === "boolean" ? v : undefined),
   terminalFont: v => (typeof v === "string" ? v : undefined),

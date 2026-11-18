@@ -3,7 +3,7 @@
 //      (the desktop never rendered this custom message before — the whole feature is
 //      "the row exists and keeps its position");
 //   2. items.tsx puts blocking notes at that position while the process is visible and
-//      hands every note to the turn-tail card once the concise live view hides the rows.
+//      hands every note to the turn-tail card once a collapsed group hides the rows.
 // Run: OMP_PROFILE=omp-desktop-test bun test scripts/advisor-row.test.ts
 import { Window } from "happy-dom";
 import { describe, expect, test } from "bun:test";
@@ -188,8 +188,11 @@ describe("advisor rows in the chat flow", () => {
     // only the blocker renders inline; concern + nit ride the card
     expect(props(inline[0]).notes).toHaveLength(1);
     expect(nodes.filter((el) => el.type === AdvisorCard)).toHaveLength(1);
-    // the advice row is neither a tool row nor folded into a read-only block
-    expect(nodes.filter((el) => el.type === ReadonlyGroup)).toHaveLength(0);
+    // the advice row is not a process row: each side folds into its own segment card
+    // (a single read folds too), and neither block swallows the advice row
+    const blocks = nodes.filter((el) => el.type === ReadonlyGroup);
+    expect(blocks).toHaveLength(2);
+    expect(blocks.every((el) => (props(el).subs as ChatItem[]).every((it) => it.role === "tool"))).toBe(true);
   });
 
   test("visible process: two advice rows share one closing card, blockers stay inline", () => {
@@ -208,7 +211,7 @@ describe("advisor rows in the chat flow", () => {
     expect((props(cards[0]).notes as { severity?: string }[]).map((n) => n.severity)).toEqual(["concern"]);
   });
 
-  test("collapsed process: every note (blocker included) moves to the turn-tail card", () => {
+  test("liveFrom collects process rows but leaves advice inline", () => {
     setStyle("concise");
     const items = [
       { role: "user", text: "go" },
@@ -216,13 +219,11 @@ describe("advisor rows in the chat flow", () => {
       { role: "advisor", text: "", notes: batch.notes },
       { role: "assistant", text: "streaming output" },
     ] as ChatItem[];
-    const nodes = flat(renderItems(items, "", [], undefined, { hideProcessFrom: 0 }));
-    expect(nodes.filter((el) => el.type === AdvisorInline)).toHaveLength(0);
-    const cards = nodes.filter((el) => el.type === AdvisorCard);
-    expect(cards).toHaveLength(1);
-    expect(props(cards[0]).notes).toHaveLength(3);
-    // the tool row stays hidden with the rest of the process
+    const nodes = flat(renderItems(items, "", [], undefined, { liveFrom: 3 }));
+    // the read after the output is collected into LiveProcess, never laid out inline
     expect(nodes.some((el) => (props(el).item as { role?: string } | undefined)?.role === "tool")).toBe(false);
+    // advice is not process: its blocker stays readable in place
+    expect(nodes.filter((el) => el.type === AdvisorInline)).toHaveLength(1);
   });
 
   test("revealed concise process: blockers return inline, the card drops them", () => {
@@ -233,7 +234,6 @@ describe("advisor rows in the chat flow", () => {
       { role: "advisor", text: "", notes: batch.notes },
       { role: "assistant", text: "done" },
     ] as ChatItem[];
-    // no hideProcessFrom = the reader expanded the working row
     const nodes = flat(renderItems(items, "", []));
     expect(nodes.filter((el) => el.type === AdvisorInline)).toHaveLength(1);
     const cards = nodes.filter((el) => el.type === AdvisorCard);
@@ -265,7 +265,7 @@ describe("advisor rows in the chat flow", () => {
     expect(props(inner.filter((el) => el.type === AdvisorCard)[0]).notes.map((n) => n.severity)).toEqual(["concern", "nit"]);
   });
 
-  test("a blocker breaks a read-only fold it sits inside", () => {
+  test("a blocker breaks a segment it sits inside", () => {
     setStyle("standard");
     const items = [
       { role: "user", text: "go" },
@@ -274,10 +274,10 @@ describe("advisor rows in the chat flow", () => {
       read("r3"), read("r4"),
       { role: "assistant", text: "done" },
     ] as ChatItem[];
-    // 2 reads on each side stay under the 3-row fold threshold, so the advice row is what
-    // keeps them apart: without it the four would fold into one block
+    // the advice row is not a process row: it ends the segment, so the reads on each side
+    // fold into their own card instead of one block spanning the advice row
     const nodes = flat(renderItems(items, "", []));
-    expect(nodes.filter((el) => el.type === ReadonlyGroup)).toHaveLength(0);
+    expect(nodes.filter((el) => el.type === ReadonlyGroup)).toHaveLength(2);
     expect(nodes.filter((el) => el.type === AdvisorInline)).toHaveLength(1);
   });
 });

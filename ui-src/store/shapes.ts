@@ -25,14 +25,13 @@ export type GitWriteFrame =
 /** Terminal frame union (terminal_created/data/exit share one branch, pushed straight to terminal-page subscribers) */
 export type TerminalFrame = TerminalCreatedFrame | TerminalDataFrame | TerminalExitFrame;
 
-/** Agent process display style: standard = today's folding, detailed = no read-only run
- * fold, expanded = no read-only run fold and no same-type event merging (labeled
- * "complete": the structure is whole, the blocks still fold), all = expanded plus every
- * process block laying out open by default (a finished thought folds back, tool cards stay
- * open), concise = no process rows at all while the turn runs (outputs only; the process
- * stays behind the reveal toggle on the working row) and standard folding once the turn
- * ends. The `expanded` value keeps its name so existing prefs files stay valid. */
-export type AgentProcessStyle = "standard" | "detailed" | "expanded" | "all" | "concise";
+/** Agent process display style: standard = a work segment (everything between two outputs)
+ * folds into one card, detailed = no segment fold, no live fold and no read-group merge
+ * (consecutive reads lay out inline; change/terminal/device groups still merge), expanded =
+ * "complete": every row on its own with no merging at all, concise = standard folding with
+ * edits inside the segment and the running turn's live segment kept shut (intent row +
+ * working-time row only). */
+export type AgentProcessStyle = "standard" | "detailed" | "expanded" | "concise";
 
 /** UI prefs (runtime shape: theme/motion + appearance fields + lang).
  * Persistence is file-first — omp-desktop.json's ui section is the source of
@@ -58,6 +57,8 @@ export interface UiPrefs {
   notifyDesktop?: boolean;
   /** Desktop alerts: platform alert sound (undefined = on). */
   notifySound?: boolean;
+  /** Hold-the-modifier sidebar hints: transient widening + ⌘1~9 session badges (undefined = on). */
+  holdSidebarHints?: boolean;
   lang: "zh-CN" | "en";
   terminalInheritProfile?: boolean;
   /** Experimental: every session of one project shares one set of terminal tabs (right dock

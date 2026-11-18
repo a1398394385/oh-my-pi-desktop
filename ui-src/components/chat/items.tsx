@@ -10,12 +10,13 @@ import type { ReactElement, ReactNode } from "react";
 import type { AdvisorItem, AdvisorNote, ChatItem, RailEntry, UserItem, AssistantItem } from "./chat-types";
 import { isJunkPlaceholder } from "../../store";
 import { useAppStore } from "../../store/index";
-import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf, isReadonlyEvent } from "./util";
+import { isEditEvent, isReadEvent, isCmdEvent, isDeviceEvent, deviceNameOf } from "./util";
 import { railToolText } from "../../shell";
 import UserMsg from "./UserMsg";
 import AssistantMsg from "./AssistantMsg";
 import TurnActs from "./TurnActs";
 import RunChanges from "./RunChanges";
+import AutomationCard from "./AutomationCard";
 import OutReply from "./OutReply";
 import ThinkingRow from "./ThinkingRow";
 import ToolRow from "./ToolRow";
@@ -23,6 +24,7 @@ import MdSurface from "./MdSurface";
 import BashRow from "./BashRow";
 import LoopGroup, { loopSummaryText } from "./LoopGroup";
 import ReadonlyGroup, { roSummaryText } from "./ReadonlyGroup";
+import LiveProcess from "./LiveProcess";
 import AdvisorCard, { AdvisorInline } from "./AdvisorCard";
 import TtsrRow from "./TtsrRow";
 import BranchSwitcher from "./BranchSwitcher";
@@ -261,71 +263,109 @@ function advisorNodes(item: AdvisorItem, key: string, inline: boolean): ReactEle
 }
 
 // Agent process display style (ui.prefs.agentProcessStyle):
-//   standard — a run of >=3 read-only tool events folds into one block
-//   detailed — no read-only run fold (rows lay out flat), same-type groups stay
-//   expanded — no read-only run fold and no same-type merging at all
-//   all      — same layout as expanded; the store additionally opens every process block
-//              by default (see AgentProcessStyle)
-//   concise  — folds like standard; the live turn hides its process rows entirely
-//              (MessagePage's hideProcessFrom), so this only shapes the reveal
-function processStyle(): "standard" | "detailed" | "expanded" | "all" {
+//   standard — a work segment (everything between two outputs, edits excluded) folds into one
+//              block; edit/write rows stay on their own row and end the segment
+//   detailed — no segment fold and no live fold; consecutive read events stop merging too,
+//              while the other same-type groups (change/terminal/device) still merge
+//   expanded — "complete": every row lays out on its own, no merging at all
+//   concise  — folds like standard plus edit/write inside the segment, and the live segment
+//              (LiveProcess) refuses to expand
+function processStyle(): "standard" | "detailed" | "expanded" | "concise" {
   const v = useAppStore.getState().uiPrefs.agentProcessStyle;
-  return v === "detailed" || v === "expanded" || v === "all" ? v : "standard";
+  return v === "detailed" || v === "expanded" || v === "concise" ? v : "standard";
 }
 
-// Level-3 same-type merging is skipped by the two flattest styles; `expanded` and `all`
-// share it, so every check goes through here instead of comparing the style inline.
+// Consecutive read events (the "explored N files" group): only the folding styles merge them.
+// Standard and concise already hide the rows behind one card, so the group shapes their body.
+function mergesReadGroup(): boolean {
+  const v = processStyle();
+  return v === "standard" || v === "concise";
+}
+
+// Same-type merging for the other groups (change/terminal/device): the folding styles plus
+// detailed, which dropped only the read-group fold. "expanded" lays every row out alone.
 function mergesSameType(): boolean {
   const v = processStyle();
-  return v === "standard" || v === "detailed";
+  return v === "standard" || v === "concise" || v === "detailed";
 }
 
 // A running row whose "expand while running" switch is on (Ctrl+T / Ctrl+O) stays out of
 // every fold: it lays out expanded on its own, then joins the block once it completes (the
-// next event turns running/streaming off). Switched off, folds keep swallowing it as before.
+// next event turns running/streaming off). Switched off, folds keep swallowing it as before —
+// including a write/edit row whose live body previews: EditRow renders that preview under the
+// same switch, so folded and invisible stay consistent.
 function liveOpen(item: ChatItem): boolean {
   const p = useAppStore.getState().uiPrefs;
   if (item.role === "thinking") return !!item.streaming && p.showThinking;
-  // A streaming write body stays its own row: folded into a "Changes" group it would be
-  // invisible until the user expands the group.
-  // A streamed edit diff is its own row for the same reason as a write body.
-  return item.role === "tool" && !!item.running && (p.expandToolOutput || !!item.streamText || !!item.streamDiff);
+  return item.role === "tool" && !!item.running && p.expandToolOutput;
 }
 
-// Scans a read-only run starting at items[i] (items[i] must satisfy isReadonlyEvent).
-// Thinking, request-error and TTSR-injection rows inside the run are collected into the block
-// but not counted; any other role or a non-read-only tool event ends the run. Returns null when
-// the run holds fewer than `min` read-only events (the caller then falls through to the
-// per-type group blocks). Error rows must not break the scan: a mid-run request failure
-// (e.g. socket closed) would otherwise split one flow into <3 fragments that never fold.
-// min is 3 (the >=3 merge) under the "standard" style and Infinity under the other
-// two, where read-only rows never merge and always lay out flat.
-function scanReadonlyRun(items: ChatItem[], i: number): { run: ChatItem[]; next: number } | null {
-  const min = processStyle() === "standard" ? 3 : Infinity;
+// Rows that belong to a work segment: every tool event except the ones that must stand alone
+// (task/wait/ask/yield keep their own row — a subagent launch, a wait, a user-facing form)
+// and out:// replies, which are output.
+function isProcessEvent(item: ChatItem): boolean {
+  if (item.role !== "tool" || hasOutReply(item)) return false;
+  const name = item.name || "";
+  return name !== "task" && name !== "wait" && name !== "ask" && name !== "yield";
+}
+
+// Whether a work segment swallows edit/write rows. Only the concise style folds them in;
+// every other style keeps an edit on its own row (the changes group), so an edit also ends
+// the segment instead of disappearing inside it.
+function foldsEdits(): boolean {
+  return processStyle() === "concise";
+}
+
+/** Rows the live segment collects: process events plus the fold-riding bookkeeping rows
+ *  (thinking, request errors, TTSR notices). Edit rows stay out unless the style folds
+ *  edits — the same rule the segment scan applies.
+ *  Only the folding styles gather a live segment at all: under the flat styles the intent
+ *  row has no body, and every row lays out inline. */
+function liveCollects(item: ChatItem): boolean {
+  const style = processStyle();
+  if (style !== "standard" && style !== "concise") return false;
+  if (item.role === "thinking" || item.role === "error" || item.role === "ttsr") return true;
+  return isProcessEvent(item) && (foldsEdits() || !isEditEvent(item));
+}
+
+// Scans a work segment starting at items[i]: everything until the next output (assistant
+// text), the turn boundary, an edit row (unless the style folds edits), or a row that must
+// stand alone. Thinking, request-error and TTSR-injection rows are collected into the block
+// but not counted; a running row that liveOpen() keeps out breaks the scan.
+// min is 1 under standard/concise — output is the only thing that never folds, so after each
+// output the work behind it collapses into one row — and Infinity under the flat styles,
+// where every row lays out on its own.
+// Error rows must not break the scan: a mid-run request failure (e.g. socket closed) would
+// otherwise split one flow into fragments that never fold.
+function scanProcessSegment(items: ChatItem[], i: number): { run: ChatItem[]; next: number } | null {
+  const style = processStyle();
+  const min = style === "standard" || style === "concise" ? 1 : Infinity;
+  const foldEdits = foldsEdits();
   const run: ChatItem[] = [];
-  let roCount = 0;
+  let count = 0;
   let j = i;
   while (j < items.length) {
     const it = items[j];
     if (liveOpen(it)) break; // the running row renders standalone outside the block
-    if (isReadonlyEvent(it) && !hasOutReply(it)) {
+    if (isProcessEvent(it)) {
+      if (!foldEdits && isEditEvent(it)) break;
       run.push(it);
-      roCount++;
+      count++;
       j++;
     } else if (it.role === "thinking" || it.role === "error" || it.role === "ttsr") {
       run.push(it);
       j++;
     } else break;
   }
-  return roCount >= min ? { run, next: j } : null;
+  return count >= min ? { run, next: j } : null;
 }
 
-// noReadonlyFold: the level-2 fold is skipped (used by ReadonlyGroup's expansion body,
-// whose items are already the folded run — re-scanning them would nest a block inside
-// itself and recurse infinitely)
-// hideProcessFrom: index of the live turn's user row; everything after it that is not an
-// assistant output is dropped (the concise style's live view). Folding is untouched, so
-// the same rows lay out in standard shape once the reveal toggle disables the filter.
+// noReadonlyFold: the segment fold is skipped (used by a fold body's expansion, whose items
+// are already the folded segment — re-scanning them would nest a block inside itself and
+// recurse infinitely)
+// liveFrom: index where the streaming turn's current segment starts (the first row after
+// the turn's last output). Those rows are handed to LiveProcess instead of laying out
+// inline, so the reader sees one intent row over a collapsed body.
 /** A `write` whose target is the reply channel: it renders as an OutReply card, not a tool row. */
 function isOutReplyWrite(item: ChatItem): boolean {
   return item.role === "tool" && item.name === "write" && String(item.args?.path ?? "").startsWith("out://");
@@ -341,7 +381,7 @@ export function renderItems(
   pfx: string,
   railEntries: RailEntry[],
   streamTail?: ReactNode,
-  opts?: { noReadonlyFold?: boolean; hideProcessFrom?: number; branchNav?: Map<string, BranchNavInfo> | null },
+  opts?: { noReadonlyFold?: boolean; liveFrom?: number; branchNav?: Map<string, BranchNavInfo> | null },
 ): ReactElement[] {
   if (pfx === "" && opts?.branchNav) branchCtx = { map: opts.branchNav, lastFk: new Map() };
   if (pfx !== "") {
@@ -360,9 +400,9 @@ export function renderItems(
         out.push(...advisorNodes(item, key, true));
         continue;
       }
-      // Level-2 fold first: a >=3 read-only run wraps the level-3 groups below
-      if (!opts?.noReadonlyFold && isReadonlyEvent(item)) {
-        const g = scanReadonlyRun(items, i);
+      // Segment fold first: it wraps the same-type groups below
+      if (!opts?.noReadonlyFold && isProcessEvent(item)) {
+        const g = scanProcessSegment(items, i);
         if (g) {
           railEntries.push({ key, role: "tool", text: roSummaryText(g.run) });
           out.push(<ReadonlyGroup subs={g.run} pfx={key + "-"} sig={readonlySig(g.run)} key={key} />);
@@ -370,8 +410,8 @@ export function renderItems(
           continue;
         }
       }
-      // The "expanded"/"all" styles skip the level-3 merge blocks entirely (they consume
-      // the following same-type events, so gating only the group push would swallow rows)
+      // The "expanded" style skips the same-type merge blocks entirely (they consume the
+      // following same-type events, so gating only the group push would swallow rows)
       const mergeSameType = mergesSameType();
       if (mergeSameType && isEditEvent(item)) {
         const subs: ChatItem[] = [item];
@@ -383,7 +423,7 @@ export function renderItems(
           continue;
         }
       }
-      if (mergeSameType && isReadEvent(item)) {
+      if (mergesReadGroup() && isReadEvent(item)) {
         const subs: ChatItem[] = [item];
         while (i + 1 < items.length && !liveOpen(items[i + 1]) && isReadEvent(items[i + 1])) subs.push(items[++i]);
         if (subs.length > 1) {
@@ -445,8 +485,7 @@ export function renderItems(
     flowNodes: ReactElement[];
     actsNode: ReactElement | null;
     // Notes that belong to the turn's closing card: every non-blocker batch (their rows
-    // would otherwise repeat the card inline) plus every batch the concise live view hid
-    // (blockers included — with no process row to sit in the card is their only home).
+    // would otherwise repeat the card inline).
     advice: AdvisorNote[];
     /** Automation this turn created (automations_manage details): TurnActs then offers the
      *  jump to that task's editor. */
@@ -458,6 +497,8 @@ export function renderItems(
   const turns: TurnGroup[] = [];
   let currentTurn: TurnGroup | null = null;
   const pendingSteers: { item: ChatItem; key: string }[] = [];
+  // Current segment of the streaming turn (see liveFrom): rendered by LiveProcess at the end
+  const liveItems: ChatItem[] = [];
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
@@ -466,21 +507,12 @@ export function renderItems(
       pendingSteers.push({ item, key });
       continue;
     }
-    // Concise live view: this turn keeps its user row, assistant outputs and mid-run
-    // reply cards (an `out://` write's text is output, not process noise). The check sits
-    // before the fold scans so a run straddling the boundary is never merged into a block
-    // that then gets dropped.
-    if (
-      opts?.hideProcessFrom !== undefined &&
-      i > opts.hideProcessFrom &&
-      item.role !== "assistant" &&
-      item.role !== "user" &&
-      !hasOutReply(item)
-    ) {
-      if (item.role === "advisor") {
-        if (currentTurn) currentTurn.advice.push(...item.notes);
-        else initialAdvice.push(...item.notes);
-      }
+    // Streaming turn: the rows after the last output are the current segment. Collected
+    // here and rendered by LiveProcess at the turn's end instead of laying out inline, so
+    // the output above stays unfolded and everything since folds under the intent row.
+    // Advisor notes are not process rows and keep flowing to the turn's closing card.
+    if (opts?.liveFrom !== undefined && i >= opts.liveFrom && liveCollects(item)) {
+      liveItems.push(item);
       continue;
     }
 
@@ -539,9 +571,9 @@ export function renderItems(
       }
     }
 
-    // Level-2 fold first: a >=3 read-only run wraps the level-3 groups below
-    if (!opts?.noReadonlyFold && isReadonlyEvent(item)) {
-      const g = scanReadonlyRun(items, i);
+    // Segment fold first: it wraps the same-type groups below
+    if (!opts?.noReadonlyFold && isProcessEvent(item)) {
+      const g = scanProcessSegment(items, i);
       if (g) {
         railEntries.push({ key, role: "tool", text: roSummaryText(g.run) });
         node = <ReadonlyGroup subs={g.run} pfx={key + "-"} sig={readonlySig(g.run)} key={key} />;
@@ -559,7 +591,7 @@ export function renderItems(
         node = <ToolRow item={groupItem} key={key} />;
       }
     }
-    if (mergeSameType && !node && isReadEvent(item)) {
+    if (mergesReadGroup() && !node && isReadEvent(item)) {
       const subs: ChatItem[] = [item];
       while (i + 1 < items.length && !liveOpen(items[i + 1]) && isReadEvent(items[i + 1])) subs.push(items[++i]);
       if (subs.length > 1) {
@@ -606,6 +638,14 @@ export function renderItems(
     }
 
     if (node && item.role === "assistant" && isTurnTailAssistant(items, i, pfx)) {
+      // Automation this turn created: a long card above the change card (flowNodes render
+      // before actsNode), replacing the clock icon the acts row used to carry
+      const created = currentTurn?.createdAutomation;
+      if (created) {
+        const autoNode = <AutomationCard id={created.id} title={created.title} key={key + "-auto"} />;
+        if (currentTurn) currentTurn.flowNodes.push(autoNode);
+        else initialNodes.push(autoNode);
+      }
       // Files this run changed: the card sits between the output and the acts row
       // (flowNodes render before actsNode)
       const changes = item.changes;
@@ -620,7 +660,6 @@ export function renderItems(
           reply={turnReplyText(items, i)}
           entryId={item.entryId}
           endMs={item.endMs}
-          automation={currentTurn?.createdAutomation}
           key={key + "-acts"}
         />
       );
@@ -643,6 +682,14 @@ export function renderItems(
     );
   }
 
+  // The live segment closes the turn, after the draft: output stays unfolded and the rows
+  // produced since fold under the intent row.
+  if (opts?.liveFrom !== undefined) {
+    const live = <LiveProcess items={liveItems} key="live-process" />;
+    if (turns.length > 0) turns[turns.length - 1].flowNodes.push(live);
+    else initialNodes.push(live);
+  }
+
   // Closing card: after everything the turn shows, one card per turn (severity counts in
   // the head, T-n kept for the expanded body).
   if (initialAdvice.length) initialNodes.push(<AdvisorCard notes={initialAdvice} key="adv-initial" />);
@@ -651,10 +698,6 @@ export function renderItems(
   }
 
   const out: ReactElement[] = [...initialNodes];
-
-  // The filter only ever lands on the last turn: .concise-live spaces the outputs that
-  // end up back to back once the process rows between them are gone
-  const conciseLive = opts?.hideProcessFrom !== undefined;
 
   for (const t of turns) {
     out.push(
@@ -667,9 +710,7 @@ export function renderItems(
               </div>
             </div>
           ) : null}
-          <div className={"turn-flow" + (conciseLive && t === turns[turns.length - 1] ? " concise-live" : "")}>
-            {t.flowNodes}
-          </div>
+          <div className="turn-flow">{t.flowNodes}</div>
         </div>
         {t.actsNode}
       </div>,

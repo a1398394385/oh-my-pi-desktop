@@ -63,6 +63,10 @@ export const chatEn = {
   readFilesMultiple: "multiple files",
   // ---- read-only merge block (ReadonlyGroup.tsx roSummaryText) ----
   roExplored: "Explored ",
+  roEditedLead_one: "Edited {{count}} file, also explored ",
+  roEditedLead_other: "Edited {{count}} files, also explored ",
+  roEditedOnly_one: "Edited {{count}} file",
+  roEditedOnly_other: "Edited {{count}} files",
   roSep: ", ",
   roFiles_one: "{{count}} file",
   roFiles_other: "{{count}} files",

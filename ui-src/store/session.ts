@@ -114,7 +114,9 @@ export const createSessionSlice: StateCreator<AppStore, [], [], SessionSlice> = 
 export function isJunkPlaceholder(text: string | null | undefined): boolean {
   if (!text) return true;
   const t = text.trim();
-  return t === "." || t === "。" || t === "·" || t === "•";
+  // Whitespace-only text is an invisible row that still breaks the read-only run scan
+  // (a blank assistant item is neither readonly nor thinking), so reads never fold.
+  return t === "" || t === "." || t === "。" || t === "·" || t === "•";
 }
 
 /** Expansion-state field of a tool row (the render layer picks one per kind: terminal/background/device
@@ -124,13 +126,6 @@ export function toolExpandKey(name: string | null | undefined): "readExpanded" |
   if (name === "read" || name === "grep" || name === "glob" || name === "ls") return "readExpanded";
   if (name === "edit" || name === "write" || name === "apply_patch") return "diffExpanded";
   return "cmdExpanded";
-}
-
-/** The "all" process style opens every process block by default: thinking blocks while they
- *  stream (a finished thought folds back, as in the other styles) and tool cards that stay
- *  open after the call settles. */
-export function opensProcessBlocks(): boolean {
-  return useAppStore.getState().uiPrefs.agentProcessStyle === "all";
 }
 
 // Deduplicate tool-row file lists (moved over from tool-rows.js uniqueFiles; needed by the store's tool handling)
@@ -153,23 +148,6 @@ export function updateSession(sessionId: string, fn: (s: OpenSession) => void, w
 }
 
 // ---------- Locating and activating ----------
-/** Adopting the "all" style opens the process rows already on screen instead of waiting for
- *  the next frame: every tool card opens; a thinking block opens only while it still
- *  streams (a finished thought folds back, same rule as the live path). Fresh item copies
- *  are what wake the memoized rows — mutating in place would leave them rendered collapsed. */
-export function openProcessBlocksNow(): void {
-  const st = useAppStore.getState();
-  const path = st.activePath;
-  const s = path ? st.openSessions.get(path) : undefined;
-  if (!path || !s) return;
-  const items = s.items.map((it): SessionItem => {
-    if (it.role === "tool") return { ...it, [toolExpandKey(it.name)]: true } as SessionItem;
-    if (it.role === "thinking" && it.streaming) return { ...it, expanded: true };
-    return it;
-  });
-  useAppStore.setState({ openSessions: new Map(st.openSessions).set(path, { ...s, items }) });
-}
-
 export function activeOpen(): OpenSession | undefined {
   const st = useAppStore.getState();
   return st.activePath ? st.openSessions.get(st.activePath) : undefined;
@@ -240,6 +218,24 @@ export function activateSession(path: string): void {
   useAppStore.getState().send({ type: "mark_seen", path });
   if (prev !== path) restoreRightSlot(path); // no snapshot (first open/newly created) = inherit current panel
   scheduleEvict();
+}
+
+/** Paths whose host load must NOT take over the middle column. The right sidebar renders a
+ *  child transcript while the user keeps working in the active session, so its load is
+ *  background: the session lands in openSessions, `activateSession` never runs. */
+const backgroundLoads = new Set<string>();
+
+/** Load a session into openSessions without switching the middle column (no-op when resident). */
+export function loadSessionInBackground(path: string): void {
+  const st = useAppStore.getState();
+  if (st.openSessions.has(path)) return;
+  backgroundLoads.add(path);
+  st.send({ type: "load_session", path });
+}
+
+/** True once, when a landing session was requested in the background (see backgroundLoads). */
+export function consumeBackgroundLoad(path: string): boolean {
+  return backgroundLoads.delete(path);
 }
 
 /** Unified switch/open session: clear new-session state, close welcome, drop unread mark,
@@ -360,9 +356,10 @@ export function settleAbortedRunLater(sessionId: string): void {
 // Host-authoritative idle settle. The pool snapshot's busy flag is the base's isStreaming, which
 // the host reads right after the run unwound — so busy=false means no agent loop can still emit
 // into that session, while the UI's own streaming flag is cleared only by turn_end(runEnd). A run
-// that ends with isTerminal:false (a bg job awaiting async delivery) never sends that frame, so
-// the working row, the stop button and the sidebar spinner stayed wedged for the whole background
-// window (BUG-120's precondition; BUG-110 covered only the abort path). Grace + cancel-on-activity:
+// that ends with isTerminal:false (a bg job awaiting async delivery) sends only the settled:false
+// turn_end, which keeps the run open, so the working row, the stop button and the sidebar spinner
+// stayed wedged for the whole background window (BUG-120's precondition; BUG-110 covered only the
+// abort path). Grace + cancel-on-activity:
 // a prompt sent a moment ago can reach the host after this snapshot was computed, and a genuinely
 // live run keeps streaming events, which cancel the timer — so only a silent, host-declared-idle
 // session settles.
@@ -505,6 +502,7 @@ export function startLocalRun(
     s.items.push({
       role: "user",
       text,
+      ts: Date.now(),
       ...(images && images.length > 0 ? { images } : {}),
       ...(automation ? { automation } : {}),
       ...(entryId ? { entryId } : {}),
@@ -582,10 +580,14 @@ function findToolRow(s: OpenSession, toolCallId?: string, name?: string): ToolIt
 // toast (that bleeds across sessions). The newest notice replaces the previous one
 // and expires on its own.
 const NOTICE_TTL_MS = 8000;
+// xd:// mount hints are inventory bookkeeping the user cannot act on (the model gets
+// its own copy of the same delta), so they leave right away; every other notice keeps
+// the readable window.
+const XDEV_NOTICE_TTL_MS = 1000;
 const noticeTimers = new Map<string, TimerHandle>();
 let noticeSeq = 0;
 
-function scheduleNoticeClear(sessionId: string, seq: number): void {
+function scheduleNoticeClear(sessionId: string, seq: number, ttlMs: number): void {
   clearTimeout(noticeTimers.get(sessionId));
   noticeTimers.set(
     sessionId,
@@ -595,7 +597,7 @@ function scheduleNoticeClear(sessionId: string, seq: number): void {
       updateSession(sessionId, (s) => {
         s.notice = null;
       });
-    }, NOTICE_TTL_MS),
+    }, ttlMs),
   );
 }
 
@@ -694,7 +696,7 @@ export function applyEvent(msg: EventFrame): void {
         // last streaming thinking item).
         for (const it of s.items) if (it.role === "thinking" && it.streaming) it.streaming = false;
         s.workingText = t("notify.thinking");
-        s.items.push({ role: "thinking", text: t("notify.thinkingLabel"), thinking: "", streaming: true, expanded: st.uiPrefs.showThinking || opensProcessBlocks() });
+        s.items.push({ role: "thinking", text: t("notify.thinkingLabel"), thinking: "", streaming: true, expanded: st.uiPrefs.showThinking });
       } else {
         const last = findLast(s.items, (it): it is ThinkingItem => it.role === "thinking");
         if (last) {
@@ -775,8 +777,12 @@ export function applyEvent(msg: EventFrame): void {
         live.intent = msg.intent;
         live.files = msg.files;
         // "expand while running" (Ctrl+O) keeps the output card expanded during the run and
-        // collapses it at the end; the "all" style opens it and leaves it open
-        if (st.uiPrefs.expandToolOutput || opensProcessBlocks()) live[toolExpandKey(msg.name)] = true;
+        // collapses it at the end. A row that already streams its own body (write/edit
+        // preview, born on tool_args/tool_preview) is left alone: it is visibly open already,
+        // and re-setting the flag would override a collapse the user made while streaming
+        const expandKey = toolExpandKey(msg.name);
+        const streamsBody = !!live.streamText || !!live.streamDiff;
+        if (!streamsBody && live[expandKey] === undefined && st.uiPrefs.expandToolOutput) live[expandKey] = true;
       } else {
         const toolItem: SessionItem = {
           role: "tool",
@@ -793,8 +799,8 @@ export function applyEvent(msg: EventFrame): void {
           running: true,
         };
         // "expand while running" (Ctrl+O) keeps the output card expanded during the run and
-        // collapses it at the end; the "all" style opens it and leaves it open
-        if (st.uiPrefs.expandToolOutput || opensProcessBlocks()) toolItem[toolExpandKey(msg.name)] = true;
+        // collapses it at the end
+        if (st.uiPrefs.expandToolOutput) toolItem[toolExpandKey(msg.name)] = true;
         s.items.push(toolItem);
       }
       if (msg.intent) s.workingText = msg.intent;
@@ -819,9 +825,8 @@ export function applyEvent(msg: EventFrame): void {
         last.running = false;
         last.streamText = undefined; // the call's own diff replaces the live preview
         last.streamDiff = undefined;
-        // "expand while running": collapse at the end (the card auto-expanded during the run);
-        // the "all" style keeps tool cards open after the call settles
-        if (st.uiPrefs.expandToolOutput && !opensProcessBlocks()) last[toolExpandKey(last.name)] = false;
+        // "expand while running": collapse at the end (the card auto-expanded during the run)
+        if (st.uiPrefs.expandToolOutput) last[toolExpandKey(last.name)] = false;
       }
     });
   } else if (msg.kind === "tool_details") {
@@ -832,6 +837,30 @@ export function applyEvent(msg: EventFrame): void {
       if (last && msg.details != null) last.details = msg.details as ToolDetails;
     });
   } else if (msg.kind === "turn_end") {
+    // Non-terminal end (host mapped base isTerminal:false): a continuation resumes the same run.
+    // Land the draft and the entryIds now — the run_changes card the host sends right after is
+    // anchored to this output's entryId — but keep the run open (streaming, fold window), since
+    // the continuation's rows belong to the same process block.
+    if (msg.settled === false) {
+      updateSession(msg.sessionId, (s) => {
+        if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) {
+          // msg.final: the segment ended stopReason "stop" — a delivered output that the next
+          // run's seal must lift out of its loop group (same rule as the runEnd path)
+          s.items.push({ role: "assistant", text: s.assistantDraft, ...(msg.final ? { turnFinal: true } : {}) });
+        }
+        s.assistantDraft = "";
+        clearRunningTools(s);
+        if (msg.userEntryId) {
+          const u = findLast(s.items, (it): it is UserItem => it.role === "user" && !it.entryId);
+          if (u) u.entryId = msg.userEntryId;
+        }
+        if (msg.assistantEntryId) {
+          const a = findLast(s.items, (it): it is AssistantItem => it.role === "assistant" && !it.entryId);
+          if (a) a.entryId = msg.assistantEntryId;
+        }
+      });
+      return;
+    }
     // In-run frames (runEnd:false, each model turn of a tool loop): only settle the draft, no
     // sealing, no clock stop — the whole run's process belongs to one loop group, intermediate
     // assistants stay inside the group (matching the reloaded view)
@@ -992,7 +1021,7 @@ export function applyEvent(msg: EventFrame): void {
     updateSession(msg.sessionId, (s) => {
       s.notice = { level: msg.level, message: msg.message, seq };
     });
-    scheduleNoticeClear(msg.sessionId, seq);
+    scheduleNoticeClear(msg.sessionId, seq, msg.source === "xdev" ? XDEV_NOTICE_TTL_MS : NOTICE_TTL_MS);
   } else if (msg.kind === "error") {
     // Provider/request failure (quota, auth, transport): one row of its own.
     // Settle the in-flight draft first so text produced before the failure stays above it.
@@ -1002,6 +1031,12 @@ export function applyEvent(msg: EventFrame): void {
       if (s.assistantDraft && !isJunkPlaceholder(s.assistantDraft)) s.items.push({ role: "assistant", text: s.assistantDraft });
       s.assistantDraft = "";
       s.items.push({ role: "error", text: msg.text });
+      // A call whose arguments were still streaming when the request failed never reaches
+      // tool_execution_start, so no tool_update will ever settle its preview row (write body /
+      // edit diff) — the base retries and the run continues, leaving the row spinning forever.
+      // The failure sits between model requests, when no tool can be executing: same reset as
+      // the turn_end path.
+      clearRunningTools(s);
     });
   }
 }
@@ -1073,7 +1108,7 @@ export function applySteerConsumed(msg: { sessionId: string; texts?: string[] })
       const i = q.findIndex((m) => (m.text || "") === t);
       const j = st2.findIndex((m) => (m.text || "") === t);
       const images = i >= 0 ? q[i]?.images : j >= 0 ? st2[j]?.images : undefined; // queue row images -> fallback bubble
-      bubbles.push(found ?? { bubble: { role: "user", text: t, ...(images ? { images } : {}) } });
+      bubbles.push(found ?? { bubble: { role: "user", text: t, ts: Date.now(), ...(images ? { images } : {}) } });
       if (i >= 0) q.splice(i, 1);
       if (j >= 0) st2.splice(j, 1);
     }
@@ -1120,6 +1155,22 @@ export function rebuildMessages(msg: MessagesFrame): void {
     );
     // Wire entries (TranscriptItem, role is a string union) asserted one by one into the local discriminated union: field names share the same origin (host/state.ts)
     s.items = msg.messages.map((m) => ({ ...m }) as SessionItem).concat(pendingPhases);
+    // The seal marker indexes the array this frame just threw away: a stale position would
+    // splice the rebuilt history into the next loop group, or leave the in-flight rows
+    // unfolded. Re-anchor on the tail; while a turn streams, its unsealed rows are the tail
+    // rows without an entryId (those are backfilled at agent_end).
+    let start = s.items.length;
+    if (s.streaming) {
+      let i = s.items.length - 1;
+      while (i >= 0) {
+        const it = s.items[i];
+        const persisted = "entryId" in it && Boolean(it.entryId);
+        if (it.role === "loop" || it.role === "user" || persisted) break;
+        i--;
+      }
+      start = i + 1;
+    }
+    s.turnItemStart = start;
   });
   // The transcript was wholesale-replaced (after compact/branch/navigate): the entry tree necessarily changed, invalidate it so the next render refetches
   const st = useAppStore.getState();

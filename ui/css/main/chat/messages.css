@@ -39,7 +39,7 @@
 
 .act .caret { color: var(--faint); }
 
-.act.change .sep { color: var(--faint); flex: none; }
+.act.change .sep, .chg-item .sep { color: var(--faint); flex: none; }
 
 #statusCard .sc-head .icon-btn { pointer-events: auto; }
 
@@ -307,7 +307,7 @@
 }
 /* Keep controls above the bubble-edge fade. Only their backing surface feathers
    at the left and bottom; the icons themselves stay fully opaque. */
-.ub-actions { position: relative; z-index: 1; background: transparent; }
+.ub-actions { position: relative; z-index: 1; background: transparent; width: 100%; }
 .ub-actions::before {
   content: "";
   position: absolute;
@@ -320,10 +320,18 @@
   pointer-events: none;
 }
 .ub-actions > * { position: relative; z-index: 1; }
+/* Send time (UserMsg.tsx): left end of the bubble's action row, on the icon line — the row is
+   as wide as the bubble, so the stamp starts at the bubble's left edge. It rides the row's own
+   hover reveal (below) instead of carrying its own. */
+.ub-actions .ub-time {
+  margin-right: auto;
+  font-size: var(--ui-fs-xs); color: var(--faint);
+  white-space: nowrap;
+}
 .msg.user:hover .ub-actions, .ub-actions:focus-within,
 .bsw:hover .bsw-actions, .bsw-actions:focus-within { opacity: 1; pointer-events: auto; }
 .bsw-actions:empty { display: none; }
-.ub-actions .q-btn, .bsw-actions .q-btn { width: 20px; height: 20px; flex: none; color: var(--faint); }
+.ub-actions .q-btn, .bsw-actions .q-btn { width: 20px; height: 20px; flex: none; color: var(--text); }
 .ub-actions .q-btn:disabled, .bsw-actions .q-btn:disabled { opacity: .45; cursor: default; }
 .ub-actions .q-btn:disabled:hover, .bsw-actions .q-btn:disabled:hover { background: none; color: var(--faint); }
 
@@ -361,23 +369,17 @@
 
 .act.t2 { margin-top: 28px; }
 
-/* Concise style's reveal toggle (WorkLine): a bare chevron right of the working row; the
-   row itself is not clickable (the toggle is the only target) */
+/* Live segment's reveal toggle (LiveProcess/ChatLoading): a bare chevron at the row's end;
+   the whole intent row is the click target, the chevron only mirrors the state */
 .act-more {
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   margin-left: 2px; padding: 0; border: 0; background: none;
-  color: var(--faint); cursor: pointer;
+  color: var(--text); cursor: pointer;
 }
-.act-more:hover { color: var(--dim); }
-
-/* Concise live view: with the process rows hidden, /outputs land back to back, so each
-   following output gets one blank body line on top of the 14px .msg gap */
-/* :has() variants see through the .bsw branch-pager wrapper (WebKit 15.4+) */
-.turn-flow.concise-live :is(.msg.assistant, .bsw:has(> .msg.assistant)) + :is(.msg.assistant, .bsw:has(> .msg.assistant)) { margin-top: calc(var(--ui-fs-md) * 1.6 + 14px); }
 
 .act.err { color: var(--err); }
 
-/* Read-only merge block header (ReadonlyGroup.tsx): bottom gap halved — the block header
+/* Procedure fold header (ReadonlyGroup.tsx): bottom gap halved — the block header
    leads into its own expansion body, the default 16px label gap reads too loose here */
 .act.ro { margin-bottom: 8px; }
 
@@ -539,7 +541,7 @@
 
 /* Minimal arrow appearing after the row tail on whole-row hover (shared by edit/terminal rows), 6px from the label content (aligned with thinking rows) */
 .act.edit .ed-arrow, .cmd .ed-arrow, .act.change .ed-arrow, .chg-item .ed-arrow, .act.read .ed-arrow, .act.mcp .ed-arrow, .act.ro .ed-arrow, .act.think .ed-arrow {
-  color: var(--faint); opacity: 0; transition: opacity var(--dur-snap) var(--swift); flex: none;
+  color: var(--text); opacity: 0; transition: opacity var(--dur-snap) var(--swift); flex: none;
   display: inline-flex; align-items: center;
 }
 
@@ -678,6 +680,12 @@
 /* File-type small icon */
 .f-ic { display: inline-flex; align-items: center; gap: 4px; }
 
+/* The colored file glyphs read ~1.4px high beside the file name: the icon box centers on the
+   13px line box, but the glyph ink rides low in that box (ascent 13 / descent 3, line-height
+   normal leaves no half-leading), and .pi-ic's vertical-align: -0.15em is ignored inside a
+   flex row (controls.css). Drop the icon to the text's optical center. */
+.f-ic > .pi-ic { transform: translateY(1px); }
+
 /* Body paragraphs (semibold + inline code) */
 .step-title {
   font-size: var(--ui-fs-md); font-weight: 600; line-height: 1.65;
@@ -767,7 +775,7 @@
 .cmd-card-foot button {
   display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none;
   font-family: var(--ui-font, var(--sans)); font-size: var(--ui-fs-sm); line-height: 1;
-  color: var(--dim); cursor: pointer;
+  color: var(--text); cursor: pointer;
 }
 
 .cmd-card-foot button:hover, .cmd-card-foot button:focus-visible { color: var(--text); }

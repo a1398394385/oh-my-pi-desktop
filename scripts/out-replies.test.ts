@@ -234,12 +234,12 @@ describe("out:// reply rows and the read-only fold", () => {
     expect(hasReplyCard(out)).toBe(false);
   });
 
-  // Concise live view drops process rows; a reply card is output, so it must survive
-  test("concise mode keeps the reply card and drops the surrounding rows", () => {
+  // The live segment collects process rows; a reply card is output, so it must survive
+  test("live segment keeps the reply card and collects the surrounding rows", () => {
     const user: ChatItem = { role: "user", text: "go" };
     const read = tool({ name: "read", toolCallId: "r9", args: { path: "/x" } });
     const reply = tool({ name: "write", toolCallId: "w5", args: { path: "out://d.md" }, replies: ["hi"] });
-    const out = renderItems([user, read, reply] as ChatItem[], "", [], undefined, { hideProcessFrom: 0 });
+    const out = renderItems([user, read, reply] as ChatItem[], "", [], undefined, { liveFrom: 1 });
     expect(hasReplyCard(out)).toBe(true);
     expect(hasToolRow(out)).toBe(false);
   });

@@ -4,8 +4,8 @@
 //                    a visible process (that position is the injection point).
 //   AdvisorCard    — everything else, at the turn's tail: severity counts in the head,
 //                    per-note T-n only inside the expanded body.
-// Collapsing the process (concise live view) routes the blockers here too — the renderer
-// decides, the card only counts what it was given.
+// A collapsed process group lifts its notes here too — the renderer decides, the card only
+// counts what it was given.
 import { useEffect, useState } from "react";
 import type { AdvisorNote, AdvisorSeverity } from "../../types/session";
 import { useAppStore } from "../../store/index";
@@ -81,7 +81,7 @@ export function AdvisorInline({ notes }: { notes: AdvisorNote[] }) {
  */
 export default function AdvisorCard({ notes }: { notes: AdvisorNote[] }) {
   const style = useAppStore((st) => st.uiPrefs.agentProcessStyle);
-  const autoOpen = style === "detailed" || style === "expanded" || style === "all";
+  const autoOpen = style === "detailed" || style === "expanded";
   const [open, setOpen] = useState(autoOpen);
   useEffect(() => setOpen(autoOpen), [autoOpen]);
   const counts = SEV_ORDER.map((s) => [s, notes.filter((n) => (n.severity ?? "concern") === s).length] as const).filter(

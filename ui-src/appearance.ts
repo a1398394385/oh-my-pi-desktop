@@ -82,7 +82,10 @@ function prefsProjection(src: unknown): Partial<UiPrefs> {
   const out: Partial<UiPrefs> = {};
   if (!src || typeof src !== "object") return out;
   const s = src as Record<string, unknown>;
-  if (s.agentProcessStyle === "standard" || s.agentProcessStyle === "detailed" || s.agentProcessStyle === "expanded" || s.agentProcessStyle === "all" || s.agentProcessStyle === "concise") {
+  // The "all" style was removed; land its stored value on the nearest surviving style
+  // ("complete") instead of dropping the preference.
+  if (s.agentProcessStyle === "all") out.agentProcessStyle = "expanded";
+  if (s.agentProcessStyle === "standard" || s.agentProcessStyle === "detailed" || s.agentProcessStyle === "expanded" || s.agentProcessStyle === "concise") {
     out.agentProcessStyle = s.agentProcessStyle;
   }
   if (typeof s.uiFont === "string") out.uiFont = s.uiFont;
@@ -92,6 +95,7 @@ function prefsProjection(src: unknown): Partial<UiPrefs> {
   if (typeof s.codeWrap === "boolean") out.codeWrap = s.codeWrap;
   if (typeof s.showThinking === "boolean") out.showThinking = s.showThinking;
   if (typeof s.expandToolOutput === "boolean") out.expandToolOutput = s.expandToolOutput;
+  if (typeof s.holdSidebarHints === "boolean") out.holdSidebarHints = s.holdSidebarHints;
   if (typeof s.terminalInheritProfile === "boolean") out.terminalInheritProfile = s.terminalInheritProfile;
   if (typeof s.terminalShared === "boolean") out.terminalShared = s.terminalShared;
   if (typeof s.terminalFont === "string") out.terminalFont = s.terminalFont;

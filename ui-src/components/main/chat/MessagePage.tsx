@@ -26,14 +26,12 @@
 // - "Scroll to end" button: permanently at the stream's end (the former ensureScrollBottom);
 //   visibility toggled imperatively from scroll events; shown only when the latest content
 //   sits more than 120px below the viewport (high-frequency scrolling stays out of React state).
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, isJunkPlaceholder, send, effZoom } from "../../../store";
 import { REMOTE } from "../../../store/layout";
 import Icon from "../../../Icon";
 import TodoCard from "../../chat/TodoCard";
-import { WorkSec } from "../../chat/WorkLine";
-import ChatLoading from "../../chat/ChatLoading";
 import AssistantMsg from "../../chat/AssistantMsg";
 import MsgRail from "../../chat/MsgRail";
 import FindBar from "../../chat/FindBar";
@@ -632,53 +630,41 @@ export default function MessagePage() {
     </button>
   );
 
-  // Concise style's live view (ui.prefs.agentProcessStyle === "concise"): while the turn
-  // runs only the working row, the spinner+intent and the assistant outputs stay on
-  // screen; liveStart is that turn's user row, liveProcess tells whether there is a
-  // process to reveal behind the working row's chevron. Finished turns and the post-turn
-  // layout are untouched, so the toggle state resets per turn (and per session).
-  const turnStartAt = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath)?.turnStartAt : null));
+  // Live segment: while the turn runs, everything after its last output belongs to the
+  // current segment (items.tsx liveFrom) and renders through LiveProcess — intent row on
+  // top, collapsed body, working-time row at the bottom. Output itself never folds, so it
+  // stays in the flow above that row.
   const processStyle = useAppStore((st) => st.uiPrefs.agentProcessStyle);
   // Ctrl+T / Ctrl+O decide whether the running row stays outside the folds (items.tsx
   // liveOpen reads them via getState), so the memo below must re-run when they flip.
   const showThinking = useAppStore((st) => st.uiPrefs.showThinking);
   const expandToolOutput = useAppStore((st) => st.uiPrefs.expandToolOutput);
-  const [conciseOpen, setConciseOpen] = useState(false);
-  useEffect(() => {
-    setConciseOpen(false);
-  }, [sessionId, turnStartAt]);
-  const conciseLive = processStyle === "concise" && streaming;
   const list = items ?? [];
-  let liveStart = -1;
-  let liveProcess = false;
-  if (conciseLive) {
+  let liveFrom: number | undefined;
+  if (streaming) {
+    let lastUser = -1;
     for (let i = list.length - 1; i >= 0; i--) {
       if (list[i].role === "user") {
-        liveStart = i;
+        lastUser = i;
         break;
       }
     }
-    for (let i = liveStart + 1; i < list.length && !liveProcess; i++) liveProcess = list[i].role !== "assistant";
+    let lastOut = -1;
+    for (let i = list.length - 1; i > lastUser; i--) {
+      const it = list[i];
+      if (it.role === "assistant" && !isJunkPlaceholder(it.text)) {
+        lastOut = i;
+        break;
+      }
+    }
+    liveFrom = lastOut >= 0 ? lastOut + 1 : lastUser + 1;
   }
-  const hideProcessFrom = conciseLive && !conciseOpen && liveStart >= 0 ? liveStart : undefined;
 
-  const streamTail =
-    streaming || draft ? (
-      <>
-        <WorkSec
-          onToggle={liveProcess ? () => setConciseOpen((v) => !v) : undefined}
-          open={conciseOpen}
-        />
-        {/* Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown):
-            the engine memoizes per block, so appending to the growing draft only re-parses
-            the last incomplete block — NOT the full-text-per-frame re-parse that froze the
-            app in BUG-007 round 3 (that was the old custom pipeline, pre-streamdown). */}
-        {draft && !isJunkPlaceholder(draft) && (
-          <AssistantMsg text={draft} streaming />
-        )}
-        {streaming && <ChatLoading />}
-      </>
-    ) : null;
+  // Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown): the
+  // engine memoizes per block, so appending to the growing draft only re-parses the last
+  // incomplete block — NOT the full-text-per-frame re-parse that froze the app in BUG-007
+  // round 3 (that was the old custom pipeline, pre-streamdown).
+  const streamTail = draft && !isJunkPlaceholder(draft) ? <AssistantMsg text={draft} streaming /> : null;
   // Message rail data + row elements in one memo (Batch 2): renderItems fills the rail
   // entries as a side effect of the traversal, so both come from the same pass; the memo
   // keys on items/draft/streamTail (streamTail covers the streaming flip) and the row
@@ -690,9 +676,9 @@ export default function MessagePage() {
   // showThinking/expandToolOutput ride the same reason (liveOpen's fold opt-out).
   const { nodes, railEntries } = useMemo(() => {
     const entries: RailEntry[] = [];
-    const out = renderItems(items ?? [], "", entries, streamTail, { hideProcessFrom, branchNav });
+    const out = renderItems(items ?? [], "", entries, streamTail, { liveFrom, branchNav });
     return { nodes: out, railEntries: entries };
-  }, [items, draft, streamTail, processStyle, showThinking, expandToolOutput, hideProcessFrom, branchNav]);
+  }, [items, draft, streamTail, processStyle, showThinking, expandToolOutput, liveFrom, branchNav]);
 
   if (!hasSession) {
     return (

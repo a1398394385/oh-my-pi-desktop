@@ -14,6 +14,9 @@ export function useGroupExpandVersion(): number {
   return useSyncExternalStore(
     (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
     () => version,
+    // Server-render snapshot: the smoke tests render the message tree with react-dom/server,
+    // where a missing third argument throws instead of returning the initial version.
+    () => version,
   );
 }
 

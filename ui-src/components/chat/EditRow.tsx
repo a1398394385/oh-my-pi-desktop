@@ -11,7 +11,7 @@ import { bumpGroupExpand, useGroupExpandVersion, rdExpand, chgExpand } from "../
 export { rdExpand, chgExpand };
 import Icon from "../../Icon";
 import LightweightDiff from "../diff/LightweightDiff";
-import { FileChip, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub, ownDiffOf } from "./parts";
+import { FileChip, FileCounts, Counts, EditBrief, useLift, openFileDiffInSidebar, uniqueFiles, Ellip, ReadRow, Spin, patchActiveItem, patchGroupSub, ownDiffOf } from "./parts";
 import { splitPath } from "./util";
 import { useTypewriter, useLineReveal } from "./typewriter";
 import { t } from "../../i18n";
@@ -103,9 +103,19 @@ function StreamDiff({ preview }: { preview: NonNullable<ToolItem["streamDiff"]> 
 export default memo(function EditRow({ item, streamText, streamDiff }: { item: ToolItem; files?: string[]; added?: number; removed?: number; running?: boolean; diffContent?: string; streamText?: string; streamDiff?: ToolItem["streamDiff"] }) {
   const path = filesOf(item)[0] || "";
   const [closing, close, liftRef] = useLift();
-  const open = item.diffExpanded && !closing;
+  // Live body of a call whose args still stream. It follows the "expand tool output while
+  // running" switch (Ctrl+O) — with the switch off a running write/edit shows only its label
+  // row and the finished diff stays behind a click.
+  // `diffExpanded === false` is a user collapse: it hides this preview too, otherwise the
+  // "collapsed" row keeps showing a body (the preview branch used to fire on any falsy flag,
+  // so the row could never be closed while running)
+  const expandLive = useAppStore((st) => st.uiPrefs.expandToolOutput);
+  const previewing = expandLive && item.diffExpanded === undefined && !!(streamText || streamDiff);
+  const open = (!!item.diffExpanded || previewing) && !closing;
   const toggle = () => {
     if (item.diffExpanded) close(() => patchActiveItem(item, (it) => { it.diffExpanded = false; }));
+    // The preview body has no wrapper for useLift to animate: commit the collapse directly
+    else if (previewing) patchActiveItem(item, (it) => { it.diffExpanded = false; });
     else expandDiff(item, path, (fn) => patchActiveItem(item, fn));
   };
   return (
@@ -124,13 +134,29 @@ export default memo(function EditRow({ item, streamText, streamDiff }: { item: T
         </span>
       </div>
       {/* Live body while the call's args still stream; the settled call renders its own diff below */}
-      {streamText && !item.diffExpanded && <StreamBody text={streamText} />}
-      {!streamText && streamDiff && !item.diffExpanded && <StreamDiff preview={streamDiff} />}
+      {previewing && streamText && <StreamBody text={streamText} />}
+      {previewing && !streamText && streamDiff && <StreamDiff preview={streamDiff} />}
       {/* Body stays mounted while closing (gated on diffExpanded alone) so useLift can animate its height before the commit unmounts it */}
       {item.diffExpanded && path && <EditBrief item={item} path={path} liftRef={liftRef} />}
     </>
   );
 });
+
+// Chip lane of a multi-file event: one chip + its own line counts per file, a dim · between
+// files — adjacent chips alone read as one run of text once each carries its own +n/−n
+function FileChipLane({ item, files }: { item: ToolItem; files: string[] }) {
+  return (
+    <span className="chips-lane">
+      {files.map((f, i) => (
+        <span key={f}>
+          {i > 0 && <><span className="sep">·</span>{" "}</>}
+          <FileChip path={f} />
+          <FileCounts item={item} path={f} />{" "}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 // In-group row UI of the change group: the full edit label (label text + file + line counts + expand arrow), minus the leading pencil icon
 function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; onToggle: () => void }) {
@@ -139,17 +165,15 @@ function ChangeRowUI({ sub, open, onToggle }: { sub: ToolItem; open: boolean; on
   return (
     <div className="chg-item" style={{ cursor: "pointer" }} onClick={onToggle}>
       {files.length > 1 ? (
-        // One event touching multiple files (apply_patch): file chips laid out on a single
-        // line, overlong lines end with an ellipsis
-        <span className="chips-lane">
-          {files.map((f) => <FileChip path={f} key={f} />)}{" "}
-        </span>
+        // One event touching multiple files (apply_patch): file chips with their own line
+        // counts laid out on a single line, overlong lines end with an ellipsis
+        <FileChipLane item={sub} files={files} />
       ) : path ? (
         <FileChip path={path} nameClass="ed-name" onNameClick={() => openFileDiffInSidebar(path)} />
       ) : (
         sub.name || sub.text || ""
       )}
-      <Counts item={sub} />
+      {files.length > 1 ? null : <Counts item={sub} />}
       {sub.running && <Spin />}
       <span className={"ed-arrow" + (open ? " open" : "")}>
         <Icon name="chevronRight" />
@@ -234,12 +258,10 @@ function ChangeSingle({ item }: { item: ToolItem }) {
         {files.length > 0 && (
           <>
             {" "}<span className="sep">·</span>{" "}
-            <span className="chips-lane">
-              {files.map((f) => <FileChip path={f} key={f} />)}{" "}
-            </span>
+            <FileChipLane item={item} files={files} />
           </>
         )}
-        <Counts item={item} />
+        {files.length > 1 ? null : <Counts item={item} />}
         <span className={"ed-arrow" + (open ? " open" : "")}>
           <Icon name="chevronRight" />
         </span>

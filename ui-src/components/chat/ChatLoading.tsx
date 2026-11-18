@@ -102,7 +102,10 @@ function SmoothThought({ text }: { text: string }) {
   );
 }
 
-export default function ChatLoading() {
+// onToggle/expanded: the live segment's reveal switch (LiveProcess). The whole row is the
+// target, the chevron only mirrors the state — pointing down while collapsed because the
+// body unfolds below this row.
+export default function ChatLoading({ onToggle, expanded }: { onToggle?: () => void; expanded?: boolean } = {}) {
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   // The reply's own text streaming is the one phase the items cannot name (assistantDraft is not
   // a row yet): pass it so the row shows the writing glyph and the "outputting" label instead of
@@ -112,10 +115,21 @@ export default function ChatLoading() {
   const activity = !s?.streaming || !s.items ? { icon: "think" } : liveActivity(s.items, writing);
   const thinking = activity.thinking || "";
   return (
-    <div className="flex items-center min-h-[20px] py-[2px]" role="status" aria-label={text || t("chat.loadingAria")}>
+    <div
+      className={"flex items-center min-h-[20px] py-[2px]" + (onToggle ? " cursor-pointer" : "")}
+      role="status"
+      aria-label={text || t("chat.loadingAria")}
+      aria-expanded={onToggle ? !!expanded : undefined}
+      onClick={onToggle}
+    >
       <Icon name={activity.icon} size={16} className="chat-loading-icon" />
       {text && <span className="ml-[7px] text-ui-sm text-dim truncate shrink-0 shimmer" title={text}>{text}</span>}
       {thinking.trim() && <SmoothThought text={thinking} />}
+      {onToggle && (
+        <span className="act-more" title={t(expanded ? "chat.hideProcess" : "chat.showProcess")}>
+          <Icon name={expanded ? "chevronUp" : "chevronDown"} />
+        </span>
+      )}
     </div>
   );
 }

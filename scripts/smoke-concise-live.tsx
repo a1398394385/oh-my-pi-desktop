@@ -1,8 +1,8 @@
-// MessagePage's concise live view (ui.prefs.agentProcessStyle === "concise"). Mounts the real page with a fake
-// streaming session and asserts the process rows are hidden, the reveal toggle brings
-// them back, and a finished turn renders exactly like before (no toggle, rows visible).
+// Live segment of the running turn (MessagePage liveFrom + LiveProcess): the intent row
+// sits above the working-time row, the rows produced since the turn's last output fold into
+// the intent row's body, outputs stay unfolded, and a finished turn drops the live row.
+// "concise" keeps the same folding but refuses to reveal the live segment.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-concise-live.tsx
-//      STYLE=standard ... (regression guard: other styles keep the old live view)
 // The dynamic imports below are required, not style: ui-smoke-env must install the DOM
 // globals before the store modules evaluate.
 import { strict as assert } from "node:assert";
@@ -28,8 +28,7 @@ const { createRoot } = await import("react-dom/client");
 const { default: MessagePage } = await import("../ui-src/components/main/chat/MessagePage");
 import type { ChatItem, OpenSession } from "../ui-src/types/session";
 
-const PATH = "/tmp/concise-live";
-const STYLE = process.env.STYLE || "concise";
+const PATH = "/tmp/live-segment";
 
 function seed(streaming: boolean, items: ChatItem[]): OpenSession {
   return {
@@ -40,17 +39,19 @@ function seed(streaming: boolean, items: ChatItem[]): OpenSession {
   } as unknown as OpenSession;
 }
 
+// One segment before the output (a read) and one after it (an edit plus a read): the second
+// is the live segment, so the intent row must carry a toggle and those two rows.
 const items = [
   { role: "user", text: "改一下设置" },
-  ...Array.from({ length: 3 }, (_, n) => ({ role: "tool", name: "read", toolCallId: "r" + n, args: { path: "/f" + n }, text: "" })),
+  { role: "tool", name: "read", toolCallId: "r0", args: { path: "/f0" }, text: "" },
   { role: "assistant", text: "第一段输出" },
   { role: "tool", name: "edit", toolCallId: "e1", args: { path: "/a.ts" }, text: "" },
-  { role: "assistant", text: "第二段输出" },
+  { role: "tool", name: "read", toolCallId: "r1", args: { path: "/b.ts" }, text: "" },
 ] as ChatItem[];
 
 useAppStore.setState({
   activePath: PATH,
-  uiPrefs: { ...useAppStore.getState().uiPrefs, lang: "zh-CN", agentProcessStyle: STYLE as never },
+  uiPrefs: { ...useAppStore.getState().uiPrefs, lang: "zh-CN", agentProcessStyle: "standard" },
   openSessions: new Map([[PATH, seed(true, items)]]),
 });
 
@@ -60,50 +61,69 @@ const root = createRoot(host);
 const click = async (el: Element) => {
   await act(async () => (el as HTMLElement).dispatchEvent(new win.MouseEvent("click", { bubbles: true }) as unknown as Event));
 };
-const toolRows = () => document.querySelectorAll("#stream .act .lbl, #stream .act.ro").length;
-const outputs = () => [...document.querySelectorAll("#stream .msg.assistant .md-body, #stream .msg.assistant")].length;
 const toggle = () => document.querySelector("#stream .act-more") as HTMLElement | null;
+const body = () => document.querySelector("#stream .ro-body");
+const workRow = () => document.querySelector("#stream #workSec");
+const intentRow = () => document.querySelector("#stream .chat-loading-icon");
 
 try {
   await act(async () => { root.render(createElement(MessagePage)); });
 
-  const flow = document.querySelector("#stream .turn-flow");
-  assert.ok(flow, "实时回合渲染");
-  assert.ok(document.querySelector("#stream #workSec"), "工作中用时保留");
-  assert.ok(document.querySelector("#stream .chat-loading-icon"), "转圈保留");
-  if (STYLE !== "concise") {
-    assert.ok(!flow!.className.includes("concise-live"), "非简洁风格不带 concise-live");
-    assert.ok(toolRows() > 0, "非简洁风格照常显示工具行");
-    assert.equal(toggle(), null, "非简洁风格没有展开按钮");
-    console.log(`✓ 非简洁风格（${STYLE}）实时视图保持原状`);
-    throw { done: true };
-  }
-  assert.ok(flow!.className.includes("concise-live"), "简洁实时流带 concise-live");
-  assert.equal(toolRows(), 0, "工具行全部隐藏");
-  assert.equal(document.querySelectorAll("#stream .act.ro").length, 0, "只读折叠块隐藏");
-  assert.equal(outputs(), 2, "两段 output 保留");
-
-  const btn = toggle();
-  assert.ok(btn, "工作中行右侧出现展开按钮");
-  assert.equal(btn!.getAttribute("title"), "展开处理过程", "收起态提示展开");
-  await click(btn!);
-  assert.ok(toolRows() > 0, "点击后展示处理过程");
-  assert.equal(toggle()!.getAttribute("title"), "收起处理过程", "展开态提示收起");
-  assert.ok(!document.querySelector("#stream .turn-flow")!.className.includes("concise-live"), "展开后不再压空行");
+  // Running turn: both the intent row and the working-time row are on screen, the segment
+  // before the output already folded, and the live segment sits behind the toggle.
+  assert.ok(workRow(), "工作中用时保留");
+  assert.ok(intentRow(), "intent 行动态图标保留");
+  assert.equal(document.querySelectorAll("#stream .act.ro").length, 1, "输出前的事件折成一张卡");
+  assert.ok(document.querySelector("#stream .msg.assistant"), "output 仍内联");
+  assert.ok(toggle(), "实时段有展开开关");
+  assert.equal(toggle()!.getAttribute("title"), "展开处理过程", "收起态提示展开");
+  assert.equal(body(), null, "收起态不渲染展开体");
 
   await click(toggle()!);
-  assert.equal(toolRows(), 0, "再次点击收起");
+  const open = body();
+  assert.ok(open, "点击后展开实时段");
+  assert.ok(open!.textContent!.includes("b.ts"), "展开体内出现读取行");
+  // standard keeps edits out of the fold: the edit row is on screen, not inside the body
+  assert.ok(!open!.textContent!.includes("a.ts"), "编辑行不进实时展开体");
+  assert.ok(document.querySelector("#stream")!.textContent!.includes("a.ts"), "编辑行独立显示");
+  assert.equal(toggle()!.getAttribute("title"), "收起处理过程", "展开态提示收起");
 
-  // finished turn: unchanged rendering, no toggle
+  await click(toggle()!);
+  assert.equal(body(), null, "再次点击收起");
+
+  // concise: same folding plus edits inside the segment; the body still opens on click
   await act(async () => {
-    useAppStore.setState({ openSessions: new Map([[PATH, seed(false, items)]]) });
+    useAppStore.setState((s) => ({ uiPrefs: { ...s.uiPrefs, agentProcessStyle: "concise" } }));
   });
-  assert.ok(toolRows() > 0, "运行结束后处理过程照常显示");
-  assert.equal(toggle(), null, "运行结束后没有展开按钮");
+  assert.ok(toggle(), "concise 同样提供展开开关");
+  assert.ok(workRow(), "concise 仍保留工作中用时");
+  // the edit moved into the (shut) segment, so it is off screen until the body opens
+  assert.ok(!document.querySelector("#stream")!.textContent!.includes("a.ts"), "concise 把编辑行收进实时段");
+  await click(toggle()!);
+  assert.ok(body()!.textContent!.includes("a.ts"), "concise 展开后编辑行在段内");
+  await click(toggle()!);
+  assert.equal(body(), null, "concise 再点收起");
 
-  console.log(`✓ 简洁实时视图（style=${STYLE}）：隐藏/展开/收起/结束回落全部正确`);
-} catch (e) {
-  if (!(e && typeof e === "object" && "done" in e)) throw e;
+  // detailed: no live body and no toggle — the rows lay out inline instead
+  await act(async () => {
+    useAppStore.setState((s) => ({ uiPrefs: { ...s.uiPrefs, agentProcessStyle: "detailed" } }));
+  });
+  assert.equal(toggle(), null, "detailed 不提供展开开关");
+  assert.equal(body(), null, "detailed 不渲染展开体");
+  assert.ok(document.querySelector("#stream")!.textContent!.includes("b.ts"), "detailed 的读取行内联");
+
+  // Finished turn: the live row disappears and every segment is a card
+  await act(async () => {
+    useAppStore.setState((s) => ({
+      uiPrefs: { ...s.uiPrefs, agentProcessStyle: "standard" },
+      openSessions: new Map([[PATH, seed(false, items)]]),
+    }));
+  });
+  assert.equal(workRow(), null, "结束后工作中用时消失");
+  assert.equal(toggle(), null, "结束后没有展开开关");
+  assert.equal(document.querySelectorAll("#stream .act.ro").length, 2, "每段各一张卡");
+
+  console.log("✓ 实时段：intent 行 + 展开体 + 工作行顺序正确，output 不折叠，简洁档同样可展开");
 } finally {
   await act(async () => { root.unmount(); });
   win.happyDOM.close();

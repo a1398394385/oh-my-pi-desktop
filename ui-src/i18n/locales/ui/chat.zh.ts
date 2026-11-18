@@ -56,8 +56,10 @@ export const chatZh = {
   readFilesMultiple: "多个文件",
   // ---- read-only merge block (ReadonlyGroup.tsx roSummaryText) ----
   roExplored: "探索了 ",
+  roEditedLead: "编辑了 {{count}} 个文件，同时探索了 ",
+  roEditedOnly: "编辑了 {{count}} 个文件",
   roSep: "、",
-  roFiles: "{{count}} 份文件",
+  roFiles: "{{count}} 个文件",
   roTasks: "{{count}} 项任务",
   roCmds: "{{count}} 条命令",
   // ---- TTSR injection notice (TtsrRow.tsx) ----

@@ -22,7 +22,6 @@ export {
   evictOpenSessions,
   isJunkPlaceholder,
   toolExpandKey,
-  openProcessBlocksNow,
   sealRunItems,
   dropQueueMsg,
   editQueueMsg,

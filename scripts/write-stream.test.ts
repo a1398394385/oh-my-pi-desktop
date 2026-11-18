@@ -128,6 +128,17 @@ describe("streamed write row in the store", () => {
     expect(items()[0].running).toBe(false);
     expect(items()[0].diffContent).toBe("+body");
   });
+
+  test("a failed request settles the preview row instead of leaving it spinning", () => {
+    seed();
+    applyEvent({ type: "event", sessionId: SID, kind: "tool_args", name: "write", toolCallId: "c1", text: "body", path: "x.ts" });
+    expect(items()[0].running).toBe(true);
+    // The request failed while the call's arguments were still streaming: the tool never
+    // started, so no tool_update follows and the run goes on after the base's retry.
+    applyEvent({ type: "event", sessionId: SID, kind: "error", text: "upstream_error" });
+    expect(items()[0].running).toBe(false);
+    expect((useAppStore.getState().openSessions.get(PATH)!.items as ChatItem[]).map((i) => i.role)).toEqual(["tool", "error"]);
+  });
 });
 
 describe("a streaming write row stays out of the change group", () => {
