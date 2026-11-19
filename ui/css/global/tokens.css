@@ -93,6 +93,10 @@
   --blue:      #6fb3d8;
   --purple:    #a86fe0;
   --accent:    #4a9eff;   /* the site's only accent color (switches/focus rings/selected icons) */
+  /* Focus edge of the composer dock, a mix of --text so both themes track their own ink;
+     the dock swaps in the session accent once the session has a title. The lit speaker
+     button reuses it (falling back here only while the session has no title). */
+  --ring-focus: color-mix(in srgb, var(--text) 55%, transparent);
   /* Bash-mode (composer ! prefix) color. This is the fallback; the composer overrides --bash
      per session with another slot of the same 8-slot palette (session-color.ts picks one that
      is not the input's own slot), so bash mode reads as a sibling mode rather than a fixed

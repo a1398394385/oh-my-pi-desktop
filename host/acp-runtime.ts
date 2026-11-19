@@ -4,20 +4,25 @@
 // acp-assembly.ts, re-exported below for the frozen importers).
 //
 // Since T6 the §5.2 table runs on both axes: the zone-size axis (rendered zone
-// tokens vs window × 35%) drives the pending-strong state — the ephemeral
-// annotation on every tier, and strong execution semantics for the next
-// compress once the active zone is past L1 (riding) or past L3 (always).
+// tokens vs window × 35%) drives the pending-strong state — strong execution
+// semantics for the next compress once the total is past L1 (riding) or past
+// L3 (always). pendingStrong is a derived state only: it never injects on its
+// own, never extends an injection, and never moves the milestone cursor.
 //
-// T7 adds the failure-exit set (spec §5.2/§5.3): ultimatum round counting
-// (anchored per request, judged at the request's turn_end), the level-3 forced
-// compression (armed for the next request via AgentSession.setForcedToolChoice
-// — named where the face supports it; the openai-completions transport turns
-// that same push into required+single-tool where it does not, so both spec
-// forms ride one channel; a throw = neither form = degrade), the total-volume
-// guard line (projected total vs window − effectiveReserveTokens), and
-// degraded passthrough (ephemeral stopped, compress rejected at the entry —
-// customTools cannot be unregistered after session creation). Boundary-derived
-// degradation is recomputed on branch resync and can therefore recover.
+// Total arithmetic (§5.1): every "context total" consumer reads the last
+// provider-reported prompt size anchored to the local count of the request it
+// answered — P_anchor + (L_current − L_anchor). L covers the same complete
+// request on both sides (non-message context + the final projected messages,
+// ephemeral and synthetic status pair included). A projection that did not
+// change therefore reports exactly P_anchor; new messages add their local
+// delta and a compression subtracts its local delta. Without an anchor (first
+// request, model/branch change) the local completeness estimate is used.
+//
+// T7 adds the failure-exit state (spec §5.2/§5.3): ultimatum round counting
+// (anchored per request, judged at turn_end), the desktop's host-enforced forced
+// round (which leaves the provider tool list unchanged), an optional provider
+// hard-pin hook for other integrations, the total-volume guard, and degraded
+// passthrough. Boundary-derived degradation is recomputed on branch resync and can recover.
 //
 // v10 (pull mode + short refs): the manifest leaves the ephemeral for the
 // context_status tool — the no-tier range injects nothing at all and active tiers
@@ -49,6 +54,7 @@
 // and pass through untouched.
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import { Tokenizer, effectiveReserveTokens } from "@oh-my-pi/pi-agent-core";
+import { calculatePromptTokens } from "@oh-my-pi/pi-agent-core/compaction";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import {
 	assertToolPairing,
@@ -102,11 +108,11 @@ export interface AcpRuntimeDeps {
 	countImage?: CountImage;
 	/** Encrypted-reasoning charge per assistant message (catalog thinking-replay axis); omitted = signature bytes. */
 	countSignatureTokens?: CountSignatureTokens;
-	/** Whole-list count over the final projected messages: the ratio calibration's local basis (§5.2). */
+	/** Whole-list count over the final projected messages: the local side of the provider anchor arithmetic (§5.1). */
 	countMessages?: CountMessages;
 	/** Journal write channel for compaction blocks (SessionManager, spec §9). */
 	sink: AcpSummarySink;
-	/** Journal read for refs and provider calibration. */
+	/** Journal read for short refs and the provider prompt anchor. */
 	getEntries: () => readonly SessionEntry[];
 	/** Current branch only; defaults to the already branch-scoped test fixture feed. */
 	getBranch?: () => readonly SessionEntry[];
@@ -114,9 +120,9 @@ export interface AcpRuntimeDeps {
 	contextWindow?: number;
 	/**
 	 * Non-message part of the request (system prompt + tools + skills + injected
-	 * context), from the base's own breakdown. The tier axis judges the real
-	 * request size, so this is added to the message-side total; absent = 0
-	 * (messages-only, the pre-fix behavior the smokes rely on).
+	 * context), from the base's own breakdown. It rides the local side of the
+	 * anchor arithmetic, so a roster change lands in the delta; absent = 0
+	 * (messages-only, the fixture behavior).
 	 */
 	nonMessageTokens?: () => number;
 	params?: Partial<AcpParams>;
@@ -130,15 +136,7 @@ export interface AcpRuntimeDeps {
 	 * L3).
 	 */
 	resolveParams?: (contextWindow: number) => AcpParams;
-	/**
-	 * Level-3 force channel (spec §5.2/§10): must call
-	 * AgentSession.setForcedToolChoice("compress_context") — the named form on
-	 * faces that support it, and form ② for free on openai-completions faces
-	 * (the transport narrows tools to the forced one + "required" when the face
-	 * lacks named support). A throw means neither form exists: the runtime
-	 * degrades (form ③).
-	 */
-	forceCompressTool?: () => void;
+
 	/**
 	 * Degrade side effect (spec §5.3/§10): fired once when ACP exits this
 	 * session, after the projection and tools have already stopped. The base
@@ -172,7 +170,7 @@ export interface AcpRoundStatus {
 	zoneTokens: number;
 	/** Active-zone tokens, post-prune values (spec §8). */
 	activeTokens: number;
-	/** Full request size — non-message context (system prompt, tools, skills, injected context) + active blocks + rendered zone — the tier axis reads this. */
+	/** Full request total: provider anchor + local delta (§5.1); the tier axis and every threshold read this. */
 	projectedTokens: number;
 	/** Live active-block count (dashboard surfaces). */
 	activeBlocks: number;
@@ -182,6 +180,9 @@ export interface AcpRoundStatus {
 	/** Rendered manifest section (largest first), including the exemption trailer when truncated. */
 	manifestText: string;
 }
+
+/** The round's own model-facing injection (§7 v10.4): none, a once-per-crossing milestone, or the per-request forced ephemeral. */
+type RoundInjection = { kind: "none" } | { kind: "message"; message: AgentMessage; milestoneKey: number | null };
 
 export class AcpRuntimeState {
 	/**
@@ -232,8 +233,9 @@ export class AcpRuntimeState {
 	 * Highest delivered milestone, packed as rank×1000 + line (spec §7 v10.4):
 	 * the L1..L3 segment injects once per crossed sub-line, never standing. The
 	 * rank term carries the L2→L3 crossing, where the line index saturates — the
-	 * ultimatum must still land once. Reset to 0 whenever the zone leaves the
-	 * milestone mode (none / pending-strong / forced) or drops back a tier.
+	 * ultimatum must still land once. Reset to 0 when a forced request injects
+	 * its per-request ephemeral or when the tier drops; pendingStrong never
+	 * resets it (it is a derived state with no injection of its own).
 	 * In-memory only: a host restart re-fires once — harmless, self-healing.
 	 */
 	#delivered = 0;
@@ -247,6 +249,10 @@ export class AcpRuntimeState {
 	#forcedFor = 0;
 	/** Armed force: the next successful compress executes forced-strong (meta.forced, spec §5.2). */
 	#forcedExecution = false;
+	/** True from the first forced request through its turn_end, including provider retries. */
+	#forcedRoundDelivered = false;
+	/** A successful compression anywhere in the delivered forced turn. */
+	#forcedRoundSuccess = false;
 	/** Forced success: the next projection must come back under the guard line or degrade (spec §5.3). */
 	#expectRelief = false;
 	/**
@@ -272,16 +278,21 @@ export class AcpRuntimeState {
 	/** Tokens of the latest context_status return; the compress it feeds records it (stats telemetry). */
 	#lastStatusTokens: number | null = null;
 	/**
-	 * Learned scale between the provider's billed message tokens and the local
-	 * count of the same request (§5.2 drift). A ratio, not a fixed offset: the
-	 * gap tracks the encoding's error rate over the content (2026-11-03: a
-	 * 269,442-token local projection billed 229,184 — −15%), so an offset learned
-	 * before a compression stops describing the shrunken active zone. Ratios
-	 * survive content changes; 1 = the local count is taken at face value.
+	 * Provider prompt anchor (§5.1): the last reported input size and the local
+	 * count of the exact request it answered. The total is
+	 * `promptTokens + local - localTokens`; the anchor is dropped whenever the
+	 * pairing can no longer hold (model rebind, branch resync, degrade).
 	 */
-	#ratio = 1;
-	/** Previous request's basis awaiting the provider's report: entry count at projection + local message tokens. */
-	#pendingRatio: { entries: number; localTokens: number } | null = null;
+	#anchor: { promptTokens: number; localTokens: number } | null = null;
+	/** Basis of the latest projection awaiting the provider's report: local count + anchor entry + branch tail at that time. */
+	#lastProjection: {
+		anchorEntryId: string | null;
+		localTokens: number;
+		branchTailId: string | null;
+		branchLength: number;
+	} | null = null;
+	/** Anchored total of the latest request (status/fallback readers); 0 until the first projection. */
+	#lastTotal = 0;
 
 	constructor(deps: AcpRuntimeDeps) {
 		this.#deps = deps;
@@ -488,6 +499,9 @@ export class AcpRuntimeState {
 		this.#ensureBranchCurrent(branch);
 		if (this.degraded) return [...view];
 		this.#syncRefs();
+		// Pair the newest provider report with the request it answered before the
+		// total is measured (the report answers the previous projection).
+		this.#tryAdoptAnchor(branch);
 		const source = annotateView(view, branch, this.#alignFrom);
 		this.lastSource = source;
 		this.lastBlocks = splitBlocks(
@@ -504,100 +518,183 @@ export class AcpRuntimeState {
 		// its tool_use body (the pair filter keys on the result id, spec §6 v10).
 		const dropped = this.#refs.droppedStatusResults;
 		const kept = new Set(this.lastBlocks.filter((b) => !this.compressed.has(b.id) && !dropped.has(b.id)).map((b) => b.id));
-		const out = projectContext(source, kept, this.zone, this.#deps.countTokens, (id) => this.#refs.label(id), (err) =>
+		const base = projectContext(source, kept, this.zone, this.#deps.countTokens, (id) => this.#refs.label(id), (err) =>
 			safeStderr(`[ACP] projection pairing gap (passing through; the provider layer re-pairs the wire):`, err),
 		);
-		if (!this.#manifestOverride) this.#refreshRoundStatus(true);
-		if (this.roundStatus) this.#anchorRound(this.roundStatus);
-		if (this.degraded) return [...view]; // the relief check degraded mid-projection
-		const rs = this.roundStatus;
-	// v10.1 synthetic status pair: ultimatum-copy requests (the L3 tier, an
-	// armed force's pinned request, a guard-line trigger) carry a synthetic
-	// context_status pair at the active-zone end so the model already holds the
-	// manifest (§5.2/§6 v10.1); never journaled, never a candidate. Pinned
-	// requests cannot call context_status (tool_choice pins compress_context), so
-	// point at the manifest above instead.
-	const forcedNow = this.#forcedFor === this.#requestSeq || this.#guardAt === this.#requestSeq;
-	if (rs && (rs.tier === "L3" || forcedNow)) {
-		const pair = renderSyntheticStatusPair(rs, this.params, forcedNow);
-		assertToolPairing(pair); // the pair rides as a complete tool round (spec §6 v10.1)
-		out.push(pair[0], pair[1]);
-	}
-	if (rs && (rs.tier !== "none" || rs.pendingStrong)) {
-		// §7 v10.4: the tier segment (L1..L3) injects once per crossed milestone
-		// line instead of standing, so a long L2/L3 stay cannot wear the hint out
-		// by repeating it every request. The cursor rides two axes because the
-		// line index saturates at L3: crossing into L3 must still deliver the
-		// ultimatum once. Pending-strong and forced requests keep the per-request
-		// ephemeral and reset the cursor so a later climb re-warns from the first
-		// line.
-		if (rs.tier !== "none" && !rs.pendingStrong && !forcedNow) {
-			const rank = rs.tier === "L1" ? 1 : rs.tier === "L2" ? 2 : 3;
-			const key = rank * 1_000 + milestoneFor(rs.projectedTokens, this.params); // steps < 1000 keeps the pack unambiguous
-			// Only a tier drop resets: an in-tier dip (prune shrink) must not
-			// re-announce a lower line it already passed.
-			if (rank < Math.floor(this.#delivered / 1_000)) this.#delivered = 0;
-			if (key % 1_000 > 0 && key > this.#delivered) {
-				this.#delivered = key;
-				this.#hintCount++;
-				out.push(renderMilestoneMessage(rs, rs.tier, key % 1_000, this.params));
-			}
-		} else {
-			this.#delivered = 0;
-			this.#hintCount++;
-			out.push(renderEphemeralMessage(rs, this.params, forcedNow));
+		const active = this.activeBlocks();
+		const activeTokens = active.reduce((n, b) => n + b.tokens, 0);
+		// The tier the injections carry is itself part of the total: seed the
+		// round from the un-injected projection and stabilize below.
+		if (!this.#manifestOverride) {
+			this.#refreshRoundStatus(true, undefined, this.#anchoredTotal(this.#localRequestTokens(base, activeTokens + this.#zoneTokens())));
 		}
-	} else if (rs) {
-		this.#delivered = 0;
-	}
+		let forcedNow = false;
+		let injection: RoundInjection = { kind: "none" };
+		let out: AgentMessage[] = base;
+		let localTokens = this.#localRequestTokens(base, activeTokens + this.#zoneTokens());
+		// A pinned test manifest suspends auto-generation and every injection.
+		const rs0 = this.#manifestOverride ? null : this.roundStatus;
+		if (rs0) {
+			this.#beginRequest();
+			let rs = rs0;
+			// The injections add tokens and the guard breach adds injections: the
+			// fixed point is bounded by the four tiers, so a short loop settles it.
+			for (let pass = 0; pass < 4; pass++) {
+				forcedNow = this.#forcedNow(rs);
+				injection = this.#injectionFor(rs, forcedNow);
+				const built = this.#assembleRequest(base, rs, forcedNow, injection);
+				out = built;
+				localTokens = this.#localRequestTokens(out, activeTokens + this.#zoneTokens());
+				const total = this.#anchoredTotal(localTokens);
+				const plan = computeRoundPlan(total, this.params, { tokens: this.#zoneTokens(), limitTokens: this.#zoneLimitTokens });
+				if (total === rs.projectedTokens && plan.tier === rs.tier && plan.method === rs.method && plan.pendingStrong === rs.pendingStrong) {
+					break;
+				}
+				rs = { ...rs, tier: plan.tier, method: plan.method, pendingStrong: plan.pendingStrong, projectedTokens: total };
+			}
+			this.roundStatus = rs;
+			this.#judgeRound(rs);
+			if (this.degraded) return [...view]; // the relief check degraded mid-projection
+			this.#commitInjection(rs, injection);
+		}
 		this.lastProjected = out;
-		// Calibrate against the PREVIOUS request's report first: the provider's
-		// contextSnapshot for this request does not exist yet.
-		this.#calibrateRatio();
-		const localTokens = this.#deps.countMessages?.(out);
-		if (localTokens !== undefined) this.#pendingRatio = { entries: this.#deps.getEntries().length, localTokens };
+		this.#lastTotal = this.#anchoredTotal(localTokens);
+		this.#lastProjection = {
+			anchorEntryId: this.#latestAnchor(branch)?.entryId ?? null,
+			localTokens,
+			branchTailId: branch.at(-1)?.id ?? null,
+			branchLength: branch.length,
+		};
 		return out;
 	}
 
 	/**
-	 * Learn the provider's local-vs-reported scale from the last request's
-	 * contextSnapshot. `promptTokens` covers system + tools + messages and
-	 * `nonMessageTokens` is the base's own system/tools estimate, so the
-	 * remainder is what the provider actually billed for messages — the part a
-	 * local block sum has to match. Learned as a ratio of that remainder to the
-	 * local count of the same projection, so a later compression (which changes
-	 * the content, not the encoding) keeps the calibration valid. Clamped so one
-	 * anomalous usage report cannot swing tier judgment.
+	 * Newest journaled assistant turn carrying a provider prompt report: the
+	 * anchor of the total arithmetic (§5.1). Aborted/error turns report partial
+	 * or zero usage and never qualify, and `promptTokens` is the provider's
+	 * input size — never `usage.totalTokens`, which adds the output side.
 	 */
-	#calibrateRatio(): void {
-		const pending = this.#pendingRatio;
-		if (!pending || pending.localTokens <= 0) return;
-		const entries = this.#deps.getEntries();
-		let snapshot: { promptTokens: number; nonMessageTokens: number } | undefined;
-		for (let i = entries.length - 1; i >= pending.entries; i--) {
-			const entry = entries[i];
+	#latestAnchor(branch: readonly SessionEntry[]): { entryId: string; promptTokens: number } | null {
+		for (let i = branch.length - 1; i >= 0; i--) {
+			const entry = branch[i];
 			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
-			const s = entry.message.contextSnapshot;
-			if (s) {
-				snapshot = s;
-				break;
-			}
+			const message = entry.message;
+			if (message.stopReason === "aborted" || message.stopReason === "error") continue;
+			const promptTokens = message.contextSnapshot?.promptTokens ?? (message.usage ? calculatePromptTokens(message.usage) : 0);
+			if (promptTokens > 0) return { entryId: entry.id, promptTokens };
 		}
-		if (!snapshot) return;
-		const billed = snapshot.promptTokens - snapshot.nonMessageTokens;
-		this.#ratio = Math.max(0.7, Math.min(1.6, billed / pending.localTokens));
-		this.#pendingRatio = null;
+		return null;
 	}
 
 	/**
-	 * Anchor the failure-exit machine to the request just projected (spec §5.2
-	 * round attribution / §5.3): the L3 ultimatum counts as delivered with this
-	 * request, and a projected total over the guard line arms the direct force
-	 * path (no ultimatum wait). Also resolves the post-force relief check: a
-	 * forced success must bring the total back under the line.
+	 * Bind the provider's latest report to the local count of the request it
+	 * answered — the previous projection. A new anchor turn is the signal that
+	 * the report arrived: an errored or aborted turn leaves the previous anchor
+	 * in place, and a model rebind or branch resync clears the pairing first.
 	 */
-	#anchorRound(rs: AcpRoundStatus): void {
+	#tryAdoptAnchor(branch: readonly SessionEntry[]): void {
+		const latest = this.#latestAnchor(branch);
+		const last = this.#lastProjection;
+		if (!latest || !last || latest.entryId === last.anchorEntryId) return;
+		// The recorded request must still describe this branch: a rewind or an
+		// in-place branch rewrite leaves no pairing, so the anchor is dropped.
+		const tail = last.branchLength > 0 ? branch[last.branchLength - 1] : undefined;
+		if ((tail?.id ?? null) !== last.branchTailId) {
+			this.#anchor = null;
+			return;
+		}
+		this.#anchor = { promptTokens: latest.promptTokens, localTokens: last.localTokens };
+	}
+
+	/**
+	 * Local side of the anchor arithmetic: the non-message context plus the
+	 * complete projected request. `countMessages` prices every message the
+	 * provider receives (zone render, active zone, ephemeral, synthetic status
+	 * pair) and the live runtime always binds it (createAcpRuntime/rebindModel);
+	 * `fallbackTokens` is the block-only projection for fixtures that bind no
+	 * message counter — view-only injections have no blocks there.
+	 */
+	#localRequestTokens(messages: readonly AgentMessage[], fallbackTokens: number): number {
+		const nonMessage = this.#deps.nonMessageTokens?.() ?? 0;
+		const counted = this.#deps.countMessages?.(messages);
+		return nonMessage + (counted ?? fallbackTokens);
+	}
+
+	/** Provider anchor plus the local change since the anchored request (§5.1). */
+	#anchoredTotal(localTokens: number): number {
+		const anchor = this.#anchor;
+		if (!anchor) return localTokens;
+		return Math.max(0, anchor.promptTokens + localTokens - anchor.localTokens);
+	}
+
+	/** Anchor the failure-exit machine to this request (spec §5.2 round attribution). */
+	#beginRequest(): void {
 		this.#requestSeq++;
+		if (this.#forcedFor > 0 && this.#requestSeq >= this.#forcedFor) this.#forcedRoundDelivered = true;
+	}
+
+	/** True when this request must carry the per-request forced ephemeral and status pair. */
+	#forcedNow(rs: AcpRoundStatus): boolean {
+		return this.#forcedRoundDelivered || (this.#guardLineTokens > 0 && rs.projectedTokens > this.#guardLineTokens);
+	}
+
+	/**
+	 * The round's own injection (§7 v10.4): forced requests keep the per-request
+	 * ephemeral; otherwise only a crossed L2..L3 milestone injects, once. The
+	 * L1..L2 band and tier none stay silent even while pendingStrong is set —
+	 * pendingStrong is a derived state, and other injections (and context_status)
+	 * carry its note from the latest round state.
+	 */
+	#injectionFor(rs: AcpRoundStatus, forcedNow: boolean): RoundInjection {
+		if (forcedNow) return { kind: "message", message: renderEphemeralMessage(rs, this.params, true), milestoneKey: null };
+		const tier = rs.tier;
+		if (tier === "none") return { kind: "none" };
+		const rank = tier === "L1" ? 1 : tier === "L2" ? 2 : 3;
+		// A tier drop clears the cursor; an in-tier dip does not re-announce.
+		const delivered = rank < Math.floor(this.#delivered / 1_000) ? 0 : this.#delivered;
+		const milestone = milestoneFor(rs.projectedTokens, this.params);
+		const key = rank * 1_000 + milestone; // steps < 1000 keeps the pack unambiguous
+		if (milestone > 0 && key > delivered) {
+			return { kind: "message", message: renderMilestoneMessage(rs, tier, milestone, this.params), milestoneKey: key };
+		}
+		return { kind: "none" };
+	}
+
+	/** Base projection + synthetic status pair (ultimatum / guard) + the round injection. */
+	#assembleRequest(base: AgentMessage[], rs: AcpRoundStatus, forcedNow: boolean, injection: RoundInjection): AgentMessage[] {
+		const messages = [...base];
+		// L3 and host-enforced forced requests carry a synthetic context_status pair
+		// at the active-zone end so the model already has the manifest; the forced
+		// tool_call gate rejects context_status, so it cannot fetch one during that turn.
+		if (rs.tier === "L3" || forcedNow) {
+			const pair = renderSyntheticStatusPair(rs, this.params, forcedNow);
+			assertToolPairing(pair); // the pair rides as a complete tool round (spec §6 v10.1)
+			messages.push(pair[0], pair[1]);
+		}
+		if (injection.kind === "message") messages.push(injection.message);
+		return messages;
+	}
+
+	/** Commit the injection's cursor effects once the round settled. */
+	#commitInjection(rs: AcpRoundStatus, injection: RoundInjection): void {
+		if (injection.kind === "message") {
+			this.#delivered = injection.milestoneKey ?? 0;
+			this.#hintCount++;
+			return;
+		}
+		const rank = rs.tier === "L3" ? 3 : rs.tier === "L2" ? 2 : rs.tier === "L1" ? 1 : 0;
+		// A tier drop clears the cursor; an in-tier dip does not re-announce.
+		if (rank < Math.floor(this.#delivered / 1_000)) this.#delivered = 0;
+	}
+
+	/**
+	 * Judge the settled round against the failure exits (spec §5.2 round
+	 * attribution / §5.3): the L3 ultimatum counts as delivered with this
+	 * request, and a total over the guard line arms the direct force path (no
+	 * ultimatum wait). Also resolves the post-force relief check: a forced
+	 * success must bring the total back under the line.
+	 */
+	#judgeRound(rs: AcpRoundStatus): void {
 		if (this.#expectRelief) {
 			this.#expectRelief = false;
 			if (this.#guardLineTokens > 0 && rs.projectedTokens > this.#guardLineTokens) {
@@ -616,24 +713,25 @@ export class AcpRuntimeState {
 	 * compression arms the level-3 force for the next request; a forced turn
 	 * that still ends without success (validation failures, illegal output, or
 	 * an API-error turn — error turns emit turn_end with no tool call)
-	 * degrades. Successful rounds answer everything. Idle sessions never wake
+	 * counts another failure and may enter fallback. Successful rounds answer
 	 * the machine: no timers, no queues — the next request (whenever it comes)
 	 * consumes the armed force.
 	 */
 	onTurnEnd(): void {
 		if (this.degraded) return;
 		const req = this.#requestSeq;
-		const success = this.#successAt === req;
+		const forced = this.#forcedRoundDelivered;
+		const success = this.#successAt === req || (forced && this.#forcedRoundSuccess);
 		if (success) this.#forcedFailures = 0;
-		if (this.#forcedFor > 0 && req === this.#forcedFor) {
+		if (forced) {
 			this.#forcedFor = 0;
+			this.#forcedRoundDelivered = false;
+			this.#forcedRoundSuccess = false;
 			this.#forcedExecution = false;
 			if (!success) {
 				this.#forcedFailures++;
 				if (this.#forcedFailures < AcpRuntimeState.FORCE_FAILURE_LIMIT) {
-					return this.#armForce(
-						`forced turn without compression, retry ${this.#forcedFailures}/${AcpRuntimeState.FORCE_FAILURE_LIMIT} (request ${req})`,
-					);
+					return this.#armForcedRound();
 				}
 				// The ladder gave up: no degrade (the base raw chain stays pinned
 				// off), no more forcing. The host's fallback supervisor takes over
@@ -652,24 +750,21 @@ export class AcpRuntimeState {
 			// A successful compression answers any standing ultimatum and
 			// retires a stale arm (the queue was consumed by another path).
 			this.#forcedFor = 0;
+			this.#forcedRoundDelivered = false;
+			this.#forcedRoundSuccess = false;
 			this.#forcedExecution = false;
 			return;
 		}
 		// Fallback never re-arms the force: a new failed round would just repeat
 		// the three failures. The host owns recovery from here.
 		if (this.fallback) return;
-		if (this.#guardAt === req) return this.#armForce(`projected total over the guard line at request ${req}`);
-		if (this.#ultimatumAt === req) return this.#armForce(`L3 ultimatum unanswered by the turn of request ${req}`);
+		if (this.#guardAt === req) return this.#armForcedRound();
+		if (this.#ultimatumAt === req) return this.#armForcedRound();
 	}
 
-	/**
-	 * True while the session is servicing a level-3 forced round (spec §5.2):
-	 * the request was pinned to compress_context and the host-side tool_call
-	 * gate (acp-assembly.ts) blocks every other tool with an error pointing
-	 * back at the pinned call. Cleared by the turn-end judgment below.
-	 */
+	/** True while the current assistant turn is servicing the host-enforced L3 round. */
 	forcedRoundActive(): boolean {
-		return this.#forcedFor > 0 && this.#forcedFor === this.#requestSeq;
+		return this.#forcedRoundDelivered;
 	}
 
 	/** True after the L3 force ladder gave up; the host drives base manual compaction. */
@@ -698,8 +793,9 @@ export class AcpRuntimeState {
 		this.#forcedFailures = 0;
 		this.#fallbackAttemptEntries = -1;
 		this.#forcedFor = 0;
+		this.#forcedRoundDelivered = false;
+		this.#forcedRoundSuccess = false;
 		this.#forcedExecution = false;
-		this.#expectRelief = false;
 		this.#guardAt = 0;
 		this.#ultimatumAt = 0;
 	}
@@ -716,23 +812,11 @@ export class AcpRuntimeState {
 		safeStderr(`[ACP] fallback compaction failed; staying in fallback: ${reason}`, err);
 	}
 
-	/**
-	 * Arm the level-3 force for the next request (spec §5.2). The only
-	 * host-reachable channel is AgentSession.setForcedToolChoice: the named
-	 * form ① where the face supports it, and form ② for free on
-	 * openai-completions faces, whose transport degrades a named choice to
-	 * "required" + a single-tool list when the face lacks named support. A
-	 * throw means neither form exists (form ③): degrade immediately.
-	 */
-	#armForce(reason: string): void {
-		if (this.#forcedFor > 0) return; // never double-arm
-		try {
-			this.#deps.forceCompressTool?.();
-		} catch (err) {
-			this.degrade(`cannot force compress_context: ${reason} (spec §5.2 form ③)`, err);
-			return;
-		}
+	/** Arm the host-enforced level-3 round for the next request (spec §5.2). */
+	#armForcedRound(): void {
 		this.#forcedFor = this.#requestSeq + 1;
+		this.#forcedRoundDelivered = false;
+		this.#forcedRoundSuccess = false;
 		this.#forcedExecution = true;
 	}
 
@@ -744,6 +828,11 @@ export class AcpRuntimeState {
 		if (this.degraded) return;
 		this.degraded = true;
 		this.degradeReason = reason;
+		// The projection stops rewriting the request, so no local count can be
+		// paired with a later provider report.
+		this.#anchor = null;
+		this.#lastProjection = null;
+		this.#lastTotal = 0;
 		safeStderr(`[ACP] degraded for this session; base auto compaction stays pinned off: ${reason}`, err);
 		try {
 			this.#deps.onDegrade?.(reason);
@@ -762,6 +851,11 @@ export class AcpRuntimeState {
 		this.#compactionId = rebuilt.compactionId;
 		this.#alignFrom = rebuilt.alignFrom;
 		this.#baseSummary = rebuilt.baseSummary;
+		// Branch moves invalidate the pairing: the measured request no longer
+		// describes this branch, so the next total starts from the local estimate.
+		this.#anchor = null;
+		this.#lastProjection = null;
+		this.#lastTotal = 0;
 		this.#invalidateSnapshot();
 		this.zone = rebuilt.zone;
 		this.compressed.clear();
@@ -786,8 +880,12 @@ export class AcpRuntimeState {
 	 * budget (the base tool-result spill threshold): the manifest must fit it
 	 * or the base stage head/tails the list in the middle, so the same
 	 * whole-line cut applies and the dropped tail is exempt this round too.
+	 *
+	 * `totalTokens` is the anchored full-request total (§5.1), measured against
+	 * the complete projection by the caller: the tier axis and every threshold
+	 * read this one number.
 	 */
-	#refreshRoundStatus(adopt: boolean, maxManifestBytes?: number): AcpRoundStatus {
+	#refreshRoundStatus(adopt: boolean, maxManifestBytes: number | undefined, totalTokens: number): AcpRoundStatus {
 		const countTokens = this.#deps.countTokens;
 		const active = this.activeBlocks();
 		const protectedIds = this.protectedZone(active);
@@ -817,17 +915,15 @@ export class AcpRuntimeState {
 		const manifestIds = candidates.slice(0, keptCount).map((b) => b.id);
 		if (adopt) this.manifest = { ids: manifestIds, consumed: false };
 		const zoneTokens = this.#zoneTokens();
-		const activeTokens = Math.round(active.reduce((n, b) => n + b.tokens, 0) * this.#ratio);
-		// Real request size (spec §5.1): the non-message context rides every request too.
-		const projectedTokens = (this.#deps.nonMessageTokens?.() ?? 0) + activeTokens + zoneTokens;
-		const plan = computeRoundPlan(projectedTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
+		const activeTokens = active.reduce((n, b) => n + b.tokens, 0);
+		const plan = computeRoundPlan(totalTokens, this.params, { tokens: zoneTokens, limitTokens: this.#zoneLimitTokens });
 		const rs: AcpRoundStatus = {
 			tier: plan.tier,
 			method: plan.method,
 			pendingStrong: plan.pendingStrong,
 			zoneTokens,
 			activeTokens,
-			projectedTokens,
+			projectedTokens: totalTokens,
 			activeBlocks: active.length,
 			manifestIds,
 			exempted: lines.length - keptCount,
@@ -850,10 +946,11 @@ export class AcpRuntimeState {
 		}, 0);
 	}
 
-	/** Current same-counter estimate for the takeover result and W4 candidate check. */
+	/** Anchored total of the latest request; before the first projection, the local completeness estimate. */
 	projectedTokenEstimate(): number {
+		if (this.#lastTotal > 0) return this.#lastTotal;
 		const active = this.activeBlocks().reduce((n, b) => n + b.tokens, 0);
-		return (this.#deps.nonMessageTokens?.() ?? 0) + Math.round(active * this.#ratio) + this.#zoneTokens();
+		return this.#anchoredTotal((this.#deps.nonMessageTokens?.() ?? 0) + active + this.#zoneTokens());
 	}
 
 	countProjectedMessages(messages: readonly AgentMessage[]): number | undefined {
@@ -890,13 +987,13 @@ export class AcpRuntimeState {
 			};
 		}
 		const adopt = !this.#manifestOverride;
-		let rs = this.#refreshRoundStatus(adopt);
+		let rs = this.#refreshRoundStatus(adopt, undefined, projectedTokens);
 		let text = renderStatusText(rs, this.params);
 		if (maxBytes != null) {
 			const overflow = Buffer.byteLength(text, "utf-8") - maxBytes;
 			if (overflow > 0) {
 				const manifestBytes = Buffer.byteLength(rs.manifestText, "utf-8") - overflow;
-				rs = this.#refreshRoundStatus(adopt, Math.max(0, manifestBytes));
+				rs = this.#refreshRoundStatus(adopt, Math.max(0, manifestBytes), projectedTokens);
 				text = renderStatusText(rs, this.params);
 			}
 		}
@@ -918,9 +1015,10 @@ export class AcpRuntimeState {
 		this.#deps.countTokens = (s) => tokenizer.countTokens(s);
 		this.#deps.countSignatureTokens = signatureTokensOf(tokenizer);
 		this.#deps.countMessages = (msgs) => tokenizer.countMessages(msgs);
-		// The learned scale belongs to the previous provider's billing.
-		this.#ratio = 1;
-		this.#pendingRatio = null;
+		// The provider anchor belongs to the previous model's prompt accounting.
+		this.#anchor = null;
+		this.#lastProjection = null;
+		this.#lastTotal = 0;
 		this.#tokenMemo.clear();
 		this.#zoneRenderTokens.clear();
 		this.#applyWindow((model as { contextWindow?: number } | null | undefined)?.contextWindow ?? 0);
@@ -942,6 +1040,8 @@ export class AcpRuntimeState {
 		// reference would already read the post-write length by the time the delta is built.
 		const zoneBlocksBefore = this.zone.length;
 		const zoneTokensBefore = this.#zoneTokens();
+		// Anchored total of the current request (§5.1): the same number status() reports.
+		const projectedTokensBefore = this.projectedTokenEstimate();
 		const r = planCompression(
 			{
 				degraded: this.degraded,
@@ -952,10 +1052,9 @@ export class AcpRuntimeState {
 				zone: this.zone,
 				baseSummary: this.#baseSummary,
 				zoneTokens: zoneTokensBefore,
-				nonMessageTokens: this.#deps.nonMessageTokens?.() ?? 0,
+				projectedTokens: projectedTokensBefore,
 				zoneLimitTokens: this.#zoneLimitTokens,
 				forcedExecution: this.#forcedExecution,
-				ratio: this.#ratio,
 				params: this.params,
 				countTokens: this.#deps.countTokens,
 				resolve: (ref) => this.#refs.resolve(ref),
@@ -990,14 +1089,35 @@ export class AcpRuntimeState {
 		this.#forcedExecution = false;
 		if (plan.countedAsSuccess) {
 			this.#successAt = this.#requestSeq;
+			if (this.#forcedRoundDelivered) this.#forcedRoundSuccess = true;
 			this.#forcedFailures = 0;
 		}
-		// Projected context after the write (spec §4): active zone + the zone as it now stands.
-		// The delta is (after − before) over both, so a strong reset charges the replaced old
-		// zone to the change as well.
+		// Projected context after the write (spec §4): the anchored total moves by
+		// the local change of the projection — folded active blocks out, the new
+		// rendered zone block in (a strong reset charges the replaced zone too).
 		const zoneTokensAfter = this.#zoneTokens();
-		// Non-message context is untouched by a compression: add it back for the tier judgment.
-		const projectedTokensAfter = (this.#deps.nonMessageTokens?.() ?? 0) + plan.activeTokensAfter + zoneTokensAfter;
+		const projectedTokensAfter = Math.max(
+			0,
+			projectedTokensBefore + zoneTokensAfter + plan.activeTokensAfter - zoneTokensBefore - plan.activeTokensBefore,
+		);
+		const tierAfter = computeTier(projectedTokensAfter, this.params);
+		// The same turn may call context_status next: publish the post-write total
+		// immediately (anchored base + local delta), not on the next projection.
+		this.#lastTotal = projectedTokensAfter;
+		if (this.roundStatus) {
+			const roundPlan = computeRoundPlan(projectedTokensAfter, this.params, {
+				tokens: zoneTokensAfter,
+				limitTokens: this.#zoneLimitTokens,
+			});
+			this.roundStatus = {
+				...this.roundStatus,
+				...roundPlan,
+				zoneTokens: zoneTokensAfter,
+				activeTokens: plan.activeTokensAfter,
+				projectedTokens: projectedTokensAfter,
+				activeBlocks: this.activeBlocks().length,
+			};
+		}
 		return {
 			ok: true,
 			blockId: blockLabel,
@@ -1006,12 +1126,12 @@ export class AcpRuntimeState {
 			kept: { blocks: plan.keep.length, tokens: plan.keepTokens },
 			delta: {
 				blocks: this.zone.length - zoneBlocksBefore - plan.compressedIds.length,
-				tokens: projectedTokensAfter - (plan.activeTokensBefore + zoneTokensBefore),
+				tokens: projectedTokensAfter - projectedTokensBefore,
 			},
 			zoneBlocksFolded: plan.method === "strong" ? zoneBlocksBefore : 0,
 			activeTokensAfter: plan.activeTokensAfter,
 			projectedTokensAfter,
-			tier: computeTier(projectedTokensAfter, this.params),
+			tier: tierAfter,
 			countedAsSuccess: plan.countedAsSuccess,
 			...(plan.warning ? { warning: plan.warning } : {}),
 		};

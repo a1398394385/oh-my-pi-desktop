@@ -163,9 +163,12 @@ export default function MainColumn() {
       for (const sub of subs) void sub.then((un) => un());
     };
   }, []);
+  // The session's accent is published on <main> (not just the dock) so the message column
+  // resolves the same --ring-focus the input edge shows; see the lit speaker button.
   return (
       <main
         id="main"
+        style={accent ? ({ "--session-accent": accent } as CSSProperties) : undefined}
         onDragEnter={(e) => {
           if (!e.dataTransfer.types.includes("Files")) return;
           e.preventDefault();
@@ -220,7 +223,7 @@ export default function MainColumn() {
               ref={dockRef}
               style={
                 accent
-                  ? ({ "--session-accent": accent, "--bash": bashAccent } as CSSProperties)
+                  ? ({ "--bash": bashAccent } as CSSProperties)
                   : undefined
               }
             >

@@ -239,7 +239,7 @@ describe("out:// reply rows and the read-only fold", () => {
     const user: ChatItem = { role: "user", text: "go" };
     const read = tool({ name: "read", toolCallId: "r9", args: { path: "/x" } });
     const reply = tool({ name: "write", toolCallId: "w5", args: { path: "out://d.md" }, replies: ["hi"] });
-    const out = renderItems([user, read, reply] as ChatItem[], "", [], undefined, { liveFrom: 1 });
+    const out = renderItems([user, read, reply] as ChatItem[], "", [], undefined, { live: true });
     expect(hasReplyCard(out)).toBe(true);
     expect(hasToolRow(out)).toBe(false);
   });

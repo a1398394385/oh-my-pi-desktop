@@ -211,7 +211,7 @@ describe("advisor rows in the chat flow", () => {
     expect((props(cards[0]).notes as { severity?: string }[]).map((n) => n.severity)).toEqual(["concern"]);
   });
 
-  test("liveFrom collects process rows but leaves advice inline", () => {
+  test("the live segment collects process rows but leaves advice inline", () => {
     setStyle("concise");
     const items = [
       { role: "user", text: "go" },
@@ -219,7 +219,7 @@ describe("advisor rows in the chat flow", () => {
       { role: "advisor", text: "", notes: batch.notes },
       { role: "assistant", text: "streaming output" },
     ] as ChatItem[];
-    const nodes = flat(renderItems(items, "", [], undefined, { liveFrom: 3 }));
+    const nodes = flat(renderItems(items, "", [], undefined, { live: true }));
     // the read after the output is collected into LiveProcess, never laid out inline
     expect(nodes.some((el) => (props(el).item as { role?: string } | undefined)?.role === "tool")).toBe(false);
     // advice is not process: its blocker stays readable in place

@@ -223,6 +223,8 @@ export interface TtsAudioFrame {
   text?: string;
   data?: string;
   mime?: string;
+  /** Echo of the speak_text request id: the UI drops frames for a cancelled reading. */
+  requestId?: number;
   hi?: string; // stamped frame
   seq?: number;
 }
@@ -232,6 +234,7 @@ export interface TtsFailedFrame {
   type: "tts_failed";
   sessionId: string;
   message: string;
+  requestId?: number;
   hi?: string; // stamped frame
   seq?: number;
 }

@@ -446,7 +446,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   // first). Disk time is absent on purpose — the pool snapshot has no activity timestamp.
   const poolRows: SessionInfo[] = [...poolSessions]
     .reverse()
-    .map((s) => ({ id: s.id, path: s.path, cwd: s.cwd, title: s.title }));
+    .map((s) => ({ id: s.id, path: s.path, cwd: s.cwd, title: s.title, firstMessage: s.firstMessage }));
 
   // Compute ⌘1~0 shortcut mapping (running first, unread fills in, order matches the list).
   // openSessions is read live from the store (its reference changes on every session write);

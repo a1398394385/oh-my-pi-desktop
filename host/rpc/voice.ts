@@ -29,7 +29,9 @@ export const voiceHandlers: Record<string, RpcHandler> = {
     void pushVoiceStatus(ws);
   },
   speak_text(ws, msg) {
-    void speakOnce(ws, String(msg.sessionId ?? ""), String(msg.text ?? ""));
+    // requestId echoes back on tts_audio/tts_failed so the UI can drop a reading the
+    // user cancelled while synthesis was still running.
+    void speakOnce(ws, String(msg.sessionId ?? ""), String(msg.text ?? ""), Number(msg.requestId ?? 0));
   },
   stt_download(ws) {
     void downloadDictationModel(ws);

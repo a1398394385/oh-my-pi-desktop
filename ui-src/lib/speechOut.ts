@@ -35,6 +35,17 @@ let clip: HTMLAudioElement | null = null;
 let chain: Promise<void> = Promise.resolve();
 let voicesReady = false;
 const voiceWaiters: Array<() => void> = [];
+/** Turn key of the one-shot reading the speaker button started (null = idle). */
+let oneShotKey: string | null = null;
+const oneShotListeners = new Set<() => void>();
+/** Id of the speaker-button request in flight; 0 = none, so late frames never match. */
+let speakRequestId = 0;
+
+function setOneShotKey(key: string | null): void {
+  if (oneShotKey === key) return;
+  oneShotKey = key;
+  oneShotListeners.forEach((notify) => notify());
+}
 
 if (synth) {
   const probe = () => {
@@ -170,6 +181,9 @@ export function playTtsClip(data: string, mime: string): void {
   stopTts();
   const el = new Audio(`data:${mime};base64,${data}`);
   clip = el;
+  // A finished or broken clip ends the lit speaker button (pause/cancel paths clear it themselves).
+  el.addEventListener("ended", () => endOneShot());
+  el.addEventListener("error", () => endOneShot());
   // Autoplay rejection after the request round-trip is not actionable (the click
   // already expressed intent); the next click retries.
   void el.play().catch(() => {});
@@ -182,11 +196,52 @@ export function setTtsDuck(on: boolean): void {
 
 /** One-shot speak (settings-page test button). Resolves false when no system voice exists. */
 export async function speakNow(text: string): Promise<boolean> {
-  if (!(await ensureVoices())) return false;
+  if (!(await ensureVoices())) {
+    endOneShot();
+    return false;
+  }
   buffer = "";
   speakSegment(text);
   flushTts();
+  // The reading ends when the serial queue drains (true after a cancel too).
+  void chain.then(() => endOneShot());
   return true;
+}
+
+/** Key of the turn being read aloud (the lit speaker button); null when idle. */
+export function getOneShotKey(): string | null {
+  return oneShotKey;
+}
+
+export function subscribeOneShot(notify: () => void): () => void {
+  oneShotListeners.add(notify);
+  return () => {
+    oneShotListeners.delete(notify);
+  };
+}
+
+/** Light the speaker button for `key` and return the request id to send with speak_text. */
+export function beginOneShot(key: string): number {
+  speakRequestId += 1;
+  setOneShotKey(key);
+  return speakRequestId;
+}
+
+/** Stop the reading and clear its button; a frame still in flight no longer matches. */
+export function cancelOneShot(): void {
+  stopTts();
+  endOneShot();
+}
+
+/** Clear the lit button and retire the request (host failure, tts_stop, playback end). */
+export function endOneShot(): void {
+  setOneShotKey(null);
+  speakRequestId = 0;
+}
+
+/** True when a tts_audio/tts_failed frame answers the reading the user is waiting for. */
+export function matchesOneShotRequest(requestId: number | undefined): boolean {
+  return speakRequestId !== 0 && requestId === speakRequestId;
 }
 
 /** Enumerate system voices for the settings-page picker (name + lang). */

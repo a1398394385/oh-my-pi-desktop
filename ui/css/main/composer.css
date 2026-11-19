@@ -15,11 +15,10 @@
   border: 0;
   border-radius: 16px;
   /* Ring color per state. Idle is fully neutral — no tint survives the pointer leaving.
-     Focus is the loud state: static white before the session is named, the session accent
-     after (which is also when the traveling band starts). */
+     Focus is the loud state: the global --ring-focus mix before the session is named, the
+     session accent after (which is also when the traveling band starts). */
   --ring-idle: var(--line-soft);
   --ring-hover: var(--line);
-  --ring-focus: color-mix(in srgb, var(--text) 55%, transparent);
   --ring-glow: var(--text);
   box-shadow: inset 0 0 0 1px var(--ring-idle);
   position: relative;
@@ -614,6 +613,12 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .turn-acts .q-btn:disabled { opacity: .45; cursor: default; }
 
 .turn-acts .q-btn:disabled:hover { background: none; color: var(--faint); }
+
+/* Speaker lit while its reply is being read: the composer's own edge color — the session
+   accent when <main> publishes one (MainColumn), the plain --ring-focus mix otherwise.
+   Hover keeps it (the generic .q-btn:hover would otherwise repaint it --text). */
+.turn-acts .q-btn.speaking,
+.turn-acts .q-btn.speaking:hover { color: var(--session-accent, var(--ring-focus)); }
 
 /* turn end time: height and centerline locked to 1.4em, text vertically centered via line-height: 1, absolutely flush top/bottom with the copy/fork button glyphs to the left */
 .turn-acts-time {

@@ -34,7 +34,7 @@ function snapshot(overrides: Partial<CompressSnapshot> = {}): CompressSnapshot {
 		zoneTokens: 0,
 		zoneLimitTokens: 0,
 		forcedExecution: false,
-		ratio: 1,
+		projectedTokens: 2_000,
 		params: PARAMS,
 		countTokens: (text) => text.length,
 		resolve: (ref) => ref,
@@ -48,7 +48,7 @@ type Case = { name: string; snap: CompressSnapshot; input: { keep?: string[]; su
 const CASES: Case[] = [
 	{ name: "degraded session (§5.3)", snap: snapshot({ degraded: true }), input: { summary: "s" } },
 	// Exactly at L1 rejects: the entry gate is strict-greater (§5.2 v13).
-	{ name: "active zone at L1", snap: snapshot({ active: [block("a1", 1_000)] }), input: { summary: "s" } },
+	{ name: "active zone at L1", snap: snapshot({ active: [block("a1", 1_000)], projectedTokens: 1_000 }), input: { summary: "s" } },
 	{ name: "no manifest (§6.1)", snap: snapshot({ manifest: null }), input: { summary: "s" } },
 	{ name: "consumed manifest (§6.1)", snap: snapshot({ manifest: { ids: ["a1"], consumed: true } }), input: { summary: "s" } },
 	{ name: "unknown keep id (§6.2)", snap: snapshot(), input: { keep: ["ghost"], summary: "s" } },
@@ -80,7 +80,7 @@ describe("compress_context rejection codes", () => {
 	});
 
 	test("one token past L1 plans instead of rejecting", () => {
-		const result = planCompression(snapshot({ active: [block("a1", 1_001)] }), { summary: "s" });
+		const result = planCompression(snapshot({ active: [block("a1", 1_001)], projectedTokens: 1_001 }), { summary: "s" });
 		expect("plan" in result).toBe(true);
 	});
 });

@@ -35,7 +35,7 @@ import { AcpRuntimeState } from "./acp-runtime.ts";
  */
 export const ACP_CONTEXT_BUDGET_PROMPT = `Context budget (ACP): follow these rules in priority order.
 
-A final notice (L3) or a request pinned to compress_context requires compression before other work. The voluntary checks below must not defer it. On a pinned request, use the supplied manifest; do not call context_status first.
+A final notice (L3) or a host-enforced forced round requires compression before other work. The voluntary checks below must not defer it. On a forced round, use the supplied manifest; the host blocks context_status and every other non-compress tool.
 
 Otherwise, consider compression at a settled work boundary when accumulated settled or redundant history is worth folding. This is not an obligation after every step. An exploration-to-implementation transition, plan approval, pre-implementation review, or a subagent result alone is not a compression trigger.
 
@@ -62,8 +62,6 @@ export function createAcpRuntime(opts: {
 	resolveParams?: (contextWindow: number) => AcpParams;
 	/** Non-message request part (system prompt + tools + skills + context); see AcpRuntimeDeps.nonMessageTokens. */
 	nonMessageTokens?: () => number;
-	/** Level-3 force channel (spec §5.2/§10): arms tool_choice on the live session. */
-	forceCompressTool?: () => void;
 	/** §5.3 degrade hook: fired once when ACP exits this session (observability; no settings write-back). */
 	onDegrade?: (reason: string) => void;
 }): AcpRuntimeState {
@@ -76,7 +74,7 @@ export function createAcpRuntime(opts: {
 		// bills no signature); the base counter owns that decision, so the block
 		// takes its increment instead of a host-side provider table.
 		countSignatureTokens: signatureTokensOf(tokenizer),
-		// Drift calibration basis: the same counter over the whole projected list.
+		// Local side of the provider anchor arithmetic: one counter over the whole projected list.
 		countMessages: (msgs) => tokenizer.countMessages(msgs),
 		// Persistence replaces image bytes with blob refs; measuring the ref itself
 		// would charge the unknown-size maximum instead of the actual pixel cost.
@@ -96,7 +94,6 @@ export function createAcpRuntime(opts: {
 		nonMessageTokens: opts.nonMessageTokens,
 		params: opts.params,
 		resolveParams: opts.resolveParams,
-		forceCompressTool: opts.forceCompressTool,
 		onDegrade: opts.onDegrade,
 	});
 }
@@ -208,10 +205,8 @@ export function createAcpProjectionExtension(
 			if (!base || !isOwner(ctx)) return undefined;
 			return takeoverBaseCompaction(ev, { ...base, state });
 		});
-		// Level-3 forced round (spec §5.2): tool_choice pins compress_context,
-		// but faces exist that ignore the pin (spec's compatibility findings) —
-		// every other tool call is blocked host-side with an error that points
-		// the model back at the pinned call, so the turn cannot drift away.
+		// Level-3 forced round: keep the provider tool list unchanged. The owner-only
+		// gate below rejects every tool call except compress_context with corrective text.
 		pi.on("tool_call", (ev, ctx) => {
 			if (!isOwner(ctx) || ev.toolName === "compress_context" || !state.forcedRoundActive()) return undefined;
 			return {

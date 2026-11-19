@@ -187,7 +187,8 @@ export function readSdkPrompt(fileName: string): string {
   if (text === undefined) throw new Error(`unknown SDK prompt: ${fileName}`);
   return text;
 }
-export const { resolveToCwd } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
+// Dynamic like every SDK import here: setProfile must precede the coding-agent graph.
+export const { resolveToCwd, resolveReadPath } = await import("@oh-my-pi/pi-coding-agent/tools/path-utils");
 // xd://propose dispatch metadata: the out-of-band plan-approval trigger keys off
 // it exactly like the base TUI's event-controller (host/plan-approve.ts).
 export const { writeDeviceDispatch } = await import("@oh-my-pi/pi-coding-agent/tools/resolve");

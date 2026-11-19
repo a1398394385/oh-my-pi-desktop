@@ -5,9 +5,8 @@
 // like expanded while the store opens every process block by default.
 // "concise" folds like standard and additionally starts the live segment collapsed
 // (LiveProcess) — that default is the only difference at render time.
-// renderItems' liveFrom hands the streaming turn's current segment to LiveProcess instead of
-// laying those rows out inline. Both renderItems branches (top-level flow and the child
-// container used by LoopGroup) must honour the segment gates.
+// renderItems' `live` flag hands the streaming turn's current segment to LiveProcess instead
+// of laying those rows out inline; the segment starts after the turn's last output or edit.
 // The dynamic imports are deliberate: the store module reads localStorage while
 // evaluating, so the happy-dom globals above must exist first (same shape as the
 // other UI smokes).
@@ -33,6 +32,7 @@ const { renderItems } = await import("../ui-src/components/chat/items");
 const { default: ReadonlyGroup } = await import("../ui-src/components/chat/ReadonlyGroup");
 const { default: AssistantMsg } = await import("../ui-src/components/chat/AssistantMsg");
 const { default: LiveProcess } = await import("../ui-src/components/chat/LiveProcess");
+const { default: OutReply } = await import("../ui-src/components/chat/OutReply");
 const { applyEvent } = await import("../ui-src/store/session");
 
 const setStyle = (v: AgentProcessStyle) =>
@@ -103,6 +103,21 @@ describe("agent process display style", () => {
     expect(scan([...edits2, ...reads2])).toEqual({ readonlyBlocks: 1, mergedGroups: 1, toolRows: 1 });
   });
 
+  test("every non-exception event folds, including task/wait/yield/ask", () => {
+    setStyle("standard");
+    const wait = tool({ name: "wait", toolCallId: "w1", args: { on: "subagent" } });
+    const spawned = tool({ name: "task", toolCallId: "t9", args: { prompt: "go" } });
+    const yielded = tool({ name: "yield", toolCallId: "y1", args: { result: "done" } });
+    // read + wait in one segment: one card, nothing laid out inline
+    expect(scan([reads2[0], wait])).toEqual({ readonlyBlocks: 1, mergedGroups: 0, toolRows: 0 });
+    expect(scan([spawned, yielded])).toEqual({ readonlyBlocks: 1, mergedGroups: 0, toolRows: 0 });
+
+    // ask folds too: its form renders outside the stream (MainColumn), so hiding the row
+    // never hides the question
+    const ask = tool({ name: "ask", toolCallId: "a1", args: {} });
+    expect(scan([reads2[0], ask, wait])).toEqual({ readonlyBlocks: 1, mergedGroups: 0, toolRows: 0 });
+  });
+
   test("detailed stops merging reads but keeps the other same-type groups", () => {
     setStyle("detailed");
     // no segment fold, no read-group merge: three reads stay three rows
@@ -143,9 +158,8 @@ describe("agent process display style", () => {
     expect(scan(edits2)).toEqual({ readonlyBlocks: 1, mergedGroups: 0, toolRows: 0 });
   });
 
-  test("liveFrom hands the current segment to LiveProcess, keeping outputs inline", () => {
+  test("the live segment starts after the turn's last output", () => {
     setStyle("standard");
-    // liveFrom = the first row after the turn's last output (index 3)
     const items = [
       { role: "user", text: "go" },
       ...reads2,
@@ -153,7 +167,7 @@ describe("agent process display style", () => {
       ...cmds2,
     ] as ChatItem[];
 
-    const nodes = flatten(renderItems(items, "", [], undefined, { liveFrom: 4 }));
+    const nodes = flatten(renderItems(items, "", [], undefined, { live: true }));
     const live = nodes.filter((el) => el.type === LiveProcess);
     expect(live).toHaveLength(1);
     expect(liveItemsOf(live[0])).toHaveLength(2);
@@ -164,25 +178,78 @@ describe("agent process display style", () => {
     expect(nodes.filter((el) => el.type === AssistantMsg)).toHaveLength(1);
   });
 
-  test("liveFrom keeps edits out of the live segment under standard", () => {
+  test("an edit cuts the live segment like an output", () => {
     setStyle("standard");
     const items = [
       { role: "user", text: "go" },
       { role: "assistant", text: "first" },
       ...cmds2,
       ...edits2,
+      ...reads2,
     ] as ChatItem[];
 
-    const nodes = flatten(renderItems(items, "", [], undefined, { liveFrom: 2 }));
+    const nodes = flatten(renderItems(items, "", [], undefined, { live: true }));
     const live = nodes.filter((el) => el.type === LiveProcess);
     expect(live).toHaveLength(1);
-    // only the commands are collected; the edits stay inline as their own changes group
-    expect(liveItemsOf(live[0]).map((it) => (it as ToolItem).name)).toEqual(["bash", "bash"]);
-    expect(nodes.some((el) => Array.isArray(rowProps(el).item?.group))).toBe(true);
+    // only the reads after the edit are collected
+    expect(liveItemsOf(live[0]).map((it) => (it as ToolItem).name)).toEqual(["read", "read"]);
+    // the commands before the edit folded into a card, the edits into their own group
+    expect(nodes.filter((el) => el.type === ReadonlyGroup)).toHaveLength(1);
+    expect(nodes.filter((el) => Array.isArray(rowProps(el).item?.group))).toHaveLength(1);
+  });
 
+  test("compress_context stands alone and cuts the segment", () => {
+    setStyle("standard");
+    const compact = tool({ name: "compress_context", toolCallId: "c1", args: { summary: "s" } });
+    const items = [
+      { role: "user", text: "go" },
+      { role: "assistant", text: "first" },
+      ...cmds2,
+      compact,
+      ...reads2,
+    ] as ChatItem[];
+
+    const nodes = flatten(renderItems(items, "", [], undefined, { live: true }));
+    // the milestone is not folded: its row renders on its own, above the live segment
+    const compactRow = nodes.find((el) => rowProps(el).item?.name === "compress_context");
+    expect(compactRow).toBeDefined();
+    // only the reads after it are collected; the commands before folded into a card
+    const live = nodes.filter((el) => el.type === LiveProcess);
+    expect(liveItemsOf(live[0]).map((it) => (it as ToolItem).name)).toEqual(["read", "read"]);
+    expect(nodes.filter((el) => el.type === ReadonlyGroup)).toHaveLength(1);
+  });
+
+  test("an out:// reply cuts the live segment like output", () => {
+    setStyle("standard");
+    const reply = tool({ name: "write", toolCallId: "o1", args: { path: "out://a.md" }, replies: ["hello"] });
+    const items = [
+      { role: "user", text: "go" },
+      { role: "assistant", text: "first" },
+      ...cmds2,
+      reply,
+      ...reads2,
+    ] as ChatItem[];
+
+    const nodes = flatten(renderItems(items, "", [], undefined, { live: true }));
+    const live = nodes.filter((el) => el.type === LiveProcess);
+    // only the reads after the reply are collected; the reply card stays inline
+    expect(liveItemsOf(live[0]).map((it) => (it as ToolItem).name)).toEqual(["read", "read"]);
+    expect(nodes.filter((el) => el.type === OutReply)).toHaveLength(1);
+    // the commands before the reply folded into their own card
+    expect(nodes.filter((el) => el.type === ReadonlyGroup)).toHaveLength(1);
+  });
+
+  test("concise keeps edits inside the live segment", () => {
     setStyle("concise");
-    const collected = flatten(renderItems(items, "", [], undefined, { liveFrom: 2 }));
-    expect(liveItemsOf(collected.filter((el) => el.type === LiveProcess)[0])).toHaveLength(4);
+    const items = [
+      { role: "user", text: "go" },
+      { role: "assistant", text: "first" },
+      ...reads2,
+      ...edits2,
+    ] as ChatItem[];
+    const nodes = flatten(renderItems(items, "", [], undefined, { live: true }));
+    const live = nodes.filter((el) => el.type === LiveProcess);
+    expect(liveItemsOf(live[0])).toHaveLength(4);
   });
 
   test("flat styles gather no live segment", () => {
@@ -193,7 +260,7 @@ describe("agent process display style", () => {
       ...cmds2,
     ] as ChatItem[];
 
-    const nodes = flatten(renderItems(items, "", [], undefined, { liveFrom: 2 }));
+    const nodes = flatten(renderItems(items, "", [], undefined, { live: true }));
     const live = nodes.filter((el) => el.type === LiveProcess);
     expect(live).toHaveLength(1);
     // nothing collected: the intent row has no body, the commands merge into one row

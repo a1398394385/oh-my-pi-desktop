@@ -1,6 +1,7 @@
-// Live segment of the running turn (MessagePage liveFrom + LiveProcess): the intent row
-// sits above the working-time row, the rows produced since the turn's last output fold into
-// the intent row's body, outputs stay unfolded, and a finished turn drops the live row.
+// Live segment of the running turn (renderItems `live` + LiveProcess): the intent row sits
+// above the working-time row, the rows produced since the turn's last cut (output, or an
+// edit outside concise) fold into the intent row's body, outputs stay unfolded, and a
+// finished turn drops the live row.
 // "concise" keeps the same folding but refuses to reveal the live segment.
 // Run: OMP_PROFILE=omp-desktop-test bun scripts/smoke-concise-live.tsx
 // The dynamic imports below are required, not style: ui-smoke-env must install the DOM

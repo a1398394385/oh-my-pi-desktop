@@ -29,25 +29,27 @@ export interface AcpRoundStatusFields {
 	manifestText: string;
 }
 
-/** Tier instruction lines (spec §5.1/§7; pull-mode wording, deterministic, no wall-clock state).
- * `forced` marks the request the host pinned to compress_context (tool_choice): the model cannot
- * call context_status there, so L3 must point at the manifest already in the request instead. */
-const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams, forced: boolean) => string> = {
+/** Tier instruction lines (spec §5.1/§7; pull-mode wording, deterministic, no wall-clock state). */
+const TIER_INSTRUCTIONS: Record<"L1" | "L2" | "L3", (p: AcpParams) => string> = {
 	L1: () =>
 		"Context total is above the activation line (L1). Continue the current step, including its required validation. At the next settled boundary, apply the CLOSED and SAFE checks using the latest context_status manifest. Compress useful settled or redundant history when safe and feasible. Otherwise, continue the current task and reconsider after a relevant state change.",
 	L2: (p) =>
 		`Context total is large (L2). Prioritize compression at the next settled boundary; do not interrupt the current step or its required validation. Apply the CLOSED and SAFE checks using the latest context_status manifest. Compress a safe subset promptly, keeping only listed bN ids that require verbatim content; keep + protected tail must be at most ${p.target} tokens.
 
 If no safe, feasible submission exists, take only the next bounded action of the current task needed to resolve that blocker, or await the required result, then reassess. If neither is possible, report the concrete blocker. Do not start unrelated work, repeatedly poll unchanged status, or repeat an unchanged failed submission. Lack of a new discovery or a unique solution does not justify delay.`,
-	L3: (_p, forced) =>
-		forced
-			? "Final notice (L3): context usage is critically high. This request is pinned to compress_context — compress now, before any other work, with a full summary of the listed blocks above you are not keeping."
-			: "Final notice (L3): context usage is critically high. Pause other work at the earliest safe opportunity and complete compression now. The next turn must complete a successful compression, or the host will force one. Call context_status now, then compress_context with a full summary of the listed blocks you are not keeping.",
+	L3: () =>
+		"Final notice (L3): context usage is critically high. Pause other work at the earliest safe opportunity and complete compression now. The next turn must complete a successful compression, or the host will force one. Call context_status now, then compress_context with a full summary of the listed blocks you are not keeping.",
 };
 
-/** Pending-strong annotation: uniform across every tier while the zone is over its line (spec §5.2/§7). */
+/** Pending-strong annotation: uniform across every tier while the zone is over its line (spec §5.2/§7).
+ * A derived state only: it rides whatever injection or dashboard the round already produces. */
 const PENDING_STRONG_NOTE =
-	"Pending strong: the compression zone is over its budget line — the next compression will be a strong one (the whole zone folds into a single summary block).";
+	"Pending strong: the compression zone is over its budget line — the next compression is a strong one. The whole old compression zone folds into a single new summary block, and any information not written into the new summary is lost.";
+
+const FORCED_COMPRESSION_INSTRUCTION =
+	"Forced strong compression: only compress_context is allowed this turn. The host rejects other tool calls. Call compress_context now before any other work.";
+const STRONG_ZONE_INSTRUCTION =
+	"Strong compression replaces the entire compression zone with this summary. Include all still-needed information from every old compression-zone summary, as well as the unkept blocks in the current manifest.";
 
 /** The ephemeral's manifest pointer (§7 v10): the manifest itself lives in context_status, never here —
  * except on a forced request, where the synthetic context_status return already delivered it. */
@@ -56,22 +58,24 @@ const statusPointer = (forced: boolean) =>
 		? "Compression manifest: the context_status return above lists this round's candidate blocks (short ids) — compress from it now."
 		: "Compression manifest: call the context_status tool to list this round's candidate blocks (short ids).";
 /** The one-line status row shared by the ephemeral and the tool return (tier + method + totals). `marker` separates the two surfaces' provenance. */
-function statusRow(rs: AcpRoundStatusFields, marker: string): string {
-	return `${marker} tier=${rs.tier} compress=${rs.method} zone=${rs.zoneTokens} tokens active=${rs.activeTokens} tokens projected=${rs.projectedTokens} tokens activeBlocks=${rs.activeBlocks}`;
+function statusRow(rs: AcpRoundStatusFields, marker: string, forced = false): string {
+	const method = forced ? "strong" : rs.method;
+	return `${marker} tier=${rs.tier} compress=${method} zone=${rs.zoneTokens} tokens active=${rs.activeTokens} tokens projected=${rs.projectedTokens} tokens activeBlocks=${rs.activeBlocks}`;
 }
 
 /**
- * The ephemeral status message (spec §7 v10): one status row + the standing
- * instruction + the pending-strong note + the context_status pointer. NEVER the
- * manifest. Rendering is fully deterministic (no wall-clock state) so an
- * unchanged round state yields byte-identical text. The [compress-hint] marker
- * belongs to the ephemeral only — it must never appear in journaled text.
+ * The ephemeral status message (spec §7 v10): status row + tier/forced instruction
+ * + strong-reset note + pending-strong note + manifest pointer. Rendering stays
+ * deterministic for unchanged round state. The [compress-hint] marker belongs
+ * only to this ephemeral and must never appear in journaled text.
  */
 export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams, forced = false): UserMessage {
 	const text = [
-		statusRow(rs, "[compress-hint]"),
-		// Tier none + pending-strong (§5.2 row 6): the annotation IS the message.
-		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p, forced)]),
+		statusRow(rs, "[compress-hint]", forced),
+		// No tier instruction at tier none; pendingStrong is rendered as its own
+		// note line below and never adds an injection by itself.
+		...(forced ? [FORCED_COMPRESSION_INSTRUCTION] : rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p)]),
+		...(forced || rs.method === "strong" ? [STRONG_ZONE_INSTRUCTION] : []),
 		...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
 		statusPointer(forced),
 	].join("\n");
@@ -79,13 +83,9 @@ export function renderEphemeralMessage(rs: AcpRoundStatusFields, p: AcpParams, f
 }
 
 /**
- * The tier milestone message (§7 v10.4): L1..L3 no longer inject on every
- * request — each tier's standing line fires once per crossed sub-line instead.
- * Same 3-line deterministic shape as the standing ephemeral, with the milestone
- * marker appended to the status row (the `tier=… compress=…` prefix stays
- * intact for downstream matchers); never carries the manifest. `rs.tier` is
- * always L1/L2/L3 here — the silent tier and forced requests take the standing
- * path.
+ * The tier milestone message (§7 v10.4): L1..L3 inject once per crossed
+ * sub-line. Strong rounds also carry the reset instruction; the manifest stays
+ * in context_status. `rs.tier` is always L1/L2/L3 here.
  */
 export function renderMilestoneMessage(
 	rs: AcpRoundStatusFields,
@@ -95,7 +95,10 @@ export function renderMilestoneMessage(
 ): UserMessage {
 	const text = [
 		`${statusRow(rs, "[compress-hint]")} milestone=${milestone}/${p.milestoneSteps}`,
-		TIER_INSTRUCTIONS[tier](p, false),
+		TIER_INSTRUCTIONS[tier](p),
+		...(rs.method === "strong" ? [STRONG_ZONE_INSTRUCTION] : []),
+		// The note follows the latest round state, never its own injection.
+		...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
 		statusPointer(false),
 	].join("\n");
 	return { role: "user", content: text, synthetic: true, timestamp: 0 };
@@ -108,9 +111,9 @@ export const ACP_SYNTHETIC_STATUS_CALL_ID = "acp-synthetic-status";
  * The ultimatum's synthetic status pair (spec §6 v10.1): a FRESH assistant
  * tool_use (never an insert into an existing assistant — thinking-signature
  * and prefix-cache risk, spec §3 projection discipline) answered by its user
- * tool_result carrying the full [context-status] dashboard. The request the force
- * pins ([forced,"none"] has one shot and cannot call context_status) already
- * holds the round manifest, so the forced keep-pick is an informed one. Never
+ * tool_result carrying the full [context-status] dashboard. A forced request
+ * already holds this round's manifest; the host gate permits only compress_context,
+ * without changing provider tool choice or filtering the tool list. Never
  * journaled and never a compression candidate: rebuilt every request the
  * injection condition holds, byte-identical while the round state is unchanged.
  * The identity metadata is inert for wire conversion (no thinking blocks, no
@@ -154,8 +157,9 @@ export function renderSyntheticStatusPair(rs: AcpRoundStatusFields, p: AcpParams
  */
 export function renderStatusText(rs: AcpRoundStatusFields, p: AcpParams, forced = false): string {
 	return [
-		statusRow(rs, "[context-status]"),
-		...(rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p, forced)]),
+		statusRow(rs, "[context-status]", forced),
+		...(forced ? [FORCED_COMPRESSION_INSTRUCTION] : rs.tier === "none" ? [] : [TIER_INSTRUCTIONS[rs.tier](p)]),
+		...(forced || rs.method === "strong" ? [STRONG_ZONE_INSTRUCTION] : []),
 		...(rs.pendingStrong ? [PENDING_STRONG_NOTE] : []),
 		forced
 			? "Current compression manifest (largest first; bN | tokens | intent). compress_context folds exactly the UNKEPT blocks of this list — keep ids must come from it, and one successful compress consumes it. Compress from this list now:"

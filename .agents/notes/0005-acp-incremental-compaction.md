@@ -2,7 +2,7 @@
 
 **Status**: Accepted(2026-10-12)
 **Decider**: xys
-**Amended**: 2026-10-26(v12)——recall_block 工具与压缩块索引渲染移除:生产 journal 84 个压缩块 0 次调用、60% 会话压缩后 0-1 轮即结束,「索引→取回」闭环成本恒付收益为零;持久层 index 数据保留作记账。见 spec 修订记录。
+**Amended**: 2026-10-26(v12)——recall_block 工具与压缩块索引渲染移除:生产 journal 84 个压缩块 0 次调用、60% 会话压缩后 0-1 轮即结束,「索引→取回」闭环成本恒付收益为零;持久层 index 数据保留作记账。2026-11-18(v17)——三级强制改为 ACP host-only gate,工具表保持完整。见演进记录。
 
 ## Context(背景)
 
@@ -17,7 +17,7 @@
 1. **双区模型**:消息分压缩块/活跃块(全局唯一 ID);上下文 = [tools][system][压缩区][活跃区]。
 2. **块模型**:assistant 消息拆为 thinking 块 + text 块 + tool 对块×N;tool 对 = tool_use + 其 result 一个整体,ID 挂 result,一轮多个 tool 可拆分选择。
 3. **保留清单语义**:AI 调 compress_context 列出**要保留**的块(默认行为 = 进压缩),并给出被压块整体摘要;压缩块追加压缩区末尾。
-4. **提示档位 × 压缩方式二维体系**(判定量 = 活跃区精确 token):提示档 L1 激活 / L2 加压 / L3 截断(ephemeral 注入,边界一律严格大于);压缩方式三级——一级普通(活跃区 ≤L3 且压缩区未超线,压缩块累加)、二级强力(活跃区 >L3 或待强力状态下的下一次压缩,重置压缩区为纯摘要初始块)、三级强制(L3 通牒送达后下一轮仍无成功压缩、或总量保险线触发时,tool_choice 强制调用;强制 turn 结束仍无进展即降级 OMP)。保险线:投影总量 > 窗口−15% reserve 触发三级;压缩区 > 窗口×35% 进待强力状态(ephemeral 加注,搭便车执行,无轮次上限)。
+4. **提示档位 × 压缩方式二维体系**(完整请求总量判档,边界严格大于;v18 起总上下文 = provider 实报 `promptTokens` 锚点 + 本地差量):L1 激活 / L2 加压 / L3 截断(ephemeral 注入);一级普通压缩(≤L3 且压缩区未超线,压缩块累加)、二级强力压缩(>L3 或待强力状态下下一次压缩,重置压缩区)、三级强制压缩(L3 通牒后仍无成功压缩或总量保险线触发时,宿主 runtime 标记 forced round 并以 `tool_call` gate 只允许 `compress_context`;ACP 不调用 provider `tool_choice` 强制 API,不缩减工具目录;三次失败进入 ACP 后备)。保险线:投影总量 > 窗口−15% reserve;压缩区 > 窗口×35% 进待强力状态(v18 起为纯派生状态,不自行注入)。
 5. **recall_block(id)** 工具按 ID 召回历史块,内容走该工具自己的 tool_result 返回。
 6. **存储不动、投影重组**:持久历史不改写,发送前经 transformContext 投影过滤;ephemeral 状态提示拼在请求末尾、不落历史。
 7. 保留清单**不继承**;每次压缩候选 = 全部活跃块 − 尾部保护区。
@@ -36,11 +36,13 @@
 - 每次压缩重组活跃区 = 活跃区缓存一次性失效(固有成本)。
 - 强力压缩(重置压缩区)下远端历史逐层稀薄(depth 记录 + 专用提示要求保留决策/结论/未决事项,缓解不阻止)。
 - 比现有压缩多两个工具的上下文开销与一轮 tool 调用的压缩延迟。
+- 宿主 gate 不替 provider 限制工具选择;模型可能先尝试其他已声明工具,宿主拒绝后可能需要重试。
+
 
 **风险/不确定性**:
 - Anthropic thinking 签名校验是否容忍"留 call、压同消息 thinking"的 block 级过滤——未验证,探针 1 决定 thinking 块规则;不通则 thinking 强制随 tool 对共进退。
 - 尾部保护区的必要性/大小未实测(Q7 开放,Spec Open Questions 跟踪)。
-- 模型压缩合作度:L3 以下纯软提示,模型可能长期不压缩(总量保险线兜底);三级强制(tool_choice)为最终手段,强制 turn 无进展即降级 OMP。
+- 模型压缩合作度:L3 以下纯软提示;强制轮由宿主 gate 拒绝非 compress_context 调用,但不保证模型第一次就选择目标工具,可能产生一次拒绝/重试;三次失败进入 ACP 后备,不恢复原始底座链。工具声明目录保持完整。
 
 ## Alternatives Considered(备选方案)
 
@@ -53,6 +55,8 @@
 | turn 级原子块(assistant+全部 result 不可分) | 配对天然安全 | 粒度太粗:只想保留一轮里一个 tool 结果时被迫整轮留下 | block 级过滤 + "call/result 成对出现、成对消失"不变量,投影层重组即可,存储不动 |
 | 压缩提示落历史 | 实现直白 | 含每轮变化的活跃区大小,落历史/插中间都会摧毁其后前缀缓存 | ephemeral 注入拼请求末尾、不落历史;持久部分缓存不受影响 |
 | 整体替换底座压缩链路 | 单一机制 | 重趟底座已修的十几个坑;失去 provider 端压缩与 snapcompact 的既有能力 | 作为新 strategy 并存,最终兜底仍走默认链路 |
+| provider tool_choice pin / 按 provider 收窄工具集 | 对支持的 provider 可直接请求目标工具 | named choice 可被兼容面忽略;收窄会从模型请求中移除用户工具,行为随 provider 分叉 | 采用统一 host-only gate,保持工具目录不变;接受非压缩调用被宿主拒绝并可能重试 |
+
 
 ### v2 演进(2026-10-12,首轮独立审阅 NOT READY 后)
 
@@ -98,6 +102,16 @@ T1-T7 实施后 Decider 审视两项初衷偏差:①压缩能力从 L1 才解锁
 
 ### v10.1 演进(2026-10-13,Decider 拍板通牒伴随合成对)
 Decider 追问三级强制路径的实现细节后拍板:被 forced 钉死的调用模型无法先调 acp_status([forced,"none"] 序列只有一次机会,「拒绝附候选集促修正」在强制路径不生效),若模型此前从未 status 过,被逼时手里没有清单,只能全压(keep=[])或失败降级——强制退化为「无依据的挑选」,与「三级强制也是模型意愿的压缩」初衷有残余偏差。修复:**凡注入通牒文案的请求(L3 档或强制已武装/保险线直接触发),在活跃区末尾、通牒行之前注入一对合成 acp_status tool 对**(新造 assistant(tool_use)+ user(tool_result [acp-report] 清单),投影层合成不落 journal)。Decider 明确否决「向既有 assistant 插 tool_use」形态:thinking 签名风险(OQ2 同源)、中段改动破坏前缀缓存、投影纪律禁改既有消息。合成对快照冻结(注入条件持续且无新块逐字节稳定);成功压缩后退场(同 status 对剔除语义),仍处通牒态则以新快照继续;不进压缩候选;wire 形态为双面正常工具回合(P2 实证),官方面复测加形态确认。
+
+### v17 演进(2026-11-18,用户拍板)
+
+ACP 强制轮不再依赖 provider-level `tool_choice`。桌面端保持完整工具声明,宿主 runtime 在 forced round 内通过 `tool_call` gate 拒绝非 `compress_context` 调用;连续三次无成功压缩仍走现有 ACP 后备。P2 的 named/required/工具集收窄探针保留为历史能力事实,不再是实施策略。原因:工具目录必须跨普通与强制请求保持不变,且收窄会隐藏用户可用工具。
+
+### v18 演进(2026-11-19,用户拍板)
+
+① **总量口径改为 provider 锚点 + 本地差量**:`P_anchor(最近一次 provider 实报 `contextSnapshot.promptTokens` / 同源 `usedTokens`,绝不含输出的 `usage.totalTokens`)+ L_current − L_anchor`。L 两侧覆盖同一组完整请求内容 = 非消息上下文 + 最终 ACP 投影消息(压缩区渲染、活跃区、ephemeral、合成 status 对)。投影不变时精确等于 `P_anchor`;新增消息加本地增量,压缩净减少减本地差量;压缩区仍在最终投影中只计一次。锚点与上一请求的本地计数配对,绑定模型与分支,换模型/切分支/降级或无法配对即作废;首次无锚点用本地完整请求估算。删除 v11 的 0.7–1.6 provider/本地比例校准,`activeTokens` 回归原始块计数。
+
+② **待强力状态降为纯派生状态**:不再自行触发、维持或重复 ephemeral,不增加 hint 计数,也不重置里程碑游标;≤L1 与 L1..L2 静默带即使待强力零注入;milestone / 强制 ephemeral / `context_status` 按最新状态附加强力提示。强力提示明确:下一次为强力压缩,旧压缩区整体折叠为一个新摘要块,未写入新摘要的信息会丢失。`compress` 执行层的 strong 语义(riding / supersedes / depth)不变。
 
 ## Related(关联)
 

@@ -189,7 +189,7 @@ degraded 也是当前分支、当前 reset 时代的派生状态，不是进程�
 
 ### R7 计数
 
-`zoneTokens` / `status()` / 保险线沿用现有口径（对 `this.zone` 求和），基线块自动计入。`#ratio` 校准不改。
+`zoneTokens` / `status()` / 保险线沿用现有口径（对 `this.zone` 求和），基线块自动计入。v18 起总上下文 = provider 实报 `promptTokens` 锚点 + 本地差量（`countMessages` 覆盖最终投影，压缩区渲染只计一次）；`#ratio` 校准已随 v18 删除，锚点在换模型/切分支时作废。
 
 ### R8 纯推导
 
@@ -221,7 +221,7 @@ degraded 也是当前分支、当前 reset 时代的派生状态，不是进程�
 | 13 | strong 吞基线 | `meta.supersedesBase === base id`；重建后 zone 无 base；新摘要正文含基线 summary；`historyRewriteAt === strong.meta.createdAt`，而非基线时间 | 新单测 + `smoke-acp-strong.ts` |
 | 14 | 吞基线后回退 | 回退到该 strong 之前 → 基线复活 | 新单测 |
 | 15 | 投影输出 | 无 `compactionSummary`；首块 `[acp-base]` 无数字；`timestamp` / `historyRewriteAt` 均为等于 `Date.parse(entry.timestamp)` 的有限毫秒数；用带 `thinking.prefixBinding` 的模型实际跑 `transformMessages`，确认边界前保留尾部的旧 bound-thinking 被剥离；`assertToolPairing` 通过 | 新单测 + `acp-projection-pairing.test.ts` |
-| 16 | 保险线与 drift | 基线入 zone 后 projected 不误触 relief；`#ratio` 仍在 0.7–1.6 | `acp-drift.test.ts` 增例 |
+| 16 | 保险线与总量 | 基线入 zone 后 projected 不误触 relief；压缩区渲染在最终投影里只计一次，provider 实报后投影不变时总量等于 `promptTokens` | `acp-drift.test.ts` 增例 |
 | 17 | 回归 | `smoke-acp-tool` / `-strong` / `-persist` / `-synth` / `-forced` / `-projection` / `-tiermode` / `acp-drift` / `acp-projection-pairing` / `acp-branch-resync` / `acp-compaction-guard` 全绿；`bun run check`、`host:build` | 命令 |
 | 18 | 真机 | L3 三次失败后继续会话；ACP 投影达线或 overflow 触发 → ACP preparation 落盘 → 下一请求 `context_status` 可用 → 重启后 zone 一致；全程无 raw auto compaction | 手工 |
 | 19 | ACP 模型调用超过 25s | `completeSimple` 收到由 `event.signal` 与 ACP 期限合成的 signal，并实际观察到 abort；请求结束后 handler 拒绝本次压缩，底座不得开始原始 journal 总结，不存在迟到写入。另验证外层 30s 超时只停止等待，不被当作请求取消证据 | 新单测 |

@@ -3,7 +3,7 @@
 // Forking goes through branch_session (slices the history entries from the root to this
 // assistant node, copying them into a brand-new session file).
 // The anchor entryId is backfilled by the host after persisting (translate.ts).
-import { memo } from "react";
+import { memo, useSyncExternalStore } from "react";
 import type { AssistantItem } from "../../types/session";
 import { useAppStore } from "../../store/index";
 import { patchActiveItem } from "./parts";
@@ -11,6 +11,7 @@ import { useCopyFeedback, useSuccessFlash } from "../main/sidebar/util";
 import Icon from "../../Icon";
 import { t } from "../../i18n";
 import { t as i18nT } from "../../i18n";
+import { beginOneShot, cancelOneShot, getOneShotKey, subscribeOneShot } from "../../lib/speechOut";
 
 // End time: same-day shows only HH:MM (same format as the limits reset time in
 // CtxCard/ModelPage); other days prepend month and day
@@ -41,6 +42,9 @@ export default memo(function TurnActs({
   const canFork = !!item.entryId && !item.branching;
   const { copied, copy } = useCopyFeedback();
   const { flashed: forked, flash: flashForked } = useSuccessFlash();
+  // Reading state is global (one clip at a time): only the turn that started it lights up.
+  const speakKey = item.entryId ?? `t${item.ts ?? 0}b${item.block ?? 0}`;
+  const speaking = useSyncExternalStore(subscribeOneShot, getOneShotKey, getOneShotKey) === speakKey;
   return (
     <div className="turn-acts">
       {/* Column-capped inner box (same max-width + auto-margin mechanism as .turn-flow):
@@ -73,15 +77,21 @@ export default memo(function TurnActs({
           <Icon name={forked ? "check" : "fork"} />
         </button>
         {/* Read aloud: the host resolves the speech role (tts model) and answers
-            with a clip, or with backend "system" when only the OS voice is set. */}
+            with a clip, or with backend "system" when only the OS voice is set.
+            While this turn is being read the button stays lit; clicking again stops it. */}
         <button
-          className="q-btn"
-          title={t("chat.speakReply")}
+          className={speaking ? "q-btn speaking" : "q-btn"}
+          title={speaking ? t("chat.stopSpeakReply") : t("chat.speakReply")}
           disabled={!item.text || !sessionId}
           onClick={(e) => {
             e.stopPropagation();
             if (!item.text || !sessionId) return;
-            useAppStore.getState().send({ type: "speak_text", sessionId, text: item.text });
+            if (speaking) {
+              cancelOneShot();
+              return;
+            }
+            const requestId = beginOneShot(speakKey);
+            useAppStore.getState().send({ type: "speak_text", sessionId, text: item.text, requestId });
           }}
         >
           <Icon name="speaker" />

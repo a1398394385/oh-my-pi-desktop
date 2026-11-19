@@ -12,7 +12,7 @@ import type { PoolEntry } from "../state.ts";
 import type { SessionListFrame } from "../wire/frames-session.ts";
 import { readRemoteWorkspaceInfo } from "../remote-workspaces.ts";
 import { readAutomations, retireAutomationsForPaths } from "../automations/store.ts";
-import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath } from "../profile.ts";
+import { saveDesktopProjects, mergeHistoryProjects, isTempDirPath, canonicalCwd } from "../profile.ts";
 import { entriesToTranscript, sumRunDurationMs } from "../translate-history.ts";
 import { treeToDisplay } from "../entry-tree.ts";
 import { applyActivityTimes } from "../activity-time.ts";
@@ -91,6 +91,9 @@ export async function buildSessionListPayload() {
       }
     }
   }
+  // Removed projects compare on the same canonical key: the stored spelling can
+  // differ from a session's (symlink vs real path) after projects are normalized
+  const removedKeys = new Set(H.desktopProjects.removedProjects.map(norm));
   const NO_CWD_KEY = "\0nocwd"; // sentinel: sessions without a cwd never merge into a real project
   const groups = new Map<string, ListedSession[]>();
   for (const s of all) {
@@ -109,8 +112,8 @@ export async function buildSessionListPayload() {
   const listed = new Set(all.map((s: any) => s.path));
   for (const [sid, entry] of sessions.entries()) {
     if (listed.has(entry.path) || entry.isSubagent) continue;
-    if (H.desktopProjects.removedProjects.includes(entry.cwd)) continue;
     const key = entry.cwd ? norm(entry.cwd) : NO_CWD_KEY;
+    if (removedKeys.has(key)) continue;
     const list = groups.get(key) ?? [];
     list.push({
       id: sid,
@@ -134,7 +137,7 @@ export async function buildSessionListPayload() {
   const pickDisplayCwd = (key: string, sorted: ListedSession[]): string => {
     const candidates: string[] = [];
     for (const p of H.desktopProjects.allProjects) {
-      if (norm(p) === key && !H.desktopProjects.removedProjects.includes(p) && fs.existsSync(p)) candidates.push(p);
+      if (norm(p) === key && !removedKeys.has(norm(p)) && fs.existsSync(p)) candidates.push(p);
     }
     for (const s of sorted) {
       if (s.cwd && fs.existsSync(s.cwd) && !candidates.includes(s.cwd)) candidates.push(s.cwd);
@@ -490,12 +493,13 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   },
   async remove_project(ws, msg) {
     // Remove from the project list (sessions stay in history; the "recent" view still shows them)
-    const cwd = String(msg.cwd ?? "").trim();
-    if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
+    const raw = String(msg.cwd ?? "").trim();
+    if (!raw) throw new Error(hostI18n.t("errors.param.missingCwd"));
+    const cwd = canonicalCwd(raw);
     // Merged repository row: removing it hides every checkout at once (`cwds` carries the
     // row's worktree paths), otherwise the row reappears on the next frame from the
     // siblings that were never removed.
-    const extra = Array.isArray(msg.cwds) ? msg.cwds.filter((c: unknown): c is string => typeof c === "string") : [];
+    const extra = Array.isArray(msg.cwds) ? msg.cwds.filter((c: unknown): c is string => typeof c === "string").map(canonicalCwd) : [];
     for (const p of [cwd, ...extra]) {
       if (!H.desktopProjects.removedProjects.includes(p)) H.desktopProjects.removedProjects.push(p);
     }
@@ -679,8 +683,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
   },
   async add_project(ws, msg) {
     // Manual add: if it hits the removed list, move it back to all projects; otherwise merge it in as a new project (pinned to the top, immediately visible)
-    const cwd = String(msg.cwd ?? "").trim();
-    if (!cwd) throw new Error(hostI18n.t("errors.param.missingCwd"));
+    const raw = String(msg.cwd ?? "").trim();
+    if (!raw) throw new Error(hostI18n.t("errors.param.missingCwd"));
+    // The same dir picked through a symlink is the same project: storing the picked
+    // spelling would list it twice under one basename (MCP scope labels by basename)
+    const cwd = canonicalCwd(raw);
     // The app-owned "work without a project" backing dir is a fixed sidebar row,
     // not a registrable project: adding it would duplicate that row and let the
     // user remove it.
@@ -1047,7 +1054,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
     // "@session:<path>" markers come back with an edited message (the composer rebuilds
     // them as chips); resolve them here too — the base does not know the marker — so a
     // resend inlines exactly what the original prompt did.
-    const text = await inlineSessionRefs(String(msg.text ?? ""));
+    const text = await inlineSessionRefs(String(msg.text ?? ""), entry.session.sessionManager.getCwd());
     // Images are the original message's attachments round-tripped untouched
     // (the UI can neither add nor drop any); shape-checked at this boundary.
     const rawImages: Array<{ type?: unknown; data?: unknown; mimeType?: unknown }> = Array.isArray(msg.images)

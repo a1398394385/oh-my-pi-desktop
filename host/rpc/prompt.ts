@@ -43,6 +43,7 @@ import { hostI18n } from "../i18n/host.ts";
 import type { RpcHandler } from "./types";
 import { settingsGet } from "../settings-compat.ts";
 import { safeStderr } from "../stderr.ts";
+import { escapeInjectedTokens } from "../injected-text.ts";
 import { inlineSessionRefs } from "../session-context.ts";
 
 // Attachments sent by the frontend along with prompt: images as base64, text-kind as file
@@ -697,12 +698,15 @@ async function handlePrompt(
       images.push({ type: "image", data: f.data, mimeType: String(f.mime ?? "image/png") });
     }
   }
-  const textBlocks = (files ?? [])
-    .filter((f) => f.kind === "text" && typeof f.text === "string")
-    .map((f) => {
-      const name = String(f.name ?? "file").replace(/"/g, "&quot;");
-      return `<attached-file name="${name}">\n${f.text}\n</attached-file>`;
-    });
+  const cwd = entry.session.sessionManager.getCwd();
+  const textBlocks = await Promise.all(
+    (files ?? [])
+      .filter((f) => f.kind === "text" && typeof f.text === "string")
+      .map(async (f) => {
+        const name = String(f.name ?? "file").replace(/"/g, "&quot;");
+        return `<attached-file name="${name}">\n${await escapeInjectedTokens(String(f.text), cwd)}\n</attached-file>`;
+      }),
+  );
   let finalText = text;
   if (textBlocks.length > 0) {
     finalText = text ? `${textBlocks.join("\n\n")}\n\n${text}` : textBlocks.join("\n\n");
@@ -710,7 +714,7 @@ async function handlePrompt(
   // Referenced existing sessions ride inside the prompt text as "@session:<path>"
   // markers (composer chips); the shared resolver inlines their turns (edit_resend
   // resolves them the same way).
-  finalText = await inlineSessionRefs(finalText);
+  finalText = await inlineSessionRefs(finalText, cwd);
   // Natively picked / dropped files arrive as absolute paths. Append each as an @mention so
   // the base reads it into its own fileMention message (text, images, video contact sheets and
   // binary skips are all handled there) instead of inlining the bytes into the user's prompt.

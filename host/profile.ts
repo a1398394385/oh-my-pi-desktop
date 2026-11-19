@@ -73,10 +73,25 @@ export function applyDesktopEnv(env: DesktopEnv) {
 }
 
 // ---------- desktop project list (omp-desktop.json under the current profile config dir, absolute paths) ----------
+// Projects are stored under the spelling the user picked, so a symlinked path and
+// its target register as two projects and render as two same-named rows (the MCP
+// scope list labels a project by path.basename). Session grouping already keys on
+// realpath, so the list converges on the real spelling. A missing dir keeps its
+// spelling — it still has to be listed and removable.
+export function canonicalCwd(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
 export function readDesktopProjects(): DesktopProjects {
   try {
     const raw = JSON.parse(fs.readFileSync(H.desktopProjectsPath, "utf8"));
     const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+    // One entry per directory: folds the symlink/realpath duplicates in an existing file
+    const cwds = (v: unknown) => [...new Set<string>(strs(v).map(canonicalCwd))];
     const mcpSharing: Record<string, McpSharingMode> = {};
     if (raw.mcpSharing && typeof raw.mcpSharing === "object") {
       for (const [k, v] of Object.entries<any>(raw.mcpSharing)) {
@@ -89,9 +104,9 @@ export function readDesktopProjects(): DesktopProjects {
       // Strip the app-owned backing dir on read: an older build (or a hand-edited
       // manifest) may have recorded it as a project, and the sidebar's fixed row
       // is injected by the frontend instead — keeping it here would render twice.
-      allProjects: strs(raw.allProjects).filter((c) => c !== defaultWorkspaceDir),
-      removedProjects: strs(raw.removedProjects),
-      expandedProjects: strs(raw.expandedProjects),
+      allProjects: cwds(raw.allProjects).filter((c) => c !== defaultWorkspaceDir),
+      removedProjects: cwds(raw.removedProjects),
+      expandedProjects: cwds(raw.expandedProjects),
       pinnedSessions: strs(raw.pinnedSessions),
       archivedSessions: strs(raw.archivedSessions),
       mcpSharing,
@@ -146,8 +161,11 @@ export async function deleteMcpSharingConfig(sourcePath?: string, name?: string)
 export function mergeHistoryProjects(cwds: string[]): boolean {
   let added = false;
   const home = os.homedir();
-  for (const cwd of cwds) {
-    if (!cwd || typeof cwd !== "string") continue;
+  for (const raw of cwds) {
+    if (!raw || typeof raw !== "string") continue;
+    // Fold every spelling first: a session recorded through the symlink would
+    // otherwise re-add the duplicate row that readDesktopProjects just removed
+    const cwd = canonicalCwd(raw);
     if (cwd === "/" || cwd === home) continue;
     if (cwd === defaultWorkspaceDir) continue; // app-owned backing dir, not a registrable project
     if (isTempDirPath(cwd)) continue;

@@ -16,7 +16,7 @@
 import { profileAgentPath, smokeEnv } from "./smoke-profile.ts";
 import { spawn, execSync } from "node:child_process";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, unlinkSync, realpathSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import path from "node:path";
 
@@ -110,8 +110,10 @@ await waitType("ready");
 
 const fixtureRoot = path.join(profileAgentPath(), "..", "smoke-fixtures");
 await mkdir(fixtureRoot, { recursive: true });
-const dirA = await mkdtemp(path.join(fixtureRoot, "omp-smoke-prjA-"));
-const dirB = await mkdtemp(path.join(fixtureRoot, "omp-smoke-prjB-"));
+// add_project canonicalises (fs.realpathSync), and ~/.omp here is a symlink onto
+// another volume — spell the fixtures the way the host will store them.
+const dirA = realpathSync(await mkdtemp(path.join(fixtureRoot, "omp-smoke-prjA-")));
+const dirB = realpathSync(await mkdtemp(path.join(fixtureRoot, "omp-smoke-prjB-")));
 tmpDirs.push(dirA, dirB);
 const idxOf = (l: any, c: string) => (l.allProjects ?? []).indexOf(c);
 

@@ -91,9 +91,9 @@ export type AcpFallbackTrigger = "threshold" | "overflow";
 
 /**
  * Whether the ACP fallback should compact now. The threshold reads the ACP
- * projection (`projectedTokenEstimate`: non-message + calibrated active +
- * rendered zone) and the base's own `resolveThresholdTokens`, with the base's
- * strict `>` comparison — never a raw stored-history floor.
+ * projection total (`projectedTokenEstimate`: provider anchor + local delta)
+ * and the base's own `resolveThresholdTokens`, with the base's strict `>`
+ * comparison — never a raw stored-history floor.
  */
 export function acpFallbackTrigger(
 	state: AcpRuntimeState,

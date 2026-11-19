@@ -630,35 +630,15 @@ export default function MessagePage() {
     </button>
   );
 
-  // Live segment: while the turn runs, everything after its last output belongs to the
-  // current segment (items.tsx liveFrom) and renders through LiveProcess — intent row on
-  // top, collapsed body, working-time row at the bottom. Output itself never folds, so it
-  // stays in the flow above that row.
+  // Live segment: while the turn runs, everything after its last cut (an output or, outside
+  // concise, an edit) belongs to the current segment and renders through LiveProcess — intent
+  // row on top, collapsed body, working-time row at the bottom. renderItems derives that
+  // boundary from the rows themselves, so the page only reports whether the turn is running.
   const processStyle = useAppStore((st) => st.uiPrefs.agentProcessStyle);
   // Ctrl+T / Ctrl+O decide whether the running row stays outside the folds (items.tsx
   // liveOpen reads them via getState), so the memo below must re-run when they flip.
   const showThinking = useAppStore((st) => st.uiPrefs.showThinking);
   const expandToolOutput = useAppStore((st) => st.uiPrefs.expandToolOutput);
-  const list = items ?? [];
-  let liveFrom: number | undefined;
-  if (streaming) {
-    let lastUser = -1;
-    for (let i = list.length - 1; i >= 0; i--) {
-      if (list[i].role === "user") {
-        lastUser = i;
-        break;
-      }
-    }
-    let lastOut = -1;
-    for (let i = list.length - 1; i > lastUser; i--) {
-      const it = list[i];
-      if (it.role === "assistant" && !isJunkPlaceholder(it.text)) {
-        lastOut = i;
-        break;
-      }
-    }
-    liveFrom = lastOut >= 0 ? lastOut + 1 : lastUser + 1;
-  }
 
   // Streaming tail renders as markdown through AssistantMsg/MdSurface (streamdown): the
   // engine memoizes per block, so appending to the growing draft only re-parses the last
@@ -676,9 +656,9 @@ export default function MessagePage() {
   // showThinking/expandToolOutput ride the same reason (liveOpen's fold opt-out).
   const { nodes, railEntries } = useMemo(() => {
     const entries: RailEntry[] = [];
-    const out = renderItems(items ?? [], "", entries, streamTail, { liveFrom, branchNav });
+    const out = renderItems(items ?? [], "", entries, streamTail, { live: streaming, branchNav });
     return { nodes: out, railEntries: entries };
-  }, [items, draft, streamTail, processStyle, showThinking, expandToolOutput, liveFrom, branchNav]);
+  }, [items, draft, streamTail, processStyle, showThinking, expandToolOutput, streaming, branchNav]);
 
   if (!hasSession) {
     return (

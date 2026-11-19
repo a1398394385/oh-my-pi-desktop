@@ -167,6 +167,8 @@
 | BUG-173 | ACP 接管仍落底座 soft 压缩——原始历史地板触发边界，让路原因无日志 | 2026-11-16 |
 | BUG-175 | 重排后新消息插到暂存消息前面，且暂存消息永久滞留——回填只挂 terminal agent_end | 2026-11-17 |
 | BUG-176 | run 变更卡片缺卡/挂到下一轮——变更追踪只在 terminal agent_end 结算，底座把 end 重标为非终态 | 2026-11-18 |
+| BUG-177 | ACP 强制 strong 轮提示为 normal，且未明确承接旧压缩区 | 2026-11-18 |
+| BUG-178 | ACP 总量与 provider 实报输入不符（比例估算），且待强力状态自行注入 | 2026-11-19 |
 ---
 
 ## 详情
@@ -2664,3 +2666,33 @@ error 帧无 sessionId → `stream.ts` error handler 兜底 `toast(msg.message)`
 **验证**：`scripts/run-changes.test.ts` 新增用例「非终态 agent_end 结算本段，续跑不再发第二张卡」（`settled:false`、`final:true`、`assistantEntryId=a1` 且无 `runEnd`，run_changes anchor 为 a1，续跑终态后仍只有 1 条），11 例全绿；新增 `scripts/turn-end-settled.test.ts` 3 例（落地 draft 与 entryId 且保持 streaming/turnItemStart；紧随其后的 `run_changes` 精确匹配到该行；本段输出在续跑 seal 后仍在顶层——去掉 `final` 后该用例立即变红，确认它锁住的是折叠回归），全部通过；`backfill-entryids`/`pool-idle-settle`/`snapshot-transcript`/`translate-diff`/`abort-settle`/`midrun-attach-fold`/`queue-pump`/`turn-final-lift` 共 35 例全绿；`bun run check` 全绿。未做真机 dev 实例的排队续跑复现。
 
 **教训**：「终态事件」不是可靠的 run 边界——底座会把终态重标为非终态并可能不再补发终态（BUG-175 是同一机制的另一面）。以会话为键的 run 级状态必须在每次 `agent_end` 收口，锚点与 UI 的 entryId 回填也必须同刻落地，否则状态会静默漂移到下一轮。
+
+### BUG-177: ACP 强制 strong 轮提示为 normal，且未明确承接旧压缩区
+
+**日期**：2026-11-18
+
+**状态**：已修复。
+
+**现象**：总量保险线在 L3 以下触发强制请求时，状态行仍显示 `compress=normal`，但强制执行会按 strong 语义替换整个压缩区。L3 直接强压且压缩区未超 35% 线时，旧摘要仍在请求上下文中，却没有当轮提示说明它们也会被替换、仍需信息应写入新摘要。
+
+**根因**：`host/acp-status-tool.ts` 的状态行只显示 `rs.method`，没有应用 forced 对执行方法的 strong 覆盖；L1/L2 指令也忽略 forced。L3 文案要求总结本轮清单，强制轮同样没有明确说明旧区被替换。`host/acp-compress.ts` strong 路径会 supersede 整个旧压缩区，但除 base 边界外不会自动拼入旧摘要正文，因此信息保留依赖模型遵守该语义。
+
+**修复**：强制请求在所有档位均显示并说明 forced strong；所有 strong 状态都明确旧压缩区会被整体替换，并要求将仍需信息纳入新摘要。`docs/architecture/acp-compaction-spec.md` 补齐该提示契约。
+
+**验证**：`OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-strong.ts` 修复前在 L3、zone 未超线场景因缺少旧区替换提示失败；`OMP_PROFILE=omp-desktop-test bun run scripts/smoke-acp-forced.ts` 修复前在 L2 guard 强制场景因状态行未显示 `compress=strong` 失败。修复后两条命令均通过；`bun run host:typecheck` 通过。
+
+**教训**：执行层覆盖档位计划时，模型看到的状态必须反映有效执行语义；会 supersede 历史内容的压缩操作不能只描述活跃清单。
+
+### BUG-178: ACP 总量与 provider 实报输入不符，且待强力状态自行注入
+
+**日期**：2026-11-19
+
+**状态**：已修复（验证命令待主代理执行）。
+
+**现象**：`context_status` 与状态行的 `projected` 总量与 provider 实报的输入上下文不一致：活跃区按本地块和乘以一个学到的比例，非消息上下文与 ephemeral/合成 status 对没有进入同一口径；压缩后同一轮再查 `context_status` 仍显示压缩前的总量。另一侧，压缩区超过 35% 线（待强力）时，即使总上下文处于 ≤L1 或 (L1, L2] 静默带也会每轮注入 ephemeral，并把里程碑游标重置为 0，导致跨线提醒节奏与实际里程碑不一致。
+
+**根因**：`host/acp-runtime.ts` 的 `#ratio` 只用 `contextSnapshot.promptTokens` 校准本地块和（“活跃区 × 比例 + 非消息 + 压缩区”），provider 的实报值不直接决定总量；`projectView` 的注入条件 `rs.tier !== "none" || rs.pendingStrong` 把待强力当成注入触发器，并在该分支重置 `#delivered`；压缩成功只返回 `projectedTokensAfter`，没有同步 `#lastTotal`/`roundStatus`。
+
+**修复**：按 spec v18 统一总量口径：`P_anchor(contextSnapshot.promptTokens) + L_current − L_anchor`，两侧 `L` 都覆盖非消息上下文 + 最终 ACP 投影消息（压缩区渲染、活跃区、ephemeral、合成 status 对），锚点绑定模型与分支并在换模型/切分支/降级时作废，删除 `#ratio`；压缩成功后立即发布 `#lastTotal` 与 `roundStatus` 的压缩后总量。待强力降为纯派生状态：自身不注入、不增加 hint 计数、不重置里程碑游标，只在已有 milestone/强制 ephemeral 与 `context_status` 中按最新状态显示，强力提示明确旧压缩区整体折叠为一个新摘要块且未写入的信息会丢失。
+
+**验证**：`scripts/acp-drift.test.ts` 重写为锚点契约（投影不变 = `promptTokens`、新增消息加本地增量、压缩减本地差量、压缩后同轮可读、换分支作废）；`scripts/smoke-acp-strong.ts` B/H 改为待强力零注入并校验里程碑与 `context_status` 文案；`scripts/acp-compress-rejection.test.ts` 与 `scripts/acp-stats.test.ts` 同步快照字段与本地计数。待主代理执行：`bun run scripts/smoke-acp-ephemeral.ts`、`bun run scripts/smoke-acp-strong.ts`、`bun test scripts/acp-fallback.test.ts --pool=forks --poolOptions.forks.singleFork`、`bun test scripts/acp-compaction-guard.test.ts --pool=forks --poolOptions.forks.singleFork`、`bun run host:typecheck`（均带 `OMP_PROFILE=omp-desktop-test`）。

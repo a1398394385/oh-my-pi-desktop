@@ -170,7 +170,8 @@ describe("runtime telemetry recording", () => {
     const writes: AcpSummaryData[] = [];
     const state = new AcpRuntimeState({
       countTokens: (t: string) => t.length,
-      countMessages: () => 0,
+      // Local request total (anchor arithmetic): the three 100-char blocks.
+      countMessages: (msgs) => msgs.reduce((n, m) => n + ("content" in m && typeof m.content === "string" ? m.content.length : 0), 0),
       sink: { appendCustomEntry: (_type: string, data: AcpSummaryData) => (writes.push(data), "s1") },
       getEntries: () => entries,
       // v11: the L1 floor gates both tools; keep the small fixture past it.

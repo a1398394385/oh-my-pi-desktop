@@ -13,9 +13,8 @@
 //      the force directly at a non-L3 tier (no ultimatum wait); a successful
 //      compression in the same round frees; still over after a forced success
 //      => degrade
-//   D  end-to-end ultimatum -> force -> obey: the real setForcedToolChoice
-//      channel drives the next request's tool_choice (named form), the model
-//      compresses under force, the [forced,"none"] sequence advances
+//   D  end-to-end ultimatum -> host-enforced round: the provider tool list
+//      remains unchanged; the host gate rejects non-compress tool calls
 //   E  end-to-end fallback: an ignored force retries twice, the third failure
 //      enters fallback — compress stays available, the projection keeps
 //      serving (zone renders and ephemeral intact), compaction.enabled stays
@@ -28,12 +27,6 @@
 //      branch era and recovers once the branch leaves it; degrade never
 //      restores the base auto chain
 //
-// Mock-model note (D/E/F): the mock's api is "mock", for which
-// buildNamedToolChoice returns nothing — setForcedToolChoice would throw. The
-// push consults only model.api/compat, so the force hook borrows a
-// named-capable api string for the call and restores "mock" before the request
-// streams (probe-verified: the queue stores the resolved ToolChoice, and the
-// mock records it in options.toolChoice). Production faces never need this.
 //
 // All session data lands under the OMP_PROFILE=omp-desktop-test profile only
 // (asserted against the active agentDir); the smoke deletes its own session
@@ -48,10 +41,13 @@ import { getAgentDir } from "@oh-my-pi/pi-utils";
 import { Tokenizer } from "@oh-my-pi/pi-agent-core";
 import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
 import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
+import type { MockContent } from "@oh-my-pi/pi-ai/providers/mock";
 
 import { AcpRuntimeState, createCompressContextTool, createAcpProjectionExtension } from "../host/acp-runtime.ts";
+import { createAcpStatusTool } from "../host/acp-status-tool.ts";
 import type { AcpParams } from "../host/acp-plan.ts";
-import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
+import type { AcpSummaryData } from "../host/acp-persist.ts";
+import type { CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 
 assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
@@ -102,16 +98,14 @@ interface ForcedFixture {
 	writes: AcpSummaryData[];
 	entries: FixtureEntry[];
 	view: AgentMessage[];
-	forceCalls: string[];
 }
 
 let fixtureSeq = 0;
 
-/**
- * Failure-exit fixture: journal-backed view over a fake sink that journals
- * acpSummary writes (rebuild parity), with a spying force channel.
+/** Failure-exit fixture: journal-backed view over a fake sink that journals
+ * acpSummary writes (rebuild parity).
  */
-function makeForcedFixture(params: Partial<AcpParams>, blocks: number, contextWindow: number, blockTokens = 100): ForcedFixture {
+function makeForcedFixture(params: Partial<AcpParams>, blocks: number, contextWindow = 100_000, blockTokens = 100): ForcedFixture {
 	const writes: AcpSummaryData[] = [];
 	const entries: FixtureEntry[] = [];
 	const sink = {
@@ -132,18 +126,14 @@ function makeForcedFixture(params: Partial<AcpParams>, blocks: number, contextWi
 		entries.push({ type: "message", id: `e${i}`, message });
 		view.push(message);
 	}
-	const forceCalls: string[] = [];
 	const state = new AcpRuntimeState({
 		countTokens,
 		sink,
 		getEntries: () => entries as never as SessionEntry[],
 		contextWindow,
 		params,
-		forceCompressTool: () => {
-			forceCalls.push(`arm@${entries.length}`);
-		},
 	});
-	return { state, writes, entries, view, forceCalls };
+	return { state, writes, entries, view };
 }
 
 /** A standalone zone block of roughly `summaryTokens` rendered tokens. */
@@ -168,16 +158,16 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const fx = makeForcedFixture(FIXTURE_PARAMS, 10);
 	fx.state.projectView(fx.view);
 	assert.equal(fx.state.roundStatus!.tier, "L3", "active ~1000 > l3 900: the ultimatum rides request 1");
-	assert.equal(fx.forceCalls.length, 0, "no force before the delivered round ends");
+	assert.equal(fx.state.forcedFailureCount(), 0, "no force failure before the delivered round ends");
 	fx.state.onTurnEnd();
-	assert.equal(fx.forceCalls.length, 1, "unanswered ultimatum arms the level-3 force");
 	assert.equal(fx.state.degraded, false);
 
 	// Idle: nothing further happens — no timers, no queues; the armed force
 	// just sits (the next request, whenever it comes, consumes it).
 	fx.state.onTurnEnd(); // a stray late turn_end with no new request changes nothing
-	assert.equal(fx.forceCalls.length, 1, "idle never re-arms");
-	assert.equal(fx.state.degraded, false, "idle never degrades");
+	assert.equal(fx.state.forcedFailureCount(), 0, "idle never re-arms or records a failure");
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.forcedRoundActive(), true, "the next request carries the host-enforced round");
 	console.log("ok: A1 delivering round judged; unanswered ultimatum arms the force once; idle stays put");
 }
 
@@ -188,7 +178,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const out = accepted(await fx.state.compress({ keep: [], summary: tokenText(50) }));
 	assert.equal(out.countedAsSuccess, true, "folding ~1000 tokens >= minCompress 30 counts");
 	fx.state.onTurnEnd();
-	assert.equal(fx.forceCalls.length, 0, "successful compression in the delivered turn frees the round");
+	assert.equal(fx.state.forcedFailureCount(), 0, "successful compression in the delivered turn frees the round");
 	console.log("ok: A2 in-turn success (>= minCompress) frees the ultimatum");
 }
 
@@ -201,7 +191,9 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const out = accepted(await small.state.compress({ keep, summary: tokenText(10) }));
 	assert.equal(out.countedAsSuccess, false, "folded ~1900 < minCompress 2000");
 	small.state.onTurnEnd();
-	assert.equal(small.forceCalls.length, 1, "below-min success still counts as no successful compression");
+	assert.equal(small.state.forcedFailureCount(), 0, "below-min success still counts as no successful compression");
+	small.state.projectView(small.view);
+	assert.equal(small.state.forcedRoundActive(), true);
 	console.log("ok: A3 below-minCompress success does not free the ultimatum");
 }
 
@@ -213,8 +205,8 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const fx = makeForcedFixture(FIXTURE_PARAMS, 10, 100_000);
 	fx.state.projectView(fx.view);
 	fx.state.onTurnEnd(); // arm
-	assert.equal(fx.forceCalls.length, 1);
 	fx.state.projectView(fx.view); // the forced request
+	assert.equal(fx.state.forcedRoundActive(), true);
 	const out = accepted(await fx.state.compress({ keep: [], summary: tokenText(50) }));
 	assert.equal(out.countedAsSuccess, true);
 	fx.state.onTurnEnd(); // forced-turn resolution
@@ -232,13 +224,13 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	const fx = makeForcedFixture(FIXTURE_PARAMS, 10, 100_000);
 	fx.state.projectView(fx.view);
 	fx.state.onTurnEnd(); // arm 1
-	assert.equal(fx.forceCalls.length, 1);
 	fx.state.projectView(fx.view); // the forced request — model never compresses
+	assert.equal(fx.state.forcedRoundActive(), true);
 	fx.state.onTurnEnd(); // failure 1 -> retry
-	assert.equal(fx.forceCalls.length, 2);
+	assert.equal(fx.state.forcedFailureCount(), 1);
 	fx.state.projectView(fx.view);
 	fx.state.onTurnEnd(); // failure 2 -> retry
-	assert.equal(fx.forceCalls.length, 3);
+	assert.equal(fx.state.forcedFailureCount(), 2);
 	fx.state.projectView(fx.view);
 	fx.state.onTurnEnd(); // failure 3 -> fallback
 	assert.equal(fx.state.degraded, false, "fallback is not a degrade");
@@ -246,7 +238,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	assert.match(fx.state.fallbackReason, /3 consecutive/);
 	fx.state.projectView(fx.view);
 	fx.state.onTurnEnd(); // fallback never re-arms
-	assert.equal(fx.forceCalls.length, 3, "no fourth force");
+	assert.equal(fx.state.forcedFailureCount(), 3, "no further forced round after fallback");
 	console.log("ok: B2 three forced failures enter fallback; no degrade and no re-arm");
 }
 
@@ -266,7 +258,12 @@ const GUARD_PARAMS: Partial<AcpParams> = { ...FIXTURE_PARAMS, l3: 5_000 };
 	assert.notEqual(fx.state.roundStatus!.tier, "L3", "the guard breach must fire below L3 (no ultimatum wait)");
 	assert.ok(fx.state.roundStatus!.projectedTokens > 3616, `projected ${fx.state.roundStatus!.projectedTokens} over the guard line`);
 	fx.state.onTurnEnd(); // no compression this round
-	assert.equal(fx.forceCalls.length, 1, "guard-line breach arms the force directly (spec §5.3)");
+	fx.state.projectView(fx.view); // the guard-forced request is below L3 but still strong
+	assert.equal(fx.state.forcedRoundActive(), true, "the guard-line round is host-forced");
+	const forcedText = JSON.stringify(fx.state.lastProjected);
+	assert.match(forcedText, /\[context-status\] tier=L2 compress=strong/);
+	assert.ok(forcedText.includes("Strong compression replaces the entire compression zone"));
+	assert.ok(forcedText.includes("Forced strong compression: only compress_context is allowed this turn. The host rejects other tool calls."));
 	console.log("ok: C1 projected total over the guard line arms the force without an ultimatum round");
 }
 
@@ -277,7 +274,7 @@ const GUARD_PARAMS: Partial<AcpParams> = { ...FIXTURE_PARAMS, l3: 5_000 };
 	const out = accepted(await fx.state.compress({ keep: [], summary: tokenText(50) }));
 	assert.equal(out.countedAsSuccess, true);
 	fx.state.onTurnEnd();
-	assert.equal(fx.forceCalls.length, 0, "a successful compression in the breaching round frees (convergence continues)");
+	assert.equal(fx.state.forcedFailureCount(), 0, "success in the breaching round prevents a forced round");
 	console.log("ok: C2 successful compression in the breaching round does not force");
 }
 
@@ -290,8 +287,8 @@ const GUARD_PARAMS: Partial<AcpParams> = { ...FIXTURE_PARAMS, l3: 5_000 };
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.projectedTokens > 3616, `active ~4000 already over the guard line (${fx.state.roundStatus!.projectedTokens})`);
 	fx.state.onTurnEnd(); // breach arms the force
-	assert.equal(fx.forceCalls.length, 1);
 	fx.state.projectView(fx.view); // the forced request
+	assert.equal(fx.state.forcedRoundActive(), true);
 	const folded = fx.state.roundStatus!.manifestIds[0];
 	const keep = fx.state.roundStatus!.manifestIds.filter((id) => id !== folded).map((id) => fx.state.shortRef(id)!);
 	const out = accepted(await fx.state.compress({ keep, summary: tokenText(10) }));
@@ -307,8 +304,10 @@ const GUARD_PARAMS: Partial<AcpParams> = { ...FIXTURE_PARAMS, l3: 5_000 };
 // --- e2e harness (D/E/F) -------------------------------------------------------------------
 
 interface MockCall {
-	context: { messages: Array<{ role: string; content?: unknown }> };
-	options?: { toolChoice?: unknown };
+	context: {
+		messages: Array<{ role: string; content?: unknown }>;
+		tools?: Array<{ name: string }>;
+	};
 }
 
 /** Bounded wait for a journal/state condition (10ms poll, 10s ceiling). */
@@ -320,43 +319,27 @@ async function waitFor(what: string, predicate: () => boolean): Promise<void> {
 interface E2EOpts {
 	params: Partial<AcpParams>;
 	contextWindow: number;
-	handler: (call: MockCall) => { content: ReadonlyArray<unknown> } & { throw?: never };
+	handler: (call: MockCall) => { content: ReadonlyArray<MockContent>; throw?: Error };
 }
 
 /** Mock-model session assembled exactly like the host (tool + projection + hooks). */
 async function makeE2ESession(cwd: string, opts: E2EOpts) {
 	const mock = createMockModel({
 		contextWindow: opts.contextWindow,
-		handler: (context: never, options?: { toolChoice?: unknown }) =>
-			opts.handler({ context: context as unknown as MockCall["context"], options }),
+		handler: (context) => opts.handler({ context: context as unknown as MockCall["context"] }),
 	});
 	const sessionManager = SessionManager.create(cwd);
 	// Assembly-mirroring settings: parent -> live child with compaction off.
 	// Degrade never restores it; the base auto chain stays pinned for ACP.
 	const settings = Settings.isolated({}).overlay({ "compaction.enabled": false });
 	assert.equal(cfgCompactionEnabled.get(settings), false, "base compaction pinned off for the ACP session");
-	const forceCalls: string[] = [];
 	const state = new AcpRuntimeState({
 		countTokens,
 		sink: sessionManager,
 		getEntries: () => sessionManager.getEntries(),
 		contextWindow: opts.contextWindow,
 		params: opts.params,
-		forceCompressTool: () => {
-			forceCalls.push("arm");
-			const patched = mock as unknown as { api: string };
-			const saved = patched.api;
-			patched.api = "anthropic-messages";
-			try {
-				acpSession.session!.setForcedToolChoice("compress_context");
-			} finally {
-				patched.api = saved;
-			}
-		},
 	});
-	const acpSession: { session?: { setForcedToolChoice(toolName: string): void } } = {};
-	// The force channel mirrors the assembly hook; the mock's "mock" api is
-	// not named-capable (see header), so borrow one for the push only.
 	const authStorage = await AuthStorage.create(join(cwd, "auth.db"));
 	authStorage.keys.setRuntime("mock", "mock-key");
 	const modelRegistry = new ModelRegistry(authStorage, join(cwd, "models.yml"));
@@ -370,14 +353,13 @@ async function makeE2ESession(cwd: string, opts: E2EOpts) {
 		modelRegistry,
 		agentRegistry: new AgentRegistry(),
 		sessionManager,
-		customTools: [createCompressContextTool(state)] as never,
+		customTools: [createCompressContextTool(state), createAcpStatusTool(state)] as never,
 		getApiKey: async () => "mock-key",
 		extensions: [createAcpProjectionExtension(state, () => sessionManager.getSessionId())] as never,
 		disableExtensionDiscovery: true,
 		enableMCP: false,
 		hasUI: true,
 	});
-	acpSession.session = session;
 	session.subscribe((ev: { type: string }) => {
 		if (ev.type === "turn_end") state.onTurnEnd();
 	});
@@ -385,7 +367,7 @@ async function makeE2ESession(cwd: string, opts: E2EOpts) {
 	const sessionFile = sessionManager.getSessionFile()!;
 	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
 	const sessionDir = dirname(sessionFile);
-	return { session, sessionManager, state, settings, calls, forceCalls, sessionDir };
+	return { session, sessionManager, state, settings, calls, sessionDir };
 }
 
 /** One ~500-token user turn (tier L3 at e2e params). */
@@ -398,13 +380,6 @@ function bulkTurn(label: string): string {
 const E2E_PARAMS: Partial<AcpParams> = { l1: 150, l2: 300, l3: 450, minCompress: 20, target: 1_000_000, ...NO_TAIL };
 const E2E_WINDOW = 100_000; // guard 83616, zone line 35000: both far away — only the L3 axis drives D/E/F
 
-function isForcedChoice(toolChoice: unknown): boolean {
-	return (
-		typeof toolChoice === "object" &&
-		toolChoice !== null &&
-		(toolChoice as { name?: unknown }).name === "compress_context"
-	);
-}
 
 // --- D: e2e ultimatum -> force -> obey (acceptance 5) --------------------------------------
 
@@ -415,43 +390,32 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		params: E2E_PARAMS,
 		contextWindow: E2E_WINDOW,
 		handler: (call) => {
-			const toolChoice = call.options?.toolChoice;
-			if (isForcedChoice(toolChoice)) {
+			const forcedText = JSON.stringify(call.context.messages);
+			if (forcedText.includes("only compress_context is allowed this turn")) {
 				compressCalls.push("forced");
 				return { content: [{ type: "toolCall", name: "compress_context", arguments: { keep: [], summary: tokenText(100) } }] };
 			}
-			if (toolChoice === "none") return { content: ["turn recorded."] };
-			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[compress-hint]"));
-			const text = lastUser ? textOf(lastUser as { content: unknown }) : "";
-			if (text.includes("[compress-hint]")) return { content: ["not compressing yet."] }; // ignore the ultimatum
-			return { content: ["turn recorded."] };
+			return { content: ["not compressing yet."] };
 		},
 	});
 
 	await e2e.session.prompt(bulkTurn("task one"));
 	await waitFor("ultimatum on the wire", () => e2e.calls.length >= 1 && JSON.stringify(e2e.calls[0].context.messages).includes("Final notice"));
-	assert.equal(e2e.forceCalls.length, 1, "the ignored ultimatum armed the force at turn end");
+	const initialToolNames = e2e.calls[0]!.context.tools?.map((tool) => tool.name) ?? [];
+	assert.ok(initialToolNames.includes("compress_context"), "the ordinary ACP request declares compress_context");
 
 	await e2e.session.prompt("continue");
 	await waitFor("forced compress round-trip", () =>
 		e2e.sessionManager.getEntries().some((e) => e.type === "message" && (e as { message?: { role?: string; toolName?: string } }).message?.role === "toolResult" && (e as { message?: { toolName?: string } }).message?.toolName === "compress_context"),
 	);
 	assert.equal(compressCalls.length, 1, "the model called compress_context exactly once, under force");
-	const forcedCall = e2e.calls.find((c) => isForcedChoice(c.options?.toolChoice));
-	assert.ok(forcedCall, "the forced request carried the named tool_choice on the wire-shaped options");
-	// Forced-request wording (T10): tool_choice pins compress_context, so the
-	// request text must point at the manifest it already carries — never at
-	// calling context_status.
-	const forcedText = JSON.stringify(forcedCall!.context.messages);
-	assert.ok(!forcedText.includes("Call context_status now") && !forcedText.includes("call the context_status tool"), "forced request never directs the model to call context_status");
-	assert.ok(forcedText.includes("pinned to compress_context"), "forced request points at the compress it is pinned to");
-	const afterForce = e2e.calls.slice(e2e.calls.indexOf(forcedCall!) + 1);
-	assert.ok(
-		afterForce.length > 0 && afterForce[0].options?.toolChoice === "none",
-		"the [forced, \"none\"] sequence advanced: the turn after the force cannot call tools",
-	);
-	// Let the post-force turn ("none" choice) settle before reading the journal.
-	await Bun.sleep(100);
+	const forcedCall = e2e.calls.find((c) => JSON.stringify(c.context.messages).includes("only compress_context is allowed this turn"));
+	assert.ok(forcedCall, "the host-forced request reached the model");
+	const forcedText = JSON.stringify(forcedCall.context.messages);
+	assert.ok(!forcedText.includes("Call context_status now") && !forcedText.includes("call the context_status tool"), "forced request points to its existing manifest");
+	assert.ok(forcedText.includes("The host rejects other tool calls."), "forced instructions describe the host gate");
+	assert.deepEqual(forcedCall.context.tools?.map((tool) => tool.name), initialToolNames, "forced round preserves the complete provider tool list");
+	await Bun.sleep(100); // let the successful turn settle before reading the journal
 	const metas = e2e.sessionManager
 		.getEntries()
 		.filter((e): e is Extract<SessionEntry, { type: "custom" }> => e.type === "custom" && e.customType === "acpSummary")
@@ -476,7 +440,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: D e2e — ultimatum ignored -> named tool_choice on the next request -> forced strong compress persisted; sequence advanced");
+	console.log("ok: D e2e — host-only forced round preserves the provider tool list and persists a strong compression");
 }
 
 // --- D2: e2e forced round blocks every other tool host-side (v11 tool_call gate) -----------
@@ -487,12 +451,11 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		params: E2E_PARAMS,
 		contextWindow: E2E_WINDOW,
 		handler: (call) => {
-			const toolChoice = call.options?.toolChoice;
-			if (isForcedChoice(toolChoice)) {
-				// A face that ignores the pin: the model reaches for another tool.
-				return { content: [{ type: "toolCall", name: "read", arguments: { path: "notes.txt" } }] };
+			const forcedText = JSON.stringify(call.context.messages);
+			if (forcedText.includes("only compress_context is allowed this turn")) {
+				// The full tool list includes this valid status tool; the host rejects it.
+				return { content: [{ type: "toolCall", name: "context_status", arguments: {} }] };
 			}
-			if (toolChoice === "none") return { content: ["turn recorded."] };
 			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[compress-hint]"));
 			const text = lastUser ? textOf(lastUser as { content: unknown }) : "";
 			if (text.includes("[compress-hint]")) return { content: ["not compressing yet."] };
@@ -503,26 +466,24 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	await e2e.session.prompt(bulkTurn("task one"));
 	await waitFor("ultimatum on the wire", () => e2e.calls.length >= 1 && JSON.stringify(e2e.calls[0].context.messages).includes("Final notice"));
 	await e2e.session.prompt("continue");
-	// The blocked read must land as an error toolResult pointing back at the
-	// pinned call — the host gate, not the provider, is the last line.
-	await waitFor("blocked read toolResult", () =>
+	// The host gate, not provider-side filtering, rejects the valid status call.
+	await waitFor("blocked context_status toolResult", () =>
 		e2e.sessionManager.getEntries().some(
 			(e) =>
 				e.type === "message" &&
 				(e as { message?: { role?: string; toolName?: string } }).message?.role === "toolResult" &&
-				(e as { message?: { toolName?: string } }).message?.toolName === "read",
+				(e as { message?: { toolName?: string } }).message?.toolName === "context_status",
 		),
 	);
 	const blocked = e2e.sessionManager
 		.getEntries()
 		.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
 		.map((e) => e.message as AgentMessage)
-		.find((m): m is Extract<AgentMessage, { role: "toolResult" }> => m.role === "toolResult" && m.toolName === "read")!;
-	assert.equal(blocked.isError, true, "the non-compress call on a forced round is an error");
-	assert.match(textOf(blocked as never as { content: unknown }), /only compress_context is allowed on this turn/, "the error points back at the pinned call");
-	// No compress happened this turn: the forced round fails and the ladder
-	// retries the force (failure 2 of 3 still re-arms; the third enters fallback).
-	await waitFor("force re-armed after the blocked round", () => e2e.forceCalls.length >= 2);
+		.find((m): m is Extract<AgentMessage, { role: "toolResult" }> => m.role === "toolResult" && m.toolName === "context_status")!;
+	assert.equal(blocked.isError, true, "the non-compress status call on a forced round is an error");
+	const forcedCall = e2e.calls.find((c) => JSON.stringify(c.context.messages).includes("only compress_context is allowed this turn"));
+	assert.ok(forcedCall, "the host-forced request is present");
+	assert.deepEqual(forcedCall.context.tools?.map((tool) => tool.name), e2e.calls[0]!.context.tools?.map((tool) => tool.name), "the gate rejects without shrinking the tool list");
 	assert.equal(e2e.state.degraded, false, "one blocked forced round does not degrade");
 	await e2e.session.dispose();
 	await e2e.sessionManager.close();
@@ -532,7 +493,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: D2 e2e — forced round blocked a non-compress tool host-side with a redirect error; failure re-arms the force");
+	console.log("ok: D2 e2e — full tool list is visible; host gate rejects a valid context_status call");
 }
 
 // --- E: e2e fallback after three ignored forces (acceptance 5 fallback half) ---------------
@@ -544,8 +505,8 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		params: { ...E2E_PARAMS, l3: 700 }, // the voluntary round stays below L3; only rounds 3+ breach it
 		contextWindow: E2E_WINDOW,
 		handler: (call) => {
-			const toolChoice = call.options?.toolChoice;
-			if (isForcedChoice(toolChoice)) return { content: ["still not compressing."] }; // ignore the force
+			const forcedText = JSON.stringify(call.context.messages);
+			if (forcedText.includes("only compress_context is allowed this turn")) return { content: ["still not compressing."] };
 			const lastUser = [...call.context.messages].reverse().find((m) => m.role === "user" && !textOf(m as { content: unknown }).startsWith("[compress-hint]"));
 			const text = lastUser ? textOf(lastUser as { content: unknown }) : "";
 			if (text.includes("compress it now") && !compressedVoluntarily) {
@@ -560,7 +521,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	// fingerprint-pseudo at its own request (the journal lags the view by one
 	// request), so the compressible manifest only exists from round 2 on.
 	await e2e.session.prompt(`warmup ${tokenText(130)}`);
-	assert.equal(e2e.forceCalls.length, 0);
+	assert.equal(e2e.state.forcedFailureCount(), 0);
 
 	// Round 2: bulk + voluntary compress while past L3 (strong by the tier
 	// table, but NOT forced — meta.forced absent); the turn ends with success.
@@ -569,11 +530,11 @@ function isForcedChoice(toolChoice: unknown): boolean {
 		e2e.sessionManager.getEntries().some((e) => e.type === "custom" && (e as { customType?: string }).customType === "acpSummary"),
 	);
 	assert.ok(compressedVoluntarily, "the voluntary round routed through the model");
-	assert.equal(e2e.forceCalls.length, 0, "an in-turn successful compression answers the L3 round");
+	assert.equal(e2e.state.forcedFailureCount(), 0, "an in-turn successful compression answers the L3 round");
 	const summaryEntries = () =>
 		e2e.sessionManager.getEntries().filter((e): e is Extract<SessionEntry, { type: "custom" }> => e.type === "custom" && e.customType === "acpSummary");
 	assert.equal(summaryEntries().length, 1);
-	assert.equal(summaryEntries()[0].data.meta.forced, undefined, "the voluntary compress is not marked forced");
+	assert.equal((summaryEntries()[0].data as AcpSummaryData).meta.forced, undefined, "the voluntary compress is not marked forced");
 
 	// Snapshot the raw journal before the fallback path runs: the base auto
 	// chain stays pinned off and never rewrites stored messages.
@@ -581,16 +542,16 @@ function isForcedChoice(toolChoice: unknown): boolean {
 
 	// Round 3: past L3 again, ultimatum ignored -> force armed.
 	await e2e.session.prompt(bulkTurn("round two"));
-	assert.equal(e2e.forceCalls.length, 1, "ultimatum ignored -> force armed");
+	assert.equal(e2e.state.forcedFailureCount(), 0, "the unanswered ultimatum arms the next round");
 
 	// Rounds 4-6: each forced request is ignored. The first two re-arm, the
 	// third enters persistent fallback (no degrade, no fourth force).
 	await e2e.session.prompt("continue");
-	assert.equal(e2e.forceCalls.length, 2, "forced failure 1 re-arms");
+	assert.equal(e2e.state.forcedFailureCount(), 1, "forced failure 1 re-arms");
 	await e2e.session.prompt("continue");
-	assert.equal(e2e.forceCalls.length, 3, "forced failure 2 re-arms");
+	assert.equal(e2e.state.forcedFailureCount(), 2, "forced failure 2 re-arms");
 	await e2e.session.prompt("continue");
-	assert.equal(e2e.forceCalls.length, 3, "forced failure 3 enters fallback without a fourth force");
+	assert.equal(e2e.state.forcedFailureCount(), 3, "forced failure 3 enters fallback without another forced round");
 
 	assert.equal(e2e.state.degraded, false, "fallback is not a degrade");
 	assert.equal(e2e.state.fallbackActive(), true, "three failed forced rounds enter fallback");
@@ -620,23 +581,25 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: E e2e — three ignored forces enter fallback; projection keeps serving; journal untouched");
+	console.log("ok: E e2e — three ignored host-forced rounds enter fallback; projection keeps serving; journal untouched");
 }
 
-// --- F: e2e API error on the forced request counts as one failure (acceptance 5) ------------
+// --- F: e2e API error retries within the host-forced round (acceptance 5) -------------------
 
 {
 	const cwd = mkdtempSync(join(tmpdir(), "acp-t7-f-"));
 	let threwOnce = false;
+	let forcedAttempts = 0;
 	const e2e = await makeE2ESession(cwd, {
 		params: E2E_PARAMS,
 		contextWindow: E2E_WINDOW,
 		handler: (call) => {
-			const toolChoice = call.options?.toolChoice;
-			if (isForcedChoice(toolChoice)) {
+			const forcedText = JSON.stringify(call.context.messages);
+			if (forcedText.includes("only compress_context is allowed this turn")) {
+				forcedAttempts++;
 				if (!threwOnce) {
 					threwOnce = true;
-					return { content: [], throw: new Error("simulated API 500 on the forced request") } as never;
+					return { content: [], throw: new Error("simulated API 500 on the forced request") };
 				}
 				return { content: [{ type: "toolCall", name: "compress_context", arguments: { keep: [], summary: tokenText(100) } }] };
 			}
@@ -648,18 +611,17 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	});
 
 	await e2e.session.prompt(bulkTurn("task one")); // ultimatum ignored -> force armed
-	assert.equal(e2e.forceCalls.length, 1);
-	await e2e.session.prompt("continue"); // forced request; first attempt API-errors
-	assert.equal(e2e.state.degraded, false, "an API-error forced turn counts as one failure, not a degrade");
-	assert.equal(e2e.forceCalls.length, 2, "the failed forced round re-arms the force");
-	assert.equal(cfgCompactionEnabled.get(e2e.settings), false, "the base auto chain stays pinned off");
-	// The next forced attempt obeys: the model compresses and the ladder clears.
-	await e2e.session.prompt("continue");
+	assert.equal(e2e.state.forcedFailureCount(), 0, "the unanswered ultimatum has not failed a forced round");
+	await e2e.session.prompt("continue"); // forced request errors once, then the session retries it
 	await waitFor("forced compress after the API-error retry", () =>
 		e2e.sessionManager.getEntries().some((e) => e.type === "custom" && (e as { customType?: string }).customType === "acpSummary"),
 	);
-	assert.equal(e2e.state.degraded, false, "a later successful forced round leaves ACP active");
-	assert.equal(e2e.state.fallbackActive(), false, "a success never enters fallback");
+	assert.equal(threwOnce, true, "the first forced provider request raised the simulated API error");
+	assert.equal(forcedAttempts, 2, "the host-forced round remained active for the provider retry");
+	assert.equal(e2e.state.forcedFailureCount(), 0, "the retry's successful compression clears the failure count");
+	assert.equal(e2e.state.degraded, false, "the API-error retry leaves ACP active");
+	assert.equal(e2e.state.fallbackActive(), false, "a successful retry never enters fallback");
+	assert.equal(cfgCompactionEnabled.get(e2e.settings), false, "the base auto chain stays pinned off");
 	await e2e.session.dispose(); // same as D: no post-exit session-file resurrection
 	await e2e.sessionManager.close();
 	rmSync(e2e.sessionDir, { recursive: true, force: true });
@@ -672,7 +634,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: F e2e — API error on the forced request counts as a failure and re-arms; the retry obeys");
+	console.log("ok: F e2e — API error retries with the full provider tool list; forced compression succeeds");
 }
 
 // --- G: restart rebuild wiring (acceptance 10 half, spec §9.1/§5.3) ------------------------
@@ -730,7 +692,7 @@ function isForcedChoice(toolChoice: unknown): boolean {
 			.filter((e): e is Extract<SessionEntry, { type: "message" }> => e.type === "message")
 			.map((e) => e.message),
 	);
-	assert.match(textOf(basedProjection[0]), /^\[acp-base\]/, "the restart projection renders the base block first");
+	assert.match(textOf(basedProjection[0] as { content?: unknown }), /^\[acp-base\]/, "the restart projection renders the base block first");
 	assert.equal(JSON.stringify(basedProjection).split("[acp-base]").length - 1, 1, "exactly one base render");
 	assert.equal(cfgCompactionEnabled.get(settingsB), false, "no degrade: the base chain stays as configured");
 	await based.close();

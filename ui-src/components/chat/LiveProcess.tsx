@@ -1,8 +1,9 @@
 // The live segment of the running turn. Order is fixed: the intent row (ChatLoading) on
 // top, its expanding body below, the working-time row at the bottom — the body opens
 // downward from the intent row, so the work-time row is pushed down rather than moving.
-// The body holds the rows produced since the turn's last output (items.tsx liveFrom): output
-// never folds, so everything after it belongs to the current segment.
+// The body holds the rows produced since the turn's last cut (items.tsx liveSegmentStart):
+// output never folds, and neither does an edit row outside the concise style, so everything
+// after that cut belongs to the current segment.
 import { useState } from "react";
 import { useAppStore } from "../../store/index";
 import type { ChatItem } from "../../types/session";

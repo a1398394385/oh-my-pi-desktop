@@ -593,14 +593,11 @@ function setCommandPressed(on: boolean): void {
   );
 }
 
-// Agent Hub open gesture: double-tap ← while focus sits anywhere in the middle card
-// (#main) and the composer draft is empty — same 500ms window as the hub's close gesture
+// Agent Hub open gesture: double-tap ← with focus inside the composer input and an empty
+// draft — same 500ms window as the hub's close gesture. Scoped to #input so arrows in
+// approval/ask cards, menus, and message-flow focus never open the hub.
 const HUB_LEFT_WINDOW_MS = 500;
 let hubLastLeftAt = 0;
-// Clicking the message flow never lands DOM focus inside #main (non-focusable content blurs
-// to body), so a target-containment check alone makes the gesture unreachable after a click.
-// Track the last pointerdown scope and let body focus inherit it.
-let lastPointerInMain = false;
 
 function onKeyDown(e: KeyboardEvent): void {
   // Modifier held state: holding Command (Ctrl on Windows) activates the
@@ -622,9 +619,7 @@ function onKeyDown(e: KeyboardEvent): void {
   ) {
     const st = useAppStore.getState();
     if (!st.hubOpen && !st.settingsOpen && !st.gitManage && !st.draftHasContent && e.target instanceof Node) {
-      const main = document.getElementById("main");
-      const inScope = e.target === document.body ? lastPointerInMain : !!main?.contains(e.target);
-      if (inScope) {
+      if (document.getElementById("input")?.contains(e.target)) {
         const now = Date.now();
         if (now - hubLastLeftAt <= HUB_LEFT_WINDOW_MS) {
           hubLastLeftAt = 0;
@@ -684,15 +679,6 @@ function onBlur(): void {
 export function initKeys(): void {
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("keyup", onKeyUp);
-  // Pointer scope memory for the hub open gesture (see hubLastLeftAt above); capture phase so
-  // it records even when inner controls stopPropagation
-  document.addEventListener(
-    "pointerdown",
-    (e) => {
-      lastPointerInMain = e.target instanceof Node && !!document.getElementById("main")?.contains(e.target);
-    },
-    true,
-  );
   window.addEventListener("blur", onBlur);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) onBlur();

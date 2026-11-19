@@ -37,15 +37,15 @@ import type { SessionEntry } from "@oh-my-pi/pi-coding-agent";
 
 import { AcpRuntimeState, createCompressContextTool, createAcpProjectionExtension } from "../host/acp-runtime.ts";
 import type { AcpParams } from "../host/acp-plan.ts";
-import type { AcpSummaryData, CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
+import type { AcpSummaryData } from "../host/acp-persist.ts";
 import { assertToolPairing } from "../host/acp-projection.ts";
+import type { CompressOutcome, CompressRejection } from "../host/acp-runtime.ts";
 import { ACP_SYNTHETIC_STATUS_CALL_ID, createAcpStatusTool } from "../host/acp-status-tool.ts";
 
 assert.equal(process.env.OMP_PROFILE, TEST_PROFILE, "run with OMP_PROFILE=omp-desktop-test (never the default profile)");
 // Dynamic import exception: the coding-agent module resolves agentDir at import
 // time, so the profile must be active before the module loads (T2/probe precedent).
 const { createAgentSession, SessionManager, Settings, AgentRegistry } = await import("@oh-my-pi/pi-coding-agent");
-const { cfgCompactionEnabled } = await import("@oh-my-pi/pi-coding-agent/session/context-settings");
 const { AuthStorage } = await import("@oh-my-pi/pi-coding-agent/session/auth-storage");
 const { ModelRegistry } = await import("@oh-my-pi/pi-coding-agent/config/model-registry");
 const { createMockModel, registerMockApi } = await import("@oh-my-pi/pi-ai/providers/mock");
@@ -90,14 +90,12 @@ interface SynthFixture {
 	writes: AcpSummaryData[];
 	entries: FixtureEntry[];
 	view: AgentMessage[];
-	forceCalls: string[];
-	degrades: string[];
 }
 
 let fixtureSeq = 0;
 
-/** v10.1 fixture: journal-backed view over a fake sink, spying force + degrade channels. */
-function makeSynthFixture(params: Partial<AcpParams>, blocks: number, contextWindow: number, opts?: { throwOnForce?: boolean }): SynthFixture {
+/** Journal-backed fixture for the forced-round projection. */
+function makeSynthFixture(params: Partial<AcpParams>, blocks: number, contextWindow: number): SynthFixture {
 	const writes: AcpSummaryData[] = [];
 	const entries: FixtureEntry[] = [];
 	const sink = {
@@ -118,21 +116,14 @@ function makeSynthFixture(params: Partial<AcpParams>, blocks: number, contextWin
 		entries.push({ type: "message", id: `e${i}`, message });
 		view.push(message);
 	}
-	const forceCalls: string[] = [];
-	const degrades: string[] = [];
 	const state = new AcpRuntimeState({
 		countTokens,
 		sink,
 		getEntries: () => entries as never as SessionEntry[],
 		contextWindow,
 		params,
-		forceCompressTool: () => {
-			forceCalls.push(`arm@${entries.length}`);
-			if (opts?.throwOnForce) throw new Error("no force channel on this face");
-		},
-		onDegrade: (reason) => degrades.push(reason),
 	});
-	return { state, writes, entries, view, forceCalls, degrades };
+	return { state, writes, entries, view };
 }
 
 /** A REAL context_status tool pair as journal entries (mid-journal insertion). */
@@ -225,24 +216,20 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	// the ultimatum — the synthetic pair is the projection tail.
 	assert.equal(out2.at(-1)!.role, "toolResult", "no standing ultimatum on an unchanged L3 round");
 
-	// Armed force: the unanswered ultimatum pins the next request; the pair still rides it.
+	// Host-enforced round: the synthetic pair carries the current manifest and
+	// accurately explains that the host gate, not provider filtering, is active.
 	fx.state.onTurnEnd();
-	assert.equal(fx.forceCalls.length, 1, "the unanswered L3 ultimatum armed the force");
 	const out3 = fx.state.projectView(fx.view);
+	assert.equal(fx.state.forcedRoundActive(), true, "the next request is host-forced");
 	const [a3, r3] = pairTail(out3);
-	// T10 forced wording: tool_choice pins compress_context on this request, so
-	// the pair switches to the forced variant — it points at the manifest the
-	// request already carries, never at calling context_status. The force is
-	// request-scoped: the next projectView advances the request sequence, so
-	// the pair returns to the non-forced wording — byte-identical to the
-	// original ultimatum copy.
-	assert.notEqual(JSON.stringify([a3, r3]), JSON.stringify([a1, r1]), "the pinned (forced) request carries the forced wording");
-	assert.ok(textOf(r3 as { content: unknown }).includes("pinned to compress_context"), "the forced pair points at the compress it is pinned to");
-	assert.ok(!textOf(r3 as { content: unknown }).includes("Call context_status"), "the forced pair never directs the model to call context_status");
+	assert.notEqual(JSON.stringify([a3, r3]), JSON.stringify([a1, r1]), "the forced request carries the host-gate wording");
+	assert.ok(textOf(r3 as { content: unknown }).includes("only compress_context is allowed this turn"));
+	assert.ok(textOf(r3 as { content: unknown }).includes("The host rejects other tool calls."));
+	assert.ok(!textOf(r3 as { content: unknown }).includes("Call context_status"));
 	const out4 = fx.state.projectView(fx.view);
 	const [a4, r4] = pairTail(out4);
-	assert.equal(JSON.stringify([a4, r4]), JSON.stringify([a1, r1]), "the request after the pinned one returns to the non-forced pair, byte-identical");
-	console.log("ok: A+B — L3 + armed-force requests carry a paired, non-candidate, byte-stable synthetic pair before the ephemeral");
+	assert.equal(JSON.stringify([a4, r4]), JSON.stringify([a3, r3]), "the same forced turn remains gated across projections");
+	console.log("ok: A+B — host-forced round carries an informed manifest without changing provider tools");
 }
 
 // --- C: guard-line direct trigger at a non-L3 tier ------------------------------------------
@@ -313,7 +300,7 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	// the injection condition simply persists.
 	const fx = makeSynthFixture(FIXTURE_PARAMS, 12, 100_000);
 	const before = fx.state.projectView(fx.view);
-	const reportBefore = textOf(pairTail(before)[1]);
+	const reportBefore = textOf(pairTail(before)[1] as { content: unknown });
 	const fresh = {
 		role: "user",
 		content: blockText(99, 400),
@@ -322,32 +309,20 @@ const FIXTURE_PARAMS: Partial<AcpParams> = { l1: 300, l2: 600, l3: 900, minCompr
 	fx.entries.push({ type: "message", id: "e99", message: fresh });
 	fx.view.push(fresh);
 	const after = fx.state.projectView(fx.view);
-	const reportAfter = textOf(pairTail(after)[1]);
+	const reportAfter = textOf(pairTail(after)[1] as { content: unknown });
 	assert.notEqual(reportAfter, reportBefore, "a settled new block replaces the snapshot");
 	assert.ok(reportAfter.split("\n").some((l) => /^b13 \| (4|3)\d\d \| /.test(l)), "the new block's line is in the fresh snapshot");
 	console.log("ok: D-manifest-change — a settled block swaps in a new snapshot");
 }
 
-// --- E: degrade -> no pair -------------------------------------------------------------------
 
-{
-	const fx = makeSynthFixture(FIXTURE_PARAMS, 12, 100_000, { throwOnForce: true });
-	const out = fx.state.projectView(fx.view);
-	assert.ok(JSON.stringify(out).includes(ACP_SYNTHETIC_STATUS_CALL_ID), "the pair rides before the degrade");
-	fx.state.onTurnEnd(); // unanswered ultimatum -> arm -> throw -> degrade
-	assert.equal(fx.state.degraded, true, "the missing force channel degrades (form ③)");
-	assert.ok(fx.degrades.length === 1, "the degrade hook fired once");
-	const verbatim = fx.state.projectView(fx.view);
-	assert.deepEqual(verbatim, fx.view, "degraded projection passes the view through verbatim");
-	assert.ok(!JSON.stringify(verbatim).includes(ACP_SYNTHETIC_STATUS_CALL_ID), "no synthetic pair after degrade");
-	console.log("ok: E — degraded sessions project verbatim, no synthetic pair");
-}
-
-// --- F: e2e forced request — informed pick from the pair, JSONL zero residue -----------------
+// --- E: e2e host-only forced request — stable tools, informed pick, JSONL zero residue --------
 
 interface MockCall {
-	context: { messages: Array<{ role: string; content?: unknown }> };
-	options?: { toolChoice?: unknown };
+	context: {
+		messages: Array<{ role: string; content?: unknown }>;
+		tools?: Array<{ name: string }>;
+	};
 }
 
 /** Bounded wait for a journal/state condition (10ms poll, 10s ceiling). */
@@ -359,13 +334,6 @@ async function waitFor(what: string, predicate: () => boolean): Promise<void> {
 const E2E_PARAMS: Partial<AcpParams> = { l1: 150, l2: 300, l3: 450, minCompress: 20, target: 1_000_000, ...NO_TAIL };
 const E2E_WINDOW = 100_000; // guard 83616, zone line 35000: only the L3 axis drives this section
 
-function isForcedChoice(toolChoice: unknown): boolean {
-	return (
-		typeof toolChoice === "object" &&
-		toolChoice !== null &&
-		(toolChoice as { name?: unknown }).name === "compress_context"
-	);
-}
 
 /** One ~500-token user turn (tier L3 at e2e params). */
 function bulkTurn(label: string): string {
@@ -378,54 +346,49 @@ function bulkTurn(label: string): string {
 	const cwd = mkdtempSync(join(tmpdir(), "acp-v101-f-"));
 	const picks: string[] = [];
 	const forcedContexts: string[] = [];
-	const noneContexts: string[] = [];
+	const forcedToolLists: string[][] = [];
+	const postCompressionContexts: string[] = [];
+	const postCompressionToolLists: string[][] = [];
+	let ordinaryToolNames: string[] | undefined;
+	let compressionReturned = false;
 	const mock = createMockModel({
 		contextWindow: E2E_WINDOW,
-		handler: (context: never, options?: { toolChoice?: unknown }) => {
-			const messages = (context as unknown as MockCall["context"]).messages;
-			if (isForcedChoice(options?.toolChoice)) {
-				forcedContexts.push(JSON.stringify(messages));
-				// Informed pick: take the manifest from the synthetic pair riding
-				// this very request and keep its smallest listed block.
+		handler: (context) => {
+			const { messages, tools } = context as unknown as MockCall["context"];
+			const rendered = JSON.stringify(messages);
+			const toolNames = tools?.map((tool) => tool.name) ?? [];
+			if (rendered.includes("only compress_context is allowed this turn")) {
+				forcedContexts.push(rendered);
+				forcedToolLists.push(toolNames);
+				// Choose a real keep id from the manifest carried by this request.
 				const report = [...messages].reverse().find((m) => m.role === "toolResult" && textOf(m as { content: unknown }).startsWith("[context-status]"));
 				const lines = report ? textOf(report as { content: unknown }).split("\n").filter((l) => /^b\d+ \| \d+ \| /.test(l)) : [];
 				const keep = lines
 					.map((l) => l.split(" | "))
 					.sort((x, y) => Number(x[1]) - Number(y[1]))[0]?.[0];
 				picks.push(keep ?? "(none)");
+				compressionReturned = true;
 				return {
 					content: [{ type: "toolCall", name: "compress_context", arguments: { keep: keep ? [keep] : [], summary: tokenText(100) } }],
 				};
 			}
-			if (options?.toolChoice === "none") {
-				noneContexts.push(JSON.stringify(messages));
-				return { content: ["turn recorded."] };
+			ordinaryToolNames ??= toolNames;
+			if (compressionReturned) {
+				postCompressionContexts.push(rendered);
+				postCompressionToolLists.push(toolNames);
 			}
-			return { content: ["not compressing yet."] }; // ignore the ultimatum
+			return { content: ["not compressing yet."] };
 		},
 	});
 	const sessionManager = SessionManager.create(cwd);
 	const settings = Settings.isolated({}).overlay({ "compaction.enabled": false });
-	const forceCalls: string[] = [];
 	const state = new AcpRuntimeState({
 		countTokens,
 		sink: sessionManager,
 		getEntries: () => sessionManager.getEntries(),
 		contextWindow: E2E_WINDOW,
 		params: E2E_PARAMS,
-		forceCompressTool: () => {
-			forceCalls.push("arm");
-			const patched = mock as unknown as { api: string };
-			const saved = patched.api;
-			patched.api = "anthropic-messages";
-			try {
-				acpSession.session!.setForcedToolChoice("compress_context");
-			} finally {
-				patched.api = saved;
-			}
-		},
 	});
-	const acpSession: { session?: { setForcedToolChoice(toolName: string): void } } = {};
 	const authStorage = await AuthStorage.create(join(cwd, "auth.db"));
 	authStorage.keys.setRuntime("mock", "mock-key");
 	const modelRegistry = new ModelRegistry(authStorage, join(cwd, "models.yml"));
@@ -446,7 +409,6 @@ function bulkTurn(label: string): string {
 		enableMCP: false,
 		hasUI: true,
 	});
-	acpSession.session = session;
 	session.subscribe((ev: { type: string }) => {
 		if (ev.type === "turn_end") state.onTurnEnd();
 	});
@@ -462,19 +424,24 @@ function bulkTurn(label: string): string {
 	const ephemeralIdx = firstMessages.findIndex((m) => m.role === "user" && textOf(m as { content: unknown }).startsWith("[compress-hint]"));
 	assert.ok(reportIdx >= 0, "the L3 request carries the synthetic [context-status] pair");
 	assert.ok(ephemeralIdx > reportIdx, "the pair precedes the ephemeral line on the wire");
-	assert.equal(forceCalls.length, 1, "the ignored ultimatum armed the force at turn end");
+	const firstToolNames = calls[0]!.context.tools?.map((tool) => tool.name) ?? [];
+	assert.ok(firstToolNames.includes("compress_context"));
+	assert.ok(firstToolNames.includes("context_status"));
+	assert.equal(state.forcedFailureCount(), 0, "the ultimatum arms the next host-enforced round");
 
 	await session.prompt("continue");
 	await waitFor("forced compress round-trip", () =>
 		sessionManager.getEntries().some((e) => e.type === "message" && (e as { message?: { role?: string; toolName?: string } }).message?.role === "toolResult" && (e as { message?: { toolName?: string } }).message?.toolName === "compress_context"),
 	);
-	await Bun.sleep(100); // let the post-force "none" turn settle
-	assert.equal(forcedContexts.length, 1, "exactly one forced request fired");
+	await Bun.sleep(100); // let the post-compression request settle
+	assert.equal(forcedContexts.length, 1, "exactly one host-forced request fired");
 	assert.ok(forcedContexts[0]!.includes("[context-status]"), "the forced request carried the synthetic pair");
 	assert.ok(forcedContexts[0]!.includes("Current compression manifest"), "the pair's result is the full dashboard render");
 	assert.match(picks[0]!, /^b\d+$/, "the model picked a real bN keep id from the pair's manifest");
-	assert.ok(noneContexts.length > 0, "the [forced,\"none\"] sequence advanced");
-	assert.ok(!noneContexts[0]!.includes("[context-status]") && !noneContexts[0]!.includes(ACP_SYNTHETIC_STATUS_CALL_ID), "after the successful compress the next request carries no pair");
+	assert.deepEqual(forcedToolLists[0], firstToolNames, "the forced request retains the complete tool list");
+	assert.ok(postCompressionContexts.length > 0, "the model completed the response after compression");
+	assert.ok(!postCompressionContexts[0]!.includes("[context-status]") && !postCompressionContexts[0]!.includes(ACP_SYNTHETIC_STATUS_CALL_ID), "the successful compress retires the synthetic pair");
+	assert.deepEqual(postCompressionToolLists[0], firstToolNames, "the tool list remains unchanged after compression");
 	const metas = sessionManager
 		.getEntries()
 		.filter((e): e is Extract<SessionEntry, { type: "custom" }> => e.type === "custom" && e.customType === "acpSummary")

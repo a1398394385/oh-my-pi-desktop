@@ -100,6 +100,10 @@ const ALLOWED_EDGES = new Set([
   // edit_resend resolves the composer's "@session:<path>" markers with the same
   // inliner the prompt path uses (the base does not know the marker).
   "rpc/session.ts→session-context.ts",
+  // Injected prompt text (pasted file bodies, referenced-session turns) must not be
+  // parsed as user tokens by the base's @mention scan or the host's /skill: dispatch;
+  // one guard module owns that rewrite, shared by the prompt path and the inliner.
+  "injected-text.ts→bootstrap.ts", "session-context.ts→injected-text.ts", "rpc/prompt.ts→injected-text.ts",
   // GUI env bootstrap: thin entry host.ts fires the PATH augment early
   // (overlapping main.ts's static graph load incl. the SDK); main.ts awaits
   // the same idempotent-singleton promise

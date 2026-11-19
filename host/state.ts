@@ -274,7 +274,18 @@ export function pushPoolSnapshot(ws: unknown): void {
     ws,
     JSON.stringify({
       type: "pool_sessions",
-      sessions: [...sessions.entries()].filter(([, e]) => !e.isSubagent).map(([id, e]) => ({ id, path: e.path, cwd: e.cwd, title: e.title ?? null, busy: e.session.isStreaming })),
+      sessions: [...sessions.entries()]
+        .filter(([, e]) => !e.isSubagent)
+        .map(([id, e]) => ({
+          id,
+          path: e.path,
+          cwd: e.cwd,
+          title: e.title ?? null,
+          busy: e.session.isStreaming,
+          // Same 80-char cut as the disk rows, so the sidebar label does not jump
+          // when the persisted file replaces this pool row.
+          firstMessage: (e.transcript.find((t) => t.role === "user")?.text ?? "").slice(0, 80),
+        })),
     }),
   );
 }

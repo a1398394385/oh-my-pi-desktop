@@ -81,17 +81,12 @@ export interface CompressSnapshot {
 	baseSummary?: string;
 	/** Rendered token total of the live zone (memoized by the runtime). */
 	zoneTokens: number;
-	/** Non-message request part (system prompt + tools + skills + context); the tier gate judges the full request. */
-	nonMessageTokens: number;
+	/** Anchored total of the request being judged (§5.1): the same number status() reports. */
+	projectedTokens: number;
 	/** Zone budget line (§11): window × 35%, 0 = no limit. */
 	zoneLimitTokens: number;
 	/** Armed level-3 force: the next compress executes forced-strong (§5.2). */
 	forcedExecution: boolean;
-	/**
-	 * Learned provider/local scale over the active zone (§5.2 drift); the gate
-	 * below must read the same total `status()` reports.
-	 */
-	ratio: number;
 	params: AcpParams;
 	countTokens: (text: string) => number;
 	/** bN short-ref decode (spec §3 v10); unknown refs pass through for §6.2 to judge. */
@@ -139,10 +134,10 @@ export function planCompression(
 		};
 	}
 	const activeBlocks = snapshot.active.reduce((n, b) => n + b.tokens, 0);
-	const activeTokens = Math.round(activeBlocks * snapshot.ratio);
+	const activeTokens = activeBlocks;
 	const zoneTokens = snapshot.zoneTokens;
-	// Full request size: non-message context + active blocks + rendered zone (spec §5.1).
-	const projectedTokens = snapshot.nonMessageTokens + activeTokens + zoneTokens;
+	// Anchored request total (§5.1): one number shared with status/fallback.
+	const projectedTokens = snapshot.projectedTokens;
 	if (computeTier(projectedTokens, p) === "none") {
 		return {
 			reject: {
@@ -278,7 +273,7 @@ export function planCompression(
 	// the whole live zone and inherits its full compressedIds/index union, so
 	// the zone renders as a single block and rebuild never walks supersedes
 	// chains (§9). depth counts strong generations (normal blocks sit at 0).
-	const activeTokensAfter = Math.max(0, Math.round((activeBlocks - compressedTokens) * snapshot.ratio));
+	const activeTokensAfter = Math.max(0, activeBlocks - compressedTokens);
 	// supersedes stays an acpSummary-only list: the base boundary is not an
 	// acpSummary and is identified by its own stable field (spec R4).
 	const supersedes = method === "strong" ? snapshot.zone.filter((z) => z.meta.method !== "base").map((z) => z.id) : [];

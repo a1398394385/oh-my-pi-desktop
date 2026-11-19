@@ -187,6 +187,7 @@ export const chatEn = {
   // ---- turn actions (TurnActs.tsx) ----
   copyReply: "Copy this reply",
   speakReply: "Read this reply aloud",
+  stopSpeakReply: "Stop reading aloud",
   openAutomation: "This turn created the task “{{title}}” — open it",
   copyFailed: "Copy failed",
   copyCode: "Copy code",

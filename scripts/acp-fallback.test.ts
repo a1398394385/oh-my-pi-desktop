@@ -47,7 +47,6 @@ interface Fixture {
 	state: AcpRuntimeState;
 	entries: FixtureEntry[];
 	view: AgentMessage[];
-	forceCalls: number;
 }
 
 function makeFixture(options: {
@@ -75,25 +74,14 @@ function makeFixture(options: {
 		entries.push({ type: "message", id: `e${i}`, message });
 		view.push(message);
 	}
-	let forceCalls = 0;
 	const state = new AcpRuntimeState({
 		countTokens,
 		sink,
 		getEntries: () => entries as never as SessionEntry[],
 		contextWindow: options.contextWindow ?? 100_000,
 		params: { tailTurns: 0, tailTokens: 0, ...options.params },
-		forceCompressTool: () => {
-			forceCalls++;
-		},
 	});
-	return {
-		state,
-		entries,
-		view,
-		get forceCalls() {
-			return forceCalls;
-		},
-	};
+	return { state, entries, view };
 }
 
 function zoneBlock(summaryTokens: number, compressed: string[]): AcpSummaryData {
@@ -115,36 +103,36 @@ function zoneBlock(summaryTokens: number, compressed: string[]): AcpSummaryData 
 }
 
 describe("L3 force ladder exhaustion", () => {
-	test("three failed forced rounds enter fallback without degrade and never re-arm", () => {
+	test("three failed host-forced rounds enter fallback without degrade and never re-arm", () => {
 		const fx = makeFixture({ blocks: 10, blockTokens: 100, params: { l1: 300, l2: 600, l3: 900, minCompress: 30, target: 1_000_000 } });
 		fx.state.projectView(fx.view);
 		assert.equal(fx.state.roundStatus!.tier, "L3");
 		fx.state.onTurnEnd(); // ultimatum unanswered -> arm 1
-		assert.equal(fx.forceCalls, 1);
 		assert.equal(fx.state.forcedFailureCount(), 0);
-
-		fx.state.projectView(fx.view); // forced request 1
+		fx.state.onTurnEnd(); // idle cannot consume the next-request arm
+		fx.state.projectView(fx.view); // host-forced request 1
+		assert.equal(fx.state.forcedRoundActive(), true);
 		fx.state.onTurnEnd(); // no success -> retry 1
-		assert.equal(fx.forceCalls, 2, "first forced failure re-arms");
 		assert.equal(fx.state.forcedFailureCount(), 1);
 		assert.equal(fx.state.degraded, false);
 
-		fx.state.projectView(fx.view); // forced request 2
+		fx.state.projectView(fx.view); // host-forced request 2
+		assert.equal(fx.state.forcedRoundActive(), true);
 		fx.state.onTurnEnd(); // no success -> retry 2
-		assert.equal(fx.forceCalls, 3, "second forced failure re-arms");
 		assert.equal(fx.state.forcedFailureCount(), 2);
 		assert.equal(fx.state.degraded, false);
 
-		fx.state.projectView(fx.view); // forced request 3
+		fx.state.projectView(fx.view); // host-forced request 3
+		assert.equal(fx.state.forcedRoundActive(), true);
 		fx.state.onTurnEnd(); // third failure -> fallback
-		assert.equal(fx.forceCalls, 3, "third failure does not arm a fourth force");
 		assert.equal(fx.state.degraded, false, "fallback is not a degrade");
 		assert.equal(fx.state.fallbackActive(), true);
 		assert.match(fx.state.fallbackReason, /3 consecutive/);
 
 		fx.state.projectView(fx.view);
-		fx.state.onTurnEnd(); // fallback must not re-arm even with a fresh ultimatum
-		assert.equal(fx.forceCalls, 3, "fallback never re-arms the force");
+		assert.equal(fx.state.forcedRoundActive(), false);
+		fx.state.onTurnEnd(); // fallback never re-arms
+		assert.equal(fx.state.fallbackActive(), true);
 	});
 
 	test("a successful compression clears the failure count", async () => {
@@ -152,13 +140,16 @@ describe("L3 force ladder exhaustion", () => {
 		fx.state.projectView(fx.view);
 		fx.state.onTurnEnd(); // arm
 		fx.state.projectView(fx.view);
+		assert.equal(fx.state.forcedRoundActive(), true);
 		fx.state.onTurnEnd(); // failure 1 -> retry
 		assert.equal(fx.state.forcedFailureCount(), 1);
 		fx.state.projectView(fx.view);
+		assert.equal(fx.state.forcedRoundActive(), true);
 		const out = await fx.state.compress({ keep: [], summary: tokenText(100) });
 		assert.equal(out.ok, true);
 		assert.equal(fx.state.forcedFailureCount(), 0, "success resets the forced-failure counter");
 	});
+
 });
 
 describe("fallback threshold reads the ACP projection", () => {

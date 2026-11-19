@@ -170,6 +170,7 @@ export const chatZh = {
   // ---- turn actions (TurnActs.tsx) ----
   copyReply: "复制这条回复",
   speakReply: "朗读这条回复",
+  stopSpeakReply: "停止朗读",
   openAutomation: "本回合创建了定时任务「{{title}}」，点击打开",
   copyFailed: "复制失败",
   copyCode: "复制代码",

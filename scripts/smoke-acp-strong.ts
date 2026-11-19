@@ -4,10 +4,10 @@
 // Layers:
 //   A  the §5.2 two-axis decision table as one function: zone line strict >,
 //      riding only above L1, >L3 strong regardless of the zone axis
-//   B  ephemeral annotation: uniform "next compression will be strong" note
-//      while the zone is over its line — including tier=none (row 6, where the
-//      ephemeral must still be emitted), absent while under the line, and
-//      compress=strong only once active > L1 (row 5)
+//   B  pendingStrong is a derived state only: the zone over its line annotates
+//      whatever surface already exists (context_status today) but never injects
+//      on its own — tier none and the L1..L2 band stay silent even while it is
+//      set; a crossed milestone carries the new strong-reset wording
 //   C  strong execution (acceptance 6): S1{a}+S2{b} -> M folds c — M inherits
 //      the full compressedIds/index union, supersedes both, depth 1, zone
 //      collapses to one render; rebuildAcpState agrees without walking chains;
@@ -240,26 +240,50 @@ function zoneBlockSize(summaryTokens: number): number {
 	fx.state.projectView(fx.view);
 	assert.ok(fx.state.roundStatus!.zoneTokens > limit, "fixture zone really is over the line after two blocks");
 
-	// Row 6: the projected total sits at or under L1 (one active block + the
-	// zone) while the zone stays over its line — tier=none + pending must still
-	// emit the ephemeral (projection-side only; v11 would reject a compress here).
+	// Row 6: the total sits at or under L1 (one active block + the zone) while
+	// the zone stays over its line — the state is derived and injects nothing.
 	fx.state.projectView(fx.view);
-	let text = ephemeralText(fx);
-	assert.match(text, /\[compress-hint\] tier=none compress=normal zone=\d+ tokens/, "row 6: emitted at tier=none");
-	assert.ok(text.includes("Pending strong"), "row 6 carries the annotation");
-	assert.ok(!text.includes("activation line"), "row 6 has no tier instruction — the annotation is the message");
+	assert.equal(fx.state.roundStatus!.tier, "none");
+	assert.ok(fx.state.roundStatus!.pendingStrong, "row 6: zone over the line at tier none");
+	assert.ok(
+		!JSON.stringify(fx.state.lastProjected).includes("[compress-hint]"),
+		"row 6: pendingStrong alone must not inject an ephemeral",
+	);
+	assert.equal(fx.state.status().ok, false, "tier none stays below the context_status floor");
 
-	// Row 5: grow active past L1 (+1 block: 812+406 > 1000) -> same
-	// annotation, method flips to strong.
+	// Row 5: grow active past L1 (+1 block: 812+zone > 1000) — method flips to
+	// strong, but the L1..L2 band is silent: nothing injects on the state alone.
 	addBlocks(fx, 1);
 	fx.state.projectView(fx.view);
-	text = ephemeralText(fx);
-	assert.match(text, /\[compress-hint\] tier=L1 compress=strong zone=\d+ tokens/, "row 5: method flips once active > L1");
-	assert.ok(text.includes("Pending strong"), "row 5 carries the annotation");
-	// The annotation line is byte-stable across requests while state is unchanged.
+	assert.equal(fx.state.roundStatus!.tier, "L1");
+	assert.ok(fx.state.roundStatus!.pendingStrong);
+	assert.equal(fx.state.roundStatus!.method, "strong", "row 5: riding over L1");
+	assert.ok(
+		!JSON.stringify(fx.state.lastProjected).includes("[compress-hint]"),
+		"row 5: the L1 band stays silent even with pendingStrong",
+	);
+
+	// The dashboard shows the state live, with the strong-reset wording.
+	const dashboard = fx.state.status();
+	assert.ok(dashboard.ok, "the L1 floor admits context_status");
+	assert.match(dashboard.text, /Pending strong/);
+	assert.match(dashboard.text, /old compression zone folds into a single new summary block/);
+	assert.match(dashboard.text, /not written into the new summary is lost/);
+
+	// A different injection (a crossed milestone) carries the same note — and
+	// still fires only once, so the state never turns into a standing line.
+	addBlocks(fx, 3); // 5 active blocks + zone > l2: the L2 band opens
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "L2");
+	const text = ephemeralText(fx);
+	assert.match(text, /\[compress-hint\] tier=L2 compress=strong .*milestone=\d+\/10/, "the milestone injection fires");
+	assert.ok(text.includes("Pending strong"), "the milestone carries the pending-strong note");
 	fx.state.projectView([...fx.view]);
-	assert.equal(ephemeralText(fx), text, "annotation rendering deterministic");
-	console.log("ok: B annotation — absent under the line; uniform at tier=none (row 6) and L1 (row 5); stable bytes");
+	assert.ok(
+		!JSON.stringify(fx.state.lastProjected).includes("[compress-hint]"),
+		"an unchanged round never repeats the milestone: pendingStrong does not sustain an injection",
+	);
+	console.log("ok: B pendingStrong — derived only; silent at tier none and in the L1 band; context_status + milestones carry the note once");
 }
 
 // --- C: strong execution + inheritance + rebuild (acceptance 6) ----------------------------
@@ -329,6 +353,22 @@ function zoneBlockSize(summaryTokens: number): number {
 	assert.deepEqual([...rebuilt.compressedBlockIds].sort(), ["e0", "e1", "e2", "e3", "e4", "e5"].sort(), "all six compressed via M2 — no recursion");
 	assert.equal(rebuilt.zone[0].index.length, 6);
 	console.log("ok: C strong exec — inheritance/depth/supersede correct at both layers; rebuild chain-free; single render");
+}
+
+// --- C2: direct L3 strong tells the model the whole zone is replaced ------------------------
+
+{
+	const fx = makeFixture({ ...PARAMS, l3: 8_000 }, Array.from({ length: 14 }, () => 0), 10_000_000, 500);
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "L2", "initial active history is below L3");
+	accepted(await fx.state.compress({ keep: R(fx.state, Array.from({ length: 13 }, (_, i) => `e${i + 1}`)), summary: tokenText(120) }));
+	addBlocks(fx, 4, 500);
+	fx.state.projectView(fx.view);
+	assert.equal(fx.state.roundStatus!.tier, "L3");
+	assert.equal(fx.state.roundStatus!.method, "strong");
+	assert.equal(fx.state.roundStatus!.pendingStrong, false, "zone is under its budget line");
+	assert.ok(JSON.stringify(fx.state.lastProjected).includes("Strong compression replaces the entire compression zone"));
+	console.log("ok: C2 direct L3 names the zone-replacement summary obligation");
 }
 
 // --- D: riding rules on the execution path -------------------------------------------------
@@ -527,9 +567,11 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 	};
 	// Window 900 -> zone line 315 tokens: one normal block (header + summary 300,
 	// ~325 rendered; the index no longer renders) puts the zone over the line,
-	// so the second compress rides strong.
-	let sawAnnotation = false;
+	// so the second compress rides strong. The round state is derived only: at
+	// the L1 tier nothing injects, so the request rides bare.
 	let compressedOnce = false;
+	let compressedStrong = false;
+	let triggerWire: string | undefined;
 	const mock = createMockModel({
 		contextWindow: 900,
 		handler: (context: { messages: Array<{ role: string; content: unknown }> }) => {
@@ -542,11 +584,16 @@ const cwdH = mkdtempSync(join(tmpdir(), "acp-t6-e2e-"));
 					content: [{ type: "toolCall", name: "compress_context", arguments: { keep: [], summary: tokenText(300) } }] as const,
 				};
 			}
-			if (text.includes("compress again")) {
-				const status = users.find((m) => textOf(m).startsWith("[compress-hint]"));
-				assert.ok(status, "the second compress request carried the ephemeral");
-				sawAnnotation = textOf(status!).includes("Pending strong");
-				assert.match(textOf(status!), /compress=strong/, "the ephemeral announced the strong method");
+			if (text.includes("compress again") && !compressedStrong) {
+				compressedStrong = true;
+				// The request the model compressed from: the user turn must still
+				// be on the wire, and pendingStrong alone injected nothing.
+				triggerWire = JSON.stringify(context.messages);
+				assert.equal(
+					users.find((m) => textOf(m).startsWith("[compress-hint]")),
+					undefined,
+					"pendingStrong alone must not inject an ephemeral on the strong round",
+				);
 				return {
 					content: [{ type: "toolCall", name: "compress_context", arguments: { keep: [], summary: tokenText(300) } }] as const,
 				};
@@ -614,17 +661,23 @@ assert.match(textOf(firstStatus as { role: string; content: unknown }), /tier=L2
 	await ask(turnText("task three", 1_200), 4);
 	await ask(turnText("task four", 1_200), 5); // active ~2400 > l1, zone over the line
 	await ask("compress again", 6);
-	assert.ok(sawAnnotation, "the pending-strong annotation reached the wire before the strong round");
 
 	const last = mock.calls.at(-1)!.context;
 	const wire = JSON.stringify(last.messages);
+	// The compressing request itself is the deterministic checkpoint: the user
+	// turn is on the wire and the pending-strong state added nothing.
+	const trigger = triggerWire;
+	assert.ok(trigger !== undefined, "the strong round was triggered by the mock model");
+	assert.ok(trigger.includes("compress again"), "the triggering request carried the user turn");
+	assert.ok(!trigger.includes("[compress-hint]"), "no standing ephemeral on the triggering request");
+	assert.ok(!wire.includes("[compress-hint]"), "the continuation rode bare (no standing ephemeral)");
 	assert.equal(wire.split("[acp-summary id=").length - 1, 1, "post-strong wire carries exactly one zone render");
 	assert.match(textOf(last.messages[0] as { role: string; content: unknown }), /method=strong/, "the surviving render is the strong block");
+	assert.ok(wire.includes('"toolName":"compress_context"'), "the follow-up request is the compress continuation");
 	// Folded-turn text legitimately survives inside the zone's index intent
 	// lines (T4 precedent): judge only the non-zone messages.
 	const nonZone = JSON.stringify(last.messages.filter((m) => !JSON.stringify(m).includes("[acp-summary id=")));
 	assert.ok(!nonZone.includes("task one:") && !nonZone.includes("task three:"), "folded turns left the request");
-	assert.ok(nonZone.includes("compress again"), "the triggering turn stays");
 
 	const sessionFile = sessionManager.getSessionFile()!;
 	assert.ok(sessionFile.startsWith(getAgentDir()), `session file must stay inside the smoke profile agentDir, got ${sessionFile}`);
@@ -664,7 +717,7 @@ assert.match(textOf(firstStatus as { role: string; content: unknown }), /tier=L2
 	} catch {
 		// Windows lock window; the temp dir is disposable
 	}
-	console.log("ok: H e2e — same tool+schema drove normal then strong; annotation on the wire; single zone render; clean journal");
+	console.log("ok: H e2e — same tool+schema drove normal then strong; pending state rode bare; single zone render; clean journal");
 }
 
 // --- I: base boundary swallow (acceptance 13/21/23) ---------------------------------------

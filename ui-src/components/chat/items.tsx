@@ -300,18 +300,25 @@ function liveOpen(item: ChatItem): boolean {
   return item.role === "tool" && !!item.running && p.expandToolOutput;
 }
 
-// Rows that belong to a work segment: every tool event except the ones that must stand alone
-// (task/wait/ask/yield keep their own row — a subagent launch, a wait, a user-facing form)
-// and out:// replies, which are output.
+// Rows that belong to a work segment: every tool event except output (`out://` replies) —
+// output never folds and it cuts the segment. Edit/write are the other two exceptions, and
+// the scan enforces them through foldsEdits() (the live collector through isEditEvent).
+// Everything else folds, `ask` included: its form renders out of the stream (MainColumn), so
+// folding the row away never hides the question.
 function isProcessEvent(item: ChatItem): boolean {
-  if (item.role !== "tool" || hasOutReply(item)) return false;
-  const name = item.name || "";
-  return name !== "task" && name !== "wait" && name !== "ask" && name !== "yield";
+  return item.role === "tool" && !hasOutReply(item);
 }
 
-// Whether a work segment swallows edit/write rows. Only the concise style folds them in;
-// every other style keeps an edit on its own row (the changes group), so an edit also ends
-// the segment instead of disappearing inside it.
+// Rows that stand alone outside the concise style and cut the segment: edit/write/apply_patch,
+// and the ACP compression milestone (compress_context folds the context — something the
+// reader must see happen, so it never hides inside a segment).
+function isStandaloneEvent(item: ChatItem): boolean {
+  if (item.role !== "tool") return false;
+  return item.name === "compress_context" || isEditEvent(item);
+}
+
+// Whether a work segment swallows those rows. Only the concise style folds them in; every
+// other style keeps them on their own row, where they also end the segment.
 function foldsEdits(): boolean {
   return processStyle() === "concise";
 }
@@ -325,7 +332,7 @@ function liveCollects(item: ChatItem): boolean {
   const style = processStyle();
   if (style !== "standard" && style !== "concise") return false;
   if (item.role === "thinking" || item.role === "error" || item.role === "ttsr") return true;
-  return isProcessEvent(item) && (foldsEdits() || !isEditEvent(item));
+  return isProcessEvent(item) && (foldsEdits() || !isStandaloneEvent(item));
 }
 
 // Scans a work segment starting at items[i]: everything until the next output (assistant
@@ -348,7 +355,7 @@ function scanProcessSegment(items: ChatItem[], i: number): { run: ChatItem[]; ne
     const it = items[j];
     if (liveOpen(it)) break; // the running row renders standalone outside the block
     if (isProcessEvent(it)) {
-      if (!foldEdits && isEditEvent(it)) break;
+      if (!foldEdits && isStandaloneEvent(it)) break;
       run.push(it);
       count++;
       j++;
@@ -363,9 +370,8 @@ function scanProcessSegment(items: ChatItem[], i: number): { run: ChatItem[]; ne
 // noReadonlyFold: the segment fold is skipped (used by a fold body's expansion, whose items
 // are already the folded segment — re-scanning them would nest a block inside itself and
 // recurse infinitely)
-// liveFrom: index where the streaming turn's current segment starts (the first row after
-// the turn's last output). Those rows are handed to LiveProcess instead of laying out
-// inline, so the reader sees one intent row over a collapsed body.
+// live: the turn is still streaming, so its current segment is handed to LiveProcess instead
+// of laying out inline (one intent row over a collapsed body).
 /** A `write` whose target is the reply channel: it renders as an OutReply card, not a tool row. */
 function isOutReplyWrite(item: ChatItem): boolean {
   return item.role === "tool" && item.name === "write" && String(item.args?.path ?? "").startsWith("out://");
@@ -376,12 +382,34 @@ function hasOutReply(item: ChatItem): boolean {
   return item.role === "tool" && (!!item.replies?.length || isOutReplyWrite(item));
 }
 
+// Start of the streaming turn's current segment: the first row after its last cut. A cut is
+// anything that never folds and therefore reads as output of its own — an assistant output,
+// an `out://` mid-turn reply (output's variant) — or an edit row, which stands on its own
+// outside the concise style (concise keeps edits inside the segment, so there only output
+// cuts). Everything before that boundary already folded into cards.
+function liveSegmentStart(items: ChatItem[]): number {
+  let lastUser = -1;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  for (let i = items.length - 1; i > lastUser; i--) {
+    const it = items[i];
+    if (it.role === "assistant" && !isJunkPlaceholder(it.text)) return i + 1;
+    if (hasOutReply(it)) return i + 1;
+    if (!foldsEdits() && isStandaloneEvent(it)) return i + 1;
+  }
+  return lastUser + 1;
+}
+
 export function renderItems(
   items: ChatItem[],
   pfx: string,
   railEntries: RailEntry[],
   streamTail?: ReactNode,
-  opts?: { noReadonlyFold?: boolean; liveFrom?: number; branchNav?: Map<string, BranchNavInfo> | null },
+  opts?: { noReadonlyFold?: boolean; live?: boolean; branchNav?: Map<string, BranchNavInfo> | null },
 ): ReactElement[] {
   if (pfx === "" && opts?.branchNav) branchCtx = { map: opts.branchNav, lastFk: new Map() };
   if (pfx !== "") {
@@ -497,7 +525,9 @@ export function renderItems(
   const turns: TurnGroup[] = [];
   let currentTurn: TurnGroup | null = null;
   const pendingSteers: { item: ChatItem; key: string }[] = [];
-  // Current segment of the streaming turn (see liveFrom): rendered by LiveProcess at the end
+  // Current segment of the streaming turn (see liveSegmentStart): rendered by LiveProcess
+  // at the turn's end. -1 disables the live segment (not streaming).
+  const liveFrom = opts?.live ? liveSegmentStart(items) : -1;
   const liveItems: ChatItem[] = [];
 
   for (let i = 0; i < items.length; i++) {
@@ -507,11 +537,11 @@ export function renderItems(
       pendingSteers.push({ item, key });
       continue;
     }
-    // Streaming turn: the rows after the last output are the current segment. Collected
-    // here and rendered by LiveProcess at the turn's end instead of laying out inline, so
-    // the output above stays unfolded and everything since folds under the intent row.
-    // Advisor notes are not process rows and keep flowing to the turn's closing card.
-    if (opts?.liveFrom !== undefined && i >= opts.liveFrom && liveCollects(item)) {
+    // Streaming turn: the rows after the last cut (output or edit) are the current segment.
+    // Collected here and rendered by LiveProcess at the turn's end instead of laying out
+    // inline, so the output/edit above stays unfolded and everything since folds under the
+    // intent row. Advisor notes are not process rows and keep flowing to the closing card.
+    if (liveFrom >= 0 && i >= liveFrom && liveCollects(item)) {
       liveItems.push(item);
       continue;
     }
@@ -682,9 +712,9 @@ export function renderItems(
     );
   }
 
-  // The live segment closes the turn, after the draft: output stays unfolded and the rows
-  // produced since fold under the intent row.
-  if (opts?.liveFrom !== undefined) {
+  // The live segment closes the turn, after the draft: output/edit stays unfolded and the
+  // rows produced since fold under the intent row.
+  if (liveFrom >= 0) {
     const live = <LiveProcess items={liveItems} key="live-process" />;
     if (turns.length > 0) turns[turns.length - 1].flowNodes.push(live);
     else initialNodes.push(live);

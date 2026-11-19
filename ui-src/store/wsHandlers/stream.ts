@@ -18,7 +18,7 @@ import type { SessionItem } from "../../types/session";
 import { landBrowserTabs } from "../right";
 import { landCacheWarming } from "../ui";
 import { emitBrowserFrame, emitBrowserPick } from "../browserMirror";
-import { feedTtsDelta, flushTts, playTtsClip, speakNow, stopTts } from "../../lib/speechOut";
+import { endOneShot, feedTtsDelta, flushTts, matchesOneShotRequest, playTtsClip, speakNow, stopTts } from "../../lib/speechOut";
 import { splitQuote } from "../../lib/conversation-quote";
 import { restoreAnnotations } from "../annotations";
 import type { HandlerSlice } from "./types";
@@ -450,10 +450,13 @@ export const streamHandlers = {
   },
   tts_stop() {
     stopTts();
+    endOneShot();
   },
   // One-shot reading (turn-end speaker button): a configured speech model arrives
   // as a synthesized clip, the unconfigured default as system-voice text
   tts_audio(msg) {
+    // A frame whose request the user cancelled (or replaced) is dropped.
+    if (!matchesOneShotRequest(msg.requestId)) return;
     if (msg.backend === "system") {
       void speakNow(msg.text ?? "");
       return;
@@ -461,6 +464,8 @@ export const streamHandlers = {
     playTtsClip(msg.data ?? "", msg.mime ?? "audio/mpeg");
   },
   tts_failed(msg) {
+    if (!matchesOneShotRequest(msg.requestId)) return;
+    endOneShot();
     useAppStore.getState().toast(msg.message);
   },
   // Settings-page voice sections: model status snapshot / download progress /

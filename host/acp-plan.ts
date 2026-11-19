@@ -4,14 +4,14 @@
 // module — no imports; every consumer (runtime, assembly, smokes) shares this
 // single decision source.
 //
-// Since T6 the §5.2 table runs on both axes: the tier axis reads the full
-// request total (non-message context + active blocks + rendered zone, see
-// AcpRuntimeDeps.nonMessageTokens), and the zone-size axis (rendered zone
-// tokens vs window × 35%) drives the pending-strong state — strong execution
-// semantics for the next compress once the total is past L1 (riding) or past
-// L3 (always). T7 reuses the same table for the failure exits: the L3 tier
-// anchors the ultimatum round and the guard line is judged against the window
-// lines derived from the same contextWindow (in acp-runtime).
+// Since T6 the §5.2 table runs on both axes: the tier axis reads the anchored
+// full-request total (provider prompt anchor + local delta, see
+// AcpRuntimeDeps.countMessages/nonMessageTokens), and the zone-size axis
+// (rendered zone tokens vs window × 35%) drives the pending-strong state —
+// strong execution semantics for the next compress once the total is past L1
+// (riding) or past L3 (always). T7 reuses the same table for the failure exits:
+// the L3 tier anchors the ultimatum round and the guard line is judged against
+// the window lines derived from the same contextWindow (in acp-runtime).
 
 // ---- parameters (spec §11; defaults are the SSOT table values) -----------------
 
@@ -58,8 +58,8 @@ export const ACP_DEFAULT_PARAMS: AcpParams = {
 };
 
 /**
- * Prompt tier for a projected context size — active zone + rendered compression
- * zone, i.e. everything the request sends (spec §5.1 decision table, strict >).
+ * Prompt tier for a projected context size — the anchored full-request total
+ * (spec §5.1 decision table, strict >).
  */
 export function computeTier(totalTokens: number, p: AcpParams = ACP_DEFAULT_PARAMS): "none" | "L1" | "L2" | "L3" {
 	if (totalTokens > p.l3) return "L3";

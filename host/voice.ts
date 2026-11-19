@@ -267,14 +267,14 @@ const SPEAK_MAX = 15000;
  * to the UI system voice via backend "system", otherwise the tts tool renders a
  * temp clip whose bytes go back base64 so the UI can play and stop them.
  */
-export async function speakOnce(ws: Ws, sessionId: string, text: string): Promise<void> {
+export async function speakOnce(ws: Ws, sessionId: string, text: string, requestId?: number): Promise<void> {
   const spoken = text.trim().slice(0, SPEAK_MAX);
   if (!spoken) return;
   // Only an explicitly assigned speech role counts as a TTS provider; the
   // implicit role chain always resolves *some* tts catalog model (local worker
   // included), and the settings default is the OS voice.
   if (!resolveSpeechCandidates(H.settings, H.modelRegistry, false).some((c) => c.explicit)) {
-    pushTts(ws, { type: "tts_audio", sessionId, backend: "system", text: spoken });
+    pushTts(ws, { type: "tts_audio", sessionId, backend: "system", text: spoken, requestId });
     return;
   }
   const base = join(tmpdir(), `omp-speak-${randomUUID()}`);
@@ -291,7 +291,7 @@ export async function speakOnce(ws: Ws, sessionId: string, text: string): Promis
     const result = await ttsTool.execute("speak", { text: spoken, language: "zh", output_path: outputPath }, undefined, ctx);
     if (result.isError || !result.details) {
       const message = result.content.map((c) => (c.type === "text" ? c.text : "")).join(" ").trim();
-      pushTts(ws, { type: "tts_failed", sessionId, message: message || "speech synthesis failed" });
+      pushTts(ws, { type: "tts_failed", sessionId, message: message || "speech synthesis failed", requestId });
       return;
     }
     const { codec, backend } = result.details;
@@ -302,10 +302,11 @@ export async function speakOnce(ws: Ws, sessionId: string, text: string): Promis
       backend,
       data: Buffer.from(bytes).toString("base64"),
       mime: codec === "wav" ? "audio/wav" : "audio/mpeg",
+      requestId,
     });
   } catch (err) {
     // Resolution/synthesis failures belong on the toast, not in a silent void
-    pushTts(ws, { type: "tts_failed", sessionId, message: err instanceof Error ? err.message : String(err) });
+    pushTts(ws, { type: "tts_failed", sessionId, message: err instanceof Error ? err.message : String(err), requestId });
   } finally {
     // Only one container gets written (local synthesis substitutes .wav), so the
     // absent one is expected — not an error worth surfacing.

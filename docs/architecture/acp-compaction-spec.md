@@ -12,6 +12,10 @@
 > **v15(2026-11-16,用户拍板)**:档位判定量再改为「完整请求总量」= 非消息上下文(system prompt / tools / skills / 注入上下文,取底座 `getContextBreakdown()` 的 `usedTokens − messagesTokens`)+ 活跃区 + 压缩区渲染。原投影口径漏掉系统侧开销,模型看到的「上下文总量」比实际请求小。实现:`AcpRuntimeDeps.nonMessageTokens` 钩子(装配层接底座 breakdown,缺失时按 0 回落);§5/§5.1 的触发值含义同步,阈值默认值不变(等价于整体提前约 30–60K 触发,可按 `acp.l1/l2/l3` 调高)。
 
 > **v16(2026-11-17,用户拍板)**:ACP 会话关闭底座原始 journal 自动压缩;L3 强制连续三次无成功压缩后进入持续后备状态,不再强制也不 degrade。后备状态以 ACP 完整投影对比底座 `resolveThresholdTokens` 阈值,达线或真实溢出时通过底座手动 compact 的 ACP `preparation` 入口压缩。原始 journal 只承载 entry ID、分支关系与持久化,不参与触发、切点、摘要输入或回退;禁止 degraded/接管失败时让路原始底座链。§4/§5/§10–§12/§14 同步。
+> **v17(2026-11-18,用户拍板)**:三级强制不再调用 provider `setForcedToolChoice`、不修改 `tool_choice` 或缩减工具目录；保留宿主 forced-round 状态与 `tool_call` gate,强制请求工具声明与普通 ACP 请求完全一致。§5.2/§10/验收 5、7 同步。P2 provider 探针仅为历史能力事实,不再作为强制策略。
+
+> **v18(2026-11-19,用户拍板)**:①总量口径改为 **provider 锚点 + 本地差量**:`P_anchor(最近一次 provider 实报 contextSnapshot.promptTokens / 同源 usedTokens,绝不含输出的 usage.totalTokens)+ L_current − L_anchor`。L 两侧都覆盖同一组完整请求内容 = 非消息上下文 + 最终 ACP 投影消息(压缩区渲染、活跃区、ephemeral、合成 status 对);投影不变时精确等于 `P_anchor`,新增消息加本地增量,压缩净减少减本地差量。锚点绑定模型与分支,换模型/切分支/无法配对即作废,首次无锚点用本地完整请求估算;删除 v11 的 0.7–1.6 比例校准。②待强力状态降为**纯派生状态**:不再自行触发、维持或重复 ephemeral,不增加 hint 计数,也不重置里程碑游标;L1/L2 静默带即使待强力仍零注入;其他原因已有注入时按最新状态附加强力提示,context_status 实时显示。强力提示明确「旧压缩区整体折叠为一个新摘要块,未写入新摘要的信息会丢失」。§5/§5.1/§5.2/§7/§8/验收 17/19 同步。
+
 
 ## 1. 目标与非目标
 
@@ -41,9 +45,9 @@
 | **压缩目标线 target** | 压缩后允许的活跃区大小(keep + 保护区 ≤ target);可配置,默认 = L1,可调更低(更极端压缩);普通/强力压缩统一生效 |
 | 普通压缩(一级) | 活跃区 ≤L3 且压缩区未超限时的压缩:压缩块**累加**到压缩区末尾 |
 | 强力压缩(二级) | 活跃区 >L3 **或**压缩区达限额时的压缩:全量选保留,被压块与全部旧压缩块融合为一个纯摘要初始压缩块,**重置压缩区**(supersedes 全部,depth+1) |
-| 强制压缩(三级) | L3 通牒送达后下一轮仍无成功压缩,或总量保险线触发:宿主以 tool_choice 强制 compress_context(强力语义);连续三次无成功压缩后进入后备状态 |
+| 强制压缩(三级) | L3 通牒送达后下一轮仍无成功压缩,或总量保险线触发:宿主标记 forced round,由 `tool_call` gate 仅放行 compress_context,工具目录不变;连续三次无成功压缩后进入后备状态 |
 | 后备状态 | 三次强制失败后持续保持的状态:不再强制、不 degrade,正常继续会话;以 ACP 投影监控底座阈值,达线或真实溢出时执行 ACP preparation 压缩,成功后复位 |
-| 待强力状态 | 压缩区 > 窗口×35% 期间;ephemeral 统一加注"下次压缩为强力压缩";无持久标记,按压缩区大小实时判定;无轮次上限 |
+| 待强力状态 | 压缩区 > 窗口×35% 期间;纯派生状态(v18):不自行注入、不增加 hint 计数、不重置里程碑游标;已有 milestone/强制 ephemeral 与 context_status 按最新状态附加强力提示「旧压缩区整体折叠为一个新摘要块,未写入新摘要的信息会丢失」;无持久标记,按压缩区大小实时判定;无轮次上限 |
 | 降级 | ACP 无法安全投影时停用工具与提示并显式报错;不得开启 OMP 原始 journal 压缩链 |
 | tool 对 | tool_use + 其 tool_result 的不可分整体,ID 挂 result |
 | ephemeral 提示 | 发送时拼在请求末尾、不落历史的状态注入 |
@@ -84,17 +88,17 @@
 
 ## 5. 档位、三级压缩与降级
 
-判定量:**完整请求总量精确 token**(非消息上下文 + 活跃区 + 压缩区渲染,§4 的 projected 口径,§8 prune 后;非消息部分取底座 `getContextBreakdown()` 的 `usedTokens − messagesTokens`)。每轮结束后判定档位。
+判定量(v18):**provider 锚点 + 本地差量的完整请求总量**。公式 `P_anchor + L_current − L_anchor`:`P_anchor` 为最近一次 LLM provider 实报的输入上下文 token(`contextSnapshot.promptTokens`,同源可用 `usedTokens`;绝不用含输出的 `usage.totalTokens`),`L` 为本地计数,两侧都覆盖同一组完整请求内容 = 非消息上下文(底座 `getContextBreakdown()` 的 `usedTokens − messagesTokens`)+ 最终 ACP 投影消息(压缩区渲染、活跃区、ephemeral、合成 status 对,经 `countMessages` 计价);压缩区只在最终投影里计一次,不重复叠加。投影不变时总量精确等于 `P_anchor`;新增消息加本地增量,压缩净减少减本地差量。锚点与上一请求的本地计数配对,绑定模型与分支:换模型、切分支、降级或无法配对即作废,下一次实报前用本地完整请求估算。每轮结束后判定档位。
 
-**计价口径(v11,2026-11-03 实测对账)**:块 token = (块内文本计数 + 加密推理计价) × provider 比例。①加密推理(thinking 签名)的价格由底座 catalog 的 `thinking-replay-tokens` 轴决定,ACP 侧读取 base `countMessage` 的差值而非自带 provider 表:`none`(kimi-code/moonshot 的 k3)不计签名、`output`(Claude)按该轮 output、未声明按签名字节。②比例 = 上一请求 `contextSnapshot.promptTokens − nonMessageTokens` ÷ 同一次投影的本地计数,把 provider 的编码误差学成缩放系数——固定偏移跨不过压缩(内容变了、编码没变),实测 −15% 的差在块折叠后必须按比例缩;钳制 0.7~1.6 防止单次异常 usage 摆动档位;换模型时归 1,之后由下一次 usage 自动重算。两处口径必须同源:`context_status` 的展示、`compress_context` 的 minCompress 门禁与档位判定共用同一个比例值。
+**计价口径(v18 取代 v11 比例)**:块 token = 块内文本计数 + 加密推理计价(底座 catalog 的 `thinking-replay-tokens` 轴:`none` 不计签名、`output` 按该轮 output、未声明按签名字节;ACP 读取 base `countMessage` 差值而非自带 provider 表)。不再维护 provider/本地比例系数;编码误差由锚点差量自然吸收。所有总量消费者(自动注入、context_status、L1/L2/L3、里程碑、总量保险线、后备触发、`projectedTokenEstimate`)共用同一锚点总量;`target`/`minCompress`/清单等本地块计数语义不变。
 
 ### 5.1 提示档位(ephemeral 注入,见 §7)
 
 | 档 | 触发(总上下文) | ephemeral 文案 |
 |---|---|---|
-| 无档 | ≤ 150K 且非待强力 | **零注入**(压缩时机完全归模型:工具描述引导,经 context_status 自取清单) |
-| L1 静默档(v13) | > 150K | **零注入**:整个 (L1, L2] 带完全静默,压缩时机归模型;两工具可用(过了 L1 调用下限),只是宿主不提醒 |
-| L2 加压档 | > 250K | **里程碑注入(v10.4/v13)**:L2→L3 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = 该段静默),跨过一条新线注入一次(跳线不补发;降回 ≤L2 重置重计),文案 = 状态行(带 `milestone=k/N` 标记)+ 加强语气指令(不得开新工作、本步结束即压缩、拖延只会更接近强制轮)+ 指向 context_status |
+| 无档 | ≤ 150K | **零注入**(压缩时机完全归模型:工具描述引导,经 context_status 自取清单;待强力同样零注入) |
+| L1 静默档(v13/v18) | > 150K | **零注入**:整个 (L1, L2] 带完全静默,压缩时机归模型;两工具可用(过了 L1 调用下限),只是宿主不提醒;待强力不改变这一点 |
+| L2 加压档 | > 250K | **里程碑注入(v10.4/v13)**:L2→L3 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = 该段静默),跨过一条新线注入一次(跳线不补发;降回 ≤L2 重置重计),文案 = 状态行(带 `milestone=k/N` 标记)+ 加强语气指令(不得开新工作、本步结束即压缩、拖延只会更接近强制轮)+ 指向 context_status;若此时待强力,按最新状态附加值强力提示 |
 | L3 截断档 | > 350K | 同里程碑机制(线分布饱和于 L3):跨线时注入一次 L3 通牒(「下一轮必须成功压缩,否则宿主将强制压缩」);强制链条由 `#ultimatumAt` 在到达 L3 的首个请求上锚定,不依赖每轮文案 |
 
 (命名约定:档位用「激活/加压/截断」,压缩方式用「普通/强力/强制」,两者不同名以防混淆。)
@@ -107,7 +111,7 @@
 |---|---|---|
 | 一级·普通压缩 | 总上下文 ≤L3 且压缩区未超限,模型主动 compress_context | keep 自选(校验 §6);压缩块**累加**到压缩区末尾;method="normal" |
 | 二级·强力压缩 | 总上下文 >L3(与 L3 档同线),**或**待强力状态下模型主动 compress_context | 同一工具同一 schema;执行按强力语义:新压缩块 supersedes 全部未 supersede 压缩块、depth+1、method="strong",compressedIds/index 继承被取代块全集并并入本次新压部分;压缩区渲染只剩单块 |
-| 三级·强制压缩 | L3 通牒送达后下一个 assistant turn 结束仍无成功压缩;或总量保险线触发 | 宿主强制模型调用 compress_context(强力语义,meta.forced=true);**强制形态按 provider 能力选**(P2 实证):①named tool_choice(`setForcedToolChoice`,官方 Anthropic/OpenAI 及多数面;注意兼容面可能无视——kimi/MiniMax-openai 实测无视 named)②`required` + 工具集收窄为仅 compress_context(kimi 实测可用;openai-completions 面内建)③两者均不可用 → 进入后备状态,不得恢复原始底座链。**宿主侧兜底拦截(v13)**:强制轮内 extension 的 `tool_call` 钩子 block 一切非 compress_context 的工具调用,error 指回被钉住的调用与已注入清单——provider 无视 pin 也不能把轮漂走。**强制 turn 结束仍无成功压缩(含校验屡败、输出不合法),或 API 错误 → 记一次连续失败;第三次后进入后备状态** |
+| 三级·强制压缩 | L3 通牒送达后下一个 assistant turn 结束仍无成功压缩;或总量保险线触发 | 宿主为下一请求设置 forced round,按强力语义执行(`meta.forced=true`);ACP 不调用 `AgentSession.setForcedToolChoice`,不设置 provider-level `tool_choice`,也不按 provider 收窄工具目录。普通 ACP 请求与 forced 请求发送相同的完整工具声明。宿主 extension 的 `tool_call` gate 只放行 `compress_context`,其他工具调用由宿主拒绝并返回指引。P2 能力探针是历史事实,不是当前策略。强制 turn 无成功压缩或 API 错误记为连续失败,第三次进入后备状态 |
 
 **唯一二维决策表**(状态 → ephemeral 文案档位 → 本次 compress 执行方式;边界一律严格大于,总上下文恰好 = L3 值 → L2 档 + 普通压缩):
 
@@ -117,17 +121,19 @@
 | (L1, L2] | 未超线 | 零注入(v13 静默带) | 普通 |
 | (L2, L3] | 未超线 | L2 加压(加强语气) + target | 普通 |
 | >L3 | 任意 | L3 通牒 | 强力 |
-| >L1 | 超线(待强力) | 加注「下次为强力压缩」 | 强力 |
-| ≤L1 | 超线(待强力) | 同上 | 普通(不搭车;v14 下两工具在 ≤L1 一律拒绝,此行仅描述决策表语义) |
+| >L1 | 超线(待强力) | 已有注入时加注「下次为强力压缩」;无注入时零注入 | 强力 |
+| ≤L1 | 超线(待强力) | 零注入(纯派生状态;v14 下两工具在 ≤L1 一律拒绝,此行仅描述决策表语义) | 普通(不搭车) |
 | 三级触发 | 任意 | — | 强力(forced) |
+
+**强力提示契约(v18)**:状态行的 `compress` 必须显示本次有效执行方式;三级强制无论当前档位均按 `strong` 呈现,并明确要求立即压缩。强力提示统一说明:下一次为强力压缩,旧压缩区会整体折叠为一个新摘要块,未写入该新摘要的信息会丢失。所有 strong 提交都要把其中仍需的信息与本轮未保留清单一并写入新摘要。提示由最新轮次状态派生:已有自动注入(milestone / 强制 ephemeral)时附带,`context_status` 返回同样实时显示;待强力本身不产生任何注入。
 
 **轮次归属**(回应审阅):档位轮末判定,通牒随下一次请求注入(ephemeral);**通牒送达后的下一个 assistant turn 结束**才判"未响应";无自然下一请求(空闲)则等待,不主动唤醒(空闲时活跃区不增长,无风险;探针证实 assistant 结尾无法自动续请求)。**通牒伴随合成 status 对(v10.1)**:凡注入通牒文案的请求(L3 档,或三级强制已武装/保险线直接触发),同时在活跃区末尾、通牒行之前注入一对**合成** context_status tool 对(规则见 §6)——被强制调用时模型手里已有清单,强制也是有依据的挑选。
 
-**待强力状态**:压缩区 > 窗口×35% → ephemeral 统一加注「下次压缩为强力压缩」;总上下文 >L1 时下一次 compress 按强力语义执行;总上下文 ≤L1 的主动 compress 保持普通压缩(不搭车);无轮次上限(压缩区不超线不增长,总量保险线兜底),不打断任务流。
+**待强力状态(v18)**:压缩区 > 窗口×35% 期间为**纯派生状态**——不再自行触发、维持或重复 ephemeral,不增加 hint 计数,也不因自身重置里程碑游标。总上下文 >L1 时下一次 compress 按强力语义执行;总上下文 ≤L1 的主动 compress 保持普通压缩(不搭车);无轮次上限(压缩区不超线不增长,总量保险线兜底),不打断任务流。
 
 **总上下文调用下限(v14)**:投影总上下文 ≤ L1(即无档,严格大于判档)时,`context_status` / `compress_context` 均快速失败并报错「上下文过小禁止压缩」,不生成/替换清单、不消费清单、不写压缩块;总上下文增长过 L1 后工具自动恢复。此门槛按整个投影总上下文判定,位于 §6 校验序列最前,与下面的单次折叠量判定独立。minCompress 不再承担入口门槛职责,只判定单次成功压缩。
 
-**压缩量下限与成功判定**:通过总上下文调用下限后,成功压缩 = 被压集 ≥ minCompress(默认 20K,防模型每轮压一块偷懒)。L2 档未达 → 放行带 warning;L3 档未达 → 放行但视为「无成功压缩」,计入三级触发。**三级终态**:强制请求的网络/API 错误、模型未调用、工具校验失败及 turn 结束仍无成功压缩都记一次连续失败;成功压缩清零,前两次继续强制,第三次后清除 tool_choice 与宿主工具拦截并进入持续后备状态。后备状态不得在下一轮重新武装 L3;只有后备压缩成功或新压缩周期明确复位才清除。(极端碎块导致清单可压总量 < minCompress 的场景不做特化:三次无进展后同样进入后备,不得死循环或让路 OMP 原始历史。)
+**压缩量下限与成功判定**:通过总上下文调用下限后,成功压缩 = 被压集 ≥ minCompress(默认 20K,防模型每轮压一块偷懒)。L2 档未达 → 放行带 warning;L3 档未达 → 放行但视为「无成功压缩」,计入三级触发。**三级终态**:强制请求的网络/API 错误、模型未调用、工具校验失败及 turn 结束仍无成功压缩都记一次连续失败;成功压缩清零,前两次继续启动宿主 forced round 与 gate,第三次后停止启动并进入持续后备状态(无 provider tool_choice 需要清理)。后备状态不得在下一轮重新武装 L3;只有后备压缩成功或新压缩周期明确复位才清除。(极端碎块导致清单可压总量 < minCompress 的场景不做特化:三次无进展后同样进入后备,不得死循环或让路 OMP 原始历史。)
 
 ### 5.3 保险线与降级
 
@@ -193,13 +199,14 @@
 ## 7. ephemeral 状态提示契约
 
 - **位置**:请求消息序列末尾追加一条 user 角色消息,文本以 `[compress-hint]` 开头;**不落历史**。
-- **分层注入(v10,v13 修订)**:无档(总上下文 ≤L1 且非待强力)**零注入**——历史前缀完全稳定,压缩时机归模型(工具描述引导);(L1, L2] 静默带(v13)同样零注入;L2/L3 按里程碑注入**一行精简状态行**:档位 + 本次允许的压缩方式 + 活跃区/投影总量 tokens + 该档指令文案(L2 加强语气加压+target、L3 最后通牒)+ 指向 context_status 取清单。**不含清单本身**——当轮候选清单(短号、降序、8K 截尾豁免、多轮收敛)移至 context_status 返回(§6)。
-- **档位里程碑节奏(v10.4,v13 修订)**:L2..L3 段(>L2 且 ≤L3、非待强力、非强制请求)不每请求注入——L2→L3 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = 该段静默;`host/acp-plan.ts` `milestoneFor`),活跃区首次跨过一条新线才注入一次(状态行末尾带 `milestone=k/N` 标记,文案取当前档位指令 + context_status 指针);单请求跨多条线只发最高那条、**不补发**;降回 ≤L2(或进入待强力/强制请求)即重置,再爬升从第一条线重新提醒。跨线后不再重复——沉默到下一档位提示或 L3 强制链条接管(`#ultimatumAt` 在到达 L3 的首个请求上锚定,`onTurnEnd` 当轮未成功即 arm force)。待强力与强制请求保持每请求常驻。游标仅存内存:宿主重启后最多重发一次最高已跨线,自愈无害。
+- **分层注入(v10,v13,v18 修订)**:总上下文 ≤L1(无档,无论待强力)**零注入**——历史前缀完全稳定,压缩时机归模型(工具描述引导);(L1, L2] 静默带(v13)同样零注入,待强力不改变;L2/L3 按里程碑注入**一行精简状态行**:档位 + 本次允许的压缩方式 + 活跃区/投影总量 tokens + 该档指令文案(L2 加强语气加压+target、L3 最后通牒)+ 指向 context_status 取清单;待强力时按最新状态追加一行强力提示。**不含清单本身**——当轮候选清单(短号、降序、8K 截尾豁免、多轮收敛)移至 context_status 返回(§6)。
+- **档位里程碑节奏(v10.4,v13,v18 修订)**:L2..L3 段(>L2 且 ≤L3、非强制请求)不每请求注入——L2→L3 均分 N 条子线(默认 10,`acp.milestoneSteps` 可配置,0 = 该段静默;`host/acp-plan.ts` `milestoneFor`),首次跨过一条新线才注入一次(状态行末尾带 `milestone=k/N` 标记,文案取当前档位指令 + context_status 指针);单请求跨多条线只发最高那条、**不补发**;降回 ≤L2、降档或进入强制请求才重置游标,再爬升从第一条线重新提醒。跨线后不再重复——沉默到下一档位提示或 L3 强制链条接管(`#ultimatumAt` 在到达 L3 的首个请求上锚定,`onTurnEnd` 当轮未成功即 arm force)。待强力**不**重置游标、不增加 hint 计数、不维持任何注入;强制请求保持每请求常驻。游标仅存内存:宿主重启后最多重发一次最高已跨线,自愈无害。
 - **缓存安全**:零注入期持久前缀(tools/system/压缩区/活跃区)逐字节稳定;注入期档位不变时状态行逐字节稳定,最大化末尾局部缓存复用。
 
 ## 8. token 计数
 
-- 复用底座 Tokenizer(Rust native BPE;文本 LRU 缓存):档位判定、块大小清单、keep 校验、保险线判定统一用同一实例。**注意**:底座消息级 memo 是 WeakMap(对象引用键),而 context 事件每轮交付 deep copy 新引用——host 侧该 memo 每轮 miss;host 自建 fingerprint → tokens 的 Map memo(复用 ACP 原型 messageFingerprint 机制),仅对新增/变更块计数。
+- 复用底座 Tokenizer(Rust native BPE;文本 LRU 缓存):块大小清单、keep 校验、本地差量统一用同一实例。**注意**:底座消息级 memo 是 WeakMap(对象引用键),而 context 事件每轮交付 deep copy 新引用——host 侧该 memo 每轮 miss;host 自建 fingerprint → tokens 的 Map memo(复用 ACP 原型 messageFingerprint 机制),仅对新增/变更块计数。
+- 总量(v18):provider 锚点 `contextSnapshot.promptTokens` + `countMessages(最终投影)` 与锚点请求本地计数的差量;非消息侧取底座 `getContextBreakdown()` 的 `usedTokens − messagesTokens`。压缩区渲染只在最终投影里计一次,`zoneTokens` 仅作展示与压缩区 35% 线判定,不叠加进总量;ephemeral 与合成 status 对同样计入本地侧。
 - acpSummary 不参与底座消息计数;压缩块 token 数 = 投影层对其渲染文本做 countTokens。
 - 块大小在块 settled(流式结束)且 stale prune 运行后计算并 memo;流式中的块不进候选。
 - unknown encoding 兜底 byte 估算(三档判定同步降级,可接受)。
@@ -228,7 +235,7 @@
 | 投影 + ephemeral | context 事件 extension(`host/acp-context.ts` 现有 transformContext 同一接缝) | 块过滤重组 + 压缩块渲染为 user 文本段 + `[compress-hint]` 末尾追加(§4/§7) |
 | 预处理 | 底座 prune 管道(不动) | stale prune 照常运行;`compaction.enabled=false` 后 overflow prune 停用,由 ACP 后备溢出链接管 |
 | 工具注册 | `createAgentSession({ customTools })`(`host/acp-tools.ts` 先例,ToolDefinition 形态) | context_status / compress_context;compress 执行挂 host per-session 互斥锁(§6,exclusive 通道不可用);降级后不再注入 |
-| 强制调用 | 三级触发:`AgentSession.setForcedToolChoice("compress_context")`(公开 API);强制轮 extension 拦截其他工具 | 连续三次无成功压缩后解除强制并进入持续后备状态,不在后续轮次重新武装 |
+| 强制调用 | 三级触发:宿主 runtime 标记下一请求为 forced round;强制轮 extension 的 `tool_call` gate 拦截除 `compress_context` 外的调用 | ACP 不调用 `AgentSession.setForcedToolChoice`,不修改 provider `tool_choice`,不收窄工具声明;普通与 forced 请求工具目录一致。连续三次无成功压缩后停止 gate 并进入持续后备状态,后续轮次不重新武装 |
 | 持久 entry | `SessionManager.appendCustomEntry` | customType="acpSummary"(§9) |
 | 计数 | `@oh-my-pi/pi-agent-core` 导出 `Tokenizer`(18.8.6 验证) | 档位判定/清单/校验/保险线统一实例(§8) |
 | 兜底 | ACP 后备状态 + `session.compact({ preparation })` | ACP 投影对比底座阈值;达线或真实溢出时执行。patch 保证 preparation 绕过原始 prepareCompaction 且默认路径不变;失败显式报错,绝不恢复 OMP 原始 journal 链 |
@@ -248,7 +255,7 @@
 | 尾部保护区 | 默认 min(最近 2 turn, 最近 20K token),可配置,可为 0;倒序按组累计,先触发的限制生效。组 = 一条 assistant 消息及其全部 result 块(user 块自成一组并闭合 turn),切点只落组边界,不拆 tool_use/result 对 | v11(原 max 语义超长单轮会整轮入保护区,压缩失效) |
 | 用户消息保护下限 | 默认 0(关闭),`acp.tailUserMessages` 可配置;开启后走法必须回溯到最近 N 条真实用户输入,可越过上面两条上限 | 只计 role=user 且非 synthetic 的消息(developer/synthetic 注入同样拆成 user 块,计入会让下限提前满足);设置页「尾部保护区(用户消息)」 |
 | 当轮清单截断 | context_status 返回内:短号按块大小降序;渲染超 8K token 截尾部(小块豁免,下轮重进) | v10 清单从 ephemeral 移入 context_status 返回;短号见 §3 |
-| 档位里程碑子线(v10.4,v13 修订) | 默认 10 条;`acp.milestoneSteps` 可配置,0 = L2..L3 段静默(`milestoneSteps`) | L2→L3 均分,跨线注入一次、跳线不补、降回 ≤L2 重置(§7);待强力与强制请求不受影响 |
+| 档位里程碑子线(v10.4,v13,v18 修订) | 默认 10 条;`acp.milestoneSteps` 可配置,0 = L2..L3 段静默(`milestoneSteps`) | L2→L3 均分,跨线注入一次、跳线不补、降档重置(§7);待强力不改变节奏,强制请求保持每请求注入 |
 
 ## 12. 验收矩阵
 
@@ -258,9 +265,9 @@
 | 2 | 全块被压的 assistant 整条消失;无 orphan use/result | 投影单元测试 |
 | 3 | keep 含幻觉 ID(不存在/已压/保护区):整个调用拒绝,error 附完整有效候选集,零副作用、不消费清单 | 工具校验测试 |
 | 4 | keep+保护区 > target:拒绝并报差额(普通/强力同一校验) | 工具校验测试 |
-| 5 | L3 轮次归属:通牒送达轮不算;送达后下一轮有成功压缩(被压 ≥minCompress)免强制;无 → 三级 tool_choice 强制;网络/API 错误、未调用与无成功压缩均计失败;前两次继续强制,第三次后进入持续后备,后续轮次不重新武装、不 degrade;空闲不主动唤醒 | 集成测试 |
-| 6 | 强力压缩:压缩区超 35% 进待强力,ephemeral 加注;总上下文>L1 时下一次 compress 按强力语义(S1{a}+S2{b}→M 新压 c → M.compressedIds/index 含 a,b,c;重建后 a,b,c 已压缩、压缩区单块、depth+1;多层强力同样成立;纯重置空被压集可提交);总上下文≤L1 时 compress 不搭车;总上下文>L3 时的 compress 直接按强力语义 | 集成 + 重建测试 |
-| 7 | 投影总量>保险线:三级强制;连续三次失败进入后备。后备中即使原始 journal 超线而 ACP 投影未达底座阈值也不 compact;ACP 投影达线或真实溢出时仅走 ACP preparation,失败无紧凑循环且不落原始底座摘要 | 集成测试 + patch 探针 |
+| 5 | L3 轮次归属:通牒送达轮不算;送达后下一轮有成功压缩(被压 ≥minCompress)免强制;无 → 宿主强制 round;普通与强制请求的完整工具声明列表相同,强制轮非 compress_context 调用由宿主 gate 返回错误;网络/API 错误、未调用与无成功压缩均计失败;前两次重试,第三次后进入持续后备,后续轮次不重新武装、不 degrade;空闲不主动唤醒 | 集成 smoke |
+| 6 | 强力压缩:压缩区超 35% 进待强力(纯派生状态,不自行注入);已有自动注入或 context_status 按最新状态附加强力提示「旧压缩区整体折叠为一个新摘要块,未写入新摘要的信息会丢失」;总上下文>L1 时下一次 compress 按强力语义(S1{a}+S2{b}→M 新压 c → M.compressedIds/index 含 a,b,c;重建后 a,b,c 已压缩、压缩区单块、depth+1;多层强力同样成立;纯重置空被压集可提交);总上下文≤L1 时 compress 不搭车;总上下文>L3 时的 compress 直接按强力语义 | 集成 + 重建测试 |
+| 7 | 投影总量>保险线:宿主强制 round;连续三次失败进入后备。强制前后工具表不收窄,非 compress_context 调用仍由宿主 gate 拒绝。后备中即使原始 journal 超线而 ACP 投影未达底座阈值也不 compact;ACP 投影达线或真实溢出时仅走 ACP preparation,失败无紧凑循环且不落原始底座摘要 | 集成测试 + patch 探针 |
 | 9 | 压缩动作前后,tools/system/未被 supersede 压缩块的渲染前缀逐字节一致;活跃区缓存失效为预期 | 前缀字节对比 + usage 断言 |
 | 10 | 重启后按当前分支重建基线/压缩区/活跃集;原生边界仅在当前时代降级,reset/回退后恢复 | 持久化测试 |
 | 11 | keep 不继承:上轮 keep 块本轮未列即被压 | 集成测试 |
@@ -271,14 +278,16 @@
 | 16 | 活跃区 ≥minCompress 时,L3 档被压集 <minCompress:放行但不计入成功压缩(三级照常触发);L2 档放行带 warning | 工具校验测试 |
 | 17 | 总上下文 ≤L1:context_status / compress_context 快速失败(「上下文过小禁止压缩」),零副作用、不生成/替换或消费清单;恰好等于 L1 仍拒绝(严格大于),过线一个 token 即恢复 | 工具校验测试 |
 | 18 | prune 管道运行后块变小,档位判定用 prune 后值;prune 不破坏配对不变量 | 集成测试 |
-| 19 | 边界一致:总上下文恰好 = L3 值 → L2 档文案 + 普通压缩(无通牒不强力);ephemeral 同时输出当前档位与本次允许的压缩方式 | 单元测试 |
+| 19 | 边界一致:总上下文恰好 = L3 值 → L2 档文案 + 普通压缩(无通牒不强力);已有注入同时输出当前档位与本次允许的压缩方式 | 单元测试 |
+| 20 | 总量锚点:provider 实报后投影不变时 projected/status 总量精确等于 `promptTokens`(不含 output);新增消息加本地增量、压缩净减少减本地差量;换模型/切分支作废锚点回落本地估算;压缩区只计一次;不使用 `usage.totalTokens` | 单元测试 |
+| 21 | 待强力派生:自身不产生 ephemeral、不加 hint 计数、不重置里程碑游标;≤L1 与 L1..L2 静默带即使待强力零注入;milestone / 强制 ephemeral / context_status 按最新状态显示新强力文案 | 集成 smoke |
 
 ## 13. 实现期探针(先于主实施,按序)
 
 **P1/P2 兼容面已跑**(2026-10-12,脚本 `omp-desktop-acp/.local-probe/p1-anthropic-block-filter.ts` / `p2-openai-completions.ts`,env 覆盖可复测官方面):
 
 1. **P1 · Anthropic thinking 签名**(MiniMax-M2.5 兼容面,9 请求):V1 留 tool 对摘 thinking(ACP 核心场景)✅ 200;V2 留 thinking(带 64-hex 签名)摘 1 tool 对 ✅ 200(该面不重放校验签名);V3 对照 ✅;**V4 诊断:单边 tool_use 无 result → 400「tool call result does not follow tool call (2013)」**——配对不变量被服务端强校验,§4 断言实证必要。MiniMax 面 thinking 可独立于 tool 对摘除(catalog `replayUnsignedThinking:true` 佐证)。**官方 Anthropic 待测**(明天凭证):V2 为最高风险场景(官方签名加密绑定前缀,预期可能 400;失败则 §3 降级为 thinking 与 tool 对共进退,OQ2 关闭);复测命令与清单见 `.local-probe/p1-last-run.json`。
-2. **P2 · OpenAI completions 面**(kimi-k2.5 + MiniMax-M2.5-lightning,18 请求):①过滤重组(tool_calls 子集 + 对应 tool 响应子集 + 新 user)两面 ✅ 200(kimi 需 SDK 自动合成占位 content,`requiresAssistantContentForToolCalls` 已内建);②**named tool_choice 两面均被模型无视**(HTTP 200 但文本作答,两次独立运行一致);kimi `required`+工具集收窄为 `[compress_context]` ✅ 实际调用;MiniMax-lightning 连 required 也无视 → 该面三级只能降级。官方 OpenAI 待测:named 强制、`required`+收窄、gpt-5 系对强制 tool_choice 的限制。
+2. **P2 · OpenAI completions 面**(kimi-k2.5 + MiniMax-M2.5-lightning,18 请求):①过滤重组(tool_calls 子集 + 对应 tool 响应子集 + 新 user)两面 ✅ 200(kimi 需 SDK 自动合成占位 content,`requiresAssistantContentForToolCalls` 已内建);②**named tool_choice 两面均被模型无视**(HTTP 200 但文本作答,两次独立运行一致);kimi `required`+工具集收窄为 `[compress_context]` ✅ 实际调用;MiniMax-lightning 连 required 也无视 → 该面三级只能降级。官方 OpenAI 待测:named 强制、`required`+收窄、gpt-5 系对强制 tool_choice 的限制。此为历史 provider 能力探针;v17 起 ACP 不再采用这些 provider-level 强制或工具集收窄策略。
 3. **保护区 A/B**:0 vs 默认(max 2 turn / 20K),观察断片率与压缩意愿。→ 回填参数表(待全链路可用)。
 4. **ephemeral 注入缓存实测**:各家 cacheRead 命中率对比(注入 vs 不注入)。
 

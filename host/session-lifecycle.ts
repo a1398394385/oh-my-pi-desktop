@@ -201,14 +201,6 @@ export async function createSessionCore(
           const b = acpSession.session?.getContextBreakdown();
           return b ? Math.max(0, b.usedTokens - b.messagesTokens) : 0;
         },
-        // Level-3 force channel (spec §5.2/§10): the named form where the face
-        // supports it (openai-completions faces narrow tools internally = form
-        // ②); a throw (neither form) degrades via form ③.
-        forceCompressTool: () => {
-          const s = acpSession.session;
-          if (!s) throw new Error("session not created yet");
-          s.setForcedToolChoice("compress_context");
-        },
       })
     : null;
   // Native boundaries degrade only while they remain in the current branch era.

@@ -17,6 +17,7 @@
 import { type } from "@oh-my-pi/omptype";
 import type { FileEntry, SessionInfo } from "@oh-my-pi/pi-coding-agent";
 import { FileSessionStorage, listAllSessions, loadEntriesFromFile } from "./bootstrap.ts";
+import { escapeInjectedTokens } from "./injected-text.ts";
 import { referenceTitle } from "./titles.ts";
 
 /** A "user question + assistant reply" pair inside a session — the minimal unit of search and expansion. */
@@ -183,7 +184,7 @@ function formatHits(hits: SessionContextHit[], query: string, scanned: number): 
 
 /** Render one session file as a prompt-inline reference (the composer's @ session
  *  attachment); null when it holds no readable turn (the caller skips it). */
-export async function formatSessionReference(sessionPath: string): Promise<string | null> {
+export async function formatSessionReference(sessionPath: string, cwd: string): Promise<string | null> {
   const storage = new FileSessionStorage();
   const entries = await loadEntriesFromFile(sessionPath, storage);
   const turns = turnsFromEntries(entries);
@@ -192,8 +193,8 @@ export async function formatSessionReference(sessionPath: string): Promise<strin
   const lines = [`<attached-session title="${title.replace(/"/g, "&quot;")}" path="${sessionPath}">`];
   let used = 0;
   for (const turn of turns) {
-    const user = clip(turn.user, USER_CLIP);
-    const assistant = turn.assistant ? clip(turn.assistant, ASSISTANT_CLIP) : "";
+    const user = await escapeInjectedTokens(clip(turn.user, USER_CLIP), cwd);
+    const assistant = turn.assistant ? await escapeInjectedTokens(clip(turn.assistant, ASSISTANT_CLIP), cwd) : "";
     if (used + user.length + assistant.length > EXPAND_BUDGET) {
       lines.push(``, `… [session truncated at turn ${turn.index}: ${EXPAND_BUDGET} char budget]`);
       break;
@@ -216,7 +217,7 @@ const SESSION_REF_RE = /@session:(?:"([^"]+)"|(\S+)) ?/g;
  *  stays what the user wrote. Unreadable (deleted/empty) references are dropped rather
  *  than failing the send. Shared by the prompt and edit_resend paths — both hand text to
  *  the base, which knows nothing about the marker. */
-export async function inlineSessionRefs(text: string): Promise<string> {
+export async function inlineSessionRefs(text: string, cwd: string): Promise<string> {
   const refPaths: string[] = [];
   const stripped = text.replace(SESSION_REF_RE, (_m, quoted: string | undefined, plain: string | undefined) => {
     refPaths.push(quoted ?? plain ?? "");
@@ -227,7 +228,7 @@ export async function inlineSessionRefs(text: string): Promise<string> {
   for (const refPath of refPaths) {
     // Only the path travels in the text; the block header carries the session's own
     // title, resolved from the file so the bubble chip shows what the sidebar shows.
-    const block = refPath ? await formatSessionReference(refPath) : null;
+    const block = refPath ? await formatSessionReference(refPath, cwd) : null;
     if (block) blocks.push(block);
   }
   if (blocks.length === 0) return stripped;
