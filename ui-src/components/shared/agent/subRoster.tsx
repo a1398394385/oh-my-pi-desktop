@@ -4,9 +4,8 @@
 // passes onOpen so a row opens the sidebar detail instead of the hub's session jump.
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, fmtTokens, fmtDurationMs, openSessionByPath } from "../../../store";
+import { useAppStore, fmtTokens, openSessionByPath } from "../../../store";
 import { expandRightPanel } from "../../main/right/tabs";
-import { SubControls } from "./SubControls";
 import { modelShort, tokenTotal, usageSegments, timeSegments, stInfo, stKeyOf, stLabel, subStatus, currentProgress, type SegT } from "./subShared";
 import type { SubagentState } from "../../../types/session";
 
@@ -34,6 +33,13 @@ function ageText(sec: number, t: SegT): string {
 
 type SubEntry = [string, SubagentState];
 export type Row = { id: string; sub: SubagentState };
+
+// Elapsed as h:mm:ss — the deck header's clock column. fmtDurationMs returns localized prose
+// ("1 hour 11 min"), which reads wrong as a stat value.
+function clockOf(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+}
 
 // Project the subagent map into display rows: status order first (running → completed →
 // failed → aborted → unknown), registration order within one status. `status` is the status
@@ -229,28 +235,33 @@ export function HubUsage({ s }: { s: RosterSession }) {
     }
     return { cost, dur, reqs, tools, tok, measured };
   }, [sig]);
+  // Throughput the way the agent deck's pulse header states it: total tokens per second of
+  // aggregated agent time (host normalises the SDK buckets to { total }).
+  const rate = agg.dur > 0 ? agg.tok / (agg.dur / 1000) : 0;
+  const cells: Array<[string, string]> = [
+    [t("right.hubStatTokens"), fmtTokens(agg.tok)],
+    [t("right.hubStatCost"), `$${agg.cost.toFixed(3)}`],
+    [t("right.hubStatTools"), String(agg.tools)],
+    [t("right.hubStatRate"), rate > 0 ? `${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} t/s` : "—"],
+    [t("right.hubStatClock"), agg.dur > 0 ? clockOf(agg.dur) : "—"],
+  ];
   return (
     <div className="hub-usage text-faint">
       {agg.measured === 0 ? (
         t("right.hubNoUsage")
       ) : (
-        <>
-          <UsageCell>
-            <span className="hub-cost">${agg.cost.toFixed(3)}</span>
-          </UsageCell>
-          <UsageCell>
-            {agg.dur > 0 ? fmtDurationMs(agg.dur) : "—"} {t("right.hubAgentTime")}
-          </UsageCell>
-          <UsageCell>{agg.reqs} req</UsageCell>
-          <UsageCell>{agg.tools} tools</UsageCell>
-          <UsageCell>{fmtTokens(agg.tok)} tok</UsageCell>
-        </>
+        cells.map(([label, value], i) => (
+          <div className="hub-stat" key={label}>
+            <dt className="hub-stat-k">{label}</dt>
+            <dd className={"hub-stat-v" + (i === 1 ? " hub-cost" : "")}>{value}</dd>
+          </div>
+        ))
       )}
     </div>
   );
 }
 
-export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId }: { row: Row; stats: boolean; selected: boolean; onSelect: () => void; onOpen?: () => void; t: SegT; sessionId: string }) {
+export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId, minimal }: { row: Row; stats: boolean; selected: boolean; onSelect: () => void; onOpen?: () => void; t: SegT; sessionId: string; minimal?: boolean }) {
   const { sub } = row;
   const segs = usageSegments(sub, t, { model: false });
   const times = timeSegments(sub, t, Date.now());
@@ -275,6 +286,9 @@ export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId }:
   // Fallback transcript is capped; mark the cut so the row is not read as the whole task
   const rawTask = sub.description || sub.task || sub.text || "";
   const rowTask = rawTask.length > 80 ? rawTask.slice(0, 80) + "…" : rawTask || "…";
+  const ctxPct = sub.usage?.contextWindow
+    ? Math.min(100, Math.round(((sub.usage.contextTokens ?? 0) / sub.usage.contextWindow) * 100))
+    : 0;
   return (
     <div
       role="option"
@@ -290,7 +304,6 @@ export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId }:
       <span className="hub-row-head" ref={headRef}>
         <span className={"hub-dot st-" + stInfo(subStatus(sub)).group} />
         <span className="hub-name" data-prio="5" data-min="48">{sub.name ?? sub.agent}</span>
-        {sub.streaming ? <SubControls sessionId={sessionId} agentId={row.id} onOpen={() => openSubagentSession(row.id, sub)} /> : null}
         {role || model || think ? (
           <span className="hub-model">
             {role ? <span className="hub-role" data-prio="3">{role}</span> : null}
@@ -308,16 +321,19 @@ export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId }:
       {/* Running rows show the live progress line ("Current" in the detail) instead of the
           static assignment; it falls back to the assignment until the first tool/intent lands.
           The completion probe's self-estimate leads the line while the child runs (the probe
-          stops at terminal status, and a yield pins it to 99). */}
-      <span className="hub-task text-faint" title={rawTask || undefined}>
-        {sub.streaming && sub.usage?.completionPercent !== undefined ? (
-          <span className="hub-pct">{sub.usage.completionPercent}%</span>
-        ) : null}
-        {sub.streaming ? currentProgress(sub) || rowTask : rowTask}
-      </span>
+          stops at terminal status, and a yield pins it to 99). Minimal density keeps only the
+          head row. */}
+      {!minimal ? (
+        <span className="hub-task text-faint" title={rawTask || undefined}>
+          {sub.streaming && sub.usage?.completionPercent !== undefined ? (
+            <span className="hub-pct">{sub.usage.completionPercent}%</span>
+          ) : null}
+          {sub.streaming ? currentProgress(sub) || rowTask : rowTask}
+        </span>
+      ) : null}
       {/* Metrics (left) and timing info (right) share one line; the host surface decides
           whether a card carries it (Agent Hub yes, right sidebar no) */}
-      {stats ? (
+      {stats && !minimal ? (
         <div className="hub-meta text-faint" ref={metaRef}>
           {segs.map((s, i) => (
             <UsageCell key={"u" + i}>{s}</UsageCell>
@@ -325,6 +341,13 @@ export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId }:
           {times.concat(age).map((s, i) => (
             <UsageCell key={"t" + i}>{s}</UsageCell>
           ))}
+        </div>
+      ) : null}
+      {/* Context bar last: the deck card's ctx line, drawn only when the host reports a
+          window (the SDK's own context_tokens/context_window pair). */}
+      {!minimal && sub.usage?.contextWindow ? (
+        <div className="hub-ctx" data-high={ctxPct >= 88 ? "1" : undefined}>
+          <span style={{ width: `${ctxPct}%` }} />
         </div>
       ) : null}
     </div>

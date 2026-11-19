@@ -4,6 +4,7 @@
 // page; Enter bridges into the regular subagent tab; x kills via kill_subagent.
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import Icon from "../../Icon";
 import { useAppStore, send } from "../../store";
 import { HubRow, HubUsage, StatusTabs, useRosterRows, useRosterTick, openSubagentSession } from "../shared/agent/subRoster";
 
@@ -13,17 +14,18 @@ export default function AgentHub() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const hubSel = useAppStore((st) => st.hubSel);
+  const density = useAppStore((st) => st.hubDensity);
+  const grouping = useAppStore((st) => st.hubGrouping);
   // Repaint the age column once per second while anything streams
   useRosterTick(s);
   const rows = useRosterRows(s);
   const lastLeftAt = useRef(0);
 
-  // Keep the selection on a live row: default to the first row, recover when rows shrink
+  // Drop a selection that no longer exists; never auto-select, because the sidebar's empty
+  // state is the swarm summary (the deck's own rule).
   useEffect(() => {
     const st = useAppStore.getState();
-    if (!st.hubSel || !rows.some((r) => r.id === st.hubSel)) {
-      st.setHubSel(rows[0]?.id ?? null);
-    }
+    if (st.hubSel && !rows.some((r) => r.id === st.hubSel)) st.setHubSel(null);
   }, [rows]);
 
   // Hub keybinds: capture phase so j/k never land in the (hidden) composer
@@ -101,12 +103,63 @@ export default function AgentHub() {
       <div className="hub-topbar">
         <span className="hub-title">{t("right.hubTitle")}</span>
         <StatusTabs s={s} />
+        <span className="ad-seg" role="group" aria-label={t("right.adGrouping")}>
+          <button
+            type="button"
+            className={grouping === "tree" ? "active" : ""}
+            aria-pressed={grouping === "tree"}
+            title={t("right.adGroupingTree")}
+            onClick={() => useAppStore.getState().setHubGrouping("tree")}
+          >
+            <Icon name="tree" size={13} />
+          </button>
+          <button
+            type="button"
+            className={grouping === "status" ? "active" : ""}
+            aria-pressed={grouping === "status"}
+            title={t("right.adGroupingStatus")}
+            onClick={() => useAppStore.getState().setHubGrouping("status")}
+          >
+            <Icon name="list" size={13} />
+          </button>
+        </span>
+        <span className="ad-seg" role="group" aria-label={t("right.adDensity")}>
+          <button
+            type="button"
+            className={density === "standard" ? "active" : ""}
+            aria-pressed={density === "standard"}
+            title={t("right.adDensityStandard")}
+            onClick={() => useAppStore.getState().setHubDensity("standard")}
+          >
+            <Icon name="list" size={13} />
+          </button>
+          <button
+            type="button"
+            className={density === "minimal" ? "active" : ""}
+            aria-pressed={density === "minimal"}
+            title={t("right.adDensityMinimal")}
+            onClick={() => useAppStore.getState().setHubDensity("minimal")}
+          >
+            <Icon name="sort" size={13} />
+          </button>
+        </span>
         {backBtn}
       </div>
       <HubUsage s={s} />
       <div className="hub-list" role="listbox">
         {rows.map((row) => (
-          <HubRow key={row.id} row={row} stats selected={row.id === hubSel} onSelect={() => useAppStore.getState().setHubSel(row.id)} sessionId={s.sessionId} t={t} />
+          // Tree grouping indents children under their parent; the sort itself stays status-first
+          <div key={row.id} style={grouping === "tree" && row.sub.parent && row.sub.parent !== "main" ? { paddingLeft: 14 } : undefined}>
+            <HubRow
+              row={row}
+              stats
+              selected={row.id === hubSel}
+              minimal={density === "minimal"}
+              onSelect={() => useAppStore.getState().setHubSel(row.id)}
+              sessionId={s.sessionId}
+              t={t}
+            />
+          </div>
         ))}
       </div>
     </div>

@@ -129,6 +129,10 @@ export interface UiSlice {
   hubSel: string | null; // selected subagentId
   /** Status tab filter for the roster (flat list, "all" or a display-group key). */
   hubStatus: string;
+  /** Roster density: standard cards carry task and metrics, minimal is one row per agent. */
+  hubDensity: "standard" | "minimal";
+  /** Roster grouping: by spawn tree or a flat status-ordered list. */
+  hubGrouping: "tree" | "status";
   hubRightWasCollapsed: boolean; // right panel state to restore on closeHub
   hubPrevTab: string | null; // rightTab to restore when the linked hub tab closes
   pendingOpenHub?: boolean; // pending hub open request during asynchronous session load
@@ -153,6 +157,8 @@ export interface UiSlice {
   openHub(): void;
   closeHub(): void;
   setHubSel(id: string | null): void;
+  setHubDensity(v: "standard" | "minimal"): void;
+  setHubGrouping(v: "tree" | "status"): void;
   setHubStatus(key: string): void;
   setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
   setMainViewMode(mode: "chat" | "tree"): void;
@@ -279,6 +285,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   hubOpen: false,
   hubSel: null,
   hubStatus: "all",
+  hubDensity: "standard",
+  hubGrouping: "status",
   hubRightWasCollapsed: false,
   hubPrevTab: null,
   pendingOpenHub: false,
@@ -341,6 +349,14 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
 
   setHubSel(id) {
     set({ hubSel: id });
+  },
+
+  setHubDensity(v) {
+    set({ hubDensity: v });
+  },
+
+  setHubGrouping(v) {
+    set({ hubGrouping: v });
   },
 
   setHubStatus(key) {

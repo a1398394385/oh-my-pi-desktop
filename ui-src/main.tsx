@@ -108,7 +108,10 @@ showWelcomeScreen(null);
 // Init i18n before the first render and await it: language packs are lazy
 // chunks now, so rendering earlier would paint raw keys for a frame. The
 // static boot splash (#bootSplash in index.html) covers this window.
-await initI18n(useAppStore.getState().uiPrefs.lang);
+// The ?preview=1 comparison page always runs in the product locale, and it has
+// to be chosen here — a later initI18n call would leave the lazy packs half loaded.
+const previewMode = new URLSearchParams(location.search).has("preview");
+await initI18n(previewMode ? "zh-CN" : useAppStore.getState().uiPrefs.lang);
 
 // Align the native menu locale with the persisted UI language (the Rust shell
 // boots with a zh-CN default menu). No-op in browser preview: __TAURI__ absent.
@@ -188,7 +191,48 @@ if (new URLSearchParams(location.search).has("preview")) {
       ],
       assistantDraft: "",
       streaming: false,
-      subagents: new Map([["sa1", { agent: "scout", name: "scout", text: "", description: "侦察代码结构", status: "completed", streaming: false, tools: [] }]]),
+      // Roster sample for the deck layout. The six rows split one real session's totals
+      // (/Volumes/MacApps/Home/etower/etower-agent, 2026-11-17): 324,265 tokens, $0.0628,
+      // 425 tool calls, 4,283 s across 48 model requests — so the pulse header adds up to
+      // that session instead of invented numbers.
+      subagents: new Map(
+        (
+          [
+            ["CoreToolCutover", "确认工具外派到 Worker：收口 core 的 tool 注册面，外派八工具改走 Worker-only 通道", "completed", { total: 142_600 }, 0.0276, 187, 1_885_000, 118_000, false, 1_500_000],
+            ["McpRetirement", "启用 MCP 切流：主应用改走 Worker 的 mcp 通道，移除旧的 transport 注入点", "completed", { total: 61_040 }, 0.0118, 80, 806_000, 96_000, false, 1_200_000],
+            ["CoreFixtureTypes", "核对 core 的 fixture 类型出口，排除 CatalogTests 范围", "completed", { total: 34_330 }, 0.0067, 45, 453_000, 71_000, false, 900_000],
+            ["CoreCatalogTests", "只改 core/src/__tests__/agent-engine 的类型引用", "completed", { total: 30_520 }, 0.0059, 40, 403_000, 54_000, false, 600_000],
+            ["ConsumerCutover", "把消费端调用点迁到新 dispatch 端口", "failed", { total: 25_940 }, 0.005, 34, 342_000, 88_000, false, 420_000],
+            ["PatchQueue", "收口 acp 投影的补丁队列，逐条校验几何护栏", "running", { total: 29_835 }, 0.0058, 39, 394_000, 112_000, true, 394_000],
+          ] as const
+        ).map(([name, description, status, tokens, cost, toolCount, durationMs, contextTokens, streaming, agoMs]) => [
+          name,
+          {
+            agent: name,
+            name,
+            text: "",
+            description,
+            status,
+            streaming,
+            tools: [],
+            registeredAt: Date.now() - agoMs,
+            usage: {
+              resolvedModel: "tntapi/gpt-6.1-sol:high",
+              modelRole: "task",
+              tokens,
+              cost,
+              // 48 model requests over 425 tool calls, in proportion
+              requests: Math.round((toolCount * 48) / 425),
+              toolCount,
+              durationMs,
+              contextTokens,
+              contextWindow: 128_000,
+              completionPercent: streaming ? 42 : undefined,
+              currentToolIntent: streaming ? "收口 acp 投影" : undefined,
+            },
+          },
+        ]),
+      ),
       model: null,
       thinking: "auto",
       isGit: false,
@@ -202,6 +246,10 @@ if (new URLSearchParams(location.search).has("preview")) {
     isCreatingNew: false,
     rightTab: "subagent",
     rightTabs: ["subagent"],
+    // The deck layout lives in the right sidebar: open it, or the sample renders off-screen
+    rightCollapsed: false,
+    // Comparison page runs in the product's own locale so the labels read like the real UI
+    uiPrefs: { ...st.uiPrefs, lang: "zh-CN" as const },
   }));
   // Browser comparison debug hook (preview mode only): expose the store for
   // smoke reads via getState (P3 end state; the old S/notify retired), plus

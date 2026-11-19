@@ -46,10 +46,20 @@
    task.completionProbe); 4px gap instead of a separator so the line stays one sentence */
 .hub-pct { margin-right: 4px; font-weight: 700; color: var(--accent); }
 
+/* Assignment text: the deck card's two-line clamp (a full sentence rarely fits one line in a
+   420px panel, and the tail is the useful part of an assignment). */
 .hub-task {
   font-size: var(--ui-fs-sm);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
 }
+
+/* Context line: the deck card's ctx bar, drawn only when the host reports a window. */
+.hub-ctx { height: 3px; border-radius: var(--r-sm); background: var(--line); overflow: hidden; }
+
+.hub-ctx > span { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+
+.hub-ctx[data-high] > span { background: var(--err); }
 
 .hub-meta {
   font-size: var(--ui-fs-sm); color: var(--faint);

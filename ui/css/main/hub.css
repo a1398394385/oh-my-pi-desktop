@@ -21,11 +21,45 @@
 
 .al-filters.hub-tabs .al-pill { flex: none; white-space: nowrap; }
 
-/* Aggregate usage line: one cell per stat, separated by gap alone (no separators); the cell
-   rules live with the shared roster card in css/shared/agent.css. */
-.hub-usage { font-size: var(--ui-fs-sm); display: flex; flex-wrap: wrap; gap: 2.5px; }
+/* Pulse header: five labelled fields, caption above value (the deck panel's stat row).
+   Columns size to their content and spread across the row — equal columns would clip the
+   clock in a 300px sidebar. */
+.hub-usage {
+  display: grid; grid-template-columns: repeat(5, minmax(0, auto)); justify-content: space-between; gap: 8px;
+  font-size: var(--ui-fs-sm);
+}
 
-.hub-usage .hub-cost { color: var(--statusLineCost, var(--accent)); }
+.hub-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+.hub-stat-k { color: var(--faint); font-size: var(--ui-fs-xs); font-weight: 400; line-height: 1.2; }
+
+.hub-stat-v {
+  margin: 0; color: var(--text); font-size: var(--ui-fs-base); font-weight: 600;
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.hub-stat-v.hub-cost { color: var(--statusLineCost, var(--accent)); }
 
 /* Roster rows */
 .hub-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+
+/* Right-sidebar deck header: the aggregate line sits on its own plate above the roster, and
+   the status pills follow on a second row (the middle card keeps both inside its topbar). */
+.hub-pulse { flex: none; padding: 10px 12px 8px; border-bottom: 1px solid var(--line); }
+
+/* Five stats read as a row of fields, not a sentence: the shared 2.5px gap is an Agent-Hub
+   line-wrap gap and reads as one word here. */
+
+.hub-filter { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+
+.hub-filter .al-filters.hub-tabs { margin-top: 0; flex-wrap: nowrap; gap: 4px; }
+
+.hub-filter .al-filters.hub-tabs .al-pill { flex: 1 1 0; min-width: 0; justify-content: center; gap: 4px; font-size: var(--ui-fs-sm); padding-inline: 2px; overflow: hidden; }
+
+/* Cards in a 420px column: the head breaks into two lines — name (with its controls) on the
+   first, role · model · level on the second. The shared head keeps one line because the
+   middle card is wide; only the sidebar forces the wrap, and the fitter still hides the tail
+   on its own levels. */
+.hub-list .hub-row-head { flex-wrap: wrap; row-gap: 3px; }
+
+.hub-list .hub-model { display: inline-flex; flex: 0 0 100%; gap: 4px; }

@@ -1,4 +1,45 @@
 /* ---- Right-sidebar linked detail page ---- */
+/* Dossier shell: one tab bar over three panes, shared by the hub's linked page and the
+   subagent tab's detail. The bar owns the only chrome; panes scroll under it. */
+.dossier { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+
+.dossier-bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+
+.dossier-back {
+  flex: none; padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--dim); font: inherit; font-size: var(--ui-fs-sm);
+}
+
+.dossier-back:hover { color: var(--text); }
+
+.dossier-tabs { display: flex; gap: 2px; margin-left: auto; }
+
+.dossier-tab {
+  padding: 3px 9px; border: 0; border-radius: var(--r-sm); background: none; cursor: pointer;
+  color: var(--faint); font: inherit; font-size: var(--ui-fs-sm); line-height: 1.5;
+}
+
+.dossier-tab:hover { background: var(--hover-fill); color: var(--text); }
+
+.dossier-tab.on { background: var(--menu-hl); color: var(--text); }
+
+.dossier-task-text { padding: 10px 12px; font-size: var(--ui-fs-sm); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+
+/* Usage tiles: six labelled values in two rows of three (the dossier's usage grid). */
+.hub-tiles {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 10px;
+  margin: 0; padding: 4px 12px 10px;
+}
+
+.hub-tiles > div { min-width: 0; }
+
+.hub-tiles dt { color: var(--faint); font-size: var(--ui-fs-xs); line-height: 1.2; }
+
+.hub-tiles dd {
+  margin: 2px 0 0; color: var(--text); font-size: var(--ui-fs-sm); font-weight: 600;
+  font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 .hub-detail { padding: 8px 0 0; font-size: var(--ui-fs-base); color: var(--text); }
 
 .hub-detail-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
