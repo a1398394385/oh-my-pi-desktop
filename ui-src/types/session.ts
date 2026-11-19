@@ -540,6 +540,8 @@ export interface AppState {
   defaultModelCfg: string | null; // landed from the models frame's defaultModel
   defaultThinkingCfg: string | null; // landed from the models frame's defaultThinking
   newSessionDirty: boolean;
+  newSessionWorktree: boolean; // one-shot intent: first send starts the session in a managed worktree copy
+  worktreeSessionCreating: boolean; // worktree_create_session → create_session in flight (double-send guard + waiting state)
   pendingNewPrompt: { text: string; files: PromptAttachment[] } | null;
   pendingNewBash: { command: string; excludeFromContext: boolean } | null;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)

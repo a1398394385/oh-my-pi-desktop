@@ -22,6 +22,13 @@ export const worktreeEn = {
     openedToast: "Worktree ready — write your first message to start the session",
   },
 
+  toggle: {
+    label: "Worktree",
+    tooltip: "Start this session in an isolated copy of this repository, checked out at the current HEAD. Commits made inside are detached and can be garbage-collected once the copy is removed.",
+    unavailable: "This repository has no commits yet — nothing to check out",
+    waiting: "Creating worktree…",
+  },
+
   remove: {
     title: "Remove Worktree",
     checking: "Checking worktree state…",
@@ -45,6 +52,9 @@ export const worktreeEn = {
     not_a_worktree: "Not a git worktree",
     worktree_dirty: "Worktree has uncommitted changes",
     worktree_remove_failed: "Could not remove the worktree",
+    start_ref_unresolvable: "The repository has no commits yet",
+    start_ref_missing_subdir: "The project folder does not exist in the current checkout",
+    worktree_root_tracked: "Tracked files already exist under .omp/worktrees — untrack them first",
   },
 };
 

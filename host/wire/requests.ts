@@ -37,7 +37,7 @@ export type HostRequestMethod =
   "stt_start" | "stt_stop" | "switch_git_branch" | "switch_profile" | "terminal_create" | "terminal_dispose" |
   "terminal_resize" | "terminal_write" | "test_kimi_cu" | "test_mcp_server" | "test_provider_model" | "toggle_extension_item" |
   "toggle_extension_provider" | "toggle_extension_user_source" | "ui_error" | "voice_status" |
-  "worktree_create" | "worktree_remove" | "worktree_status";
+  "worktree_create" | "worktree_create_session" | "worktree_remove" | "worktree_status";
 
 /**
  * Typed request members (payload-checked). Grows one member per migrated

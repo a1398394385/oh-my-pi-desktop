@@ -61,6 +61,14 @@ export interface UiSlice {
   // needs the explicit false to opt one session out of the default).
   newSessionComputerMode: boolean | null;
   newSessionDirty: boolean;
+  /** One-shot intent for the NEXT new session only: first send creates a managed
+   *  worktree copy and starts the session inside it (welcome-page toggle). Reset
+   *  on project switch and on entering the new-session page. */
+  newSessionWorktree: boolean;
+  /** Send-pipeline guard while worktree_create_session → create_session is in
+   *  flight: a second send during creation is a no-op, so a fast double click
+   *  cannot claim two copies. Also drives the welcome page's waiting state. */
+  worktreeSessionCreating: boolean;
   pendingFiles: (PromptAttachment & { id: number })[]; // composer attachment chips (carry a frontend-local id, stripped on send)
   /** Pending conversation annotations per session path (store/annotations.ts): the
    *  composer shows one aggregated chip; the send path turns them into a
@@ -249,6 +257,8 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   newSessionPlanMode: false,
   newSessionComputerMode: null,
   newSessionDirty: false,
+  newSessionWorktree: false,
+  worktreeSessionCreating: false,
   pendingFiles: [],
   annotations: {},
   fileSeq: 0,
@@ -435,7 +445,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     // disposed the slot themselves.
     const leaving = get().activePath;
     if (leaving) saveRightSlot(leaving);
-    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false, gitManage: null, editingEntry: null }));
+    set((s) => ({ isCreatingNew: true, activePath: null, mainViewMode: "chat", automationsOpen: false, gitManage: null, editingEntry: null, newSessionWorktree: false, worktreeSessionCreating: false }));
     restoreRightSlot(null); // welcome pseudo-slot: same save/restore lifecycle as sessions
     if (!alreadyOpen) {
       get().send({ type: "reload_settings" }); // the local config may have changed; pull the latest model settings
@@ -486,6 +496,7 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
       newSessionBranches: [],
       newSessionRemotes: [],
       newSessionDetached: false,
+      newSessionWorktree: false, // the toggle is a per-project intent: never carry it across a switch
     }));
     get().send({ type: "get_git_branches", cwd });
     // New-session MCP warm-up: the project is known the moment the user starts

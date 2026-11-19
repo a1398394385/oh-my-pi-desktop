@@ -22,6 +22,13 @@ export const worktreeZhCn = {
     openedToast: "Worktree 已就绪——输入第一条消息即开始会话",
   },
 
+  toggle: {
+    label: "Worktree",
+    tooltip: "在仓库的隔离副本中开始会话（检出当前 HEAD，不带未提交改动）。副本里的提交是游离提交，删除副本前请自行迁出。",
+    unavailable: "该仓库还没有任何提交，无法检出副本",
+    waiting: "正在创建副本…",
+  },
+
   remove: {
     title: "移除 Worktree",
     checking: "正在检查 worktree 状态…",
@@ -45,6 +52,9 @@ export const worktreeZhCn = {
     not_a_worktree: "不是 git worktree",
     worktree_dirty: "worktree 存在未提交改动",
     worktree_remove_failed: "无法移除 worktree",
+    start_ref_unresolvable: "仓库还没有任何提交",
+    start_ref_missing_subdir: "项目目录在当前检出中不存在",
+    worktree_root_tracked: ".omp/worktrees 下已存在被跟踪文件，请先取消跟踪",
   },
 };
 

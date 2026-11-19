@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useAppStore, setWelcomeProject, pathBase } from "../../store";
 import { t } from "../../i18n";
+import { REMOTE } from "../../remote";
 import Icon from "../../Icon";
 import Composer from "../Composer";
 import ProjectMenu from "../welcome/ProjectMenu";
@@ -34,6 +35,10 @@ export default function Welcome() {
   const newSessionBranches = useAppStore((s) => s.newSessionBranches);
   const newSessionRemotes = useAppStore((s) => s.newSessionRemotes);
   const newSessionDetached = useAppStore((s) => s.newSessionDetached);
+  // Managed-worktree toggle: a one-shot intent consumed by the first send
+  // (composer/send.ts creates the copy and re-points the session cwd at it).
+  const newSessionWorktree = useAppStore((s) => s.newSessionWorktree);
+  const worktreeSessionCreating = useAppStore((s) => s.worktreeSessionCreating);
   // null = closed; when open, holds the trigger button's viewport coords; the menu portals to
   // body then positions itself
   const [projMenu, setProjMenu] = useState<DOMRect | null>(null);
@@ -188,6 +193,44 @@ export default function Welcome() {
                   <span id="wbBranchName">{newSessionBranch || "main"}</span>
                   <span className="caret caret-svg"><Icon name="caret" /></span>
                 </button>
+              )}
+              {/* Managed-worktree toggle, pinned to the capsule row's right end. Only
+                  for local git projects (a remote viewer must not write the host's
+                  disk; the host denylist is the second gate). Unborn HEAD = no
+                  commits yet: the copy would have no start point, so the toggle
+                  renders unavailable instead of failing at send time. While the
+                  copy is being created the switch swaps for an explicit waiting
+                  state (the send pipeline guards against a second claim). */}
+              {newSessionIsGit && !REMOTE && (
+                <div className="wb-wt-toggle">
+                  <span className="wb-wt-label">{t("worktree.toggle.label")}</span>
+                  {worktreeSessionCreating ? (
+                    <span className="wb-wt-waiting" title={t("worktree.toggle.waiting")}>
+                      <span className="wb-wt-spin" />
+                      {t("worktree.toggle.waiting")}
+                    </span>
+                  ) : (
+                    <button
+                      id="wbWorktreeToggle"
+                      type="button"
+                      role="switch"
+                      aria-checked={newSessionWorktree}
+                      aria-label={t("worktree.toggle.label")}
+                      className={"tg" + (newSessionWorktree ? " on" : "") + (newSessionBranches.length === 0 && !newSessionDetached ? " disabled" : "")}
+                      title={
+                        newSessionBranches.length === 0 && !newSessionDetached
+                          ? t("worktree.toggle.unavailable")
+                          : t("worktree.toggle.tooltip")
+                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        useAppStore.setState({ newSessionWorktree: !newSessionWorktree });
+                      }}
+                    >
+                      <i />
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>

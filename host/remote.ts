@@ -65,8 +65,8 @@ export const REMOTE_WRITE_DENYLIST: ReadonlySet<string> = new Set([
   "link_activate",
   // collab.ts (3): collab_state is a pure read and stays requestable
   "collab_start", "collab_join", "collab_leave",
-  // worktree.ts (2): worktree_status is a pure read
-  "worktree_create", "worktree_remove",
+  // worktree.ts (3): worktree_status is a pure read
+  "worktree_create", "worktree_create_session", "worktree_remove",
   // run-changes.ts (1): get_run_file_diff and get_run_changes_state are pure reads
   "revert_run_file",
 ]);

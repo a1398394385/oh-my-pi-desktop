@@ -1088,6 +1088,12 @@
       "note": "建 git worktree（分支 omp/desktop/<slug>，路径 profile 内 wt 根），冲突自动后缀；失败回滚孤儿分支"
     },
     {
+      "id": "worktree_create_session",
+      "kind": "git",
+      "risk": "write",
+      "note": "新会话 worktree 开关：在 <repo>/.omp/worktrees/<4hex>/<name> 建 detach 副本（起点固定 HEAD，不经分支），回复复用 worktree_created 帧带 cwd/head、detach 不发送 branch 字段；受管根经 info/exclude 本地忽略，失败回滚 bucket 并 prune；远程只读"
+    },
+    {
       "id": "worktree_status",
       "kind": "git",
       "risk": "read",

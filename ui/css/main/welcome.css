@@ -86,6 +86,43 @@ html[data-motion="off"] #welcomeTitle { animation: none; background-position: 15
   color: var(--white);
 }
 
+/* Managed-worktree toggle: pinned to the capsule row's right end, pill-height
+   aligned; the switch itself is the site-wide .tg control (global/controls.css),
+   waiting state reuses the shared spin keyframes (global/animations.css). */
+.wb-wt-toggle {
+  margin-left: auto; /* the row is a single flex line: auto margin pins it right */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px; /* same line box as the wb-pills */
+  flex: none;
+  padding-right: 4px;
+}
+
+.wb-wt-label {
+  font-size: var(--ui-fs-base);
+  color: var(--dim);
+  user-select: none;
+}
+
+.wb-wt-waiting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ui-fs-base);
+  color: var(--dim);
+}
+
+.wb-wt-spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--panel-3);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+
 :is([data-theme="light"], [data-theme-mode="light"]) .wb-pill:hover {
   background: var(--hover-fill);
   color: var(--text);

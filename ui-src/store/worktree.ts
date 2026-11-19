@@ -18,6 +18,10 @@ export interface WorktreeCreatedReply {
   path?: string;
   branch?: string;
   baseCwd?: string;
+  /** worktree_create_session only: the session cwd (mirrored subdir when baseCwd
+   *  was one; equals path otherwise) and the detached start commit. */
+  cwd?: string;
+  head?: string;
   error?: string;
   code?: string;
 }
@@ -57,11 +61,14 @@ interface Pending {
 }
 
 const TIMEOUT_MS = 60_000; // worktree add can be slow on large repos
+/** worktree_create_session does a full checkout host-side with a 10-minute
+ *  timeout, so the bus must outlive it. */
+const CREATE_SESSION_TIMEOUT_MS = 11 * 60_000;
 let seq = 0;
 const pending = new Map<number, Pending>();
 
 /** Send one worktree_* request and resolve with its reply frame (rejects on timeout / no ws). */
-async function worktreeRequest(payload: { type: string; [key: string]: unknown }): Promise<WorktreeReplyFrame> {
+async function worktreeRequest(payload: { type: string; [key: string]: unknown }, timeoutMs = TIMEOUT_MS): Promise<WorktreeReplyFrame> {
   const st = useAppStore.getState();
   if (!st.ws || st.ws.readyState !== 1) throw new Error(t("worktree.notConnected"));
   const reqId = ++seq;
@@ -69,7 +76,7 @@ async function worktreeRequest(payload: { type: string; [key: string]: unknown }
   const timer = setTimeout(() => {
     pending.delete(reqId);
     reject(new Error(t("worktree.timeout")));
-  }, TIMEOUT_MS);
+  }, timeoutMs);
   pending.set(reqId, { resolve, timer });
   // The wire contract gains the worktree_* methods at integration time (see
   // HostRequestMethod); cast keeps this file compiling before hook-up.
@@ -79,6 +86,11 @@ async function worktreeRequest(payload: { type: string; [key: string]: unknown }
 
 export async function worktreeCreate(input: { name: string; baseRef: "HEAD" | "default"; baseCwd: string }): Promise<WorktreeCreatedReply> {
   return worktreeRequest({ type: "worktree_create", ...input }) as Promise<WorktreeCreatedReply>;
+}
+
+/** New-session toggle path: unmanaged-name managed copy (see host worktree_create_session). */
+export function worktreeCreateSession(baseCwd: string): Promise<WorktreeCreatedReply> {
+  return worktreeRequest({ type: "worktree_create_session", baseCwd }, CREATE_SESSION_TIMEOUT_MS) as Promise<WorktreeCreatedReply>;
 }
 
 export function worktreeStatus(path: string): Promise<WorktreeStatusReply> {

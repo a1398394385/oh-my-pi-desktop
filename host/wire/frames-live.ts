@@ -485,7 +485,10 @@ export interface CollabStateFrame {
 
 // ---------- git worktree sessions (host/rpc/worktree.ts) ----------
 
-/** worktree_create reply: branch omp/desktop/<slug> at getWorktreeDir(desktop-<slug>-<hash7>) */
+/** worktree_create reply: branch omp/desktop/<slug> at getWorktreeDir(desktop-<slug>-<hash7>)
+ * worktree_create_session replies on the same frame: cwd = the session cwd (a
+ * mirrored subdir when baseCwd was one), head = the start commit, and NO branch
+ * field (the managed checkout is detached by design). */
 export interface WorktreeCreatedFrame {
   type: "worktree_created";
   reqId: number;
@@ -493,6 +496,8 @@ export interface WorktreeCreatedFrame {
   path?: string;
   branch?: string;
   baseCwd?: string;
+  cwd?: string;
+  head?: string;
   error?: string;
   code?: string;
 }
