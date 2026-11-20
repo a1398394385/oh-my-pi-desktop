@@ -1,5 +1,5 @@
 // Agent sheet: the deck inspector, ported 1:1 from omp-studio's AgentInspector (credential
-// crumb, status/model line, action row, current stage, task with expand, usage tiles, output,
+// crumb, status/model line, action row, progress stage, task with expand, usage tiles, output,
 // child chips). Used by the right sidebar for both entries: the Agent Hub's selection and the
 // subagent tab's card click.
 import { useEffect, useState } from "react";
@@ -110,8 +110,9 @@ export default function AgentSheet({
             <div className="ad-ins-sub">
               {role || model || think ? (
                 <span className="hub-model" title={u?.resolvedModel ?? undefined}>
-                  {role ? <span className="hub-role">{role}</span> : null}
-                  {role && (model || think) ? <span className="hub-sep"> · </span> : null}
+                  {/* Role alias rides as the same rounded chip the hub page card uses
+                      (.hc-chip), not the roster row's plain bold run. */}
+                  {role ? <span className="hc-chip">{role}</span> : null}
                   {model || think ? (
                     <span className="hub-mdl">
                       {model}

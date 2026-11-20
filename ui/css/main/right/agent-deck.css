@@ -148,7 +148,7 @@
 
 .ad-ins-section h4::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
-.ad-ins-now { display: flex; align-items: flex-start; gap: 6px; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 1.5; }
+.ad-ins-now { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 1.5; }
 
 .ad-ins-now[data-running] { color: var(--text); }
 
@@ -168,7 +168,7 @@
 
 .ad-ins-trail span { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.ad-ins-task { margin: 0; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.ad-ins-task { margin: 0; padding: 0 4px; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 
 .ad-ins-task[data-clamped] {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden;
@@ -189,7 +189,7 @@
 
 .ad-ins-context[data-high] .ad-ins-bar > i { background: var(--err); }
 
-.ad-ins-result { margin: 0; color: var(--text); font-size: var(--ui-fs-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ad-ins-result { margin: 0; padding: 0 4px; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .ad-ins-result[data-clamped] {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden;
