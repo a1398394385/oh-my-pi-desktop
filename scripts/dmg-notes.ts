@@ -7,7 +7,7 @@
 // The note also carries the copy-pasteable `xattr -dr com.apple.quarantine` command for ad-hoc signed
 // builds, which a background image cannot offer.
 // Re-runnable: the writable copy is rebuilt from scratch each time.
-// Usage: bun scripts/dmg-notes.ts [path/to/omp-desktop_*.dmg]
+// Usage: bun scripts/dmg-notes.ts [path/to/OMP Desktop_*.dmg]
 import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

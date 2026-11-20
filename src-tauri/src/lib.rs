@@ -396,7 +396,7 @@ fn build_menu(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
     // App menu (first macOS menu): About / Services / Hide / Quit
     let app_menu = Submenu::with_items(
         app,
-        "omp-desktop",
+        "OMP Desktop",
         true,
         &[
             &PredefinedMenuItem::about(app, None, Some(AboutMetadata::default()))?,
@@ -513,9 +513,9 @@ fn build_tray(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
     // Dev builds label the tray so a dev instance running next to the packaged
     // app is distinguishable in the tray (both would otherwise read the same).
     #[cfg(debug_assertions)]
-    let tray_name = "omp desktop dev";
+    let tray_name = "OMP Desktop Dev";
     #[cfg(not(debug_assertions))]
-    let tray_name = "omp desktop";
+    let tray_name = "OMP Desktop";
     let mut builder = TrayIconBuilder::with_id("main")
         .tooltip(tray_name)
         .menu(&menu)
@@ -524,6 +524,19 @@ fn build_tray(app: &tauri::AppHandle, lang: &str) -> tauri::Result<()> {
             "tray_quit" => app.exit(0),
             _ => {}
         });
+    // macOS menu bar: a template image (black + alpha, tinted by the system for
+    // light/dark menu bars), the same asset omp-studio uses. tray-icon scales any
+    // icon to 18pt height, so the 2x asset only buys Retina sharpness.
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .icon(tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/trayTemplate@2x.png"
+            ))?)
+            .icon_as_template(true);
+    }
+    // Windows taskbar trays are colored: keep the app icon there.
+    #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
         builder = builder.icon(icon.clone());
     }

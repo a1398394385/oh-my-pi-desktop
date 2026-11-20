@@ -9,7 +9,7 @@
   "app": {
     "windows": [
       {
-        "title": "omp desktop",
+        "title": "OMP Desktop",
         "width": 1280,
         "height": 820,
         "x": 300,

@@ -1,8 +1,8 @@
-# omp desktop
+# OMP Desktop
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-omp desktop is a cross-platform desktop client for omp (oh-my-pi), an AI coding agent. It puts the agent in a native window: chat with models, watch it edit files and run commands, and inspect context, diffs, subagents, terminal, and browser along the way. The agent runtime ships inside the app — no separate omp CLI install needed.
+OMP Desktop is a cross-platform desktop client for omp (oh-my-pi), an AI coding agent. It puts the agent in a native window: chat with models, watch it edit files and run commands, and inspect context, diffs, subagents, terminal, and browser along the way. The agent runtime ships inside the app — no separate omp CLI install needed.
 
 Built on **Tauri 2** (Rust shell, Bun host, React 19 + Vite + Tailwind v4 UI).
 
@@ -10,7 +10,7 @@ Built on **Tauri 2** (Rust shell, Bun host, React 19 + Vite + Tailwind v4 UI).
 
 Every other desktop client for a CLI-style agent spawns a separate runtime process per session and talks to it over RPC. The omp runtime carries roughly 210MB of base overhead per copy, so nine open sessions approach 3GB — and each one is a separate failure domain that dies on its own.
 
-omp desktop embeds the omp SDK as a library. One Bun host process holds every session in a pool and shares a single auth/model/settings base across them. Two sessions in one process measure 385MB.
+OMP Desktop embeds the omp SDK as a library. One Bun host process holds every session in a pool and shares a single auth/model/settings base across them. Two sessions in one process measure 385MB.
 
 Embedding the SDK rather than shelling out to a protocol is what makes the rest of this app possible:
 
@@ -22,7 +22,7 @@ Sessions persist per working directory as JSONL and reload after restart.
 
 ## Context forensics
 
-Most clients show a token count. omp desktop shows where every token went.
+Most clients show a token count. OMP Desktop shows where every token went.
 
 Hover the context ring for a live breakdown — system tools, MCP tools split by tools / prompt / device, system prompt, memory, skills, repo rules, and messages broken into compressed vs. active zones — plus **provider quota tiers with reset countdowns and balance** across 21 vendors, and cache-warming savings (probes, next probe countdown, spend, tokens saved).
 

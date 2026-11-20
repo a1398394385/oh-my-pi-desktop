@@ -1,8 +1,8 @@
-# omp desktop
+# OMP Desktop
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-omp desktop 是 AI coding agent——omp（oh-my-pi）的跨平台桌面客户端。它把 agent 装进一个原生窗口：与模型对话、看着它改文件跑命令，随时查看上下文、diff、子代理、终端与浏览器。agent 运行时内置于应用，无需单独安装 omp CLI。
+OMP Desktop 是 AI coding agent——omp（oh-my-pi）的跨平台桌面客户端。它把 agent 装进一个原生窗口：与模型对话、看着它改文件跑命令，随时查看上下文、diff、子代理、终端与浏览器。agent 运行时内置于应用，无需单独安装 omp CLI。
 
 外壳基于 **Tauri 2**（Rust 外壳 + Bun 宿主 + React 19 / Vite / Tailwind v4 前端）。
 
@@ -10,7 +10,7 @@ omp desktop 是 AI coding agent——omp（oh-my-pi）的跨平台桌面客户�
 
 给 CLI 型 agent 套桌面壳的常见做法是每个会话起一个运行时子进程，走 RPC 通信。而 omp 运行时每份底座开销约 210MB，开九个会话就逼近 3GB——而且每个进程都是独立的故障域，单独崩溃。
 
-omp desktop 把 omp SDK 作为库内嵌：单个 Bun 宿主进程用会话池持有全部会话，auth／模型／设置底座全进程共享一份。实测单进程跑 2 个会话总共 385MB。
+OMP Desktop 把 omp SDK 作为库内嵌：单个 Bun 宿主进程用会话池持有全部会话，auth／模型／设置底座全进程共享一份。实测单进程跑 2 个会话总共 385MB。
 
 内嵌 SDK 而非调用外部协议，是这个应用其余部分得以成立的前提：
 
@@ -22,7 +22,7 @@ omp desktop 把 omp SDK 作为库内嵌：单个 Bun 宿主进程用会话池持
 
 ## 上下文取证
 
-多数客户端只给一个 token 数。omp desktop 给出每个 token 去了哪。
+多数客户端只给一个 token 数。OMP Desktop 给出每个 token 去了哪。
 
 悬停上下文环，实时分解为：系统工具、MCP 工具（按 tools／prompt／device 拆分）、系统提示、记忆、技能、仓库规则，以及消息的压缩区／活跃区切分——另附**覆盖 21 家供应商的配额档位、重置倒计时与余额**，以及缓存保活统计（探针数、下次探针倒计时、花销、节省 token）。
 

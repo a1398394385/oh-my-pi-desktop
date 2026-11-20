@@ -151,7 +151,7 @@
 - **`AppHandle::restart()` 是 core Tauri 的（`tauri-2.12.1/src/app.rs:606`，`impl AppHandle`）**：不需要 `tauri-plugin-process`，后者只是包装同一个调用。多装一个插件等于为一个函数多开一份 capability。
 - **插件的 `download` 命令用 IPC `Channel` 传进度**：不想引 `@tauri-apps/plugin-updater` npm 包（前端统一走 `withGlobalTauri`）时，别在 TS 里复刻 Channel——改用 `download_and_install` 的闭包回调 + `app.emit()` 推事件（本仓形态同 `rail-spectrum`，见 `src-tauri/src/audio/`）。字节累计放 Rust 侧：回调给的是 chunk 增量，TS 逐块重加会漂移。
 - **`download_and_install` 在 Windows 上会退出进程**（NSIS 安装器无法替换运行中的 exe），macOS/Linux 则需自行重启。所以 `update-installed` 事件在 Windows 上永远到不了前端，`on_download_finish` 的 `finished:true` 才是最后一个可见进度信号。
-- **验证法（不装 minisign 的完整链路）**：`export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"` + `APPLE_SIGNING_IDENTITY="-"` 后 `bunx tauri build --bundles app`，产物判据 = `bundle/macos/` 下同时出现 `omp-desktop.app.tar.gz` **和** `.tar.gz.sig`，且 `Contents/Resources/` 只有 `omp-host.exe` + 图标。验签走上面的 node:crypto 脚本，三条断言：sig 对 BLAKE2b-512(产物) 为 true、global sig 对 `sig‖comment` 为 true、**翻转产物任一字节后必须变 false**（负对照，缺了这条就证明不了脚本本身有效）。
+- **验证法（不装 minisign 的完整链路）**：`export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/omp-desktop.key)"` + `APPLE_SIGNING_IDENTITY="-"` 后 `bunx tauri build --bundles app`，产物判据 = `bundle/macos/` 下同时出现 `OMP Desktop.app.tar.gz` **和** `.tar.gz.sig`，且 `Contents/Resources/` 只有 `omp-host.exe` + 图标。验签走上面的 node:crypto 脚本，三条断言：sig 对 BLAKE2b-512(产物) 为 true、global sig 对 `sig‖comment` 为 true、**翻转产物任一字节后必须变 false**（负对照，缺了这条就证明不了脚本本身有效）。
 
 ## xd:// 设备调用的记账形态（2026-10-13，ACP 工具行对接）
 
