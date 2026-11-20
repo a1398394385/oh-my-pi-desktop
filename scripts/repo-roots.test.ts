@@ -26,6 +26,17 @@ afterAll(() => {
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
+/**
+ * Comparable spelling of a path: separators normalized, and on Windows lowercased
+ * because the file system is case-insensitive there and the group root is keyed
+ * by a normalized (realpath-resolved, lowercased) path - git and the file
+ * system may disagree about the case of the same directory.
+ */
+function comparablePath(p: string): string {
+  const normalized = path.normalize(p);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
 describe("repoRootOf", () => {
   test("plain checkout (.git directory) is its own root", () => {
     const repo = path.join(tmp, "plain");
@@ -85,9 +96,9 @@ describe("repoGroups", () => {
     git(repo, ["worktree", "add", "-q", "-b", "side", side]);
     const groups = await repoGroups([repo, side, path.join(tmp, "not-a-repo")]);
     expect(groups).toHaveLength(1);
-    expect(groups[0].root).toBe(repo);
+    expect(comparablePath(groups[0].root)).toBe(comparablePath(repo));
     expect(groups[0].name).toBe("multi");
-    expect(groups[0].cwds.sort()).toEqual([repo, side].sort());
+    expect(groups[0].cwds.map(comparablePath).sort()).toEqual([repo, side].map(comparablePath).sort());
     expect(groups[0].worktrees.map((w) => w.branch).sort()).toEqual(["main", "side"]);
     expect(await worktreesOf(repo)).toHaveLength(2);
   });

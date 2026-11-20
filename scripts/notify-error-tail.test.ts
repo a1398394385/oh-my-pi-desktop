@@ -7,23 +7,17 @@ import { describe, expect, test } from "bun:test";
 import type { OpenSession, SessionItem } from "../ui-src/types/session";
 import type { SettingsPayload } from "../ui-src/types/frames";
 
-const sent: { title: string; body: string; path?: string }[] = [];
-// ws.ts binds `invoke` from window.__TAURI__ at module scope — install the stub first,
-// then load the store graph (dynamic imports, same reason as smoke-dual-channel-store.ts).
-(globalThis.window as unknown as { __TAURI__: unknown }).__TAURI__ = {
-  core: {
-    invoke: async (cmd: string, args: { title: string; body: string; path?: string }) => {
-      if (cmd === "send_desktop_notification") sent.push(args);
-    },
-  },
-};
+// ws.ts binds `invoke` from window.__TAURI__ at module scope, so the stub lives in the
+// shared dom-stub (one process-wide channel): a file-local stub would only win when this
+// file happens to load the store graph first.
+const { desktopNotifications } = await import("./dom-stub");
 const { initI18n } = await import("../ui-src/i18n");
 initI18n("zh-CN");
 const { useAppStore } = await import("../ui-src/store");
 const { applyEvent } = await import("../ui-src/store/session");
 
 function seed(id: string, items: SessionItem[]): void {
-  sent.length = 0;
+  desktopNotifications.length = 0;
   const s = {
     sessionId: id,
     items,
@@ -54,20 +48,20 @@ describe("desktop alert on a failed run", () => {
   test("a retried failure stays silent and does not swallow the finished alert", () => {
     seed("retried", [{ role: "user", text: "go" }]);
     event("retried", "error", { text: "400 invalid request" });
-    expect(sent).toHaveLength(0);
+    expect(desktopNotifications).toHaveLength(0);
     // the base retried and the run kept producing output
     event("retried", "text_delta", { text: "recovered answer" });
     event("retried", "turn_end", { runEnd: true, usage: null });
-    expect(sent).toHaveLength(1);
-    expect(sent[0].body).toBe("recovered answer");
-    expect(sent[0].path).toBe("/tmp/retried.jsonl");
+    expect(desktopNotifications).toHaveLength(1);
+    expect(desktopNotifications[0].body).toBe("recovered answer");
+    expect(desktopNotifications[0].path).toBe("/tmp/retried.jsonl");
   });
 
   test("a failure the run ended on alerts with the error text", () => {
     seed("aborted", [{ role: "user", text: "go" }]);
     event("aborted", "error", { text: "retry budget exhausted: 400 invalid request" });
     event("aborted", "turn_end", { runEnd: true, usage: null });
-    expect(sent).toHaveLength(1);
-    expect(sent[0].body).toBe("retry budget exhausted: 400 invalid request");
+    expect(desktopNotifications).toHaveLength(1);
+    expect(desktopNotifications[0].body).toBe("retry budget exhausted: 400 invalid request");
   });
 });

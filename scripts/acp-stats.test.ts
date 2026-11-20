@@ -207,6 +207,9 @@ describe("catalog pricing fallback", () => {
   });
 
   test("a model no bundled row prices stays at zero", () => {
-    expect(priceUsage("kimi-code", "k3.1-pro", usage(1000, 100, 0, 0), 0)).toBeNull();
+    // The catalog prices kimi-code/k3.1-pro since 18.20.0, and the fallback
+    // resolves a price by exact model id across every bundled provider — so the
+    // "no bundled row" case needs an id the catalog has never carried.
+    expect(priceUsage("kimi-code", "zzz-model-without-catalog-row", usage(1000, 100, 0, 0), 0)).toBeNull();
   });
 });

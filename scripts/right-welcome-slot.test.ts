@@ -29,6 +29,11 @@ describe("welcome slot", () => {
   });
 
   test("session slots still inherit the live layout", () => {
+    // Write the slot through the store's own API instead of a seeded localStorage
+    // row: the persisted table is read once at module load, so a seeded row only
+    // survives when this file happens to load the store graph first.
+    useAppStore.setState({ rightTabs: ["gitdiff"], rightTab: "gitdiff", rightCollapsed: false });
+    saveRightSlot("/sess");
     useAppStore.setState({ rightTabs: ["file"], rightTab: "file", rightCollapsed: false });
     restoreRightSlot("/sess");
     expect(useAppStore.getState().rightTabs).toEqual(["gitdiff"]);

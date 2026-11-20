@@ -29,7 +29,9 @@ Object.defineProperty(win.HTMLElement.prototype, "scrollHeight", {
 });
 
 const { initI18n } = await import("../ui-src/i18n");
-initI18n("zh-CN");
+// The language packs load lazily (lazyPackBackend), so the await is what puts the
+// Chinese strings in place — without it t() hands back the raw key.
+await initI18n("zh-CN");
 const { useAppStore } = await import("../ui-src/store");
 const { default: ToolRow } = await import("../ui-src/components/chat/ToolRow");
 const { createElement, act } = await import("react");

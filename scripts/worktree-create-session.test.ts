@@ -77,6 +77,25 @@ async function call(baseCwd: string, reqId = 1): Promise<{ ws: FakeSocket; reply
 
 const BUCKET_RE = /^[0-9a-f]{4}$/;
 
+/**
+ * Comparable spelling of a path: separators normalized, and on Windows lowercased
+ * because the file system is case-insensitive there. git prints worktree paths
+ * with forward slashes on Windows, while the reply frames carry the native
+ * separators - both spellings name the same directory.
+ */
+function comparablePath(p: string): string {
+  const normalized = path.normalize(p);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+/** The checkouts `git worktree list --porcelain` reports for `repo`. */
+function worktreePaths(repo: string): string[] {
+  return mustGit(repo, ["worktree", "list", "--porcelain"])
+    .split("\n")
+    .filter((l) => l.startsWith("worktree "))
+    .map((l) => l.slice("worktree ".length).trim());
+}
+
 describe("worktree_create_session", () => {
   test("root project: ok frame, copy on disk, clean both statuses, no .omp noise", async () => {
     const repo = makeRepo("repo");
@@ -90,7 +109,14 @@ describe("worktree_create_session", () => {
     expect(reply.head).toBe(head);
 
     const copyPath = reply.path as string;
-    expect(copyPath).toMatch(new RegExp(`^${path.join(repo, ".omp", "worktrees")}/[0-9a-f]{4}/repo$`));
+    // <repo>/.omp/worktrees/<4 hex bucket>/<repo name>, spelled with the
+    // platform's own separators.
+    const managedRoot = path.join(repo, ".omp", "worktrees");
+    const rel = path.relative(managedRoot, copyPath);
+    const [bucket, name] = rel.split(path.sep);
+    expect(bucket).toMatch(BUCKET_RE);
+    expect(name).toBe("repo");
+    expect(path.dirname(copyPath)).toBe(path.join(managedRoot, bucket));
     expect(reply.cwd).toBe(copyPath);
     expect(reply.baseCwd).toBe(repo);
     expect(fs.existsSync(path.join(copyPath, ".git"))).toBe(true);
@@ -103,7 +129,7 @@ describe("worktree_create_session", () => {
     // Primary repo stays clean: exclude hid the managed root.
     expect(mustGit(repo, ["status", "--porcelain"])).toBe("");
     // And the copy shows up in the worktree list.
-    expect(mustGit(repo, ["worktree", "list", "--porcelain"])).toContain(copyPath);
+    expect(worktreePaths(repo).map(comparablePath)).toContain(comparablePath(copyPath));
   });
 
   test("subdir project: cwd lands on the mirrored subdir inside the copy", async () => {
@@ -131,9 +157,9 @@ describe("worktree_create_session", () => {
     expect(bucketOf(a.reply.path as string)).toMatch(BUCKET_RE);
     expect(bucketOf(b.reply.path as string)).toMatch(BUCKET_RE);
     expect(a.reply.path).not.toBe(b.reply.path);
-    const list = mustGit(repo, ["worktree", "list", "--porcelain"]);
-    expect(list).toContain(a.reply.path as string);
-    expect(list).toContain(b.reply.path as string);
+    const listed = worktreePaths(repo).map(comparablePath);
+    expect(listed).toContain(comparablePath(a.reply.path as string));
+    expect(listed).toContain(comparablePath(b.reply.path as string));
   });
 
   test("non-git directory: not_a_repo, nothing written to disk", async () => {
@@ -151,7 +177,7 @@ describe("worktree_create_session", () => {
     expect(reply.ok).toBe(false);
     expect(reply.code).toBe("start_ref_unresolvable");
     expect(fs.existsSync(path.join(repo, ".omp"))).toBe(false);
-    expect(mustGit(repo, ["worktree", "list", "--porcelain"]).split("\n").filter((l) => l.startsWith("worktree "))).toHaveLength(1);
+    expect(worktreePaths(repo)).toHaveLength(1);
   });
 
   test("project subdir missing at HEAD: start_ref_missing_subdir", async () => {
@@ -165,9 +191,13 @@ describe("worktree_create_session", () => {
 
   test("worktree add failure: cleanup contract — no bucket dir, no admin entry", async () => {
     const repo = makeRepo("rollback-repo");
-    // Read-only worktree admin dir: `worktree add` cannot register the new
-    // checkout and fails deterministically regardless of the random bucket.
-    fs.chmodSync(path.join(repo, ".git"), 0o555);
+    // Break the worktree admin directory: `worktree add` cannot create its
+    // administrative entry under it and fails deterministically, whatever the
+    // random bucket is. A regular file in place of the directory does this on
+    // every platform - permission bits do not (Windows ignores the mode of a
+    // directory, so a read-only .git still accepts the checkout).
+    const adminDir = path.join(repo, ".git", "worktrees");
+    fs.writeFileSync(adminDir, "not a directory\n");
     try {
       const { reply } = await call(repo);
       expect(reply.ok).toBe(false);
@@ -176,12 +206,11 @@ describe("worktree_create_session", () => {
       const managedRoot = path.join(repo, ".omp", "worktrees");
       // No bucket survives the rollback (the macOS Spotlight marker may exist).
       expect(fs.readdirSync(managedRoot).filter((e) => BUCKET_RE.test(e))).toEqual([]);
-      const list = mustGit(repo, ["worktree", "list", "--porcelain"]);
-      expect(list.split("\n").filter((l) => l.startsWith("worktree "))).toHaveLength(1); // primary only
+      expect(worktreePaths(repo)).toHaveLength(1); // primary only
       // The failure left no untracked residue behind either.
       expect(mustGit(repo, ["status", "--porcelain"])).toBe("");
     } finally {
-      fs.chmodSync(path.join(repo, ".git"), 0o755); // let afterAll wipe the temp dir
+      fs.rmSync(adminDir, { force: true }); // let afterAll wipe the temp dir
     }
   });
 

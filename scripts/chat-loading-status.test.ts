@@ -5,11 +5,9 @@ import "./dom-stub";
 import { describe, expect, test } from "bun:test";
 import type { ChatItem } from "../ui-src/types/session";
 
-// ws.ts binds invoke from window.__TAURI__ at module scope, so the stub must exist before the
-// store graph loads — hence the dynamic imports below (same shape as session-notice-render.test.ts).
-(globalThis.window as unknown as { __TAURI__: unknown }).__TAURI__ = {
-  core: { invoke: async () => {} },
-};
+// ws.ts binds invoke from window.__TAURI__ at module scope; the shared dom-stub installs
+// that stub process-wide (a file-local one would only win when this file happens to load
+// the store graph first) — hence the dynamic imports below.
 const { initI18n } = await import("../ui-src/i18n");
 initI18n("zh-CN");
 const { liveActivity, thoughtWindow } = await import("../ui-src/components/chat/ChatLoading");

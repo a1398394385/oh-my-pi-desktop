@@ -20,9 +20,13 @@ function run(args: string[]): string {
   return p.stdout.toString();
 }
 
-/** Written lines that differ from the committed ones, 1-based. */
+/**
+ * Written lines that differ from the committed ones, 1-based. The CR of a CRLF
+ * ending is dropped: the assertion is about which lines changed, not about the
+ * line endings the checkout happens to use.
+ */
 function changedLines(): number[] {
-  const now = fs.readFileSync(file, "utf8").split("\n");
+  const now = fs.readFileSync(file, "utf8").split("\n").map((l) => l.replace(/\r$/, ""));
   return LINES.map((l, i) => (now[i] === l ? 0 : i + 1)).filter(Boolean);
 }
 
@@ -38,6 +42,11 @@ describe("line-level staging against real git", () => {
     run(["init", "-q", "."]);
     run(["config", "user.email", "t@t"]);
     run(["config", "user.name", "t"]);
+    // Keep the LF endings this test writes. With a CRLF checkout
+    // (core.autocrlf=true, the Windows default) `git apply` rewrites the whole
+    // file with CRLF, so every line reads as changed and the line-level
+    // assertions would measure line endings instead of the selected lines.
+    run(["config", "core.autocrlf", "false"]);
     fs.writeFileSync(file, `${LINES.join("\n")}\n`);
     run(["add", "-A"]);
     run(["commit", "-qm", "base"]);

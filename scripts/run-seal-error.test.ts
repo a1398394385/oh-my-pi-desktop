@@ -103,7 +103,10 @@ describe("endingErrorText", () => {
 			endingErrorText([
 				{ role: "user", text: "go" },
 				{ role: "error", text: "quota" },
-				{ role: "mention", text: "", files: [] },
+				// Annotation rows the base may append after a failure (advisor note /
+				// ttsr notice) are skipped; a mention chip is not one — it belongs to
+				// a following user message, so it ends the failed tail.
+				{ role: "advisor", text: "", notes: [] } as SessionItem,
 			]),
 		).toBe("quota");
 	});

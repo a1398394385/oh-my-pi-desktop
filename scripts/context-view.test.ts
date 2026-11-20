@@ -211,7 +211,8 @@ function category(index: Frame, id: string): CategoryFrame {
 }
 
 // Structural stub: buildSessionContextView reads only the AgentSession slice stubSession returns.
-sessions.set("s-context", { session: stubSession() as unknown as PoolEntry["session"] } as PoolEntry);
+// transcript stays present because the pool snapshot walks every entry (host/state.ts).
+sessions.set("s-context", { session: stubSession() as unknown as PoolEntry["session"], transcript: [] } as unknown as PoolEntry);
 
 test("open projects ten categories with non-negative weights", async () => {
   const { index } = await open();

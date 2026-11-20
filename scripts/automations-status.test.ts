@@ -7,11 +7,9 @@ import "./dom-stub";
 import { describe, expect, test } from "bun:test";
 import type { Automation, AutomationRunStatus } from "../ui-src/lib/automations";
 
-// ws.ts binds invoke from window.__TAURI__ at module scope, so the stub must exist
-// before the store graph loads (same shape as chat-loading-status.test.ts).
-(globalThis.window as unknown as { __TAURI__: unknown }).__TAURI__ = {
-  core: { invoke: async () => {} },
-};
+// ws.ts binds invoke from window.__TAURI__ at module scope; the shared dom-stub
+// installs that stub process-wide (a file-local one would only win when this file
+// happens to load the store graph first).
 const i18n = await import("../ui-src/i18n");
 await i18n.initI18n("zh-CN");
 const { automationStatusKind, RUN_STATUS_LABEL_KEY } = await import("../ui-src/lib/automations");

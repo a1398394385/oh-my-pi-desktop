@@ -28,9 +28,10 @@ function fakeSocket(): FakeSocket {
 }
 
 /** The fan-out only reads uiSockets; building a full PoolEntry here would drag the whole
- *  session runtime into the test for no coverage. */
+ *  session runtime into the test for no coverage. transcript stays present because the
+ *  pool snapshot walks every entry (host/state.ts pushPoolSnapshot). */
 function attachEntry(sessionId: string, sockets: FakeSocket[]): void {
-  sessions.set(sessionId, { uiSockets: new Set(sockets) } as unknown as PoolEntry);
+  sessions.set(sessionId, { uiSockets: new Set(sockets), transcript: [] } as unknown as PoolEntry);
 }
 
 function resolvedFrames(sock: FakeSocket): Record<string, unknown>[] {

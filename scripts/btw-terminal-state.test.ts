@@ -12,11 +12,9 @@ import { getBtwLatestTurn } from "../host/bootstrap.ts";
 import { collectBtwHistory } from "../host/btw.ts";
 import { sessions, type PoolEntry } from "../host/state.ts";
 
-// ws.ts binds invoke from window.__TAURI__ at module scope, so the stub must exist before the
-// UI module graph loads.
-(globalThis.window as unknown as { __TAURI__: unknown }).__TAURI__ = {
-  core: { invoke: async () => {} },
-};
+// ws.ts binds invoke from window.__TAURI__ at module scope; the shared dom-stub installs
+// that stub process-wide (a file-local one would only win when this file happens to load
+// the store graph first).
 // chat/parts.tsx constructs a ResizeObserver at module scope.
 globalThis.ResizeObserver = class {
   observe(): void {}
@@ -62,7 +60,8 @@ async function seed(scope: string, records: DiskRecord[]): Promise<string> {
     await writeFile(path.join(dir, `entry-${record.id}.json`), `${JSON.stringify(record)}\n`);
   }
   // Only the manager methods the btw read path touches; a full PoolEntry would drag the
-  // whole session runtime in for no coverage.
+  // whole session runtime in for no coverage. transcript stays present because the pool
+  // snapshot walks every entry (host/state.ts pushPoolSnapshot).
   sessions.set(scope, {
     session: {
       model: {},
@@ -72,6 +71,7 @@ async function seed(scope: string, records: DiskRecord[]): Promise<string> {
         getLeafId: () => null,
       },
     },
+    transcript: [],
   } as unknown as PoolEntry);
   return scope;
 }

@@ -176,6 +176,8 @@ function seamEntry(navigate: { cancelled: boolean } = { cancelled: false }) {
 			isStreaming: false,
 			navigateTree: async () => ({ ...navigate, editorText: null, editorImages: null }),
 			prompt: async () => true,
+			// edit_resend resolves "@session:" markers against the session cwd.
+			sessionManager: { getCwd: () => "/tmp/acp-seam" },
 		},
 		acpRuntime: {
 			resyncToBranch: (branch: readonly SessionEntry[]) => resynced.push(branch.map((e) => e.id)),
