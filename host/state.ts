@@ -267,27 +267,37 @@ export function releasePoolForProfileSwitch(): void {
  * activeStartedAt window is NOT used — it can stay open forever after a
  * re-tagged isTerminal:false agent_end (see sessionBusy).
  */
+
+// Busy set of the last pool frame pushed by either path; the same sorted-path
+// key on both sides, so the two writers cannot disagree about what the client
+// currently holds.
+let lastPoolBusyKey: string | null = null;
+
 export function pushPoolSnapshot(ws: unknown): void {
   const send = (ws as { send?: (data: string) => unknown } | null | undefined)?.send;
   if (typeof send !== "function") return;
-  send.call(
-    ws,
-    JSON.stringify({
-      type: "pool_sessions",
-      sessions: [...sessions.entries()]
-        .filter(([, e]) => !e.isSubagent)
-        .map(([id, e]) => ({
-          id,
-          path: e.path,
-          cwd: e.cwd,
-          title: e.title ?? null,
-          busy: e.session.isStreaming,
-          // Same 80-char cut as the disk rows, so the sidebar label does not jump
-          // when the persisted file replaces this pool row.
-          firstMessage: (e.transcript.find((t) => t.role === "user")?.text ?? "").slice(0, 80),
-        })),
-    }),
-  );
+  const rows = [...sessions.entries()]
+    .filter(([, e]) => !e.isSubagent)
+    .map(([id, e]) => ({
+      id,
+      path: e.path,
+      cwd: e.cwd,
+      title: e.title ?? null,
+      busy: e.session.isStreaming,
+      // Same 80-char cut as the disk rows, so the sidebar label does not jump
+      // when the persisted file replaces this pool row.
+      firstMessage: (e.transcript.find((t) => t.role === "user")?.text ?? "").slice(0, 80),
+    }));
+  // This frame carries the busy set publishPoolIfBusyChanged compares against.
+  // Leaving the cache behind let the dedupe skip a real correction: the client
+  // kept busy=true from a direct snapshot while the next lifecycle publish
+  // computed a key identical to the stale cache.
+  lastPoolBusyKey = rows
+    .filter((r) => r.busy)
+    .map((r) => r.path)
+    .sort()
+    .join("\n");
+  send.call(ws, JSON.stringify({ type: "pool_sessions", sessions: rows }));
 }
 
 /**
@@ -325,7 +335,6 @@ export function handleRunLifecycleEvent(
 // post-idle republish) on every turn even when the busy set was identical.
 // The busy set only transitions through handleRunLifecycleEvent (unload /
 // delete RPCs refuse while busy), so a stable key safely skips the push.
-let lastPoolBusyKey: string | null = null;
 function publishPoolIfBusyChanged(): void {
   const busy: string[] = [];
   for (const e of sessions.values()) if (!e.isSubagent && e.session.isStreaming) busy.push(e.path);
@@ -546,6 +555,11 @@ export function pushPromptDropped(
   const i = entry.transcript.findLastIndex((t) => t.role === "user" && t.text === text && !t.entryId);
   if (i >= 0) entry.transcript.splice(i, 1);
   entryBus(entry).send(JSON.stringify(stampEvent({ type: "prompt_dropped", sessionId, text, ...(images && images.length > 0 ? { images } : {}) })));
+  // A dropped prompt can be the only thing that was keeping the base's
+  // isStreaming true (the setup window counts as streaming through
+  // #promptInFlightCount) while no agent_start/agent_end ever fires for it.
+  // Without this frame the sidebar keeps the pool's stale busy=true forever.
+  eachUiWs(pushPoolSnapshot);
 }
 
 // Pending approval requests. The whole approval state machine lives in this

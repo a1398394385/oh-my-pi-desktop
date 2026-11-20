@@ -730,6 +730,11 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       return;
     }
     await entry.session.abort({ reason: USER_INTERRUPT_LABEL });
+    // Resync the pool busy set: abort() can clear the base's isStreaming through
+    // paths that emit no agent_start/agent_end (a prompt dropped in setup only
+    // decrements #promptInFlightCount). The lifecycle-gated publish never runs
+    // for those, so the sidebar would keep spinning on a session that is idle.
+    eachUiWs(pushPoolSnapshot);
     ws.send(JSON.stringify({ type: "session_aborted", sessionId: msg.sessionId, ok: true }));
   },
   async kill_subagent(_ws, msg) {

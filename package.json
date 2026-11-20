@@ -53,7 +53,8 @@
     "check:i18n-keys": "bun scripts/check-i18n-keys.ts",
     "check:settings-copy": "bun scripts/check-settings-copy.ts",
     "check": "node scripts/check-capabilities.mjs && node scripts/check-frame-fanout.mjs && node scripts/check-host-boundaries.mjs && node scripts/check-style-tokens.mjs && node scripts/check-architecture.mjs && node scripts/check-comment-language.mjs && node scripts/check-encoding.mjs && node scripts/check-omp-imports.mjs && bun scripts/sync-version.ts --check && bun scripts/check-i18n-keys.ts && bun scripts/check-settings-copy.ts && bun run ui:typecheck && bun run host:typecheck",
-    "perf:budget": "bun scripts/perf-budget.ts"
+    "perf:budget": "bun scripts/perf-budget.ts",
+    "smoke:abort-after-send": "OMP_PROFILE=omp-desktop-test bun scripts/smoke-abort-after-send.ts"
   },
   "dependencies": {
     "@lexical/react": "^0.51.0",
