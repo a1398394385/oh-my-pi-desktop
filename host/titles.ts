@@ -259,7 +259,9 @@ export function maybeRefreshSessionTitle(entry: TitleEntry): void {
 				// Branch moved while the model was thinking: the title belongs to the
 				// branch the user left, and a late write would land on the wrong one.
 				// Dropping is safe — that branch regenerates on its next settled turn.
-				if (entry.manager.getLeafId() !== leafId) return;
+				// Ancestry, not leaf equality: the base journals the title call's own
+				// usage as a child of the leaf, so the leaf advances on every refresh.
+				if (!entry.manager.getBranch().some(e => e.id === leafId)) return;
 				const last = perBranch ? readBranchTitle(entry.manager) : null;
 				if (perBranch && title !== last?.title) appendBranchTitle(entry.manager, title, "auto");
 				if (title !== entry.manager.getSessionName()) {

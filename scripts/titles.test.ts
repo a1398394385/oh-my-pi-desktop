@@ -16,11 +16,14 @@ let every = 1;
 let judgeVerdict: boolean | undefined = true;
 let judgeCalls = 0;
 mock.module("../host/desktop-json.ts", () => ({
+	readDesktopJson: () => null,
 	readDesktopSection: (section: string) =>
 		section === "sessionTitles" ? { refresh: switchOn, refreshPrompts: every, branchTitles: branchOn } : {},
-	// Same-process suites also load host/auto-review.ts, which imports this
-	// writer; an incomplete module mock would strip it and crash the other file.
+	// Same-process suites also load host/auto-review.ts (writeDesktopSection) and
+	// host/profile.ts via prompt.ts (readDesktopJson/writeDesktopSections); an
+	// incomplete module mock strips those and crashes the other file.
 	writeDesktopSection: () => {},
+	writeDesktopSections: () => {},
 }));
 // The real classifier would call the judge chain (network); the unit under
 // test only needs its verdict and call count.
@@ -68,16 +71,23 @@ interface FakeNode {
 }
 
 /** Promise-shaped generator that rejects on abort, like the base's real one. */
-function mockGenerateTitle(resolved: string | (() => Promise<string>)): TitleGenMock {
+function mockGenerateTitle(
+	resolved: string | (() => Promise<string>),
+	onSettled?: () => void,
+): TitleGenMock {
 	const fn: () => Promise<string> = typeof resolved === "string" ? async () => resolved : resolved;
 	let calls = 0;
-	const mock = ((...args: unknown[]) =>
-		new Promise<string>((resolve, reject) => {
-			calls++;
-			const signal = args[2] as AbortSignal | undefined;
-			signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-			fn().then(resolve, reject);
-		})) as TitleGenMock;
+	const mock = ((...args: unknown[]) => {
+		calls++;
+		const { promise, resolve, reject } = Promise.withResolvers<string>();
+		const signal = args[2] as AbortSignal | undefined;
+		signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+		fn().then(value => {
+			onSettled?.();
+			resolve(value);
+		}, reject);
+		return promise;
+	}) as TitleGenMock;
 	Object.defineProperty(mock, "calls", { get: () => calls });
 	return mock;
 }
@@ -101,24 +111,22 @@ function makeEntry(opts: {
 	siblings?: Record<string, number>;
 	/** Overrides the leaf the generator sees when it settles (simulates a branch switch) */
 	leafAfterGenerate?: string | null;
+	/** The base journals the title call's own spend as a `model_usage` child of the leaf (18.20+) */
+	usageChild?: boolean;
 }): Ctx {
-	const generateTitle = mockGenerateTitle(opts.generate);
 	const writes: Array<[string, string]> = [];
 	const appended: Array<{ customType: string; data: unknown }> = [];
 	const branch = opts.branch ?? [textEntry("u1", null)];
-	let leafId: string | null = branch.at(-1)?.id ?? null;
-	let leafReads = 0;
-	let name = opts.title;
-
 	const byId = new Map<string, FakeNode>();
 	const roots: FakeNode[] = [];
-	for (const e of branch) {
+	const addNode = (e: BranchEntry) => {
 		const node: FakeNode = { entry: e, children: [] };
 		byId.set(e.id, node);
 		const parent = e.parentId ? byId.get(e.parentId) : undefined;
 		if (parent) parent.children.push(node);
 		else roots.push(node);
-	}
+	};
+	for (const e of branch) addNode(e);
 	for (const [parentId, count] of Object.entries(opts.siblings ?? {})) {
 		const parent = byId.get(parentId);
 		if (!parent) continue;
@@ -126,6 +134,24 @@ function makeEntry(opts: {
 			parent.children.push({ entry: textEntry(`sib-${parentId}-${i}`, parentId), children: [] });
 		}
 	}
+	let leafId: string | null = branch.at(-1)?.id ?? null;
+	const pathTo = (id: string | null): BranchEntry[] => {
+		const path: BranchEntry[] = [];
+		for (let node = id ? byId.get(id) : undefined; node; node = node.entry.parentId ? byId.get(node.entry.parentId) : undefined) {
+			path.unshift(node.entry);
+		}
+		return path;
+	};
+	let name = opts.title;
+
+	const generateTitle = mockGenerateTitle(opts.generate, () => {
+		if (opts.usageChild) {
+			const usageId = `usage-${byId.size}`;
+			addNode({ id: usageId, parentId: leafId, type: "model_usage" });
+			leafId = usageId;
+		}
+		if (opts.leafAfterGenerate !== undefined) leafId = opts.leafAfterGenerate;
+	});
 
 	const manager = {
 		titleSource: opts.titleSource,
@@ -134,20 +160,17 @@ function makeEntry(opts: {
 			writes.push([next, source]);
 			name = next;
 		},
-		getBranch: () => branch,
+		getBranch: () => pathTo(leafId),
 		getTree: () => roots,
-		getLeafId: () => {
-			// Read 1 is the pre-generation snapshot; later reads see the moved branch.
-			leafReads++;
-			if (opts.leafAfterGenerate !== undefined && leafReads > 1) return opts.leafAfterGenerate;
-			return leafId;
-		},
+		getLeafId: () => leafId,
 		appendCustomEntry: (customType: string, data?: unknown) => {
 			appended.push({ customType, data });
-			leafId = `appended-${appended.length}`;
-			return leafId;
+			const id = `appended-${appended.length}`;
+			addNode({ id, parentId: leafId, type: "custom", customType, data });
+			leafId = id;
+			return id;
 		},
-	getSessionId: () => "s-test",
+		getSessionId: () => "s-test",
 	};
 
 	const entry = {
@@ -267,7 +290,8 @@ describe("maybeRefreshSessionTitle", () => {
 			generate: "Fresh title",
 			title: "Old",
 			branch: [textEntry("u1", null), textEntry("a1", "u1")],
-			leafAfterGenerate: "other-branch-leaf",
+			siblings: { u1: 1 },
+			leafAfterGenerate: "sib-u1-0",
 		});
 		noteTitlePrompt(ctx.entry);
 		maybeRefreshSessionTitle(ctx.entry);
@@ -275,6 +299,25 @@ describe("maybeRefreshSessionTitle", () => {
 		expect(ctx.generateTitle.calls).toBe(1);
 		expect(ctx.appended).toEqual([]);
 		expect(ctx.writes).toEqual([]);
+	});
+
+	// 18.20 journals the title call's own spend as a `model_usage` child of the
+	// leaf, so the leaf advances on every refresh; a leaf-equality guard dropped
+	// every title and the session kept its first name forever.
+	test("title usage journaled during generation still lands the title", async () => {
+		switchOn = true;
+		branchOn = true;
+		const ctx = makeEntry({
+			generate: "Fresh title",
+			title: "Old auto title",
+			titleSource: "auto",
+			usageChild: true,
+		});
+		noteTitlePrompt(ctx.entry);
+		maybeRefreshSessionTitle(ctx.entry);
+		await settle();
+		expect(ctx.appended).toEqual([{ customType: "branchTitle", data: { title: "Fresh title", source: "auto" } }]);
+		expect(ctx.writes).toEqual([["Fresh title", "user"]]);
 	});
 
 	test("branch titles on: unchanged branch title skips both writes", async () => {
