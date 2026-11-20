@@ -169,6 +169,7 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
   const [wtRemove, setWtRemove] = useState<{ path: string } | null>(null); // worktree-remove confirm dialog target
   const [renaming, setRenaming] = useState<RenamingState | null>(null); // { key, path }: inline rename state (key distinguishes copies of the same session in pinned/recent/project groups)
   const [drag, setDrag] = useState<ProjDragActive | null>(null); // { cwd, selfH, headH, k0, base:[{cwd,top,h,slot}], idx, x, y, left, w, grabY }
+  const [pinnedOpen, setPinnedOpen] = useState(true); // pinned-section fold; session-view-local, not persisted
   const dragRef = useRef<ProjDrag | null>(null); // latest drag state during pointer events; keeps high-frequency pointermove from reading a stale closure
   const suppressProjClickRef = useRef(false); // swallow the click produced by the same pointerup after a drag ends
   const listRef = useRef<HTMLDivElement>(null);
@@ -624,12 +625,21 @@ export default function Sidebar({ collapsed }: { collapsed: boolean }) {
         {effView === "project" ? (
           <>
             <div className="project-pinned">
-              <div className="sec-label">{t("sidebar.pinnedLabel")}</div>
-              {pinnedRows.length > 0 ? (
+              <div className="sec-label">
+                <span>{t("sidebar.pinnedLabel")}</span>
+                <button
+                  className="sec-pin-fold"
+                  title={pinnedOpen ? t("sidebar.collapsePinned") : t("sidebar.expandPinned")}
+                  onClick={() => setPinnedOpen((v) => !v)}
+                >
+                  <Icon name={pinnedOpen ? "chevronDown" : "chevronRight"} size={15} />
+                </button>
+              </div>
+              {pinnedOpen && (pinnedRows.length > 0 ? (
                 pinnedRows.map((s) => rowOf(s, { pinnedList: true }, `pinned:${s.path}`, shortcuts.get(s.path)))
               ) : (
                 <div className="pinned-empty text-faint text-ui-sm pt-[2px] pr-[10px] pb-[4px] pl-[14px]">{t("sidebar.noPinned")}</div>
-              )}
+              ))}
             </div>
             <div className="sec-label project-heading">
               <span>{t("sidebar.projectsLabel")}</span>

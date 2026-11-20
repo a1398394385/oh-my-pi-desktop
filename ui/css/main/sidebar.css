@@ -155,7 +155,8 @@ body:has(#sidebar.collapsed) #left-resizer {
   display: flex; align-items: center; justify-content: space-between;
 }
 .sec-label .sec-add,
-.sec-label .sec-trash {
+.sec-label .sec-trash,
+.sec-label .sec-pin-fold {
   flex: none; border: 0; background: none; color: var(--faint);
   line-height: 0; cursor: pointer;
   width: 30px; height: 25px; padding: 0; border-radius: 5px;
@@ -170,13 +171,23 @@ body:has(#sidebar.collapsed) #left-resizer {
   line-height: 0;
 }
 .sec-label .sec-add svg,
-.sec-label .sec-trash svg {
+.sec-label .sec-trash svg,
+.sec-label .sec-pin-fold svg {
   display: block;
 }
 .sec-label .sec-add:hover,
 .sec-label .sec-trash:hover,
 .sec-label .sec-add:focus-visible,
-.sec-label .sec-trash:focus-visible { color: var(--text); background: var(--panel-3); }
+.sec-label .sec-trash:focus-visible,
+.sec-label .sec-pin-fold:hover,
+.sec-label .sec-pin-fold:focus-visible { color: var(--text); background: var(--panel-3); }
+/* Pinned-section fold toggle stays out of sight until its head row is hovered or focused. */
+.sec-label .sec-pin-fold {
+  opacity: 0;
+  transition: opacity var(--dur-snap) var(--swift), color var(--dur-snap), background var(--dur-snap);
+}
+.sec-label:hover .sec-pin-fold,
+.sec-label .sec-pin-fold:focus-visible { opacity: 1; }
 .sec-label .sec-trash.active {
   color: var(--err, var(--danger-fixed));
   background: var(--tint-danger-150);

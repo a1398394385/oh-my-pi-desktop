@@ -6,6 +6,8 @@ export const sidebarEn = {
   viewProject: "Projects",
   viewArchive: "Archived",
   pinnedLabel: "Pinned",
+  collapsePinned: "Collapse pinned",
+  expandPinned: "Expand pinned",
   noPinned: "No pinned sessions",
   projectsLabel: "Projects",
   addProject: "Add project",

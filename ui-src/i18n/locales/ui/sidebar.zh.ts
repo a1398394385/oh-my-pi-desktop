@@ -6,6 +6,8 @@ export const sidebarZh = {
   viewProject: "项目",
   viewArchive: "归档",
   pinnedLabel: "置顶",
+  collapsePinned: "折叠置顶",
+  expandPinned: "展开置顶",
   noPinned: "暂无置顶会话",
   projectsLabel: "项目",
   addProject: "添加项目",
