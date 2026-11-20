@@ -158,6 +158,18 @@
       "reason": "thinking level id comes from the subagent progress frame; falls back to the raw id via defaultValue"
     },
     {
+      "file": "ui-src/components/shared/agent/AgentSheet.tsx",
+      "line": 50,
+      "prefix": "composer.thinkingLevels.",
+      "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
+    },
+    {
+      "file": "ui-src/components/shared/agent/subRoster.tsx",
+      "line": 396,
+      "prefix": "composer.thinkingLevels.",
+      "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
+    },
+    {
       "file": "ui-src/components/shared/agent/subShared.ts",
       "line": 19,
       "prefix": "composer.thinkingLevels.",

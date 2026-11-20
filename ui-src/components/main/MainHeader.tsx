@@ -143,7 +143,6 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           id="chatTitle"
         >
           {title}
-          {isSubagent && <span className="subagent-head-badge">{t("chat.subagentBadge")}</span>}
         </span>
       ) : null}
       {/* Git page: its own top row moved up into this bar — the project name, the

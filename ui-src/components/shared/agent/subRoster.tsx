@@ -2,11 +2,11 @@
 // middle-card Agent Hub and the right-sidebar subagent tab (one component, two surfaces).
 // Only the surrounding chrome differs: the hub adds its keybind bar and back button, and
 // passes onOpen so a row opens the sidebar detail instead of the hub's session jump.
-import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, openSessionByPath } from "../../../store";
 import { expandRightPanel } from "../../main/right/tabs";
-import { modelShort, tokenTotal, usageSegments, timeSegments, stInfo, stKeyOf, stLabel, subStatus, currentProgress, type SegT } from "./subShared";
+import { modelShort, tokenTotal, usageSegments, clockHMS, stInfo, stKeyOf, stLabel, subStatus, currentProgress, type SegT } from "./subShared";
 import type { SubagentState } from "../../../types/session";
 
 // The subset of the open-session snapshot the roster reads; both surfaces pass the live
@@ -23,7 +23,11 @@ export function openSubagentSession(id: string, sub: SubagentState | undefined):
   else expandRightPanel("subagent", { selectedSubagent: id });
 }
 
-// Relative age for the roster's "active N ago" column (seconds bucketed like the TUI's formatAge)
+type SubEntry = [string, SubagentState];
+export type Row = { id: string; sub: SubagentState };
+
+// Relative age (seconds bucketed like the TUI's formatAge): the hub-page card's "active N
+// ago" under the elapsed clock.
 function ageText(sec: number, t: SegT): string {
   if (sec < 5) return t("right.closedNow");
   if (sec < 3600) return t("right.closedMin", { n: Math.floor(sec / 60) || 1 });
@@ -31,14 +35,18 @@ function ageText(sec: number, t: SegT): string {
   return t("right.closedDay", { n: Math.floor(sec / 86400) });
 }
 
-type SubEntry = [string, SubagentState];
-export type Row = { id: string; sub: SubagentState };
-
-// Elapsed as h:mm:ss — the deck header's clock column. fmtDurationMs returns localized prose
-// ("1 hour 11 min"), which reads wrong as a stat value.
-function clockOf(ms: number): string {
+// Humanized duration for the page card's time row (age + "ran for" duration):
+// largest units first, zero units dropped, seconds always present.
+function durText(ms: number, t: SegT): string {
   const s = Math.round(ms / 1000);
-  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+  if (s <= 0) return "—";
+  const parts: string[] = [];
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) parts.push(t("right.hubDurDay", { n: d }));
+  if (h) parts.push(t("right.hubDurHour", { n: h }));
+  if (m) parts.push(t("right.hubDurMin", { n: m }));
+  if (s % 60 || !parts.length) parts.push(t("right.hubDurSec", { n: s % 60 }));
+  return parts.join(" ");
 }
 
 // Project the subagent map into display rows: status order first (running → completed →
@@ -49,6 +57,28 @@ export function buildRows(subs: SubEntry[], status = "all"): Row[] {
     .sort((a, b) => stInfo(subStatus(a[1])).order - stInfo(subStatus(b[1])).order) // stable sort keeps registration (Map insertion) order within one status
     .filter(([, sub]) => status === "all" || stKeyOf(subStatus(sub)) === status)
     .map(([id, sub]) => ({ id, sub }));
+}
+
+// Tree indentation depth: a child's parent is referenced by id or by display name (the base
+// emits either), so resolve through both. Cycles are cut by the seen set — a malformed
+// parent chain degrades to a flat row instead of looping.
+export function treeDepth(rows: Row[], row: Row): number {
+  const byIdOrName = new Map<string, Row>();
+  for (const r of rows) {
+    byIdOrName.set(r.id, r);
+    if (r.sub.name) byIdOrName.set(r.sub.name, r);
+  }
+  let depth = 0;
+  const seen = new Set<string>([row.id]);
+  let parent = row.sub.parent;
+  while (parent && parent !== "main" && !seen.has(parent)) {
+    const p = byIdOrName.get(parent);
+    if (!p) break;
+    seen.add(parent);
+    depth += 1;
+    parent = p.sub.parent;
+  }
+  return depth;
 }
 
 // Live elapsed / age repaint once per second while any visible subagent streams: host
@@ -71,105 +101,6 @@ export function useRosterRows(s: RosterSession | undefined): Row[] {
   const status = useAppStore((st) => st.hubStatus);
   const sig = s ? [...s.subagents].map(([id, x]) => `${id}:${x.status}:${x.streaming ? 1 : 0}:${x.name ?? ""}`).join(";") : "";
   return useMemo(() => (s ? buildRows([...s.subagents], status) : []), [sig, status]);
-}
-
-// One usage stat. Its width floor only ever grows: the aggregates tick up and then reset when
-// the roster empties, and a cell that shrank would drag the whole line left on every update.
-// The floor is measured off the inline span (the div itself is already stretched by min-width,
-// so it cannot report the text's natural width).
-function UsageCell({ children }: { children: ReactNode }) {
-  const text = useRef<HTMLSpanElement>(null);
-  const [floor, setFloor] = useState(0);
-  useLayoutEffect(() => {
-    const w = Math.ceil(text.current?.getBoundingClientRect().width ?? 0);
-    if (w > floor) setFloor(w);
-  });
-  return (
-    <div className="hub-cell" style={{ minWidth: floor }}>
-      <span ref={text}>{children}</span>
-    </div>
-  );
-}
-
-// Narrow-card degradation: instead of squeezing the title to nothing, the head drops its tail
-// in product order (model name → row controls → model role → title) and the metrics line
-// loses its rightmost cells one by one. Measured, because the drop point follows the live
-// labels, not a fixed breakpoint. Items carry data-prio (1 hides first); the title may shrink
-// to its data-min before the tail is dropped, so a long title alone never costs a whole badge.
-// `.hub-off` is toggled straight on the DOM (React never writes it, so a later render of the
-// same className cannot resurrect a hidden item).
-function measureRow(box: HTMLElement) {
-  // display:contents wrappers (the model group) are not boxes: their children are the real
-  // flex items, so both measurement and the hide toggles address them.
-  const kids: HTMLElement[] = [];
-  const collect = (parent: HTMLElement) => {
-    for (const el of [...parent.children] as HTMLElement[]) {
-      if (!el.dataset.prio && getComputedStyle(el).display === "contents") collect(el);
-      else kids.push(el);
-    }
-  };
-  collect(box);
-  kids.forEach((k) => k.classList.remove("hub-off"));
-  // Measure with flex:none: a stretched item (the title, flex:1) reports the space it was
-  // given, not the text it wants. Restored right after, so the row is untouched afterwards.
-  const flexes = kids.map((k) => k.style.flex);
-  kids.forEach((k) => { k.style.flex = "none"; });
-  const widths = kids.map((k) => Math.max(k.getBoundingClientRect().width, k.scrollWidth));
-  kids.forEach((k, i) => { k.style.flex = flexes[i]; });
-  const gap = parseFloat(getComputedStyle(box).columnGap) || 0;
-  return { kids, widths, gap, avail: box.clientWidth };
-}
-
-function useHeadFit(ref: { current: HTMLElement | null }, sig: string) {
-  useLayoutEffect(() => {
-    const head = ref.current;
-    if (!head) return;
-    let lastW = -1;
-    const run = () => {
-      // Panel drags repaint without a React render, so the box is watched too; the same width
-      // is skipped because toggling items can change the height and re-enter the observer.
-      if (head.clientWidth === lastW || !head.clientWidth) return;
-      lastW = head.clientWidth;
-      const { kids, widths, gap, avail } = measureRow(head);
-      const prio = kids.map((k) => Number(k.dataset.prio ?? 99));
-      const width = kids.map((k, i) => (k.dataset.min ? Math.min(widths[i], Number(k.dataset.min)) : widths[i]));
-      let lvl = 0;
-      for (; lvl < 5; lvl++) {
-        let used = 0, n = 0;
-        for (let i = 0; i < kids.length; i++) {
-          if (prio[i] <= lvl) continue;
-          used += width[i];
-          n++;
-        }
-        if (used + gap * Math.max(0, n - 1) <= avail) break;
-      }
-      kids.forEach((k, i) => k.classList.toggle("hub-off", prio[i] <= lvl));
-    };
-    run();
-    const ro = new ResizeObserver(run);
-    ro.observe(head);
-    return () => ro.disconnect();
-  }, [ref, sig]);
-}
-
-function useMetaFit(ref: { current: HTMLElement | null }, sig: string) {
-  useLayoutEffect(() => {
-    const meta = ref.current;
-    if (!meta) return;
-    let lastW = -1;
-    const run = () => {
-      if (meta.clientWidth === lastW || !meta.clientWidth) return;
-      lastW = meta.clientWidth;
-      const { kids, widths, gap, avail } = measureRow(meta);
-      let kept = kids.length;
-      while (kept > 1 && widths.slice(0, kept).reduce((a, w) => a + w, 0) + gap * (kept - 1) > avail) kept--;
-      kids.forEach((k, i) => k.classList.toggle("hub-off", i >= kept));
-    };
-    run();
-    const ro = new ResizeObserver(run);
-    ro.observe(meta);
-    return () => ro.disconnect();
-  }, [ref, sig]);
 }
 
 // Same signature trick as useRosterRows: the subagents Map mutates in place, so keying these
@@ -217,8 +148,8 @@ export function StatusTabs({ s }: { s: RosterSession }) {
   );
 }
 
-// Aggregate usage over every measured subagent of the session (an Agent Hub-only line).
-export function HubUsage({ s }: { s: RosterSession }) {
+// Aggregate usage over every measured subagent. The Hub page uses a compact summary; the sidebar keeps labeled cells.
+export function HubUsage({ s, compact = false }: { s: RosterSession; compact?: boolean }) {
   const { t } = useTranslation();
   const sig = usageSignature(s);
   const agg = useMemo(() => {
@@ -235,15 +166,29 @@ export function HubUsage({ s }: { s: RosterSession }) {
     }
     return { cost, dur, reqs, tools, tok, measured };
   }, [sig]);
-  // Throughput the way the agent deck's pulse header states it: total tokens per second of
-  // aggregated agent time (host normalises the SDK buckets to { total }).
+  if (compact) {
+    return (
+      <div className="hub-usage hub-usage-compact text-faint">
+        {agg.measured === 0
+          ? t("right.hubNoUsage")
+          : [
+              `$${agg.cost.toFixed(3)}`,
+              agg.dur > 0 ? clockHMS(agg.dur) : "—",
+              t("right.subRequests", { n: agg.reqs }),
+              t("right.subTools", { n: agg.tools }),
+              `${fmtTokens(agg.tok)} tok`,
+            ].join(" · ")}
+      </div>
+    );
+  }
+  // Throughput matches the deck pulse: aggregate tokens per second of agent time.
   const rate = agg.dur > 0 ? agg.tok / (agg.dur / 1000) : 0;
   const cells: Array<[string, string]> = [
     [t("right.hubStatTokens"), fmtTokens(agg.tok)],
     [t("right.hubStatCost"), `$${agg.cost.toFixed(3)}`],
     [t("right.hubStatTools"), String(agg.tools)],
     [t("right.hubStatRate"), rate > 0 ? `${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} t/s` : "—"],
-    [t("right.hubStatClock"), agg.dur > 0 ? clockOf(agg.dur) : "—"],
+    [t("right.hubStatClock"), agg.dur > 0 ? clockHMS(agg.dur) : "—"],
   ];
   return (
     <div className="hub-usage text-faint">
@@ -261,13 +206,10 @@ export function HubUsage({ s }: { s: RosterSession }) {
   );
 }
 
-export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId, minimal }: { row: Row; stats: boolean; selected: boolean; onSelect: () => void; onOpen?: () => void; t: SegT; sessionId: string; minimal?: boolean }) {
+
+export function HubRow({ row, selected, onSelect, onOpen, t, minimal }: { row: Row; selected: boolean; onSelect: () => void; onOpen?: () => void; t: SegT; minimal?: boolean }) {
   const { sub } = row;
   const segs = usageSegments(sub, t, { model: false });
-  const times = timeSegments(sub, t, Date.now());
-  // "active N ago" measures from the last activity (registered + elapsed), not registration
-  const lastActivity = (sub.registeredAt ?? Date.now()) + (sub.usage?.durationMs ?? 0);
-  const age = ageText(Math.max(1, Math.round((Date.now() - lastActivity) / 1000)), t);
   // Role alias (TASK/SMOL) rides left of the model id, " · "-joined; absent for concrete-model runs
   const role = sub.usage?.modelRole?.toUpperCase();
   // The base hands the level either as a `<model>:<level>` suffix (modelShort translates it) or
@@ -277,18 +219,12 @@ export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId, m
   const model = cut > 0 ? short.slice(0, cut) : short;
   const thinkRaw = sub.usage?.resolvedThinkingLevel ?? (cut > 0 ? short.slice(cut + 1) : "");
   const think = thinkRaw ? t(`composer.thinkingLevels.${thinkRaw}`, { defaultValue: thinkRaw }) : "";
-  const headRef = useRef<HTMLSpanElement>(null);
-  const metaRef = useRef<HTMLDivElement>(null);
-  useHeadFit(headRef, `${sub.agent}|${sub.name ?? ""}|${role}|${model}|${think ?? ""}|${sub.streaming ? 1 : 0}`);
-  // `stats` is in the key: dropping the metrics line unmounts it, and the fitter has to run
-  // again when the line comes back (a stable key would leave the effect from mounting).
-  useMetaFit(metaRef, segs.join("|") + "#" + times.concat(age).join("|") + (stats ? "#1" : "#0"));
+  const st = subStatus(sub);
+  const group = stInfo(st).group;
+  const elapsed = sub.streaming && sub.registeredAt ? Date.now() - sub.registeredAt : (sub.usage?.durationMs ?? 0);
   // Fallback transcript is capped; mark the cut so the row is not read as the whole task
   const rawTask = sub.description || sub.task || sub.text || "";
   const rowTask = rawTask.length > 80 ? rawTask.slice(0, 80) + "…" : rawTask || "…";
-  const ctxPct = sub.usage?.contextWindow
-    ? Math.min(100, Math.round(((sub.usage.contextTokens ?? 0) / sub.usage.contextWindow) * 100))
-    : 0;
   return (
     <div
       role="option"
@@ -301,28 +237,37 @@ export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId, m
         openSubagentSession(row.id, sub);
       }}
     >
-      <span className="hub-row-head" ref={headRef}>
-        <span className={"hub-dot st-" + stInfo(subStatus(sub)).group} />
-        <span className="hub-name" data-prio="5" data-min="48">{sub.name ?? sub.agent}</span>
-        {role || model || think ? (
-          <span className="hub-model">
-            {role ? <span className="hub-role" data-prio="3">{role}</span> : null}
-            {role && (model || think) ? <span className="hub-sep" data-prio="1"> · </span> : null}
-            {model || think ? (
-              <span className="hub-mdl" data-prio="1">
-                {model}
-                {model && think ? " " : null}
-                {think ? <span className="hub-think">{think}</span> : null}
-              </span>
-            ) : null}
+      {/* Top block: avatar | name / model | status / elapsed */}
+      <div className="hub-top">
+        <span className="hub-avatar" aria-hidden="true">{(sub.name ?? sub.agent).trim()[0]?.toUpperCase() ?? "?"}</span>
+        <span className="hub-row-head">
+          <span className="hub-name">{sub.name ?? sub.agent}</span>
+          {role || model || think ? (
+            <span className="hub-model">
+              {role ? <span className="hub-role">{role}</span> : null}
+              {role && (model || think) ? <span className="hub-sep"> · </span> : null}
+              {model || think ? (
+                <span className="hub-mdl">
+                  {model}
+                  {model && think ? " " : null}
+                  {think ? <span className="hub-think">{think}</span> : null}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </span>
+        <span className="hub-side">
+          <span className="ad-status" data-tone={group}>
+            <i aria-hidden="true" />
           </span>
-        ) : null}
-      </span>
+          <span className="hub-clock">{elapsed > 0 ? clockHMS(elapsed) : "—"}</span>
+        </span>
+      </div>
       {/* Running rows show the live progress line ("Current" in the detail) instead of the
           static assignment; it falls back to the assignment until the first tool/intent lands.
           The completion probe's self-estimate leads the line while the child runs (the probe
           stops at terminal status, and a yield pins it to 99). Minimal density keeps only the
-          head row. */}
+          top block. */}
       {!minimal ? (
         <span className="hub-task text-faint" title={rawTask || undefined}>
           {sub.streaming && sub.usage?.completionPercent !== undefined ? (
@@ -331,25 +276,76 @@ export function HubRow({ row, stats, selected, onSelect, onOpen, t, sessionId, m
           {sub.streaming ? currentProgress(sub) || rowTask : rowTask}
         </span>
       ) : null}
-      {/* Metrics (left) and timing info (right) share one line; the host surface decides
-          whether a card carries it (Agent Hub yes, right sidebar no) */}
-      {stats && !minimal ? (
-        <div className="hub-meta text-faint" ref={metaRef}>
-          {segs.map((s, i) => (
-            <UsageCell key={"u" + i}>{s}</UsageCell>
-          ))}
-          {times.concat(age).map((s, i) => (
-            <UsageCell key={"t" + i}>{s}</UsageCell>
-          ))}
+      {/* Bottom block: the usage stats, " · "-joined as one line (tokens · cost · requests · tools). */}
+      {!minimal && segs.length ? (
+        <div className="hub-meta text-faint">{segs.join(" · ")}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Agent Hub page card (the full-page roster only; the sidebar keeps HubRow): the flat-card
+    layout ported from omp-studio's Agent Hub — left zone status/title over task over model,
+    right zone elapsed+age, big tokens, req/tools, cost. */
+export function HubPageCard({ row, selected, onSelect, minimal, t }: { row: Row; selected: boolean; onSelect: () => void; minimal?: boolean; t: SegT }) {
+  const { sub } = row;
+  const u = sub.usage;
+  const st = subStatus(sub);
+  const group = stInfo(st).group;
+  const name = sub.name ?? sub.agent;
+  const role = u?.modelRole?.toUpperCase();
+  const short = modelShort(u?.resolvedModel);
+  const cut = short.lastIndexOf(":");
+  const model = cut > 0 ? short.slice(0, cut) : short;
+  const thinkRaw = u?.resolvedThinkingLevel ?? (cut > 0 ? short.slice(cut + 1) : "");
+  const think = thinkRaw ? t(`composer.thinkingLevels.${thinkRaw}`, { defaultValue: thinkRaw }) : "";
+  const tokens = tokenTotal(u?.tokens);
+  const elapsed = sub.streaming && sub.registeredAt ? Date.now() - sub.registeredAt : (u?.durationMs ?? 0);
+  const age = ageText(Math.max(1, Math.round((Date.now() - ((sub.registeredAt ?? Date.now()) + (u?.durationMs ?? 0))) / 1000)), t);
+  const rawTask = sub.description || sub.task || sub.text || "";
+  const task = sub.streaming ? currentProgress(sub) || rawTask : rawTask;
+  return (
+    <div
+      role="option"
+      aria-selected={selected}
+      className={"hub-card" + (selected ? " selected" : "")}
+      onClick={onSelect}
+      onDoubleClick={() => openSubagentSession(row.id, sub)}
+    >
+      <div className="hc-top">
+        <i className="ad-dot" data-tone={group} aria-hidden="true" />
+        <span className="hc-name">
+          <span className="hc-title">{name}</span>
+        </span>
+      </div>
+      <span className="hc-tokens">
+        <b>{tokens === undefined ? "—" : fmtTokens(tokens)}</b>
+        <i>tok</i>
+      </span>
+      {/* Minimal density keeps only the identity row; the right column stays (it is the
+          card's metrics, the reason the page card exists). */}
+      {!minimal ? (
+        <div className="hc-task" title={task || undefined}>
+          {sub.streaming && u?.completionPercent !== undefined ? <span className="hub-pct">{u.completionPercent}%</span> : null}
+          {task || "…"}
         </div>
       ) : null}
-      {/* Context bar last: the deck card's ctx line, drawn only when the host reports a
-          window (the SDK's own context_tokens/context_window pair). */}
-      {!minimal && sub.usage?.contextWindow ? (
-        <div className="hub-ctx" data-high={ctxPct >= 88 ? "1" : undefined}>
-          <span style={{ width: `${ctxPct}%` }} />
-        </div>
-      ) : null}
+      <span className="hc-cost">{u && u.cost != null && u.cost > 0 ? `$${u.cost.toFixed(3)}` : "—"}</span>
+      <span className="hc-pace">
+        <span className="hc-num"><i>{t("right.hubReq")}</i><b>{u?.requests ?? 0}</b></span>
+        <span className="hc-num"><i>{t("right.hubTools")}</i><b>{u?.toolCount ?? sub.tools.length}</b></span>
+      </span>
+      <span className="hc-time">{age} {t("right.hubRanFor")} {elapsed > 0 ? durText(elapsed, t) : "—"}</span>
+      <div className="hc-foot">
+        {role ? <span className="hc-chip">{role}</span> : null}
+        {model || think ? (
+          <span className="hc-model" title={u?.resolvedModel ?? undefined}>
+            {model}
+            {model && think ? " " : null}
+            {think ? <span className="hub-think">{think}</span> : null}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

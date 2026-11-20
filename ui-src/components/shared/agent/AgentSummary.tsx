@@ -21,13 +21,11 @@ export default function AgentSummary({ s }: { s: RosterSession }) {
     const groups = GROUP_ORDER.map((g) => [g, rows.filter((r) => stInfo(stKeyOf(subStatusOf(r.sub))).group === g).length] as const);
     let tokens = 0;
     let cost = 0;
-    let running = 0;
     const byModel = new Map<string, number>();
     for (const { sub } of rows) {
       const tok = tokenTotal(sub.usage?.tokens) ?? 0;
       tokens += tok;
       cost += sub.usage?.cost ?? 0;
-      if (sub.streaming) running++;
       if (tok > 0) {
         const key = modelShort(sub.usage?.resolvedModel) || "—";
         byModel.set(key, (byModel.get(key) ?? 0) + tok);
@@ -39,17 +37,28 @@ export default function AgentSummary({ s }: { s: RosterSession }) {
       .filter(([, , tok]) => tok > 0)
       .sort((a, b) => b[2] - a[2])
       .slice(0, 3);
-    return { rows, children, groups, tokens, cost, running, models, top };
+    // Peak concurrency (studio's "peak" tile): max simultaneous runs, from each child's
+    // [registeredAt, registeredAt + duration] interval. Ends sort before starts at the same
+    // timestamp so back-to-back runs do not count as overlapping.
+    const events: Array<[number, number]> = [];
+    for (const { sub } of rows) {
+      const a = sub.registeredAt ?? 0;
+      const b = a + (sub.usage?.durationMs ?? 0);
+      if (b > a) events.push([a, 1], [b, -1]);
+    }
+    events.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    let peak = 0, cur = 0;
+    for (const [, d] of events) {
+      cur += d;
+      if (cur > peak) peak = cur;
+    }
+    return { rows, children, groups, tokens, cost, peak, models, top };
   }, [sig]);
   const maxModel = Math.max(1, ...data.models.map(([, v]) => v));
   let offset = 0;
 
   return (
     <div className="ad-summary">
-      <header>
-        <h3>{t("right.adSummaryTitle")}</h3>
-        <p>{t("right.adSummaryHint")}</p>
-      </header>
       <div className="ad-summary-donut">
         <svg viewBox="0 0 64 64" aria-hidden="true">
           <circle className="ad-donut-track" cx="32" cy="32" r="26" />
@@ -75,7 +84,6 @@ export default function AgentSummary({ s }: { s: RosterSession }) {
         </svg>
         <div className="ad-donut-center">
           <strong>{data.children}</strong>
-          <span>{t("right.adSummaryChildren")}</span>
         </div>
         <ul>
           {data.groups.map(([group, count]) => (
@@ -97,8 +105,8 @@ export default function AgentSummary({ s }: { s: RosterSession }) {
           <dd>${data.cost.toFixed(2)}</dd>
         </div>
         <div>
-          <dt>{t("right.adSummaryRunning")}</dt>
-          <dd>{data.running}</dd>
+          <dt>{t("right.adSummaryPeak")}</dt>
+          <dd>{data.peak}</dd>
         </div>
       </dl>
       {data.models.length ? (
@@ -125,7 +133,9 @@ export default function AgentSummary({ s }: { s: RosterSession }) {
           <div className="ad-ins-children is-list">
             {data.top.map(([id, sub, tokens]) => (
               <button key={id} type="button" className="ad-chip-agent" onClick={() => useAppStore.getState().setHubSel(id)}>
+                <span className="ad-chip-avatar" aria-hidden="true">{(sub.name ?? sub.agent).trim()[0]?.toUpperCase() ?? "?"}</span>
                 <span>{sub.name ?? sub.agent}</span>
+                <i className="ad-dot" data-tone={stInfo(stKeyOf(subStatusOf(sub))).group} aria-hidden="true" />
                 <em>{fmtTokens(tokens)}</em>
               </button>
             ))}

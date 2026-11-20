@@ -224,17 +224,24 @@ export function activateSession(path: string): void {
  *  child transcript while the user keeps working in the active session, so its load is
  *  background: the session lands in openSessions, `activateSession` never runs. */
 const backgroundLoads = new Set<string>();
+/** Requests already in flight: the host answers every load_session with a session_created
+ *  (pool-reuse branch included), so a duplicate request would land a SECOND frame whose
+ *  consumed background flag no longer suppresses activation — the middle column would yank
+ *  to the child session. Dedup at the request level instead. */
+const backgroundInflight = new Set<string>();
 
 /** Load a session into openSessions without switching the middle column (no-op when resident). */
 export function loadSessionInBackground(path: string): void {
   const st = useAppStore.getState();
-  if (st.openSessions.has(path)) return;
+  if (st.openSessions.has(path) || backgroundInflight.has(path)) return;
+  backgroundInflight.add(path);
   backgroundLoads.add(path);
   st.send({ type: "load_session", path });
 }
 
 /** True once, when a landing session was requested in the background (see backgroundLoads). */
 export function consumeBackgroundLoad(path: string): boolean {
+  backgroundInflight.delete(path);
   return backgroundLoads.delete(path);
 }
 

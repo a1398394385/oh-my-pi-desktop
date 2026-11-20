@@ -287,7 +287,9 @@ export const sessionHandlers = {
     // clearing first would wipe the outgoing session's just-saved slot).
     // A background load (right sidebar's read-only child transcript) only needs the entry in
     // openSessions — activating it would yank the middle column away from the user's work.
-    if (!consumeBackgroundLoad(msg.path)) activateSession(msg.path);
+    // subagentView guard: any residual duplicate frame for the transcript currently shown in
+    // the "submsg" tab must not activate either (the flag is consume-once).
+    if (!consumeBackgroundLoad(msg.path) && useAppStore.getState().subagentView !== msg.path) activateSession(msg.path);
     useAppStore.getState().refreshGitDiff(); // the right-panel Git Diff page needs git status data; prefetch early
     const st3 = useAppStore.getState();
     if (st3.pendingOpenHub) {

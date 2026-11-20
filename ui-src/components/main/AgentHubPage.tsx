@@ -6,7 +6,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../Icon";
 import { useAppStore, send } from "../../store";
-import { HubRow, HubUsage, StatusTabs, useRosterRows, useRosterTick, openSubagentSession } from "../shared/agent/subRoster";
+import { HubUsage, StatusTabs, useRosterRows, useRosterTick, openSubagentSession, treeDepth, HubPageCard } from "../shared/agent/subRoster";
 
 const DOUBLE_LEFT_MS = 500;
 
@@ -145,22 +145,23 @@ export default function AgentHub() {
         </span>
         {backBtn}
       </div>
-      <HubUsage s={s} />
+      <HubUsage s={s} compact />
       <div className="hub-list" role="listbox">
-        {rows.map((row) => (
-          // Tree grouping indents children under their parent; the sort itself stays status-first
-          <div key={row.id} style={grouping === "tree" && row.sub.parent && row.sub.parent !== "main" ? { paddingLeft: 14 } : undefined}>
-            <HubRow
-              row={row}
-              stats
-              selected={row.id === hubSel}
-              minimal={density === "minimal"}
-              onSelect={() => useAppStore.getState().setHubSel(row.id)}
-              sessionId={s.sessionId}
-              t={t}
-            />
-          </div>
-        ))}
+        {rows.map((row) => {
+          // Tree grouping indents by ancestry depth, so a subagent's subagent nests further
+          const depth = grouping === "tree" ? treeDepth(rows, row) : 0;
+          return (
+            <div key={row.id} style={depth ? { paddingLeft: depth * 14 } : undefined}>
+              <HubPageCard
+                row={row}
+                selected={row.id === hubSel}
+                minimal={density === "minimal"}
+                onSelect={() => useAppStore.getState().setHubSel(row.id)}
+                t={t}
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

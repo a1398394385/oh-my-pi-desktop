@@ -182,7 +182,7 @@ export function attachResizer(handleId: string, cssVar: string, min: number, inv
   const apply = (w: number) => document.documentElement.style.setProperty(cssVar, w + "px");
   try {
     const saved = localStorage.getItem("omp-w-" + cssVar);
-    if (saved) apply(+saved);
+    if (saved) apply(Math.max(min, +saved));
   } catch {}
   document.getElementById(handleId)?.addEventListener("mousedown", (e) => {
     e.preventDefault();
@@ -466,8 +466,10 @@ export function initShell(): void {
   // Startup theme/motion restoration lives in main.tsx (before React mounts);
   // here only the system-mode media listener remains.
   attachResizer("left-resizer", "--left-w", 180, false);
-  // Right panel drag handle (ZCode Side Pane size contract): min 240px, max 65% viewport width
-  attachResizer("right-resizer", "--right-w", 240, true, 0.65);
+  // Right panel drag handle (ZCode Side Pane size contract): min 450px — below ~280 the
+  // subagent tab's pulse row (five stat fields) wraps to two lines; 450 is the comfortable
+  // floor from the real-machine pass, well past that edge; max 65% viewport width
+  attachResizer("right-resizer", "--right-w", 450, true, 0.65);
   restoreColWidth();
 
   updateContentColMax();

@@ -19,6 +19,7 @@ export {
   findBySessionId,
   activateSession,
   openSessionByPath,
+  loadSessionInBackground,
   evictOpenSessions,
   isJunkPlaceholder,
   toolExpandKey,

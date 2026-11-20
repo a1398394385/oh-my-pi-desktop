@@ -49,10 +49,16 @@ export function usageSegments(sub: SubagentState, t: SegT, opts?: { model?: bool
   if (tokens !== undefined) segs.push(`${fmtTokens(tokens)} tok`);
   if (u && u.cost != null && u.cost > 0) segs.push(`$${u.cost.toFixed(4)}`);
   const reqs = u?.requests ?? 0;
-  if (reqs > 0) segs.push(t("right.subRequests", { n: reqs }));
+  if (reqs > 0) segs.push(t("right.hubReqFmt", { n: reqs }));
   const toolN = u?.toolCount ?? sub.tools.length;
-  if (toolN > 0) segs.push(t("right.subTools", { n: toolN }));
+  if (toolN > 0) segs.push(t("right.hubToolsFmt", { n: toolN }));
   return segs;
+}
+
+// h:mm:ss clock for a duration, shared by the roster card's side column and the detail's tiles.
+export function clockHMS(ms: number): string {
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
 export function timeSegments(sub: SubagentState, t: SegT, now: number): string[] {

@@ -2,21 +2,18 @@
 // crumb, status/model line, action row, current stage, task with expand, usage tiles, output,
 // child chips). Used by the right sidebar for both entries: the Agent Hub's selection and the
 // subagent tab's card click.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAppStore, fmtTokens, fmtDurationMs } from "../../../store";
-import { sendSubagentControl } from "./hubExt";
-import { modelShort, subStatus, currentProgress, stInfo, stKeyOf, stLabel, tokenTotal, type SegT } from "./subShared";
+import { useAppStore, fmtTokens, loadSessionInBackground } from "../../../store";
+import { bgJobsKey } from "../../../store/session";
+import { sendSubagentControl, sendGetBgJobs, sendCancelBgJob } from "./hubExt";
+import { expandRightPanel } from "../../main/right/tabs";
+import { modelShort, subStatus, currentProgress, stInfo, tokenTotal, clockHMS, type SegT } from "./subShared";
 import { openSubagentSession } from "./subRoster";
 import Icon from "../../../Icon";
 import type { SubagentState } from "../../../types/session";
 
 const TASK_CLAMP = 220;
-
-function clockOf(ms: number): string {
-  const s = Math.round(ms / 1000);
-  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-}
 
 export default function AgentSheet({
   sub,
@@ -31,11 +28,19 @@ export default function AgentSheet({
 }) {
   const { t } = useTranslation();
   const [taskOpen, setTaskOpen] = useState(false);
+  const [resultOpen, setResultOpen] = useState(false);
+  // Content tab (overview / background tasks / messages). Studio's transcript tab is
+  // deliberately absent: the transcript has its own right-panel page (avatar click).
+  const [tab, setTab] = useState<"ov" | "tasks" | "msgs">("ov");
+  useEffect(() => {
+    setTab("ov");
+    setTaskOpen(false);
+    setResultOpen(false);
+  }, [subagentId]);
   const st = subStatus(sub);
   const group = stInfo(st).group;
   const u = sub.usage;
   const name = sub.name ?? sub.agent;
-  const parent = sub.parent ?? "main";
   const streaming = sub.streaming;
   const elapsed = streaming && sub.registeredAt ? Date.now() - sub.registeredAt : (u?.durationMs ?? 0);
   const tokens = tokenTotal(u?.tokens);
@@ -43,7 +48,12 @@ export default function AgentSheet({
   const task = sub.description || sub.task || sub.text || "";
   const clamped = !taskOpen && task.length > TASK_CLAMP;
   const stage = currentProgress(sub);
-  const model = modelShort(u?.resolvedModel);
+  const short = modelShort(u?.resolvedModel);
+  const cut = short.lastIndexOf(":");
+  const model = cut > 0 ? short.slice(0, cut) : short;
+  const thinkRaw = u?.resolvedThinkingLevel ?? (cut > 0 ? short.slice(cut + 1) : "");
+  const think = thinkRaw ? t(`composer.thinkingLevels.${thinkRaw}`, { defaultValue: thinkRaw }) : "";
+  const role = u?.modelRole?.toUpperCase();
   // Read the roster without subscribing: a selector that builds a fresh array on every call
   // would re-render forever (Object.is never matches). The sheet re-renders on the parent's
   // state anyway, and child rows only change when the roster does.
@@ -51,71 +61,108 @@ export default function AgentSheet({
   const children: Array<[string, SubagentState]> = sess
     ? [...sess.subagents].filter(([id, x]) => id !== subagentId && (x.parent === name || x.parent === subagentId))
     : [];
+  const result = sub.result?.trim();
   const tiles: Array<[string, string]> = [
-    [t("right.adSheetRuntime"), elapsed > 0 ? clockOf(elapsed) : "—"],
+    [t("right.adSheetRuntime"), elapsed > 0 ? clockHMS(elapsed) : "—"],
     [t("right.hubStatTokens"), tokens === undefined ? "—" : fmtTokens(tokens)],
     [t("right.hubTilesRequests"), String(u?.requests ?? 0)],
     [t("right.hubStatTools"), String(u?.toolCount ?? sub.tools.length)],
     [t("right.hubStatCost"), u?.cost ? `$${u.cost.toFixed(2)}` : "—"],
     [t("right.hubStatRate"), streaming && elapsed > 0 && tokens ? `${Math.round(tokens / (elapsed / 1000))} t/s` : "—"],
   ];
-  const facts: Array<[string, string]> = [];
-  if (sub.sessionFile) facts.push([t("right.adSheetOutput"), sub.sessionFile]);
 
   return (
     <div className="ad-ins">
       <header className="ad-ins-head">
-        <div>
-          <button type="button" className="ad-ins-crumb" onClick={() => useAppStore.getState().setHubSel(parent)}>
-            <Icon name="arrowUp" size={11} />
-            {parent}
-          </button>
-          <h3 title={name}>{name}</h3>
-          <div className="ad-ins-sub">
+        <button
+          type="button"
+          className="ad-avatar"
+          aria-label={t("right.adSheetOpenChat")}
+          title={t("right.adSheetOpenChat")}
+          onClick={() => {
+            // A persisted child transcript opens read-only in the right panel (the middle
+            // column keeps the active session); without one there is nothing to read.
+            if (sub.sessionFile) {
+              loadSessionInBackground(sub.sessionFile);
+              expandRightPanel("submsg", { subagentView: sub.sessionFile });
+            } else {
+              openSubagentSession(subagentId, sub);
+            }
+          }}
+        >
+          {(name.trim()[0] ?? "?").toUpperCase()}
+        </button>
+        <div className="ad-ins-id">
+          <div className="ad-ins-row">
             <span className="ad-status" data-tone={group}>
               <i aria-hidden="true" />
-              <span>{stLabel(stKeyOf(st), t)}</span>
             </span>
-            {model ? (
-              <span className="ad-ins-model" title={u?.resolvedModel ?? undefined}>
-                {model}
-                {u?.modelRole ? <em>{u.modelRole}</em> : null}
-              </span>
+            <h3 title={name}>{name}</h3>
+            {onClose ? (
+              <button type="button" className="hub-ibtn ad-ins-close" aria-label={t("right.adSheetClose")} title={t("right.adSheetClose")} onClick={onClose}>
+                <Icon name="xmark" size={13} />
+              </button>
+            ) : null}
+          </div>
+          <div className="ad-ins-row">
+            <div className="ad-ins-sub">
+              {role || model || think ? (
+                <span className="hub-model" title={u?.resolvedModel ?? undefined}>
+                  {role ? <span className="hub-role">{role}</span> : null}
+                  {role && (model || think) ? <span className="hub-sep"> · </span> : null}
+                  {model || think ? (
+                    <span className="hub-mdl">
+                      {model}
+                      {model && think ? " " : null}
+                      {think ? <span className="hub-think">{think}</span> : null}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
+            {streaming && sessionId ? (
+              <button
+                type="button"
+                className="btn small danger icon-only"
+                aria-label={t("right.adSheetStop")}
+                title={t("right.adSheetStop")}
+                onClick={() => sendSubagentControl(sessionId, subagentId, "cancel")}
+              >
+                <Icon name="stopSolid" size={12} />
+              </button>
             ) : null}
           </div>
         </div>
-        {onClose ? (
-          <button type="button" className="hub-ibtn ad-ins-close" aria-label={t("right.adSheetClose")} title={t("right.adSheetClose")} onClick={onClose}>
-            <Icon name="chevronLeft" size={13} />
-          </button>
-        ) : null}
       </header>
 
-      <div className="ad-ins-actions">
-        <button type="button" className="btn small primary" onClick={() => openSubagentSession(subagentId, sub)}>
-          <Icon name="comment" size={12} />
-          {t("right.adSheetOpenChat")}
-        </button>
-        <button
-          type="button"
-          className="btn small"
-          onClick={() => {
-            const st0 = useAppStore.getState();
-            st0.openHub();
-            st0.setHubSel(subagentId);
-          }}
-        >
-          <Icon name="externalOpen" size={12} />
-          Agent Hub
-        </button>
-        {streaming && sessionId ? (
-          <button type="button" className="btn small danger" onClick={() => sendSubagentControl(sessionId, subagentId, "cancel")}>
-            <Icon name="stopSolid" size={12} />
-            {t("right.adSheetStop")}
+      <div className="ad-tabs-strip" role="tablist">
+        {([
+          ["ov", t("right.adTabOverview"), "stats"],
+          ["tasks", t("right.adTabTasks"), "term"],
+          ["msgs", t("right.adTabMsgs"), "comment"],
+        ] as const).map(([id, label, ic]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={"ad-strip-tab" + (tab === id ? " active" : "")}
+            onClick={() => setTab(id)}
+          >
+            <span className="ad-strip-lab">
+              <Icon name={ic} size={12} />
+              {label}
+            </span>
           </button>
-        ) : null}
+        ))}
       </div>
 
+      {tab === "tasks" ? (
+        <AgentTasks sessionId={sessionId} subagentId={subagentId} />
+      ) : tab === "msgs" ? (
+        <div className="ad-tab-soon">{t("right.adTabSoon")}</div>
+      ) : (
+        <>
       <section className="ad-ins-section">
         <h4>{t("right.adSheetStage")}</h4>
         <div className="ad-ins-now" data-running={streaming ? "true" : undefined}>
@@ -169,19 +216,17 @@ export default function AgentSheet({
         ) : null}
       </section>
 
-      {facts.length ? (
+      {result ? (
         <section className="ad-ins-section">
-          <h4>{t("right.adSheetOutputTitle")}</h4>
-          <dl className="ad-ins-facts">
-            {facts.map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>
-                  <code title={value}>{value}</code>
-                </dd>
-              </div>
-            ))}
-          </dl>
+          <h4>{t("right.hubResult")}</h4>
+          <p className="ad-ins-result" data-clamped={!resultOpen && result.length > TASK_CLAMP ? "true" : undefined}>
+            {result}
+          </p>
+          {result.length > TASK_CLAMP ? (
+            <button type="button" className="ad-link" onClick={() => setResultOpen((v) => !v)}>
+              {resultOpen ? t("right.adSheetCollapse") : t("right.adSheetExpand")}
+            </button>
+          ) : null}
         </section>
       ) : null}
 
@@ -201,6 +246,50 @@ export default function AgentSheet({
           </div>
         </section>
       ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+// Background tasks of one child agent: the host keeps a per-(session, subagent) snapshot
+// (18.5 get_bg_jobs), so the tab only renders that slice; cancel reuses the same channel.
+function AgentTasks({ sessionId, subagentId }: { sessionId?: string; subagentId: string }) {
+  const { t } = useTranslation();
+  const jobs = useAppStore((st) => (sessionId ? st.bgJobs.get(bgJobsKey(sessionId, subagentId)) : undefined));
+  useEffect(() => {
+    if (sessionId) sendGetBgJobs(sessionId, subagentId);
+  }, [sessionId, subagentId]);
+  if (!jobs || jobs.length === 0) return <div className="ad-tab-soon">{t("right.adTabTasksEmpty")}</div>;
+  return (
+    <div className="ad-tasks">
+      {jobs.map((j) => (
+        <div key={j.id} className="ad-task">
+          <span className="ad-task-status" data-s={j.status}>
+            {j.status === "running"
+              ? t("right.subStRunning")
+              : j.status === "completed"
+                ? t("right.subStCompleted")
+                : j.status === "cancelled"
+                  ? t("right.adTaskCancelled")
+                  : t("right.subStFailed")}
+          </span>
+          <span className="ad-task-text" title={j.command ?? undefined}>
+            {j.caption ?? j.intent ?? j.label ?? j.command ?? j.id}
+          </span>
+          {j.running && sessionId ? (
+            <button
+              type="button"
+              className="hub-ibtn"
+              aria-label={t("right.adSheetStop")}
+              title={t("right.adSheetStop")}
+              onClick={() => sendCancelBgJob(sessionId, j.id, subagentId)}
+            >
+              <Icon name="stopSolid" size={12} />
+            </button>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }

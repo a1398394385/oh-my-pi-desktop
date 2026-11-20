@@ -24,6 +24,7 @@ export const TAB_META: Record<string, TabMeta> = {
   browser: { label: "right.tabBrowser", icon: "globe" },
   hub: { label: "right.hubTitle", icon: "agents" },
   btw: { label: "right.tabBtw", icon: "comment" },
+  submsg: { label: "right.tabSubmsg", icon: "comment" },
 };
 
 // Terminal tabs are one panel tab each (`terminal:<id>`), so several terminals sit side by
@@ -67,9 +68,10 @@ export const AUTO_TABS: ReadonlySet<string> = new Set(["hub"]);
 export const COMPOSER_ONLY_TABS: ReadonlySet<string> = new Set(["bgcmd"]);
 
 // Tabs opened by a page context instead of the add menu: the commit-diff viewer
-// appears when a file row in the Git page is clicked. Still closable; hidden
-// from the add menu because a bare tab with no target renders nothing.
-export const CONTEXT_TABS: Record<string, true> = { rundiff: true };
+// appears when a file row in the Git page is clicked, the subagent transcript when the
+// detail sheet's avatar is clicked. Still closable; hidden from the add menu because a
+// bare tab with no target renders nothing.
+export const CONTEXT_TABS: Record<string, true> = { rundiff: true, submsg: true };
 
 // Tab close hooks: registered by pages with host-side resources (e.g. the terminal PTY);
 // invoked to destroy them before the tab closes. Registered under the base kind and called

@@ -235,12 +235,6 @@ html[data-motion="off"] .title-shimmer { animation: none; background-image: none
 
 .subagent-return-btn:hover { background: var(--panel-3); }
 
-.subagent-head-badge {
-  display: inline-flex; align-items: center; padding: 1px 6px; margin-left: 6px;
-  font-size: var(--ui-fs-sm); color: var(--accent); background: var(--panel-2);
-  border: 1px solid var(--line-soft); border-radius: 4px; flex: none;
-}
-
 /* Column width drag handles: 10px col-resize strips in the gutters beside the
    content column, absolute in #main (never inside the #stream scrollport — an
    absolute strip there would extend the scrollable range). The inner edge sits

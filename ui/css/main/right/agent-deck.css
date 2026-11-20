@@ -6,15 +6,14 @@
 /* ---------- pane head (crew N/N + grouping / density) ---------- */
 .ad-pane-head {
   display: flex; align-items: center; gap: 8px; flex: none;
-  padding: 6px 12px; border-bottom: 1px solid var(--line);
+  padding: 6px 12px;
 }
 
-.ad-pane-title {
-  display: inline-flex; align-items: baseline; gap: 6px; margin-right: auto;
-  color: var(--dim); font-size: var(--ui-fs-sm); font-weight: 600;
-}
+.ad-tabs { display: inline-flex; gap: 10px; margin-right: auto; }
 
-.ad-pane-title em { color: var(--faint); font-style: normal; font-weight: 400; font-variant-numeric: tabular-nums; }
+.ad-tab { padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-size: var(--ui-fs-sm); font-weight: 600; color: var(--faint); }
+
+.ad-tab.active { color: var(--text); }
 
 .ad-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-sm); background: var(--surface); }
 
@@ -29,20 +28,46 @@
 .ad-seg > button.active { background: var(--menu-hl); color: var(--text); }
 
 /* ---------- detail sheet ---------- */
-.ad-ins { display: flex; flex-direction: column; gap: 14px; padding: 10px 12px 16px; font-size: var(--ui-fs-base); color: var(--text); }
+.ad-ins { display: flex; flex-direction: column; gap: 14px; padding: 6px; font-size: var(--ui-fs-base); color: var(--text); }
 
-.ad-ins-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.ad-ins-head { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: stretch; }
 
-.ad-ins-crumb {
-  display: inline-flex; align-items: center; gap: 4px; margin-bottom: 2px; padding: 0;
-  border: 0; background: none; cursor: pointer; color: var(--dim); font: inherit; font-size: var(--ui-fs-sm);
+/* Placeholder sigil until the pixel-avatar port lands: initial letter on a raised plate.
+   The tile itself opens the conversation (the old action row's primary action). No hover
+   treatment: the pointer cue lands with the future hover animation. */
+.ad-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; padding: 0;
+  border: 0; border-radius: var(--r-md); cursor: pointer;
+  background: var(--panel-2); color: var(--text);
+  font-size: var(--ui-fs-xl); font-weight: 600;
 }
 
-.ad-ins-crumb:hover { color: var(--text); }
+/* The two rows split the avatar column height: title over status/model, the back button
+   parked right of the title and the stop button right of the status line. */
+.ad-ins-id { display: flex; flex-direction: column; min-width: 0; }
 
-.ad-ins-head h3 { margin: 0; font-size: var(--ui-fs-md); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ad-ins-row { flex: 1 1 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
 
-.ad-ins-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; color: var(--faint); font-size: var(--ui-fs-sm); }
+.ad-ins-row > h3, .ad-ins-row > .ad-ins-sub { flex: 1 1 auto; min-width: 0; }
+
+/* The status dot rides left of the title; pull it 4px closer so the pair reads as one unit
+   (the row's own 8px gap is button spacing). */
+.ad-ins-row > .ad-status { flex: none; margin-right: -4px; }
+
+.ad-ins-row > .ad-ins-close, .ad-ins-row > .btn { margin-left: auto; flex: none; }
+
+.ad-ins-head h3 { margin: 0; font-size: var(--ui-fs-lg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ad-ins-sub { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; overflow: hidden; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+.ad-ins-sub .ad-status, .ad-ins-sub .hub-role, .ad-ins-sub .hub-sep, .ad-ins-sub .hub-mdl { font-size: inherit; }
+
+.ad-ins-sub .ad-status { flex: none; }
+
+.ad-ins-sub .hub-role, .ad-ins-sub .hub-sep { flex: none; }
+
+.ad-ins-sub .hub-mdl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ad-status { display: inline-flex; align-items: center; gap: 5px; }
 
@@ -53,22 +78,88 @@
 .ad-status[data-tone="completed"] i { background: var(--green-ink); }
 .ad-status[data-tone="failed"] i { background: var(--err); }
 .ad-status[data-tone="parked"] i,
-.ad-status[data-tone="stopped"] i { background: var(--faint); }
+.ad-status[data-tone="stopped"] i,
+.ad-status[data-tone="aborted"] i,
+.ad-status[data-tone="unknown"] i { background: var(--faint); }
 
-.ad-ins-model { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+.ad-ins-close { align-self: center; }
 
-.ad-ins-model em { color: var(--faint); font-style: normal; font-size: var(--ui-fs-xs); text-transform: uppercase; letter-spacing: .04em; }
+/* Content tab strip between the header and the body. The negative margin cancels .ad-ins'
+   6px padding so the rules above and below connect to the panel edges; the tabs share the
+   row evenly, each icon + label centered. */
+.ad-tabs-strip { display: flex; margin: 0 -6px; padding: 0 6px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 
-.ad-ins-close { align-self: start; }
+.ad-strip-tab { position: relative; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 2px; border: 0; background: none; cursor: pointer; font: inherit; font-size: var(--ui-fs-base); color: var(--faint); }
 
-.ad-ins-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -6px; }
+.ad-strip-tab.active { color: var(--text); font-weight: 600; }
+
+/* Active indicator: a short accent bar overlaid on the strip's bottom rule, sized to the
+   tab's icon+label and overhanging it a little on both sides (studio's tab strip). Every
+   tab carries the bar at scaleX(0); on switch both bars animate at once — the outgoing one
+   shrinks to its center while the incoming one grows from its center, no dead gap.
+   bottom: -7px = the button's 6px padding + 1px to center the 2px bar on the strip's 1px
+   rule. */
+.ad-strip-lab { position: relative; display: inline-flex; align-items: center; gap: 5px; }
+
+.ad-strip-lab::after {
+  content: ""; position: absolute; left: -6px; right: -6px; bottom: -7px;
+  height: 2px; border-radius: 999px; background: var(--accent);
+  transform: scaleX(0);
+  transition: transform var(--dur-snap) var(--swift);
+}
+
+.ad-strip-tab.active .ad-strip-lab::after { transform: scaleX(1); }
+
+/* Icon feedback like studio's strip: the active tab's icon tints accent while the bar grows. */
+.ad-strip-lab .pi-ic { color: var(--faint); transition: color var(--dur-snap) var(--swift); }
+
+.ad-strip-tab.active .ad-strip-lab .pi-ic { color: var(--accent); }
+
+.ad-tab-soon { padding: 24px 0; text-align: center; color: var(--faint); font-size: var(--ui-fs-sm); }
+
+.ad-tasks { display: flex; flex-direction: column; gap: 8px; }
+
+.ad-task { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-md); }
+
+.ad-task-status { flex: none; font-size: var(--ui-fs-xs); color: var(--faint); }
+
+.ad-task-status[data-s="running"] { color: var(--green); }
+
+.ad-task-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--ui-fs-sm); }
+
+/* Site button language (see .frm-primary / .pill-btn): the primary action is the accent
+   fill, everything else a borderless ghost plate. The previous look was the UA default —
+   the .btn class matches no stylesheet in this repo. */
+.ad-ins .btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 20px; padding: 0 8px;
+  border: 0; border-radius: 8px;
+  background: transparent; color: var(--text);
+  font: inherit; font-size: var(--ui-fs-sm); cursor: pointer;
+}
+
+.ad-ins .btn:hover { background: var(--hover-fill); color: var(--text); }
+
+.ad-ins .btn.primary { background: var(--accent); color: var(--white); }
+
+.ad-ins .btn.primary:hover { filter: brightness(1.1); }
+
+.ad-ins .btn.primary:disabled { opacity: .45; cursor: default; }
+
+.ad-ins .btn.danger { color: var(--err); }
+
+/* Icon-only plate: same 20x20 box as .hub-ibtn so a pair of them right-aligns on one
+   centerline (the text padding would otherwise push the glyph off-axis). */
+.ad-ins .btn.icon-only { width: 20px; padding: 0; justify-content: center; }
 
 .ad-ins-section h4 {
-  display: flex; align-items: center; gap: 6px; margin: 0 0 6px;
-  color: var(--faint); font-size: var(--ui-fs-sm); font-weight: 600;
+  display: flex; align-items: center; gap: 6px; margin: 0 0 8px;
+  color: var(--text); font-size: var(--ui-fs-base); font-weight: 600;
 }
 
 .ad-ins-section h4 span { color: var(--faint); font-weight: 400; }
+
+.ad-ins-section h4::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 .ad-ins-now { display: flex; align-items: flex-start; gap: 6px; color: var(--dim); font-size: var(--ui-fs-sm); line-height: 1.5; }
 
@@ -107,25 +198,19 @@
   font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.ad-ins-tiles.is-summary > div { background: none; padding: 0; }
-
 .ad-ins-context { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: 8px; color: var(--faint); font-size: var(--ui-fs-xs); }
 
 .ad-ins-context[data-high] .ad-ins-bar > i { background: var(--err); }
 
-.ad-ins-facts { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.ad-ins-result { margin: 0; color: var(--text); font-size: var(--ui-fs-base); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-.ad-ins-facts > div { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; align-items: baseline; }
-
-.ad-ins-facts dt { color: var(--faint); font-size: var(--ui-fs-xs); }
-
-.ad-ins-facts dd { margin: 0; min-width: 0; }
-
-.ad-ins-facts code { color: var(--dim); font-size: var(--ui-fs-xs); font-family: var(--mono, ui-monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.ad-ins-result[data-clamped] {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; overflow: hidden;
+}
 
 .ad-ins-children { display: flex; flex-wrap: wrap; gap: 6px; }
 
-.ad-ins-children.is-list { flex-direction: column; gap: 4px; }
+.ad-ins-children.is-list { flex-direction: column; gap: 7px; }
 
 .ad-chip-agent {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
@@ -135,43 +220,55 @@
 
 .ad-chip-agent:hover { background: var(--hover-fill); }
 
-.ad-ins-children.is-list .ad-chip-agent { justify-content: space-between; border: 0; padding: 4px 0; }
+/* List chips (summary's top-N): bordered rows with the mini avatar parked inside. */
+.ad-ins-children.is-list .ad-chip-agent { height: 26px; padding: 0 8px 0 4px; }
 
-.ad-ins-children.is-list .ad-chip-agent em { color: var(--faint); font-style: normal; font-variant-numeric: tabular-nums; }
+.ad-ins-children.is-list .ad-chip-agent > em { margin-left: auto; padding-left: 8px; color: var(--faint); font-style: normal; font-variant-numeric: tabular-nums; }
+
+.ad-chip-avatar {
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: var(--r-sm);
+  background: var(--panel-2); color: var(--text);
+  font-size: var(--ui-fs-xs); font-weight: 600;
+}
 
 .ad-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
 
 .ad-dot[data-tone="running"] { background: var(--green); }
 .ad-dot[data-tone="completed"] { background: var(--green-ink); }
 .ad-dot[data-tone="failed"] { background: var(--err); }
+.ad-dot[data-tone="aborted"], .ad-dot[data-tone="unknown"] { background: var(--faint); }
 
 .ad-link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--ui-fs-sm); cursor: pointer; }
 
 /* ---------- swarm summary (nothing selected) ---------- */
-.ad-summary { display: flex; flex-direction: column; gap: 14px; padding: 12px 12px 16px; }
+.ad-summary { display: flex; flex-direction: column; gap: 20px; padding: 12px 12px 16px; }
 
-.ad-summary > header h3 { margin: 0; font-size: var(--ui-fs-md); font-weight: 600; }
+.ad-summary-donut { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; column-gap: 16px; }
 
-.ad-summary > header p { margin: 2px 0 0; color: var(--faint); font-size: var(--ui-fs-sm); }
+.ad-summary-donut svg { width: 96px; height: 96px; }
 
-.ad-summary-donut { display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 10px; }
+.ad-donut-track { fill: none; stroke: var(--surface); stroke-width: 7; }
 
-.ad-summary-donut svg { width: 76px; height: 76px; }
-
-.ad-donut-track { fill: none; stroke: var(--line); stroke-width: 8; }
-
-.ad-donut-seg { fill: none; stroke-width: 8; stroke-linecap: butt; }
+/* Round-capped and rotated -90deg so the first segment starts at 12 o'clock; the dash
+   transition animates count changes (studio's summary look). */
+.ad-donut-seg {
+  fill: none; stroke-width: 7; stroke-linecap: round;
+  transform: rotate(-90deg); transform-origin: center; transform-box: fill-box;
+  transition: stroke-dasharray var(--dur-slow) var(--swift), stroke-dashoffset var(--dur-slow) var(--swift);
+}
 
 .ad-donut-seg[data-group="running"] { stroke: var(--green); }
 .ad-donut-seg[data-group="waiting"] { stroke: var(--yellow); }
-.ad-donut-seg[data-group="completed"] { stroke: var(--faint); }
-.ad-donut-seg[data-group="aborted"] { stroke: var(--dim); }
+.ad-donut-seg[data-group="completed"],
+.ad-donut-seg[data-group="aborted"] { stroke: color-mix(in srgb, var(--dim) 45%, transparent); }
 .ad-donut-seg[data-group="failed"] { stroke: var(--err); }
 
 .ad-summary-donut { position: relative; }
 
 .ad-donut-center {
-  position: absolute; inset-block-start: 0; inset-inline-start: 0; width: 76px; height: 76px;
+  position: absolute; inset-block-start: 0; inset-inline-start: 0; width: 96px; height: 96px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   pointer-events: none;
 }
@@ -180,16 +277,16 @@
 
 .ad-donut-center span { color: var(--faint); font-size: var(--ui-fs-xs); }
 
-.ad-summary-donut ul { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.ad-summary-donut ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 
 .ad-summary-donut li { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: var(--ui-fs-sm); }
 
-.ad-summary-donut li i { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.ad-summary-donut li i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
 
 .ad-summary-donut li[data-group="running"] i { background: var(--green); }
 .ad-summary-donut li[data-group="waiting"] i { background: var(--yellow); }
-.ad-summary-donut li[data-group="completed"] i { background: var(--faint); }
-.ad-summary-donut li[data-group="aborted"] i { background: var(--dim); }
+.ad-summary-donut li[data-group="completed"] i,
+.ad-summary-donut li[data-group="aborted"] i { background: color-mix(in srgb, var(--dim) 45%, transparent); }
 .ad-summary-donut li[data-group="failed"] i { background: var(--err); }
 
 .ad-summary-donut li span { margin-left: auto; padding-left: 8px; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -200,8 +297,13 @@
 
 .ad-bars-label { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.ad-bars-track { height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+/* Chunky share bar: 6px track, softened accent fill (studio's summary look). */
+.ad-bars-track { height: 6px; border-radius: 3px; background: var(--surface); overflow: hidden; }
 
-.ad-bars-track > i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.ad-bars-track > i {
+  display: block; height: 100%; border-radius: inherit;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+  transition: inline-size var(--dur-slow) var(--swift);
+}
 
 .ad-bars-value { color: var(--faint); font-variant-numeric: tabular-nums; }

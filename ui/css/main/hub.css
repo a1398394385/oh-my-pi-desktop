@@ -10,7 +10,7 @@
 
 /* Top bar: title, status pills, back button. No plate of its own — the pills are the only
    chrome (the old keybind row's background and hints are gone; the shortcuts still work). */
-.hub-topbar { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.hub-topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
 
 .hub-topbar .hub-title { font-weight: 600; flex: none; }
 
@@ -39,9 +39,11 @@
 }
 
 .hub-stat-v.hub-cost { color: var(--statusLineCost, var(--accent)); }
+.hub-usage.hub-usage-compact { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 
 /* Roster rows */
-.hub-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
+.hub-list { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; container-type: inline-size; container-name: hub-roster; }
 
 /* Right-sidebar deck header: the aggregate line sits on its own plate above the roster, and
    the status pills follow on a second row (the middle card keeps both inside its topbar). */
@@ -50,16 +52,97 @@
 /* Five stats read as a row of fields, not a sentence: the shared 2.5px gap is an Agent-Hub
    line-wrap gap and reads as one word here. */
 
-.hub-filter { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.hub-filter { flex: none; padding: 8px 12px; }
+
+.hub-comms-soon { padding: 24px 12px; text-align: center; color: var(--faint); font-size: var(--ui-fs-sm); }
 
 .hub-filter .al-filters.hub-tabs { margin-top: 0; flex-wrap: nowrap; gap: 4px; }
 
 .hub-filter .al-filters.hub-tabs .al-pill { flex: 1 1 0; min-width: 0; justify-content: center; gap: 4px; font-size: var(--ui-fs-sm); padding-inline: 2px; overflow: hidden; }
 
-/* Cards in a 420px column: the head breaks into two lines — name (with its controls) on the
-   first, role · model · level on the second. The shared head keeps one line because the
-   middle card is wide; only the sidebar forces the wrap, and the fitter still hides the tail
-   on its own levels. */
-.hub-list .hub-row-head { flex-wrap: wrap; row-gap: 3px; }
+/* Agent Hub page card (full-page roster): a 4-row grid — status/title × tokens, task ×
+   cost, task × req/tools, model × "age 运行了 duration". Deliberately NOT ported: the
+   selected card's left accent bar. */
+.hub-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top tokens"
+    "task cost"
+    "task pace"
+    "foot time";
+  column-gap: 14px; row-gap: 6px;
+  align-items: center;
+  width: 100%;
+  text-align: left; color: var(--text); font: inherit;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background var(--dur-snap) var(--swift), border-color var(--dur-snap) var(--swift);
+}
 
-.hub-list .hub-model { display: inline-flex; flex: 0 0 100%; gap: 4px; }
+.hub-card:hover { background: var(--hover-fill); }
+
+.hub-card.selected { background: var(--panel); border-color: var(--line); }
+
+/* Row 1 (identity, token figure): the token digit size is this row's unified size. */
+.hc-top { grid-area: top; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--ui-fs-xl); }
+
+/* Bigger than the shared 5px chip dot: at row-1's xl size 5px reads as a crumb. */
+.hc-top .ad-dot { width: 9px; height: 9px; }
+
+.hc-name { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-weight: 600; }
+
+.hc-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hc-tokens {
+  grid-area: tokens; justify-self: end;
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: var(--ui-fs-xl);
+}
+
+.hc-tokens b {
+  font-family: var(--mono, ui-monospace); font-weight: 600;
+  font-variant-numeric: tabular-nums; color: var(--text); line-height: 1;
+}
+
+.hc-tokens i { font-style: normal; color: var(--faint); }
+
+/* Rows 2-3 (task × cost, task × req/tools): the task line-clamps across both rows so its
+   second line sits beside the req/tools block; the task size is these rows' unified size. */
+.hc-task {
+  grid-area: task;
+  font-size: var(--ui-fs-sm); color: var(--dim);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.hc-cost { grid-area: cost; justify-self: end; font-family: var(--mono, ui-monospace); font-size: var(--ui-fs-sm); font-variant-numeric: tabular-nums; color: var(--faint); }
+
+.hc-pace { grid-area: pace; justify-self: end; display: inline-flex; gap: 10px; font-size: var(--ui-fs-sm); }
+
+.hc-num { display: inline-flex; align-items: baseline; gap: 4px; }
+
+.hc-num i { font-style: normal; color: var(--faint); }
+
+.hc-num b { font-family: var(--mono, ui-monospace); font-variant-numeric: tabular-nums; color: var(--dim); line-height: 1; }
+
+/* Row 4 (model × time): the model-info size is this row's unified size. */
+.hc-time { grid-area: time; justify-self: end; font-size: var(--ui-fs-sm); color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.hc-foot { grid-area: foot; display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+.hc-chip {
+  display: inline-flex; align-items: center; flex: none;
+  height: 18px; padding: 0 6px;
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-size: var(--ui-fs-xs); font-family: var(--mono, ui-monospace);
+  color: var(--faint);
+}
+
+.hc-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--ui-fs-sm); }
+
+

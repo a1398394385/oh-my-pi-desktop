@@ -18,6 +18,8 @@ export interface RightSlice {
   selectedFile: string | null;
   fileView: FileViewState | null;
   fileViewPending: string | null; // file path with a request in flight
+  // Read-only child transcript shown in the "submsg" right tab (session path in openSessions)
+  subagentView: string | null;
   // Run change review: the snapshot diff (not the git diff) of one run's change to one file
   runDiffView: { sessionId: string; entryId: string; path: string; diff: string; loading: boolean } | null;
   briefDiffPending: string | null; // inline diff path with a request in flight
@@ -67,6 +69,7 @@ export const createRightSlice: StateCreator<AppStore, [], [], RightSlice> = (set
   selectedFile: null,
   fileView: null,
   fileViewPending: null,
+  subagentView: null,
   runDiffView: null,
   briefDiffPending: null,
   // Launch starts with the right panel collapsed, so the process card starts expanded
@@ -286,6 +289,7 @@ export function restoreRightSlot(path: string | null): void {
       hubPrevTab: slot.hubPrevTab,
       hubRightWasCollapsed: slot.hubWasCollapsed,
       selectedSubagent: null,
+      subagentView: null,
       fileViewPending: null,
       briefDiffPending: null,
     });
@@ -324,6 +328,7 @@ export function restoreRightSlot(path: string | null): void {
     fileView: null,
     runDiffView: null,
     selectedSubagent: null,
+    subagentView: null,
     fileViewPending: null,
     briefDiffPending: null,
     rightTabs: tabs,

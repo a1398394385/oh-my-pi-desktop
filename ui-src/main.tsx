@@ -198,14 +198,14 @@ if (new URLSearchParams(location.search).has("preview")) {
       subagents: new Map(
         (
           [
-            ["CoreToolCutover", "确认工具外派到 Worker：收口 core 的 tool 注册面，外派八工具改走 Worker-only 通道", "completed", { total: 142_600 }, 0.0276, 187, 1_885_000, 118_000, false, 1_500_000],
-            ["McpRetirement", "启用 MCP 切流：主应用改走 Worker 的 mcp 通道，移除旧的 transport 注入点", "completed", { total: 61_040 }, 0.0118, 80, 806_000, 96_000, false, 1_200_000],
-            ["CoreFixtureTypes", "核对 core 的 fixture 类型出口，排除 CatalogTests 范围", "completed", { total: 34_330 }, 0.0067, 45, 453_000, 71_000, false, 900_000],
-            ["CoreCatalogTests", "只改 core/src/__tests__/agent-engine 的类型引用", "completed", { total: 30_520 }, 0.0059, 40, 403_000, 54_000, false, 600_000],
-            ["ConsumerCutover", "把消费端调用点迁到新 dispatch 端口", "failed", { total: 25_940 }, 0.005, 34, 342_000, 88_000, false, 420_000],
-            ["PatchQueue", "收口 acp 投影的补丁队列，逐条校验几何护栏", "running", { total: 29_835 }, 0.0058, 39, 394_000, 112_000, true, 394_000],
+            ["CoreToolCutover", "确认工具外派到 Worker：收口 core 的 tool 注册面，外派八工具改走 Worker-only 通道", "completed", { total: 142_600 }, 0.0276, 187, 1_885_000, 118_000, false, 1_500_000, "已完成：core 的 tool 注册面收口，八工具外派 Worker-only 通道（bash/find/grep/ls/read/write/edit/etower_login）及 MCP pipeline；dispatch 端口名保持不变，缺失 dispatch 的本地 execute 分支已删除。core 侧只保留注册表与调度入口，工具实现全部迁到 Worker 包；MCP pipeline 的注入点从主进程改到 Worker 初始化，主进程不再直接持有 transport。变更共触及 12 个文件，新增 Worker 侧实现 8 个，删除本地 execute 分支 3 处；etower-agent 与 server 包的现有测试全部通过，无行为回归。后续如需新增工具，只需在 Worker 注册并同步 dispatch 端口名即可。", null],
+            ["McpRetirement", "启用 MCP 切流：主应用改走 Worker 的 mcp 通道，移除旧的 transport 注入点", "completed", { total: 61_040 }, 0.0118, 80, 806_000, 96_000, false, 1_200_000, "已完成：主应用已改走 Worker 的 mcp 通道，旧的 transport 注入点全部移除，相关冒烟通过。", null],
+            ["CoreFixtureTypes", "核对 core 的 fixture 类型出口并逐文件比对引用方，确认 CatalogTests 范围外没有遗漏的 re-export，最后排除掉 agent-engine-disclosure-e2e 的 5 个夹带引用", "completed", { total: 34_330 }, 0.0067, 45, 453_000, 71_000, false, 900_000, "已完成：fixture 类型出口核对完毕，CatalogTests 范围已排除，无类型回归。", null],
+            ["CoreCatalogTests", "只改 core/src/__tests__/agent-engine 的类型引用", "completed", { total: 30_520 }, 0.0059, 40, 403_000, 54_000, false, 600_000, "已完成：agent-engine 的类型引用迁移完成，测试全绿。", "CoreFixtureTypes"],
+            ["ConsumerCutover", "把消费端调用点迁到新 dispatch 端口", "failed", { total: 25_940 }, 0.005, 34, 342_000, 88_000, false, 420_000, null, null],
+            ["PatchQueue", "收口 acp 投影的补丁队列，逐条校验几何护栏", "running", { total: 29_835 }, 0.0058, 39, 394_000, 112_000, true, 394_000, null, null],
           ] as const
-        ).map(([name, description, status, tokens, cost, toolCount, durationMs, contextTokens, streaming, agoMs]) => [
+        ).map(([name, description, status, tokens, cost, toolCount, durationMs, contextTokens, streaming, agoMs, result, parent]) => [
           name,
           {
             agent: name,
@@ -214,6 +214,8 @@ if (new URLSearchParams(location.search).has("preview")) {
             description,
             status,
             streaming,
+            result: result ?? undefined,
+            parent: parent ?? undefined,
             tools: [],
             registeredAt: Date.now() - agoMs,
             usage: {

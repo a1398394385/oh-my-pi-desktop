@@ -1,10 +1,11 @@
 // Subagent page: the deck's crew list — pane head (crew count, grouping/density, fullscreen),
 // aggregate pulse line, status pills, then the cards. A card click swaps the list for that
 // child's sheet; the sheet's close button returns here.
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import Icon from "../../../Icon";
 import { useAppStore, setBump } from "../../../store";
-import { HubRow, HubUsage, StatusTabs, useRosterRows, useRosterTick } from "../../shared/agent/subRoster";
+import { HubRow, HubUsage, StatusTabs, useRosterRows, useRosterTick, treeDepth } from "../../shared/agent/subRoster";
 import AgentSheet from "../../shared/agent/AgentSheet";
 
 export default function SubagentPage() {
@@ -13,6 +14,8 @@ export default function SubagentPage() {
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
   const density = useAppStore((st) => st.hubDensity);
   const grouping = useAppStore((st) => st.hubGrouping);
+  // Crew/comms view switch. Comms has no host channel yet: the tab renders a placeholder.
+  const [view, setView] = useState<"crew" | "comms">("crew");
   // Detail view hides the roster, whose tick would otherwise repaint the whole page every
   // second next to the detail's own clock.
   useRosterTick(selectedSubagent ? undefined : s);
@@ -34,12 +37,29 @@ export default function SubagentPage() {
   }
   return (
     <>
+      <div className="hub-pulse">
+        <HubUsage s={s} />
+      </div>
       <div className="ad-pane-head">
-        <span className="ad-pane-title">
-          {t("right.adCrew")}
-          <em>
-            {rows.length}/{s.subagents.size}
-          </em>
+        <span className="ad-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "crew"}
+            className={"ad-tab" + (view === "crew" ? " active" : "")}
+            onClick={() => setView("crew")}
+          >
+            {t("right.adCrew")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "comms"}
+            className={"ad-tab" + (view === "comms" ? " active" : "")}
+            onClick={() => setView("comms")}
+          >
+            {t("right.adComms")}
+          </button>
         </span>
         <span className="ad-seg" role="group" aria-label={t("right.adGrouping")}>
           <button
@@ -85,29 +105,33 @@ export default function SubagentPage() {
           <Icon name="externalOpen" size={14} />
         </button>
       </div>
-      <div className="hub-pulse">
-        <HubUsage s={s} />
-      </div>
-      <div className="hub-filter">
-        <StatusTabs s={s} />
-      </div>
-      <div className="hub-list" role="listbox">
-        {rows.map((row) => (
-          // Tree grouping indents children under their parent instead of re-sorting them
-          <div key={row.id} style={grouping === "tree" && row.sub.parent && row.sub.parent !== "main" ? { paddingLeft: 14 } : undefined}>
-            <HubRow
-              row={row}
-              stats={false}
-              selected={false}
-              minimal={density === "minimal"}
-              onSelect={() => setBump({ selectedSubagent: row.id })}
-              onOpen={() => setBump({ selectedSubagent: row.id })}
-              sessionId={s.sessionId}
-              t={t}
-            />
+      {view === "comms" ? (
+        <div className="hub-comms-soon">{t("right.adCommsSoon")}</div>
+      ) : (
+        <>
+          <div className="hub-filter">
+            <StatusTabs s={s} />
           </div>
-        ))}
-      </div>
+          <div className="hub-list" role="listbox">
+            {rows.map((row) => {
+              // Tree grouping indents by ancestry depth, so a subagent's subagent nests further
+              const depth = grouping === "tree" ? treeDepth(rows, row) : 0;
+              return (
+                <div key={row.id} style={depth ? { paddingLeft: depth * 14 } : undefined}>
+                  <HubRow
+                    row={row}
+                    selected={false}
+                    minimal={density === "minimal"}
+                    onSelect={() => setBump({ selectedSubagent: row.id })}
+                    onOpen={() => setBump({ selectedSubagent: row.id })}
+                    t={t}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </>
   );
 }

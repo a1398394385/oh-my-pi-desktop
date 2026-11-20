@@ -27,6 +27,7 @@ import {
 import { openNewTermTab, syncSharedRightTabs } from "./termTabs";
 import StartPage from "./StartPage";
 import SubagentPage from "./SubagentPage";
+import SubagentTranscriptPage from "./SubagentTranscriptPage";
 import HubDetailPage from "./HubDetailPage";
 import GitDiffPage from "./GitDiffPage";
 import FilePage from "./FilePage";
@@ -397,6 +398,7 @@ export default function RightPanel({ collapsed }: { collapsed?: boolean }) {
   else if (rightTab === "terminal" || isTerminalTab(rightTab)) body = <TerminalPage scope="right" tabId={terminalTabId(rightTab)} />;
   else if (rightTab === "browser") body = <BrowserPage />;
   else if (rightTab === "btw") body = <BtwPage />;
+  else if (rightTab === "submsg") body = <SubagentTranscriptPage />;
   else body = <SubagentPage />;
   return (
     // Provider scoped locally to the right panel (App.tsx untouched; the coordinator handles

@@ -128,7 +128,14 @@
   /* uniform 8px global inset for every page: hover highlights and cards must not touch the sidebar edges;
      page roots must not re-add their own side padding (that doubles the inset) */
   padding: 8px 8px 4px;
+  /* Hidden but scrollable: a visible scrollbar would appear only when a page's content
+     overflows (standard-density roster, transcripts) and squeeze the content narrower than
+     the same page without one — the bar is hidden so every page keeps the same right edge.
+     Same recipe as the tab strip (.rtabs). */
+  scrollbar-width: none;
 }
+
+#rightBody::-webkit-scrollbar { display: none; }
 
 /* Detail page header (modeled on the ZCode panel structure): back + title pinned at the top, only the content area scrolls.
    the side inset comes from #rightBody's global padding */
@@ -146,8 +153,9 @@
 
 /* Rows fill the panel: the sidebar has no separate reading column, so content must follow
    whatever width the user drags it to (a viewport-based cap froze the width and left one
-   large empty side). */
-.sub-msg-stream .msg.user .user-bubble { max-width: 82%; }
+   large empty side). The bubble may span the whole row — the meta line (time/copy) sits
+   below it, so there is no neighbor for it to crowd. */
+.sub-msg-stream .msg.user .user-bubble { max-width: 100%; }
 
 /* .msg.user's 90px top gap separates it from the previous answer; the first row of a
    transcript has nothing above it (the middle column pads its stream instead). */
@@ -159,7 +167,10 @@
 
 .rb-scroll {
   flex: 1; min-height: 0; overflow-y: auto;
+  scrollbar-width: none;
 }
+
+.rb-scroll::-webkit-scrollbar { display: none; }
 
 .placeholder { color: var(--faint); font-size: var(--ui-fs-base); padding: 12px 10px; }
 
