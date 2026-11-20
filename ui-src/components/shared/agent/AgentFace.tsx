@@ -1,27 +1,23 @@
-// Tile face: every subagent shares one violet-night body — the face itself is the species
-// (the way ZCode's face is their app icon). Individuality rides the two features that move
-// color together: the π brow and the pupils, both drawn in the agent's identity color.
+// Tile face in ZCode style: the body itself is the agent's identity color and the eyes are
+// always white — no extra features ride on top.
 //
-// The identity palette is a free hue wheel, not the brand gradient: three brand anchors
-// (pink/violet/cyan) plus six gap fillers, all bright enough to read on the night body.
+// The identity palette is a mixed board, not the raw brand gradient: the four brand stops
+// (pink/magenta/violet/cyan) are kept and the five hue gaps filled at matching brightness, so
+// nine agents stay mutually distinguishable (raw gradient samples crowd the pink→violet half).
 // Nine fixed colors picked by `avatarIndex` (the tenth agent wraps); without a number,
 // fall back to a hash of `name`. Callers pass the unique subagent id as `name` — our
 // display names repeat across runs, ids do not, so the hash spreads evenly.
 //
 // Motion engine and expression vocabulary are ported 1:1 from ZCode's workflow face
 // (see faceMotion.ts); the state sets the base expression, autonomous motion only touches
-// SVG attributes. The eye band sits 4px lower than ZCode's to make room for the brow.
+// SVG attributes.
 import { useEffect, useRef, type CSSProperties } from "react";
 import { BASE_EXPRESSION, faceState, startFaceMotion } from "./faceMotion";
 import type { StGroup } from "./subShared";
 
-/** Unified body: brand-3 violet pulled down to night lightness (L≈0.16). Dark enough that
-    every palette color — including violet itself — stays readable on it. */
-export const FACE_BODY = "#2A0C4B";
-
-/** Identity palette (hue order): red/orange/yellow/green/teal/cyan/blue/violet/pink.
-    #5CD8E9, #9B40FD, #E53CAC are the brand gradient's stops; the rest fill the hue gaps
-    at matching brightness. */
+/** Identity palette (hue order): red/orange/yellow/green/teal/cyan/violet/magenta/pink.
+    #5CD8E9, #9B40FD, #C738E2, #E53CAC are the brand gradient's stops; the rest fill the hue
+    gaps at matching brightness. */
 export const FACE_COLORS = [
   "#EA4045",
   "#F19D38",
@@ -29,8 +25,8 @@ export const FACE_COLORS = [
   "#5BC67A",
   "#54B9A6",
   "#5CD8E9",
-  "#72A3F0",
   "#9B40FD",
+  "#C738E2",
   "#E53CAC",
 ] as const;
 
@@ -51,49 +47,47 @@ export function agentColor(avatarIndex: number | undefined, name: string): strin
 
 const EXPRESSIONS = ["pill", "happy", "sleepy", "focused", "sad", "confused"] as const;
 
-// Reference eye shapes drawn directly inside the 20-box, the whole band shifted down 4px
-// for the brow; left and right share their start points so a face swap keeps the baseline.
+// Reference eye shapes drawn directly inside the 20-box; left and right share their start
+// points so a face swap keeps the baseline.
 function Eyes() {
   return (
     <g className="agent-face-eyes">
-      <g transform="translate(0 4)">
-        <g className="agent-face-bounce">
-          <g className="agent-face-lids">
-            <g data-eye-expression="dots" fill="var(--agent-face-eye)">
-              {[5, 10, 15].map((cx) => (
-                <circle key={cx} cx={cx} cy={10} r={1.5} />
-              ))}
+      <g className="agent-face-bounce">
+        <g className="agent-face-lids">
+          <g data-eye-expression="dots" fill="var(--agent-face-eye)">
+            {[5, 10, 15].map((cx) => (
+              <circle key={cx} cx={cx} cy={10} r={1.5} />
+            ))}
+          </g>
+          {EXPRESSIONS.map((expression) => (
+            <g key={expression} data-eye-expression={expression} fill="var(--agent-face-eye)">
+              {[7, 13].map((x, i) => {
+                if (expression === "pill" || expression === "confused") {
+                  const short = expression === "confused" && i === 1;
+                  return (
+                    <rect key={x} x={x} y={short ? 8 : 6} width={4} height={short ? 4 : 6} rx={2} />
+                  );
+                }
+                const paths = {
+                  happy: "M0 11 V8 A2 2 0 0 1 4 8 V11 Z",
+                  sleepy:
+                    i === 0 ? "M0 8 L4 7 V9 A2 2 0 0 1 0 9 Z" : "M0 7 L4 8 V9 A2 2 0 0 1 0 9 Z",
+                  focused:
+                    i === 0 ? "M0 6 L4 8 V10 A2 2 0 0 1 0 10 Z" : "M0 8 L4 6 V10 A2 2 0 0 1 0 10 Z",
+                  sad:
+                    i === 0 ? "M0 8 L4 6 V10 A2 2 0 0 1 0 10 Z" : "M0 6 L4 8 V10 A2 2 0 0 1 0 10 Z",
+                };
+                return <path key={x} transform={`translate(${x} 0)`} d={paths[expression]} />;
+              })}
             </g>
-            {EXPRESSIONS.map((expression) => (
-              <g key={expression} data-eye-expression={expression} fill="var(--agent-face-eye)">
-                {[7, 13].map((x, i) => {
-                  if (expression === "pill" || expression === "confused") {
-                    const short = expression === "confused" && i === 1;
-                    return (
-                      <rect key={x} x={x} y={short ? 8 : 6} width={4} height={short ? 4 : 6} rx={2} />
-                    );
-                  }
-                  const paths = {
-                    happy: "M0 11 V8 A2 2 0 0 1 4 8 V11 Z",
-                    sleepy:
-                      i === 0 ? "M0 8 L4 7 V9 A2 2 0 0 1 0 9 Z" : "M0 7 L4 8 V9 A2 2 0 0 1 0 9 Z",
-                    focused:
-                      i === 0 ? "M0 6 L4 8 V10 A2 2 0 0 1 0 10 Z" : "M0 8 L4 6 V10 A2 2 0 0 1 0 10 Z",
-                    sad:
-                      i === 0 ? "M0 8 L4 6 V10 A2 2 0 0 1 0 10 Z" : "M0 6 L4 8 V10 A2 2 0 0 1 0 10 Z",
-                  };
-                  return <path key={x} transform={`translate(${x} 0)`} d={paths[expression]} />;
-                })}
-              </g>
-            ))}
-          </g>
-          {/* Closed eyes are drawn as separate capsules: a vertical scale would squash the
-              rounded ends into hairlines. */}
-          <g className="agent-face-closed" fill="var(--agent-face-eye)">
-            {[7, 13].map((x) => (
-              <rect key={x} x={x} y={8} width={4} height={2} rx={1} />
-            ))}
-          </g>
+          ))}
+        </g>
+        {/* Closed eyes are drawn as separate capsules: a vertical scale would squash the
+            rounded ends into hairlines. */}
+        <g className="agent-face-closed" fill="var(--agent-face-eye)">
+          {[7, 13].map((x) => (
+            <rect key={x} x={x} y={8} width={4} height={2} rx={1} />
+          ))}
         </g>
       </g>
     </g>
@@ -120,11 +114,12 @@ export function AgentFace({
   useEffect(() => {
     if (ref.current) return startFaceMotion(ref.current, state);
   }, [state]);
-  // The identity color drives brow + pupils (var --agent-face-eye); the body is the
-  // constant violet night, pinned inline so the face does not depend on CSS defaults.
+  // The identity color drives the body (var --agent-face-body); the eyes are always white.
+  // Both are pinned inline so the face does not depend on CSS defaults.
+  const identity = color ?? agentColor(avatarIndex, name);
   const style = {
-    "--agent-face-body": FACE_BODY,
-    "--agent-face-eye": color ?? agentColor(avatarIndex, name),
+    "--agent-face-body": identity,
+    "--agent-face-eye": "#FFFFFF",
   } as CSSProperties;
   return (
     <svg
@@ -137,16 +132,7 @@ export function AgentFace({
       style={style}
       viewBox="0 0 20 20"
     >
-      <rect className="agent-face-body" fill="var(--agent-face-body)" height={20} rx={5} width={20} />
-      {/* The π brow: a static feature (never glances, never blinks), the brand mark of the
-          species face; shares the individual identity color with the pupils. */}
-      <path
-        d="M4.6 4.6 H15.4 M7.2 4.6 V8.6 M12.8 4.6 V7.9 Q12.8 8.9 14 8.7"
-        stroke="var(--agent-face-eye)"
-        strokeWidth={1.7}
-        strokeLinecap="round"
-        fill="none"
-      />
+      <rect className="agent-face-body" fill="var(--agent-face-body)" height={20} rx={7} width={20} />
       <Eyes />
     </svg>
   );
