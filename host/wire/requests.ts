@@ -14,7 +14,8 @@ export type HostRequestMethod =
   "automations_delete" | "automations_list" | "automations_preview" | "automations_run_now" | "automations_toggle" | "automations_update" |
   "bash_abort" | "bash_complete" | "bash_exec" | "branch_session" | "browser_input" | "browser_mirror_select" |
   "browser_mirror_subscribe" | "browser_mirror_unsubscribe" | "browser_pick" | "btw_ask" | "btw_cancel" | "btw_history" | "btw_promote" |
-  "cancel_bg_job" | "collab_join" | "collab_leave" | "collab_start" | "collab_state" | "compact_session" | "complete_text" | "control_subagent" | "copy_file" | "create_session" | "cycle_model" |
+  "cancel_bg_job" | "collab_join" | "collab_leave" | "collab_start" | "collab_state" | "compact_session" | "complete_text" | "context_view_entry" |
+  "context_view_list" | "context_view_open" | "context_view_release" | "control_subagent" | "copy_file" | "create_session" | "cycle_model" |
   "delete_mcp_server" | "delete_session" | "drop_queued" | "edit_resend" | "fork_session" | "get_all_providers" | "get_bg_jobs" |
   "get_capabilities" | "get_capability_keys" | "get_context_detail" | "get_entry_tree" | "get_file_diff" | "get_git_branches" |
   "get_git_diff" | "git_commit_detail" | "git_commit_file_diff" | "git_file_versions" | "git_graph" | "get_keepalive_status" | "get_limits" | "get_messages" | "get_model_roles" | "get_models_catalog" |

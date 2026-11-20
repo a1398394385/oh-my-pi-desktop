@@ -12,6 +12,7 @@ import { loginHandlers } from "./login";
 import { assetsHandlers } from "./assets";
 import { terminalHandlers } from "./terminal";
 import { limitsHandlers } from "./limits";
+import { contextViewHandlers } from "./context-view";
 import { wizardHandlers } from "./provider-wizard";
 import { capabilitiesHandlers } from "./capabilities";
 import { browserHandlers } from "./browser";
@@ -40,6 +41,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   ...assetsHandlers,
   ...terminalHandlers,
   ...limitsHandlers,
+  ...contextViewHandlers,
   ...wizardHandlers,
   ...capabilitiesHandlers,
   ...browserHandlers,

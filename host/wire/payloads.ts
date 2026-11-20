@@ -687,6 +687,40 @@ export interface ContextDetailStats {
   cost: number;
 }
 
+// ---------- Context viewer (studio context-view contract; host/rpc/context-view.ts) ----------
+
+export type ContextViewCategoryId =
+  | "system-prompt" | "instruction-files" | "skills" | "built-in-tools" | "custom-tools"
+  | "user-messages" | "assistant-messages" | "assistant-thinking" | "tool-calls" | "tool-output";
+
+/** UTF-16 offsets in a returned page of text; markers link content shown in another category. */
+export interface ContextViewSourceMarker { start: number; end: number; category: ContextViewCategoryId; entryId?: string }
+
+/** Shared reasoning weight of one assistant message with several thinking blocks; member entries carry zero. */
+export interface ContextViewThinkingGroup { id: string; label: string; tokens: number; interrupted?: boolean }
+
+export interface ContextViewEntrySummary {
+  id: string; label: string; tokens: number; bytes: number;
+  info?: string; path?: string; interrupted?: boolean;
+  timestamp?: number; callId?: string; childKey?: string;
+  thinkingGroup?: ContextViewThinkingGroup; preview?: string;
+}
+
+export interface ContextViewCategorySummary {
+  id: ContextViewCategoryId; label: string; tokens: number; entries: number;
+  key?: string; overviewLabel?: string; openable?: false; children?: ContextViewCategorySummary[];
+}
+
+export interface ContextViewIndex {
+  sessionId: string; snapshotId: string; capturedAt: string;
+  contextWindow: number; usedTokens: number; freeTokens: number; bufferTokens: number;
+  thresholdTokens: number | null; savedTokens: number; truncated: boolean;
+  /** ACP tier lines in tokens (absolute config, or percent x contextWindow) when ACP owns compaction for this session. */
+  acpTiers?: { l1: number; l2: number; l3: number } | null;
+  categories: ContextViewCategorySummary[];
+  notices?: string[];
+}
+
 /** agent_assets frame payload (host/assets.ts listAgentAssets; section elements keep their on-disk scan shape) */
 // TODO(narrowing pass): per-field shape of the skills section is decided by the internal scan in assets.ts; unknown for now (McpPage/SkillsPage narrow it on actual reads)
 /**

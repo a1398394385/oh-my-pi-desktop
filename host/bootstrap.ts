@@ -104,6 +104,10 @@ export const { listAllSessions, FileSessionStorage, loadEntriesFromFile } = awai
 export const { resolveSessionModelSelector } = await import("@oh-my-pi/pi-coding-agent/config/model-resolver");
 export const { getRestorableSessionModels } = await import("@oh-my-pi/pi-coding-agent/session/session-context");
 export const { Tokenizer } = await import("@oh-my-pi/pi-agent-core");
+// Context viewer snapshot (host/rpc/context-view.ts): the base's own /context
+// projection — prompt-source splitting, tool schemas, thinking groups and token
+// estimates — so the desktop viewer agrees with the TUI panel by construction.
+export const { buildSessionContextView } = await import("@oh-my-pi/pi-coding-agent/session/context-view");
 // Session file root (same source as listAllSessions' default sessionsRoot; used by the sidebar full-text search prefilter)
 export const { getSessionsDir } = await import("@oh-my-pi/pi-utils/dirs");
 // Steer queue operations (identify/retrieve unconsumed steering messages), used by the host's peek/edit/drop_queued RPCs

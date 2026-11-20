@@ -647,6 +647,30 @@
       "risk": "read"
     },
     {
+      "id": "context_view_open",
+      "kind": "usage",
+      "risk": "read",
+      "note": "上下文查看器：采样会话上下文的十类投影并冻结为内存快照（token 为估算值）"
+    },
+    {
+      "id": "context_view_list",
+      "kind": "usage",
+      "risk": "read",
+      "note": "上下文查看器：按分类/子分组/搜索分页列出快照条目摘要"
+    },
+    {
+      "id": "context_view_entry",
+      "kind": "usage",
+      "risk": "read",
+      "note": "上下文查看器：按页读取单条目正文，sourceMarkers 指回被拆分显示的来源"
+    },
+    {
+      "id": "context_view_release",
+      "kind": "usage",
+      "risk": "read",
+      "note": "上下文查看器：释放快照，会话移出内存池时也会自动清理"
+    },
+    {
       "id": "get_capabilities",
       "kind": "session",
       "risk": "read",

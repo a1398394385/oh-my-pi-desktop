@@ -16,7 +16,8 @@ import type { CapabilityKeysFrame, SearchAvailabilityFrame } from "./payloads";
 import type {
   ApprovalModeFrame, ApprovalRequestFrame, ApprovalResolvedFrame, AskFormWire, BashChunkFrame, BashCompleteResultFrame,
   BashDoneFrame, BashStartFrame, CommandOutputFrame, CommandPhaseFrame, CommandResultFrame, CommandsFrame,
-  AdvisorModeFrame, ComputerModeFrame, ContextDetailFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
+  AdvisorModeFrame, ComputerModeFrame, ContextDetailFrame, ContextViewEntryBodyFrame, ContextViewErrorFrame, ContextViewIndexFrame,
+  ContextViewPageFrame, ContextViewReleasedFrame, DirListFrame, EntryTreeFrame, ErrorFrame, FileContentFrame,
   FileCopiedFrame, FileDiffFrame, FileMatchesFrame, FileVersionsFrame, GitBranchSwitchedFrame, GitBranchesFrame, GitCommitDetailFrame, CommitFileDiffFrame, GitCommittedFrame, GitDiscardedFrame,
   GitGraphFrame,
   GitPushedFrame, GitStagedFrame, GitStatusFrame, GitUnstagedFrame, GoalFrame, ImageContentFrame,
@@ -56,7 +57,7 @@ export * from "./frames-session";
 export * from "./frames-models";
 export * from "./frames-live";
 
-/** Discriminated union of all host → UI frames (89 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
+/** Discriminated union of all host → UI frames (93 kinds; consumed branch by branch by the store's giant switch, the default path is the fallback for unknown frames) */
 export type HostFrame =
   | ReadyFrame
   | ErrorFrame
@@ -101,6 +102,11 @@ export type HostFrame =
   | BashDoneFrame
   | BashCompleteResultFrame
   | ContextDetailFrame
+  | ContextViewIndexFrame
+  | ContextViewPageFrame
+  | ContextViewEntryBodyFrame
+  | ContextViewReleasedFrame
+  | ContextViewErrorFrame
   | LimitsResultFrame
   | ProviderLimitsResultFrame
   | ProviderAccountsFrame

@@ -2,7 +2,8 @@
 // Split out of the former single ui-src/types/frames.ts mirror; shared payload
 // shapes live in payloads.ts, the HostFrame union in index.ts.
 import type {
-  ApprovalMode, ContextBreakdown, ContextDetailStats, DirEntry, DiskProject, EntryTreeNode,
+  ApprovalMode, ContextBreakdown, ContextDetailStats, ContextViewCategoryId, ContextViewEntrySummary,
+  ContextViewIndex, ContextViewSourceMarker, DirEntry, DiskProject, EntryTreeNode,
   FileMatch, GoalState, GitOperationState, GitStatusFile, LimitBalance, LimitWindow, LimitsAccount, ModelEntry, ModelRoleEntry,
   SessionBranch, SettingsPayload, SlashCommand, TodoPhase, TranscriptItem,
 } from "./payloads";
@@ -434,6 +435,61 @@ export interface ContextDetailFrame {
   sessionId: string;
   breakdown: ContextBreakdown | null;
   stats: ContextDetailStats;
+}
+
+/** Context viewer snapshot index (host/rpc/context-view.ts context_view_open; flat index + reply correlation). */
+export interface ContextViewIndexFrame extends ContextViewIndex {
+  type: "context_view_index";
+  reqId: number;
+  ok: true;
+}
+
+/** Context viewer page (context_view_list): entries of one category or child group. */
+export interface ContextViewPageFrame {
+  type: "context_view_page";
+  reqId: number;
+  ok: true;
+  sessionId: string;
+  snapshotId: string;
+  category: ContextViewCategoryId;
+  entries: ContextViewEntrySummary[];
+  total: number;
+  nextOffset?: number;
+}
+
+/** Context viewer entry body page (context_view_entry). */
+export interface ContextViewEntryBodyFrame {
+  type: "context_view_entry_body";
+  reqId: number;
+  ok: true;
+  sessionId: string;
+  snapshotId: string;
+  entryId: string;
+  text: string;
+  totalChars: number;
+  nextOffset?: number;
+  truncated: boolean;
+  sourceMarkers?: ContextViewSourceMarker[];
+}
+
+/** Context viewer release reply (context_view_release). */
+export interface ContextViewReleasedFrame {
+  type: "context_view_released";
+  reqId: number;
+  ok: true;
+  sessionId: string;
+  snapshotId: string;
+  released: boolean;
+}
+
+/** Failure reply shared by the four viewer RPCs; `type` names the reply the caller awaits. */
+export interface ContextViewErrorFrame {
+  type: "context_view_index" | "context_view_page" | "context_view_entry_body" | "context_view_released";
+  reqId: number;
+  ok: false;
+  error: string;
+  sessionId?: string;
+  snapshotId?: string;
 }
 
 /** Session quota reply (host/host.ts get_limits) */

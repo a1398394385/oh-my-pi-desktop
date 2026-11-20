@@ -7,6 +7,9 @@ export const hostFlowsZh = {
   // overrides the prompt template's English-only `i` style rule.
   intentLanguage:
     "工具参数 `i`（意图说明）一律用中文写：2–6 个词，动词开头，例如「读取会话文件」。system prompt 里 “capitalized 2–6-word present-participle intent” 这条英文风格要求不适用于 `i`。",
+  contextView: {
+    tokenEstimate: "Token 为按会话分词器估算的数值，不是供应商上报的实际用量。",
+  },
   login: {
     starting: "正在启动登录…",
     browserOpened: "已在浏览器打开登录页面，请完成授权…",

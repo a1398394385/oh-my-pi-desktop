@@ -39,6 +39,13 @@ export const hostErrorsZh = {
     emptyQuestion: "侧边聊天问题不能为空",
     cancelledEarly: "侧边聊天问题在开始前已被取消",
   },
+  contextView: {
+    snapshotExpired: "上下文快照已过期，请重新打开查看器",
+    unknownCategory: "未知的上下文分类",
+    unknownGroup: "未知的上下文分组",
+    entryUnavailable: "该上下文条目不可用",
+    invalidPage: "无效的上下文分页",
+  },
   session: {
     notFound: "会话不存在: {{sessionId}}",
     invalidTitle: "标题无效（清洗后为空或会话已释放）",

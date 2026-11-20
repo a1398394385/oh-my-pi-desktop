@@ -38,6 +38,7 @@ import { releaseMcpForSession } from "../mcp-mount.ts";
 import { clearSessionComputerChoice } from "../computer-mode.ts";
 import { visibleQueued } from "../queue.ts";
 import { hostI18n } from "../i18n/host.ts";
+import { clearContextViewSnapshots } from "./context-view.ts";
 import type { RpcHandler } from "./types";
 import { safeStderr } from "../stderr.ts";
 
@@ -305,6 +306,7 @@ async function evictPoolEntry(key: string, e: PoolEntry): Promise<void> {
   releaseMcpForSession(key, e);
   e.unsubscribe();
   sessions.delete(key);
+  clearContextViewSnapshots(key);
   try {
     await e.session.dispose();
   } catch (err) {
@@ -333,6 +335,7 @@ async function evictSubagentEntries(sessionPath: string): Promise<void> {
       safeStderr(`[host] subagent eviction unsubscribe failed: ${err}\n`);
     }
     sessions.delete(key);
+    clearContextViewSnapshots(key);
     broadcastSessionUnloaded([e.path, ...(e.previousPaths ?? [])]);
     try {
       await e.session.dispose();
@@ -435,6 +438,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       releaseMcpForSession(key, e);
       e.unsubscribe();
       sessions.delete(key);
+      clearContextViewSnapshots(key);
       // Full teardown, not just unsubscribe: a surviving session keeps its
       // cache-warmer/keepalive (which persists usage rows while idle) and any
       // straggler writers alive — the same false "external write" trigger this
@@ -469,6 +473,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
       releaseMcpForSession(key, e);
       e.unsubscribe();
       sessions.delete(key);
+      clearContextViewSnapshots(key);
       // Every channel drops its slot, not just the requester: this loop used to
       // leave other channels holding a pool UUID that no longer resolves.
       broadcastSessionUnloaded([e.path, ...(e.previousPaths ?? [])]);
@@ -539,6 +544,7 @@ export const sessionHandlers: Record<string, RpcHandler> = {
         safeStderr(`[host] delete_session unsubscribe failed: ${err}\n`);
       }
       sessions.delete(key);
+      clearContextViewSnapshots(key);
       // Same slot invalidation as session_unload: a channel that never ran this
       // RPC must drop the slot too, or its next session-scoped RPC answers
       // "session not found" with a pool UUID nothing resolves.

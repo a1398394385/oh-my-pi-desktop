@@ -394,6 +394,16 @@ const ALLOWED_EDGES = new Set([
   "rpc/index.ts→rpc/session.ts", "rpc/index.ts→rpc/prompt.ts", "rpc/index.ts→rpc/files.ts",
   "rpc/index.ts→rpc/models.ts", "rpc/index.ts→rpc/settings.ts", "rpc/index.ts→rpc/login.ts",
   "rpc/index.ts→rpc/assets.ts", "rpc/index.ts→rpc/terminal.ts", "rpc/index.ts→rpc/limits.ts",
+  "rpc/index.ts→rpc/context-view.ts",
+  // Context viewer (studio context-view port): snapshots the base's /context
+  // projection; session.ts clears a session's snapshots on every pool teardown
+  // path. Wire payloads are type-only; stderr keeps capture failures visible.
+  "rpc/context-view.ts→rpc/types.ts", "rpc/context-view.ts→bootstrap.ts", "rpc/context-view.ts→state.ts",
+  "rpc/context-view.ts→i18n/host.ts", "rpc/context-view.ts→stderr.ts", "rpc/context-view.ts→wire/payloads.ts",
+  // ACP sessions publish their tier ladder (l1/l2/l3) with the snapshot: the same
+  // config→params conversion the runtime's resolveParams runs (absolute or percent).
+  "rpc/context-view.ts→acp-plan.ts", "rpc/context-view.ts→profile.ts",
+  "rpc/session.ts→rpc/context-view.ts",
   "rpc/index.ts→rpc/browser.ts",
   "rpc/index.ts→rpc/bash-complete.ts",
   // Agent browser live mirror (right-panel live view of the built-in browser):

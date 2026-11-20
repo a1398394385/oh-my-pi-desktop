@@ -35,6 +35,13 @@ export const hostErrorsEn = {
     emptyQuestion: "Side-chat question must not be empty",
     cancelledEarly: "The side-chat question was cancelled before it started",
   },
+  contextView: {
+    snapshotExpired: "Context snapshot expired; reopen the viewer",
+    unknownCategory: "Unknown context category",
+    unknownGroup: "Unknown context group",
+    entryUnavailable: "Context entry is unavailable",
+    invalidPage: "Invalid context page",
+  },
   session: {
     notFound: "Session not found: {{sessionId}}",
     invalidTitle: "Invalid title (empty after sanitizing, or session already released)",

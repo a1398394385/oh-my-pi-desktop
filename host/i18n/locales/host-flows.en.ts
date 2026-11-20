@@ -4,6 +4,9 @@ export const hostFlowsEn = {
   // Model-facing guidance (appended to the system prompt), not UI copy.
   intentLanguage:
     'The `i` tool argument (intent) is written in English: capitalized, 2–6 words, present participle (e.g. "Reading model role settings").',
+  contextView: {
+    tokenEstimate: "Token counts are estimates from the session tokenizer, not provider-reported usage.",
+  },
   login: {
     starting: "Starting sign-in…",
     browserOpened: "Sign-in page opened in your browser; complete the authorization there…",
