@@ -301,23 +301,29 @@ export default function AskFormCard({ item }: { item: PendingApproval }) {
           <div className="approval-list">
             {enabled.map((option) => {
               const on = isOn(option.value);
+              const commitPick = () => {
+                pickChoice(field, option.value);
+                advanceOnPick(field, option.value);
+              };
               return (
                 <label
                   key={option.value}
                   className={"approval-opt ask-opt" + (on ? " selected" : "") + (answered ? " dim" : "")}
                 >
                   {/* The row is a <label>: the browser forwards a click to the control,
-                      and arrow keys/Space reach it natively. One change handler drives
-                      the pick — no second pointer path to toggle twice. */}
+                      and arrow keys/Space reach it natively. A fresh pick rides
+                      `change`; a click on the already-checked radio fires no change,
+                      so the click path takes that case — the two never overlap, and a
+                      multi-select click always carries its own change (no double toggle). */}
                   <input
                     type={field.multi ? "checkbox" : "radio"}
                     name={`${item.requestId}:${field.name}`}
                     value={option.value}
                     checked={on}
                     disabled={answered}
-                    onChange={() => {
-                      pickChoice(field, option.value);
-                      advanceOnPick(field, option.value);
+                    onChange={commitPick}
+                    onClick={() => {
+                      if (on && !field.multi) commitPick();
                     }}
                     aria-label={plain(option.label)}
                   />

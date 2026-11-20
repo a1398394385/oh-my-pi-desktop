@@ -245,6 +245,14 @@ ok(boxes3[0]?.checked === true && boxes3[1]?.checked === true, "checkbox group k
 type(document.querySelector<HTMLInputElement>(".ask-q input[type='number']")!, "8081");
 await sleep(50);
 
+// ---- Clicking the already-checked radio still commits the page: the browser
+// fires no change event for it, so the click path has to carry that case.
+document.querySelectorAll<HTMLElement>(".ask-opt")[1]?.click(); // Env B is already picked
+await sleep(60);
+ok(document.querySelector(".ask-page")?.textContent === "2/2", "clicking the checked option turns the page");
+document.querySelectorAll<HTMLElement>(".ask-page-btn")[0]?.click();
+await sleep(50);
+
 document.querySelector<HTMLButtonElement>(".approval-confirm")?.click();
 await sleep(80);
 ok(sent.length === 1, "one approval_response leaves the card");
