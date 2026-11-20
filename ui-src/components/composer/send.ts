@@ -92,7 +92,7 @@ export function sendComposerPrompt(input: { raw: string; files: PromptAttachment
   const st = useAppStore.getState();
   const text = input.raw.trim();
   const ws = st.ws;
-  if ((!text && input.files.length === 0) || !ws || ws.readyState !== 1) return false;
+  if (!ws || ws.readyState !== 1) return false;
   const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
 
   // Subagent sessions do not support slash or terminal commands
@@ -125,6 +125,8 @@ export function sendComposerPrompt(input: { raw: string; files: PromptAttachment
   // matching), so every display surface strips the block (lib/conversation-quote).
   const notes = text.startsWith("/") ? [] : takeAnnotations();
   const prompt = notes.length > 0 ? buildQuotePrefix(notes) + text : text;
+  // Notes are prompt content: a comment-only send is valid, an empty one is not.
+  if (!prompt && input.files.length === 0) return false;
 
   // Creating-new state: store the draft in pendingNewPrompt; the store sends it
   // after the session_created receipt

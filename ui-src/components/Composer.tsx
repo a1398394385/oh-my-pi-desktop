@@ -393,7 +393,10 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
     return () => el.removeEventListener("keydown", onKey);
   }, [editingEntry]);
 
-  const hasDraft = text.trim().length > 0 || pendingFiles.length > 0;
+  // Pending notes count as draft content: a comment-only send is allowed, so the
+  // button state, the stop/send split and the Esc clear hint all treat chips as content.
+  const noteCount = useAppStore((st) => st.annotations[st.activePath ?? ""]?.length ?? 0);
+  const hasDraft = text.trim().length > 0 || pendingFiles.length > 0 || noteCount > 0;
   // Running local bash row (!-prefixed command): the stop form covers it too --
   // clicking stop sends bash_abort instead of abort_session
   // Any in-flight local bash row (scalar selector: the boolean flips only on bash start/done,
@@ -1334,7 +1337,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
                       : t("composer.stopGeneration")
                     : streaming
                       ? t("composer.sendQueued")
-                      : voiceInput && text.trim().length === 0
+                      : voiceInput && !hasDraft
                         ? t("composer.voiceHoldTitle")
                         : t("composer.send")
             }
@@ -1370,7 +1373,7 @@ export default function Composer({ inWelcome, blocking = false }: ComposerProps)
             }}
           >
             <Icon
-              name={voiceStt || (voiceInput && !canAbort && text.trim().length === 0 && sendHover) ? "mic" : canAbort ? "stopSolid" : "arrowRight"}
+              name={voiceStt || (voiceInput && !canAbort && !hasDraft && sendHover) ? "mic" : canAbort ? "stopSolid" : "arrowRight"}
               size={16}
             />
           </button>

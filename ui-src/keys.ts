@@ -33,6 +33,7 @@ import { computeShortcutProjects, computeSidebarSessionShortcuts } from "./compo
 import { pushInputHistory } from "./components/composer/lexical/draft";
 import { cycleTermTab, termGroupKey } from "./components/main/right/termTabs";
 import { patchActiveItem } from "./components/chat/parts";
+import { clearAnnotations } from "./store/annotations";
 
 // ---------- Actions ----------
 
@@ -139,6 +140,7 @@ function handleEsc(e?: KeyboardEvent): boolean | undefined {
       pushInputHistory(st.activePath || "welcome");
     }
     st.setComposerValue("", []);
+    clearAnnotations();
     return true;
   }
 
