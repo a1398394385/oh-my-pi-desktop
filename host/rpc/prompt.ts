@@ -419,7 +419,11 @@ export function runSkillInvocation(
           details: built.details,
           attribution: "user",
         },
-        { streamingBehavior: "steer" },
+        // queueChipText: without it the base's chip text falls back to `content`
+        // — the expanded skill body — so the queued frame and steer_consumed
+        // carry the prompt instead of what the user typed, and the UI grows a
+        // second bubble while the real one never leaves its pending state.
+        { streamingBehavior: "steer", queueChipText: parsed.prompt },
       ),
     )
     .then(() => {
