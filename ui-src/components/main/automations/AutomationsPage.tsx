@@ -305,11 +305,15 @@ export default function AutomationsPage() {
                 </div>
                 <div className="al-card-ctl">
                   <CardMenu a={a} onAction={onMenuAction} />
-                  <div className={"tg" + (a.enabled ? " on" : "")}
-                    title={a.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
-                    onClick={(e) => onToggle(a, e)}>
-                    <i />
-                  </div>
+                  {/* Completed tasks are filtered out of the tick entirely, so their switch would
+                      only flip `enabled` without ever waking the task; edit the schedule instead. */}
+                  {status !== "completed" && (
+                    <div className={"tg" + (a.enabled ? " on" : "")}
+                      title={a.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
+                      onClick={(e) => onToggle(a, e)}>
+                      <i />
+                    </div>
+                  )}
                 </div>
               </div>
             );

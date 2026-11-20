@@ -2,13 +2,18 @@
    output and the fork/copy acts. Surfaces and radii mirror .adv-card; every color is a token
    so both themes follow. Column width is inherited from .turn-flow (no cap here). */
 
-.rchg {
+/* Shared chrome of the two cards that close a run: the file-change overview card
+   (.rchg) and the automation card pulled into the chat column (.al-card.chg-auto).
+   One rule for both, so their surface can never drift apart. */
+.rchg,
+.al-card.chg-auto {
   margin: 16px 0;
   background: var(--inset);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  overflow: hidden;
 }
+
+.rchg { overflow: hidden; }
 
 .rchg-head {
   display: flex;
@@ -121,9 +126,14 @@
 }
 
 /* Automation this turn created (AutomationCard.tsx): the automations list card pulled into the
-   chat column as a long bar above the change card. Only the two things the chat flow changes are
-   overridden — the list card's min height (it reserves room for a prompt line the chat copy
-   omits) and the head's right gutter (it reserves room for a ⋯/toggle column that is not there).
-   Both selectors out-specify automations-list.css regardless of import order. */
-.al-card.chg-auto { margin: 16px 0; min-height: 0; }
-.al-card.chg-auto .al-card-head { padding-right: 0; }
+   chat column as a long bar above the change card. The surface, border and radius come from the
+   shared rule at the top of this file, so the two cards that close a run are pixel-identical.
+   What stays list-page-specific is the list card's own chrome: its minimum height (it reserves
+   room for a prompt line the chat copy omits) and its inset ring, which would double the
+   border the shared rule already draws. The head's right gutter reserves room for the enable
+   toggle that floats over the top-right corner.
+   These selectors out-specify automations-list.css regardless of import order. */
+.al-card.chg-auto { min-height: 0; box-shadow: none; }
+.al-card.chg-auto:hover,
+.al-card.chg-auto:focus-visible { box-shadow: none; }
+.al-card.chg-auto .al-card-head { padding-right: 48px; }

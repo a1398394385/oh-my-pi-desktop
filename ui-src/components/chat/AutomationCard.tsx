@@ -19,6 +19,13 @@ export default function AutomationCard({ id, title }: { id: string; title: strin
   }, [a]);
 
   const kind = a ? automationStatusKind(a) : null;
+  // Optimistic enable flip; the host's fresh automations_list reconciles any divergence.
+  function toggleEnabled() {
+    if (!a) return;
+    const next = !a.enabled;
+    useAppStore.setState((s) => ({ automations: s.automations.map((x) => (x.id === a.id ? { ...x, enabled: next } : x)) }));
+    send({ type: "automations_toggle", id: a.id, enabled: next });
+  }
   // Same badge composition as the list card, except the next run reads as an absolute time:
   // the chat copy has no relative-time ticker.
   const schedule = a ? describeAutomation(a, t) : "";
@@ -52,6 +59,16 @@ export default function AutomationCard({ id, title }: { id: string; title: strin
             </span>
             {a.deliverTo && <span className="al-delivery">{t("autoList.deliveryBadge")}</span>}
             <span className="al-runcount">{t("autoList.runCount", { n: a.runCount })}</span>
+          </div>
+        )}
+      </div>
+      <div className="al-card-ctl">
+        {/* Same rule as the list card: a completed task never reaches the tick, so its switch is dead. */}
+        {kind !== "completed" && (
+          <div className={"tg" + (a?.enabled ? " on" : "") + (a ? "" : " disabled")}
+            title={a?.enabled ? t("settingsPage.shared.enabledTip") : t("settingsPage.shared.disabledTip")}
+            onClick={(e) => { e.stopPropagation(); toggleEnabled(); }}>
+            <i />
           </div>
         )}
       </div>
