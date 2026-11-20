@@ -105,30 +105,28 @@ body:has(#sidebar.collapsed) #left-resizer {
 .nav-item:hover { background: var(--tint-nav-hover-420); color: var(--text); }
 :is([data-theme="light"], [data-theme-mode="light"]) .nav-item:hover { background: var(--tint-black-60); }
 .nav-item svg { color: var(--text); flex: none; display: block; }
-/* Rounded-rect segmented card: a recessed surface carrying three equal slots,
-   the active one filled with an inset chip. */
+/* Rounded-rect segmented card: a borderless recessed track carrying equal slots, the active
+   one filled with a raised chip (--seg-track/--seg-thumb tokens; the sidebar switch and the
+   hub's overview/command tabs share this control). */
 .seg {
   position: relative;
   display: flex; flex: 1;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
+  background: var(--seg-track);
   border-radius: var(--r-lg); padding: 3px;
 }
 /* CDS segmented-control magnet: a pure-geometry thumb (::before) snaps between the slots —
-   Sidebar.tsx drives --seg-i (active slot index) / --seg-n (slot count) as inline vars.
-   The containing block is the padding box, so the content area is 100% - 6px
+   Sidebar.tsx / AgentHubPage drive --seg-i (active slot index) / --seg-n (slot count) as
+   inline vars. The containing block is the padding box, so the content area is 100% - 6px
    and each slot starts 3px from the padding-box origin. */
 .seg::before {
   content: ""; position: absolute; top: 3px; bottom: 3px;
   left: calc(3px + var(--seg-i, 0) * ((100% - 6px) / var(--seg-n, 1)));
   width: calc((100% - 6px) / var(--seg-n, 1));
-  /* --inset reads as a recessed chip on the --panel-2 surface in both themes
-     (dark: #2B2B2B on #353738; light: #ffffff on #e8e8ec). */
-  border-radius: var(--r-md); background: var(--inset); --hover-fill: var(--menu-hl); pointer-events: none;
+  border-radius: var(--r-md); background: var(--seg-thumb); --hover-fill: var(--menu-hl); pointer-events: none;
   transition: left var(--dur-snap) var(--spring), width var(--dur-snap) var(--spring);
 }
 .seg button {
-  border: 0; background: transparent; color: var(--text);
+  border: 0; background: transparent; color: var(--faint);
   font: inherit; font-size: var(--ui-fs-base);
   padding: 4px 12px; border-radius: var(--r-sm); cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 6px;

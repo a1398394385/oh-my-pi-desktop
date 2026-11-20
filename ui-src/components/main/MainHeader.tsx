@@ -36,15 +36,22 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
   // Header advisor toggle state (advisor_mode frame; same per-session seam as the composer's computer icon)
   const advisorMode = useAppStore((s) => (s.activePath ? s.openSessions.get(s.activePath)?.advisorMode ?? false : false));
   const isSubagent = Boolean(session?.isSubagent);
+  const ctxView = useAppStore((s) => s.contextViewer);
+  const hubOpen = useAppStore((s) => s.hubOpen);
+  const hubGrouping = useAppStore((s) => s.hubGrouping);
   // The no-session fallback is gone: without a session the #chatTitle span is not rendered
   // at all (MessagePage's empty state owns that copy), so the branch was unreachable.
   const title = gitManage
     ? t("gitPage.title")
-    : isCreatingNew
-      ? t("misc.newTask")
-      : session
-        ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
-        : "";
+    : hubOpen
+      ? t("right.hubTitle")
+      : ctxView
+        ? t("contextViewer.title")
+        : isCreatingNew
+          ? t("misc.newTask")
+          : session
+            ? session.title || (diskProjects.flatMap((p) => p.sessions).find((x) => x.path === activePath)?.title) || pathBase(session.cwd)
+            : "";
   const cwd = session?.cwd;
   // Merged repository row (worktree merge mode): the project chip shows the repository name
   // and a worktree chip identifies which checkout the session runs in.
@@ -135,9 +142,29 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
           {t("chat.backToParentSession")}
         </button>
       ) : null}
+      {/* Agent Hub middle card reuses the subagent detail's back button slot: one headerbar
+          entry point for leaving the page (the hub page itself no longer carries its own) */}
+      {hubOpen ? (
+        <button
+          type="button"
+          className="subagent-return-btn mr-2"
+          onClick={() => useAppStore.getState().closeHub()}
+        >
+          {t("chat.backToParentSession")}
+        </button>
+      ) : null}
+      {ctxView ? (
+        <button
+          type="button"
+          className="subagent-return-btn mr-2"
+          onClick={() => useAppStore.setState({ contextViewer: null })}
+        >
+          {t("contextViewer.backToSession")}
+        </button>
+      ) : null}
       {renaming && ctxEntry ? (
         <HeaderTitleRename entry={ctxEntry} onDone={() => setRenaming(false)} />
-      ) : session || isCreatingNew || gitManage ? (
+      ) : session || isCreatingNew || gitManage || ctxView ? (
         <span
           className={"text-ui-md font-semibold truncate min-w-0" + (session?.streaming ? " title-shimmer" : "")}
           id="chatTitle"
@@ -280,6 +307,33 @@ export default function MainHeader({ onToggleSidebar, onToggleRight }: { onToggl
       )}
       {/* Terminal dock toggle (⌘/Ctrl+J): parked in the top-right corner, left of the
           right-panel button so the two panel entries stay adjacent */}
+      {ctxView && (
+        <button
+          type="button"
+          className="icon-btn"
+          title={t("contextViewer.refresh")}
+          onClick={() => useAppStore.setState((s) => ({ contextViewerRefreshSeq: s.contextViewerRefreshSeq + 1 }))}
+        >
+          <Icon name="refresh" size={15} />
+        </button>
+      )}
+      {/* Agent Hub grouping toggle (only while the hub page is open): one icon button whose
+          icon swaps in place — spawn tree vs flat status list — parked left of the terminal
+          toggle so the two right-corner entries stay adjacent */}
+      {hubOpen && (
+        <button
+          type="button"
+          className="icon-btn"
+          title={hubGrouping === "tree" ? t("right.adGroupingStatus") : t("right.adGroupingTree")}
+          aria-pressed={hubGrouping === "tree"}
+          onClick={() => useAppStore.getState().setHubGrouping(hubGrouping === "tree" ? "status" : "tree")}
+        >
+          {/* The icon names the mode a click switches TO (same convention as the git
+              file-view toggles in CommitDetail / WorktreeList), so it always agrees with
+              the target-mode tooltip; the roster's indent change confirms the flip. */}
+          <Icon name={hubGrouping === "tree" ? "sort" : "orgChart"} size={15} />
+        </button>
+      )}
       {!narrow && (
         <button
           type="button"

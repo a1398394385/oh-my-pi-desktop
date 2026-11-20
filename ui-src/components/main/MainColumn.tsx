@@ -13,6 +13,7 @@ import AgentHub from "./AgentHubPage";
 import AutomationsPage from "./automations/AutomationsPage";
 import GitPage from "./git/GitPage";
 import MainSessionTree from "./tree/MainSessionTree";
+import ContextViewer from "../contextViewer/ContextViewer";
 import Composer from "../Composer";
 import ApprovalCard from "../chat/ApprovalCard";
 import AskFormCard from "../chat/AskFormCard";
@@ -30,6 +31,7 @@ export default function MainColumn() {
   const gitManage = useAppStore((s) => s.gitManage);
   const hubOpen = useAppStore((s) => s.hubOpen);
   const mainViewMode = useAppStore((s) => s.mainViewMode);
+  const ctxView = useAppStore((s) => s.contextViewer);
   const activePath = useAppStore((s) => s.activePath);
   const session = useAppStore((s) => s.activePath ? s.openSessions.get(s.activePath) : undefined);
   const pendingApproval = session?.pendingApprovals?.[0] ?? null;
@@ -55,7 +57,7 @@ export default function MainColumn() {
   // The column width handles belong to the session detail page only (mirrors the
   // MessagePage branch of the page switch below).
   const showSessionDetail =
-    !gitManage && !isCreatingNew && !automationsOpen && !hubOpen && !(session && mainViewMode === "tree");
+    !gitManage && !isCreatingNew && !automationsOpen && !hubOpen && !ctxView && !(session && mainViewMode === "tree");
 
   // Ring speed follows typing tempo: idle = the 6s CSS cycle, faster hands spin it up to 3×
   // (2s). playbackRate, not animation-duration — changing the duration rescales the current
@@ -109,7 +111,7 @@ export default function MainColumn() {
   // same color, so the adjustment is invisible. deps: the dock mounts only when the
   // welcome/new-task pages are gone, so the effect must re-run on that transition (at
   // first mount the ref is still null).
-  const dockMounted = !isCreatingNew && !automationsOpen && !hubOpen && !gitManage;
+  const dockMounted = !isCreatingNew && !automationsOpen && !hubOpen && !gitManage && !ctxView;
   useLayoutEffect(() => {
     const dock = dockRef.current;
     const ring = ringRef.current;
@@ -202,6 +204,8 @@ export default function MainColumn() {
           <Welcome />
         ) : hubOpen ? (
           <AgentHub />
+        ) : ctxView ? (
+          <ContextViewer />
         ) : session && mainViewMode === "tree" ? (
           <MainSessionTree />
         ) : (
@@ -210,7 +214,7 @@ export default function MainColumn() {
             <MessagePage />
           </>
         )}
-        {!isCreatingNew && !automationsOpen && !hubOpen && !gitManage && (
+        {!isCreatingNew && !automationsOpen && !hubOpen && !gitManage && !ctxView && (
           <>
             {/* Goal bar -> queue card -> input dock: three stacked cards from
                 top down (the goal bar shifts up as the queue grows). Each card

@@ -60,6 +60,12 @@
      than the raised --panel-2 — the tab strip sits on the card, and --panel-2 reads as a
      floating chip there. Light theme reuses the raised plate (see the light block). */
   --rtab-on:   #2E2E2E;
+  /* Segmented control (sidebar view switch, hub overview/command tabs): a borderless
+     track darker than the raised plates, with a thumb that reads as a raised chip.
+     The old --panel-2 track + --inset thumb made the active slot nearly invisible
+     and the outlined control read brighter than its face (reference: #30302F / #4D4D4D). */
+  --seg-track: #30302F;
+  --seg-thumb: #4D4D4D;
   /* File tab nav highlight (row hover plate + the filled search box on focus). The file tree
      rows sit directly on the card face, so their plate is a flat shade under the raised
      --panel-2 instead of above it. Light theme reuses the raised plate (see the light block). */
@@ -184,6 +190,10 @@ html[data-platform="macos"][data-remote="true"] {
   --menu-hl:   #F0F0F0;
   --card-hl:   var(--panel-2);
   --rtab-on:   var(--panel-2);
+  /* Segmented control, light theme: the raised plate as the track with a white chip —
+     same visual relation as the dark pair (thumb clearly lighter than the track). */
+  --seg-track: var(--panel-2);
+  --seg-thumb: var(--inset);
   --bg:        var(--card);
   --sidebar:   var(--base);
   --panel:     var(--inset);

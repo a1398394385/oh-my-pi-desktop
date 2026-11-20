@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens, openSessionByPath } from "../../../store";
 import { expandRightPanel } from "../../main/right/tabs";
 import { modelShort, tokenTotal, usageSegments, clockHMS, stInfo, stKeyOf, stLabel, subStatus, currentProgress, type SegT } from "./subShared";
+import { AgentFace } from "./AgentFace";
 import type { SubagentState } from "../../../types/session";
 
 // The subset of the open-session snapshot the roster reads; both surfaces pass the live
@@ -239,7 +240,8 @@ export function HubRow({ row, selected, onSelect, onOpen, t, minimal }: { row: R
     >
       {/* Top block: avatar | name / model | status / elapsed */}
       <div className="hub-top">
-        <span className="hub-avatar" aria-hidden="true">{(sub.name ?? sub.agent).trim()[0]?.toUpperCase() ?? "?"}</span>
+        {/* Color identity hashes the unique row id (display names repeat across runs). */}
+        <AgentFace className="hub-avatar" avatarIndex={undefined} name={row.id} status={group} />
         <span className="hub-row-head">
           <span className="hub-name">{sub.name ?? sub.agent}</span>
           {role || model || think ? (
@@ -287,7 +289,7 @@ export function HubRow({ row, selected, onSelect, onOpen, t, minimal }: { row: R
 /** Agent Hub page card (the full-page roster only; the sidebar keeps HubRow): the flat-card
     layout ported from omp-studio's Agent Hub — left zone status/title over task over model,
     right zone elapsed+age, big tokens, req/tools, cost. */
-export function HubPageCard({ row, selected, onSelect, minimal, t }: { row: Row; selected: boolean; onSelect: () => void; minimal?: boolean; t: SegT }) {
+export function HubPageCard({ row, selected, onSelect, t }: { row: Row; selected: boolean; onSelect: () => void; t: SegT }) {
   const { sub } = row;
   const u = sub.usage;
   const st = subStatus(sub);
@@ -322,14 +324,12 @@ export function HubPageCard({ row, selected, onSelect, minimal, t }: { row: Row;
         <b>{tokens === undefined ? "—" : fmtTokens(tokens)}</b>
         <i>tok</i>
       </span>
-      {/* Minimal density keeps only the identity row; the right column stays (it is the
-          card's metrics, the reason the page card exists). */}
-      {!minimal ? (
-        <div className="hc-task" title={task || undefined}>
-          {sub.streaming && u?.completionPercent !== undefined ? <span className="hub-pct">{u.completionPercent}%</span> : null}
-          {task || "…"}
-        </div>
-      ) : null}
+      {/* Task line: while the child streams, the live progress line ("Current" in the
+          detail) leads, falling back to the assignment until the first tool/intent lands. */}
+      <div className="hc-task" title={task || undefined}>
+        {sub.streaming && u?.completionPercent !== undefined ? <span className="hub-pct">{u.completionPercent}%</span> : null}
+        {task || "…"}
+      </div>
       <span className="hc-cost">{u && u.cost != null && u.cost > 0 ? `$${u.cost.toFixed(3)}` : "—"}</span>
       <span className="hc-pace">
         <span className="hc-num"><i>{t("right.hubReq")}</i><b>{u?.requests ?? 0}</b></span>

@@ -12,11 +12,15 @@
    Assigned by row index in CtxCard.tsx (ROW_DOT_COLORS) — keep the two in lockstep. */
 .ring-pop {
   --ctx-1: #79c0d7; --ctx-2: #7080d1; --ctx-3: #9167cb; --ctx-4: #c45ec4; --ctx-5: #bd5681;
+  /* Step 6 is not the next hue but a desaturated, darkened step-5: the ACP compressed
+     zone reads as the muted twin of the active zone, not as a new category. */
+  --ctx-6: #8a5568;
 }
 /* Light theme re-derives the ramp at a darker lightness end (46% -> 38%): the dark values sit too
    pale on a white card. Hue rotation and step order are unchanged. */
 :is([data-theme="light"], [data-theme-mode="light"]) .ring-pop {
   --ctx-1: #3f90ab; --ctx-2: #3f4fa2; --ctx-3: #643e98; --ctx-4: #8f3d8f; --ctx-5: #863c5b;
+  --ctx-6: #a4707f;
 }
 
 
@@ -40,9 +44,11 @@
 
 .cx-total .cx-pct { min-width: 6ch; text-align: right; font-variant-numeric: tabular-nums; font-size: var(--ui-fs-base); }
 
-.cx-bar { height: 12px; border-radius: 6px; background: var(--panel-3); margin-bottom: 12px; overflow: hidden; }
+/* Segmented: one <i> per composition row, in row order, carrying the row dot's color.
+   Inner segments stay square — the container's radius + overflow clip the outer ends. */
+.cx-bar { display: flex; height: 12px; border-radius: 6px; background: var(--panel-3); margin-bottom: 12px; overflow: hidden; }
 
-.cx-bar i { display: block; height: 100%; background: var(--accent-fixed); border-radius: 6px; transition: width var(--dur-base) var(--swift); }
+.cx-bar i { display: block; height: 100%; border-radius: 0; transition: width var(--dur-base) var(--swift); }
 .cx-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; color: var(--dim); font-size: var(--ui-fs-base); }
 
 .cx-row .cx-val { margin-left: auto; text-align: right; min-width: 5.5ch; font-variant-numeric: tabular-nums; color: var(--text); }

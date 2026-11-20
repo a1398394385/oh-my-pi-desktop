@@ -15,33 +15,20 @@
 
 .ad-tab.active { color: var(--text); }
 
-.ad-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-sm); background: var(--surface); }
-
-.ad-seg > button {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 22px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: none;
-  color: var(--faint); cursor: pointer;
-}
-
-.ad-seg > button:hover { background: var(--hover-fill); color: var(--text); }
-
-.ad-seg > button.active { background: var(--menu-hl); color: var(--text); }
-
 /* ---------- detail sheet ---------- */
 .ad-ins { display: flex; flex-direction: column; gap: 14px; padding: 6px; font-size: var(--ui-fs-base); color: var(--text); }
 
 .ad-ins-head { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: stretch; }
 
-/* Placeholder sigil until the pixel-avatar port lands: initial letter on a raised plate.
-   The tile itself opens the conversation (the old action row's primary action). No hover
-   treatment: the pointer cue lands with the future hover animation. */
+/* The tile face fills the whole button; the tile itself opens the conversation (the old
+   action row's primary action). No background plate: the face's colored body is the visual. */
 .ad-avatar {
   display: inline-flex; align-items: center; justify-content: center;
   width: 44px; height: 44px; padding: 0;
   border: 0; border-radius: var(--r-md); cursor: pointer;
-  background: var(--panel-2); color: var(--text);
-  font-size: var(--ui-fs-xl); font-weight: 600;
+  background: transparent;
 }
+.ad-avatar-face { width: 100%; height: 100%; }
 
 /* The two rows split the avatar column height: title over status/model, the back button
    parked right of the title and the stop button right of the status line. */
@@ -225,13 +212,7 @@
 
 .ad-ins-children.is-list .ad-chip-agent > em { margin-left: auto; padding-left: 8px; color: var(--faint); font-style: normal; font-variant-numeric: tabular-nums; }
 
-.ad-chip-avatar {
-  flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px; border-radius: var(--r-sm);
-  background: var(--panel-2); color: var(--text);
-  font-size: var(--ui-fs-xs); font-weight: 600;
-}
+.ad-chip-avatar { flex: none; width: 20px; height: 20px; }
 
 .ad-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
 

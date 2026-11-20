@@ -14,7 +14,7 @@ export const miscEn = {
   restoreDown: "Restore down",
   maximize: "Maximize",
   // ConnBanner.tsx
-  connDiagTitle: "omp-desktop connection diagnostics",
+  connDiagTitle: "OMP Desktop connection diagnostics",
   connDiagWait: "Wait time: {{sec}}s",
   connDiagStatus: "Status: {{text}}",
   connDiagPlatform: "Platform: {{platform}}",

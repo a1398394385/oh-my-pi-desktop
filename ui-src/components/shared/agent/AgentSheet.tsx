@@ -9,6 +9,7 @@ import { bgJobsKey } from "../../../store/session";
 import { sendSubagentControl, sendGetBgJobs, sendCancelBgJob } from "./hubExt";
 import { expandRightPanel } from "../../main/right/tabs";
 import { modelShort, subStatus, currentProgress, stInfo, tokenTotal, clockHMS, type SegT } from "./subShared";
+import { AgentFace } from "./AgentFace";
 import { openSubagentSession } from "./subRoster";
 import Icon from "../../../Icon";
 import type { SubagentState } from "../../../types/session";
@@ -90,7 +91,8 @@ export default function AgentSheet({
             }
           }}
         >
-          {(name.trim()[0] ?? "?").toUpperCase()}
+          {/* Same face as the roster row, color-keyed by the same id. */}
+          <AgentFace className="ad-avatar-face" avatarIndex={undefined} name={subagentId} status={group} />
         </button>
         <div className="ad-ins-id">
           <div className="ad-ins-row">

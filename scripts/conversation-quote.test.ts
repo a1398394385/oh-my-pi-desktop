@@ -7,7 +7,7 @@ import { buildQuotePrefix, splitQuote, stripQuote } from "../ui-src/lib/conversa
 describe("conversation quote", () => {
   test("builds the fixed prefix with a blank line before the body", () => {
     expect(buildQuotePrefix([{ text: "当前", comment: "注释测试" }])).toBe(
-      '<conversation_quote>\n[{"text":"当前","comment":"注释测试"}]\n</conversation_quote>\n\n',
+      '<conversation_quote>[{"text":"当前","comment":"注释测试"}]</conversation_quote>\n\n',
     );
     expect(splitQuote(buildQuotePrefix([{ text: "当前", comment: "注释测试" }]) + "继续")).toEqual({
       body: "继续",
@@ -15,6 +15,21 @@ describe("conversation quote", () => {
       sessions: [],
       files: [],
     });
+  });
+
+  test("parses the pre-existing newline-wrapped form and a hand-typed copy", () => {
+    // Messages sent before the tags lost their line breaks are already stored this way.
+    const legacy = '<conversation_quote>\n[{"text":"旧","comment":"旧注释"}]\n</conversation_quote>\n\n继续';
+    expect(splitQuote(legacy)).toEqual({
+      body: "继续",
+      notes: [{ text: "旧", comment: "旧注释" }],
+      sessions: [],
+      files: [],
+    });
+    // Typed by hand (no separators at all) still renders as the same chip.
+    expect(splitQuote('<conversation_quote>[{"text":"手打","comment":""}]</conversation_quote>').notes).toEqual([
+      { text: "手打", comment: "" },
+    ]);
   });
 
   test("round-trips a file-pane note (path + line span) so an edit can restore it", () => {
@@ -25,6 +40,17 @@ describe("conversation quote", () => {
   test("keeps an empty comment and round-trips the optional agent tag", () => {
     const notes = [{ text: "a", comment: "" }, { text: "b", comment: "c", agent: "reviewer" }];
     expect(splitQuote(buildQuotePrefix(notes) + "hi").notes).toEqual(notes);
+  });
+
+  test("parses a comment-only prompt (no body, blank line trimmed)", () => {
+    // A comment-only send is the whole prompt: the trailing blank line of the prefix is
+    // the end of the text, so the block must still be recognized or the bubble shows it raw.
+    expect(splitQuote(buildQuotePrefix([{ text: "选中", comment: "评论" }]))).toEqual({
+      body: "",
+      notes: [{ text: "选中", comment: "评论" }],
+      sessions: [],
+      files: [],
+    });
   });
 
   test("passes plain prompts through and builds nothing without notes", () => {

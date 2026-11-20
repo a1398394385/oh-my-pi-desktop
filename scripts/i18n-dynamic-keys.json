@@ -21,7 +21,7 @@
     },
     {
       "file": "ui-src/components/Composer.tsx",
-      "line": 1045,
+      "line": 1062,
       "prefix": "composer.thinkingLevels.",
       "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
     },
@@ -30,6 +30,30 @@
       "line": 311,
       "prefix": "composer.thinkingLevels.",
       "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
+    },
+    {
+      "file": "ui-src/components/contextViewer/ContextCategoryList.tsx",
+      "line": 39,
+      "prefix": "contextViewer.categories.",
+      "reason": "category id comes from the host-published snapshot index (ContextViewCategoryId union)"
+    },
+    {
+      "file": "ui-src/components/contextViewer/ContextOverview.tsx",
+      "line": 59,
+      "prefix": "contextViewer.",
+      "reason": "meter segment key (usage group or buffer/free) selects the categories./groups. subkey in one template"
+    },
+    {
+      "file": "ui-src/components/contextViewer/ContextOverview.tsx",
+      "line": 60,
+      "prefix": "contextViewer.",
+      "reason": "same segment-key template as the aria-label on the line above"
+    },
+    {
+      "file": "ui-src/components/contextViewer/ContextOverview.tsx",
+      "line": 77,
+      "prefix": "contextViewer.groups.",
+      "reason": "usage group id comes from the ContextUsageGroup record keys in contextViewMath"
     },
     {
       "file": "ui-src/components/main/automations/AutomationEditView.tsx",
@@ -152,22 +176,22 @@
       "reason": "legend kind comes from LEGEND_KINDS in the same file"
     },
     {
+      "file": "ui-src/components/shared/agent/AgentSheet.tsx",
+      "line": 55,
+      "prefix": "composer.thinkingLevels.",
+      "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
+    },
+    {
       "file": "ui-src/components/shared/agent/subRoster.tsx",
-      "line": 302,
+      "line": 221,
       "prefix": "composer.thinkingLevels.",
       "reason": "thinking level id comes from the subagent progress frame; falls back to the raw id via defaultValue"
     },
     {
-      "file": "ui-src/components/shared/agent/AgentSheet.tsx",
-      "line": 50,
-      "prefix": "composer.thinkingLevels.",
-      "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
-    },
-    {
       "file": "ui-src/components/shared/agent/subRoster.tsx",
-      "line": 396,
+      "line": 301,
       "prefix": "composer.thinkingLevels.",
-      "reason": "thinking level id comes from the model catalog; falls back to the raw id via defaultValue"
+      "reason": "thinking level id comes from the subagent progress frame; falls back to the raw id via defaultValue"
     },
     {
       "file": "ui-src/components/shared/agent/subShared.ts",

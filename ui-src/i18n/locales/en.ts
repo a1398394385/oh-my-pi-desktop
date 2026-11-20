@@ -16,6 +16,7 @@ import collab from "./ui/collab.en";
 import autoList from "./ui/autoList.en";
 import autoEdit from "./ui/autoEdit.en";
 import remote from "./ui/remote.en";
+import contextViewer from "./ui/contextViewer.en";
 
 const en = {
   common,
@@ -35,6 +36,7 @@ const en = {
   autoList,
   autoEdit,
   remote,
+  contextViewer,
 };
 
 export default en;

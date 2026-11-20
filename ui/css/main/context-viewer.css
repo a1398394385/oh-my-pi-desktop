@@ -1,0 +1,484 @@
+/* Context viewer: standalone read-only snapshot workbench (ported from omp-studio's
+   contextViewer/contextViewer.css; class names and layout kept 1:1). No filled card
+   surfaces — panels, rows and entries are told apart by borders alone (per design
+   call). All UI text rides the app-wide --ui-fs-base; only genuine code content
+   (entry body/preview) keeps the --code-fs mono convention. Group tints mirror the
+   --ctx ramp of the hover context card. */
+.cv {
+  /* Group identity colours, scoped like .ring-pop's --ctx-* pair (context-card.css). */
+  --cv-system: #79c0d7;
+  --cv-instructions: #7080d1;
+  --cv-tools: #c45ec4;
+  --cv-messages: #bd5681;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 20px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+:is([data-theme="light"], [data-theme-mode="light"]) .cv {
+  --cv-system: #3f90ab;
+  --cv-instructions: #3f4fa2;
+  --cv-tools: #8f3d8f;
+  --cv-messages: #863c5b;
+}
+
+.cv:focus-visible { outline: none; }
+
+/* Fixed row assignment keeps the body at 1fr even when the overview is absent. */
+.cv-head { grid-row: 1; }
+.cv-overview { grid-row: 2; }
+.cv-divider { grid-row: 3; }
+.cv-body { grid-row: 4; }
+
+/* ── Header ─────────────────────────────────────────────── */
+.cv-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cv-head-actions { display: flex; align-items: center; gap: 8px; }
+.cv-head-actions button { white-space: nowrap; }
+.cv-right[hidden] { display: none; }
+.cv-back { flex: 0 0 auto; white-space: nowrap; }
+
+/* Small outline button, the .pill-btn ghost language at viewer scale. */
+.cv-btn {
+  font: inherit;
+  font-size: var(--ui-fs-base);
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  line-height: 1;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.cv-btn:hover:not(:disabled) { border-color: var(--dim); }
+.cv-btn:disabled { opacity: .45; cursor: default; }
+
+/* Status badge: border, no fill. */
+.cv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  font-size: var(--ui-fs-base);
+  line-height: 1.4;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  color: var(--faint);
+  white-space: nowrap;
+}
+.cv-chip.amber { border-color: var(--yellow); color: var(--yellow); }
+
+/* ── Overview ───────────────────────────────────────────── */
+.cv-overview {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Full-bleed rule between the top block and the body: negative margins pierce the
+   .cv padding so the line reaches the middle column's left and right borders. */
+.cv-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 0 -20px;
+}
+
+.cv-meter-wrap { position: relative; }
+
+/* Track is transparent: the container's border bounds the free space instead. */
+.cv-meter {
+  display: flex;
+  /* Matches the composer model/thinking selector pill in visual weight (~22px). */
+  height: 22px;
+  overflow: hidden;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.cv-meter i { display: block; min-width: 0; flex: 0 0 auto; box-sizing: border-box; }
+.cv-meter i + i { border-left: 2px solid var(--bg); }
+/* Colored segments answer the hover with a brightness step (they carry their own
+   colour, so a fill would hide the data); the free segment is transparent and
+   stays inert. */
+.cv-meter i:hover { filter: brightness(1.15); }
+.cv-meter i:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
+.cv-group-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--faint); font-size: var(--ui-fs-base); }
+.cv-group-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.cv-group-legend b { color: var(--dim); font-weight: 500; font-variant-numeric: tabular-nums; }
+.cv-dot[data-context-group="instructions"] { transform: rotate(45deg); border-radius: 1px; }
+.cv-dot[data-context-group="tools"] { border-radius: 2px; }
+.cv-dot[data-context-group="system"] { width: 10px; height: 3px; border-radius: 1px; }
+
+.cv-meter i[data-striped] {
+  background-image: repeating-linear-gradient(45deg, transparent 0 3px, rgb(0 0 0 / 0.22) 3px 6px); /* style-token-ignore: stripe alpha overlay, not a theme color */
+}
+
+.cv-mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.55;
+  border-radius: 1px;
+}
+
+.cv-fact-k { color: var(--faint); }
+
+.cv-note {
+  margin: 0;
+  font-size: var(--ui-fs-base);
+  line-height: 1.5;
+  color: var(--faint);
+}
+
+/* ── Body ───────────────────────────────────────────────── */
+.cv-body {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(280px, 34%) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+/* Opening and error states keep the body slot, so the footer stays at the bottom. */
+.cv-body.cv-state {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px;
+}
+
+.cv-left {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+
+.cv-cats {
+  flex: 0 0 auto;
+  max-height: 58%;
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 4px 6px;
+  overflow: auto;
+  scrollbar-width: thin;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.cv-cats li { position: relative; }
+
+/* Rail under an unfolded category: the child rows read as belonging to it. */
+li[data-child]::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 1px;
+  bottom: 1px;
+  width: 1px;
+  background: var(--line);
+}
+
+.cv-cat {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto 48px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: var(--ui-fs-base);
+  line-height: 1.4;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+/* Hover feedback rides a fill one step lighter than the selected plate
+   (--rtab-on, #2E2E2E dark): --panel-2 (#353738 dark, --panel-2 light). Never
+   overrides the selected fill. */
+.cv-cat:hover:not(:disabled):not([data-active]):not([data-parent]),
+.cv-entry:hover:not([data-active]) { background: var(--panel-2); }
+
+/* Selected rows read as a filled plate (#2E2E2E dark), not an outlined one. */
+.cv-cat[data-active], .cv-cat[data-parent] { background: var(--rtab-on); border-color: transparent; }
+.cv-cat:disabled { opacity: 0.55; cursor: default; }
+
+.cv-dot { width: 8px; height: 8px; border-radius: 999px; }
+
+.cv-cat-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li[data-child] .cv-cat { padding-left: 20px; }
+li[data-child] .cv-cat-label { color: var(--dim); }
+
+.cv-cat-tokens { font-size: var(--ui-fs-base); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--dim); }
+.cv-cat-share { font-size: var(--ui-fs-base); font-variant-numeric: tabular-nums; color: var(--faint); text-align: right; }
+
+.cv-left-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.cv-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cv-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: var(--ui-fs-base);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.cv-search-input::placeholder { color: var(--faint); }
+.cv-search-input:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+.cv-count { font-size: var(--ui-fs-base); font-variant-numeric: tabular-nums; color: var(--faint); white-space: nowrap; }
+
+.cv-scope { margin: 0; padding: 4px 8px; font-size: var(--ui-fs-base); color: var(--faint); }
+
+.cv-entries {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 8px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.cv-entries:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.cv-entry {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.cv-entry[data-active] { background: var(--rtab-on); }
+.cv-entry[data-child] { width: auto; margin-left: 18px; border-left-color: var(--dim); }
+
+.cv-entry-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cv-entry-head strong { font-size: var(--ui-fs-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-entry-tokens { font-size: var(--ui-fs-base); font-variant-numeric: tabular-nums; color: var(--faint); white-space: nowrap; }
+.cv-entry-meta { font-size: var(--ui-fs-base); color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-entry-preview {
+  display: -webkit-box;
+  font: var(--code-fs) / 1.5 var(--mono);
+  color: var(--faint);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cv-group {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 2px;
+  padding: 2px 8px;
+  font-size: var(--ui-fs-base);
+  color: var(--faint);
+}
+
+.cv-group b { font-weight: 600; color: var(--dim); }
+.cv-more { margin: 0 8px 8px; }
+.cv-empty, .cv-loading { margin: 8px; font-size: var(--ui-fs-base); color: var(--faint); }
+
+/* ── Right column ───────────────────────────────────────── */
+.cv-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+}
+
+.cv-entry-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.cv-entry-bar h3 { margin: 0; font-size: var(--ui-fs-base); font-weight: 600; overflow-wrap: anywhere; }
+.cv-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.cv-meta { display: grid; gap: 2px; margin: 0; font-size: var(--ui-fs-base); }
+.cv-meta div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+.cv-meta dt { color: var(--faint); }
+.cv-meta dd { margin: 0; color: var(--dim); overflow-wrap: anywhere; }
+.cv-meta code { font: var(--ui-fs-base) var(--mono); }
+
+.cv-shared { padding: 2px 8px; font-size: var(--ui-fs-base); color: var(--faint); border-left: 2px solid var(--tint-accent-350); }
+
+.cv-body-scroll {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  font: var(--code-fs) / 1.65 var(--mono);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.cv-body-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cv-source-mark { margin: 0; padding: 0; border: 0; border-bottom: 1px dashed; background: none; color: var(--text); font: inherit; line-height: inherit; white-space: inherit; text-align: left; }
+button.cv-source-mark { cursor: pointer; }
+button.cv-source-mark:hover { border-bottom-style: solid; }
+button.cv-source-mark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.cv-entry-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--ui-fs-base);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.cv-empty-pane {
+  display: grid;
+  place-content: center;
+  gap: 4px;
+  height: 100%;
+  font-size: var(--ui-fs-base);
+  color: var(--faint);
+  text-align: center;
+}
+
+.cv-empty-pane p { margin: 0; }
+
+/* ── States ─────────────────────────────────────────────── */
+.cv-open-state {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  font-size: var(--ui-fs-base);
+  color: var(--faint);
+  text-align: center;
+}
+
+.cv-open-state i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  animation: cv-pulse 1.6s ease-in-out infinite;
+}
+
+.cv-open-state b { font-size: var(--ui-fs-base); font-weight: 600; color: var(--dim); }
+.cv-open-state small { font-size: var(--ui-fs-base); color: var(--faint); }
+
+@keyframes cv-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+.cv-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 560px;
+  max-width: 100%;
+  padding: 8px 12px;
+  font-size: var(--ui-fs-base);
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--err);
+  border-radius: var(--r-sm);
+}
+
+/* ── Responsive ─────────────────────────────────────────── */
+/* The in-column page root is the size container. */
+.cv-viewer { flex: 1; min-height: 0; width: 100%; height: 100%; container-type: size; }
+
+@container (max-width: 900px) {
+  .cv-divider { margin: 0 -12px; }
+  .cv-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 42%) minmax(0, 1fr); }
+  .cv-left { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* Not enough width for a vertical legend: one scrollable chip row. */
+@container (max-width: 900px) {
+  .cv-cats {
+    display: flex;
+    gap: 4px;
+    max-height: none;
+    padding: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    mask-image: linear-gradient(to right, #000 97%, transparent); /* style-token-ignore: mask alpha stop, not a theme color */
+  }
+  .cv-cats li { flex: 0 0 auto; }
+  li[data-child]::before { display: none; }
+  li[data-child] .cv-cat { padding-left: 8px; }
+  .cv-cat { grid-template-columns: 8px auto auto; padding: 3px 8px; border-color: var(--line); }
+  .cv-cat-share { display: none; }
+}
+
+@container (max-width: 620px) {
+  .cv { padding: 12px; }
+  .cv-divider { margin: 0 -12px; }
+  .cv-cat { grid-template-columns: 8px auto; }
+  .cv-cat-tokens, .cv-cat-share { display: none; }
+  .cv-body { grid-template-rows: minmax(0, 46%) minmax(0, 1fr); }
+}
+
+/* Short windows: the overview gives its room back to the lists. */
+@container (max-height: 520px) {
+  .cv { gap: 8px; padding: 12px 16px; }
+  .cv-divider { margin: 0 -16px; }
+  .cv-note { display: none; }
+}
+
+.cv[data-narrow] .cv-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+.cv[data-narrow] .cv-left { border-right: 0; border-bottom: 0; }
+.cv[data-narrow][data-reading] .cv-left { display: none; }
+.cv[data-narrow] .cv-entry-bar { flex-wrap: wrap; }
+.cv[data-compact] { gap: 8px; padding: 8px 12px; }
+.cv[data-compact] .cv-divider { margin: 0 -12px; }
+.cv[data-compact] .cv-meter-wrap { flex: 1; }

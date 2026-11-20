@@ -8,11 +8,20 @@
 
 #agentHub.hub-empty { align-items: flex-start; }
 
-/* Top bar: title, status pills, back button. No plate of its own — the pills are the only
-   chrome (the old keybind row's background and hints are gone; the shortcuts still work). */
+/* Top bar: the overview/command segmented control, status pills, and the aggregate stats row
+   pinned right. No plate of its own — the pills and the control carry the only chrome (the
+   shortcuts still work; the back button and the grouping toggle moved to the headerbar). */
 .hub-topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
 
-.hub-topbar .hub-title { font-weight: 600; flex: none; }
+/* The sidebar's .seg switch is a flex:1 strip; in the hub topbar it is a fixed two-slot
+   control (overview/command) so the pills and stats keep their space. */
+#agentHub .seg.hub-seg { flex: none; width: 152px; }
+
+/* Aggregate stats at the bar's right edge: the labeled five-cell line the sidebar's
+   subagent page renders in its pulse header, right-packed instead of spread. */
+.hub-stats { flex: none; min-width: 0; margin-left: auto; }
+
+.hub-stats .hub-usage { justify-content: end; }
 
 /* Status pills: the automations list's capsule language (.al-filters/.al-pill, see
    automations-list.css). Only the strip container differs — no top margin, and it wraps

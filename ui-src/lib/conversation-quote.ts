@@ -17,8 +17,11 @@ export interface QuoteNote {
   lines?: string;
 }
 
-const OPEN = "<conversation_quote>\n";
-const CLOSE = "\n</conversation_quote>\n\n";
+// Tags carry no line breaks: they delimit a JSON array, and any whitespace around the
+// tags or inside them is irrelevant to the parse. Only the blank line after the block
+// stays, as the separator between the block and the user's own text.
+const OPEN = "<conversation_quote>";
+const CLOSE = "</conversation_quote>";
 
 /** Prompt prefix for the pending notes ("" when there are none). Field order and
  *  shape are part of the contract: text, comment, optional agent / file + lines. */
@@ -30,7 +33,7 @@ export function buildQuotePrefix(notes: QuoteNote[]): string {
     ...(n.agent ? { agent: n.agent } : {}),
     ...(n.file ? { file: n.file, ...(n.lines ? { lines: n.lines } : {}) } : {}),
   }));
-  return OPEN + JSON.stringify(rows) + CLOSE;
+  return OPEN + JSON.stringify(rows) + CLOSE + "\n\n";
 }
 
 // The host inlines attachment framing into the prompt text itself: pasted file bodies
@@ -133,7 +136,7 @@ function parseQuote(text: string): { body: string; notes: QuoteNote[] } {
     return { body: text, notes: [] };
   }
   if (notes.length === 0) return { body: text, notes: [] };
-  return { body: text.slice(end + CLOSE.length), notes };
+  return { body: text.slice(end + CLOSE.length).trimStart(), notes };
 }
 
 /** Display form of a prompt that may carry the quote prefix. */

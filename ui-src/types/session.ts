@@ -602,5 +602,9 @@ export interface AppState {
   // ---- ringpop popover transient data (hover context-ring detail card; discard-on-leave, cleared and re-requested on the next hover) ----
   ctxDetail: ContextDetailFrame | null;
   ctxLimits: LimitsResultFrame | null;
+  /** Standalone context viewer overlay target (see UiSlice); null = closed. */
+  contextViewer: { sessionId: string; sessionName: string } | null;
+  /** Topbar refresh-icon bump counter for the viewer (see UiSlice). */
+  contextViewerRefreshSeq: number;
   keepaliveStatus: Record<string, KeepaliveStatusFrame>; // per pool session id
 }

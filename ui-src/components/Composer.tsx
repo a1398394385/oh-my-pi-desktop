@@ -1441,8 +1441,16 @@ function CtxRing({ ringRef }: { ringRef: Ref<HTMLSpanElement> }) {
   if (!sessionId && !isCreatingNew) return null;
   const p = ctx ? Math.min(1, ctx.percent / 100) : 0;
   const cls = "ctx-ring" + (ctx ? (ctx.percent >= 85 ? " hot" : ctx.percent >= 60 ? " warm" : "") : "");
+  // Click swaps the middle column to the standalone context viewer (the hover
+  // card stays the hover surface; there is no other click handler on the ring).
+  const openViewer = () => {
+    const st = useAppStore.getState();
+    const s = st.activePath ? st.openSessions.get(st.activePath) : undefined;
+    if (!s) return;
+    useAppStore.setState({ contextViewer: { sessionId: s.sessionId, sessionName: s.title ?? "" } });
+  };
   return (
-    <span className={cls} id="ctxRing" title="" ref={ringRef}>
+    <span className={cls} id="ctxRing" title="" ref={ringRef} onClick={openViewer}>
       <svg viewBox="0 0 16 16" width="16" height="16">
         <circle className="track" cx="8" cy="8" r="7" />
         <circle

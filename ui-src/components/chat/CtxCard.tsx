@@ -168,20 +168,20 @@ function KaSection({ ka, noDiv }: { ka: KaStatus; noDiv?: boolean }) {
 
 // Composition row dot colors, one entry per row in the order the rows are built
 // below. Single-direction hue ramp (cyan -> magenta, top to bottom) defined in
-// ui/css/global/context-card.css as --ctx-1..--ctx-5 on .ring-pop. Only five steps for
-// nine rows: the rows form three groups of related categories and each group
-// shares a step, so the dot reads as "which group" while the ramp still rotates
-// one way down the card.
+// ui/css/global/context-card.css as --ctx-1..--ctx-6 on .ring-pop. Related rows
+// share a step so the dot reads as "which group"; the ACP pair is the exception —
+// the compressed zone gets --ctx-6, a muted twin of the active zone's --ctx-5, so
+// folded summaries and live messages are distinguishable at a glance.
 const ROW_DOT_COLORS = [
-  "var(--ctx-1)", // system tools
-  "var(--ctx-1)", // MCP tools
-  "var(--ctx-2)", // system prompt
+  "var(--ctx-1)", // system prompt
+  "var(--ctx-1)", // skills
+  "var(--ctx-2)", // repo rules
   "var(--ctx-2)", // memory
-  "var(--ctx-2)", // skills
-  "var(--ctx-3)", // repo rules
-  "var(--ctx-4)", // other
-  "var(--ctx-5)", // messages
-  "var(--ctx-5)", // messages (ACP sessions split this pair into zone/active)
+  "var(--ctx-3)", // other
+  "var(--ctx-4)", // system tools
+  "var(--ctx-4)", // MCP tools
+  "var(--ctx-6)", // messages [compressed zone] — muted twin of the active zone
+  "var(--ctx-5)", // messages [active zone]
 ];
 
 // Context detail composition (S.ctxDetail.breakdown): constrains only the fields this component reads
@@ -353,21 +353,18 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
           <div className="flex justify-between items-center text-ui-md mb-[10px]">
             <b>{t("chat.context")}</b>
             {/* Right-side numbers match the category rows below: value | percentage, bar-separated, right-aligned */}
-            <span className="cx-total">
+          <span className="cx-total">
               <span className="cx-val">{fmtTokens(b.usedTokens)}</span>
               <i className="cx-sep" />
               <span className="cx-pct">{((b.usedTokens / b.contextWindow) * 100).toFixed(1)}%</span>
             </span>
           </div>
-          <div className="cx-bar">
-            <i style={{ width: `${Math.min(100, (b.usedTokens / b.contextWindow) * 100).toFixed(1)}%` }} />
-          </div>
-          {/* Composition rows (same categories as ZCode, ordered system-side first
-              with the conversation tail last): value and percentage right-aligned with
-              equal width, dotted separator between. MCP tools = every shape the MCP
-              cost takes: wire schema carried in the tools array (tools.xdev off), plus
-              the prompt-side splits — inlined `## mcp__x` docs (block 0) and the
-              `xd://mcp__x` device catalog (blocks 1+) — which are subtracted from the
+          {/* Composition rows in the physical prompt order: system text blocks
+              first (the cache prefix), then the tools array, with the conversation
+              tail last. MCP tools = every shape the MCP cost takes: wire schema
+              carried in the tools array (tools.xdev off), plus the prompt-side
+              splits — inlined `## mcp__x` docs (block 0) and the `xd://mcp__x`
+              device catalog (blocks 1+) — which are subtracted from the
               system-prompt / other rows they were counted in; Repo rules = the
               <repo-rules> region (AGENTS.md / CLAUDE.md) and Memory = the tagged
               <memories>/<mental_models> blocks plus the read-path guidance block,
@@ -395,24 +392,37 @@ export default function CtxCard({ anchor }: { anchor: HTMLElement | null }) {
                 ]
               : [[t("chat.ctxMessages"), b.messagesTokens]];
             const rows: [string, number][] = [
-              [t("chat.ctxSystemTools"), Math.max(0, b.systemToolsTokens - mcpTools)],
-              [t("chat.ctxMcpTools"), mcpTokens],
               [t("chat.ctxSystemPrompt"), Math.max(0, b.systemPromptTokens - mcpPrompt)],
-              [t("chat.ctxMemory"), memory],
               [t("chat.ctxSkills"), b.skillsTokens],
               [t("chat.ctxRepoRules"), repoRules],
+              [t("chat.ctxMemory"), memory],
               [t("chat.ctxOther"), Math.max(0, other)],
+              [t("chat.ctxSystemTools"), Math.max(0, b.systemToolsTokens - mcpTools)],
+              [t("chat.ctxMcpTools"), mcpTokens],
               ...lastRows,
             ];
-            return rows.map(([label, v], i) => (
-              <div className="cx-row" key={label}>
-                <span className="dot" style={{ background: ROW_DOT_COLORS[i] }} />
-                <span>{label}</span>
-                <span className="cx-val">{fmtTokens(v)}</span>
-                <i className="cx-sep" />
-                <span className="cx-pct">{pct(v)}</span>
-              </div>
-            ));
+            // The bar above the rows is the same list laid end to end: rows sum to
+            // usedTokens exactly (the MCP/context splits cancel out), so segment
+            // widths as shares of the window fill precisely the old single-fill width.
+            const seg = (v: number) => `${((v / b.contextWindow) * 100).toFixed(2)}%`;
+            return (
+              <>
+                <div className="cx-bar">
+                  {rows.map(([label, v], i) => (
+                    <i key={label} style={{ width: seg(v), background: ROW_DOT_COLORS[i] }} />
+                  ))}
+                </div>
+                {rows.map(([label, v], i) => (
+                  <div className="cx-row" key={label}>
+                    <span className="dot" style={{ background: ROW_DOT_COLORS[i] }} />
+                    <span>{label}</span>
+                    <span className="cx-val">{fmtTokens(v)}</span>
+                    <i className="cx-sep" />
+                    <span className="cx-pct">{pct(v)}</span>
+                  </div>
+                ))}
+              </>
+            );
           })()}
         </>
       ) : null}

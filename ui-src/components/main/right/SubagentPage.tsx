@@ -12,8 +12,8 @@ export default function SubagentPage() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const selectedSubagent = useAppStore((st) => st.selectedSubagent);
-  const density = useAppStore((st) => st.hubDensity);
-  const grouping = useAppStore((st) => st.hubGrouping);
+  const density = useAppStore((st) => st.deckDensity);
+  const grouping = useAppStore((st) => st.deckGrouping);
   // Crew/comms view switch. Comms has no host channel yet: the tab renders a placeholder.
   const [view, setView] = useState<"crew" | "comms">("crew");
   // Detail view hides the roster, whose tick would otherwise repaint the whole page every
@@ -61,46 +61,29 @@ export default function SubagentPage() {
             {t("right.adComms")}
           </button>
         </span>
-        <span className="ad-seg" role="group" aria-label={t("right.adGrouping")}>
-          <button
-            type="button"
-            className={grouping === "tree" ? "active" : ""}
-            aria-pressed={grouping === "tree"}
-            title={t("right.adGroupingTree")}
-            onClick={() => useAppStore.getState().setHubGrouping("tree")}
-          >
-            <Icon name="tree" size={13} />
-          </button>
-          <button
-            type="button"
-            className={grouping === "status" ? "active" : ""}
-            aria-pressed={grouping === "status"}
-            title={t("right.adGroupingStatus")}
-            onClick={() => useAppStore.getState().setHubGrouping("status")}
-          >
-            <Icon name="list" size={13} />
-          </button>
-        </span>
-        <span className="ad-seg" role="group" aria-label={t("right.adDensity")}>
-          <button
-            type="button"
-            className={density === "standard" ? "active" : ""}
-            aria-pressed={density === "standard"}
-            title={t("right.adDensityStandard")}
-            onClick={() => useAppStore.getState().setHubDensity("standard")}
-          >
-            <Icon name="list" size={13} />
-          </button>
-          <button
-            type="button"
-            className={density === "minimal" ? "active" : ""}
-            aria-pressed={density === "minimal"}
-            title={t("right.adDensityMinimal")}
-            onClick={() => useAppStore.getState().setHubDensity("minimal")}
-          >
-            <Icon name="sort" size={13} />
-          </button>
-        </span>
+        {/* Grouping toggle: one icon button whose icon names the TARGET mode — the same
+            in-place-switch convention and icon pair (orgChart/sort) as the hub's headerbar
+            toggle, parked where the old two-button segment sat. */}
+        <button
+          type="button"
+          className="hub-ibtn"
+          title={grouping === "tree" ? t("right.adGroupingStatus") : t("right.adGroupingTree")}
+          aria-pressed={grouping === "tree"}
+          onClick={() => useAppStore.getState().setDeckGrouping(grouping === "tree" ? "status" : "tree")}
+        >
+          <Icon name={grouping === "tree" ? "sort" : "orgChart"} size={14} />
+        </button>
+        {/* Density toggle: same single-button treatment (icon = the density a click
+            switches to; menu = minimal one-row, rows = standard cards). */}
+        <button
+          type="button"
+          className="hub-ibtn"
+          title={density === "standard" ? t("right.adDensityMinimal") : t("right.adDensityStandard")}
+          aria-pressed={density === "minimal"}
+          onClick={() => useAppStore.getState().setDeckDensity(density === "standard" ? "minimal" : "standard")}
+        >
+          <Icon name={density === "standard" ? "menu" : "rows"} size={14} />
+        </button>
         <button type="button" className="hub-ibtn" title={t("right.adFullscreen")} aria-label={t("right.adFullscreen")} onClick={() => useAppStore.getState().openHub()}>
           <Icon name="externalOpen" size={14} />
         </button>

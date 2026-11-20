@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useAppStore, fmtTokens } from "../../../store";
 import { buildRows, type RosterSession } from "./subRoster";
 import { stInfo, stKeyOf, stLabel, tokenTotal, modelShort } from "./subShared";
+import { AgentFace } from "./AgentFace";
 
 // Status groups in display order — the summary legend and the donut both walk this list.
 // "waiting" is a preview-only tone in the deck; the roster's own vocabulary has no such group,
@@ -133,7 +134,7 @@ export default function AgentSummary({ s }: { s: RosterSession }) {
           <div className="ad-ins-children is-list">
             {data.top.map(([id, sub, tokens]) => (
               <button key={id} type="button" className="ad-chip-agent" onClick={() => useAppStore.getState().setHubSel(id)}>
-                <span className="ad-chip-avatar" aria-hidden="true">{(sub.name ?? sub.agent).trim()[0]?.toUpperCase() ?? "?"}</span>
+                <AgentFace className="ad-chip-avatar" avatarIndex={undefined} name={id} status={stInfo(subStatusOf(sub)).group} />
                 <span>{sub.name ?? sub.agent}</span>
                 <i className="ad-dot" data-tone={stInfo(stKeyOf(subStatusOf(sub))).group} aria-hidden="true" />
                 <em>{fmtTokens(tokens)}</em>

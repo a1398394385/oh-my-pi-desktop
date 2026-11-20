@@ -121,6 +121,11 @@ export interface UiSlice {
   bashCompleteResult: { reqId: number; items: Array<{ label: string; kind: "cmd" | "dir" | "file" }> } | null; // latest ! completion reply; stale when the reqId lags the current request
   ctxDetail: ContextDetailFrame | null; // most recent context_detail reply (ringpop popover transient, discard-on-leave)
   ctxLimits: LimitsResultFrame | null; // most recent limits_result reply
+  /** Standalone context viewer (middle-column page): the session whose snapshot
+   *  is being inspected; null = closed. Opened by clicking the context ring. */
+  contextViewer: { sessionId: string; sessionName: string } | null;
+  /** Bump counter: the topbar refresh icon increments it, the viewer re-samples on change. */
+  contextViewerRefreshSeq: number;
   // Latest keepalive_status snapshot per pool session id (ringpop transient; the ring's
   // center count and the context card's cache-warming section consume it). Keyed, not a
   // single slot: hidden sessions keep reporting (reportState pushes go to the one ws), so
@@ -137,10 +142,20 @@ export interface UiSlice {
   hubSel: string | null; // selected subagentId
   /** Status tab filter for the roster (flat list, "all" or a display-group key). */
   hubStatus: string;
-  /** Roster density: standard cards carry task and metrics, minimal is one row per agent. */
-  hubDensity: "standard" | "minimal";
-  /** Roster grouping: by spawn tree or a flat status-ordered list. */
+  /** Right-sidebar deck (subagent tab) roster density: standard cards carry task and
+   *  metrics, minimal is one row per agent. Deck-only — the Agent Hub page is always
+   *  standard and has no density switch. */
+  deckDensity: "standard" | "minimal";
+  /** Right-sidebar deck roster grouping: by spawn tree or a flat status-ordered list.
+   *  Deck-only; the hub page carries its own hubGrouping so the two surfaces never
+   *  follow each other's toggle. */
+  deckGrouping: "tree" | "status";
+  /** Agent Hub middle-card grouping (headerbar toggle): by spawn tree or a flat
+   *  status-ordered list. Independent from the deck's grouping. */
   hubGrouping: "tree" | "status";
+  /** Middle-card hub view tab: "overview" is the roster page; "command" is the future
+   *  orchestration surface, a placeholder until that page lands. */
+  hubView: "overview" | "command";
   hubRightWasCollapsed: boolean; // right panel state to restore on closeHub
   hubPrevTab: string | null; // rightTab to restore when the linked hub tab closes
   pendingOpenHub?: boolean; // pending hub open request during asynchronous session load
@@ -165,8 +180,10 @@ export interface UiSlice {
   openHub(): void;
   closeHub(): void;
   setHubSel(id: string | null): void;
-  setHubDensity(v: "standard" | "minimal"): void;
+  setDeckDensity(v: "standard" | "minimal"): void;
+  setDeckGrouping(v: "tree" | "status"): void;
   setHubGrouping(v: "tree" | "status"): void;
+  setHubView(v: "overview" | "command"): void;
   setHubStatus(key: string): void;
   setComposerValue(text: string, images?: unknown[] | null, opts?: { guard?: boolean }): void;
   setMainViewMode(mode: "chat" | "tree"): void;
@@ -290,13 +307,17 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
   bashCompleteResult: null,
   ctxDetail: null,
   ctxLimits: null,
+  contextViewer: null,
+  contextViewerRefreshSeq: 0,
   keepaliveStatus: {},
   mainViewMode: "chat",
   hubOpen: false,
   hubSel: null,
   hubStatus: "all",
-  hubDensity: "standard",
+  deckDensity: "standard",
+  deckGrouping: "status",
   hubGrouping: "status",
+  hubView: "overview",
   hubRightWasCollapsed: false,
   hubPrevTab: null,
   pendingOpenHub: false,
@@ -361,12 +382,20 @@ export const createUiSlice: StateCreator<AppStore, [], [], UiSlice> = (set, get)
     set({ hubSel: id });
   },
 
-  setHubDensity(v) {
-    set({ hubDensity: v });
+  setDeckDensity(v) {
+    set({ deckDensity: v });
+  },
+
+  setDeckGrouping(v) {
+    set({ deckGrouping: v });
   },
 
   setHubGrouping(v) {
     set({ hubGrouping: v });
+  },
+
+  setHubView(v) {
+    set({ hubView: v });
   },
 
   setHubStatus(key) {

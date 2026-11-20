@@ -14,7 +14,7 @@ export const miscZh = {
   restoreDown: "向下还原",
   maximize: "最大化",
   // ConnBanner.tsx
-  connDiagTitle: "omp-desktop 连接诊断",
+  connDiagTitle: "OMP Desktop 连接诊断",
   connDiagWait: "等待时长: {{sec}}s",
   connDiagStatus: "状态: {{text}}",
   connDiagPlatform: "平台: {{platform}}",

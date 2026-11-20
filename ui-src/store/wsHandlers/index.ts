@@ -15,6 +15,7 @@ import { btwHandlers, type BtwFrames } from "./btw";
 import { worktreeHandlers, type WorktreeFrames } from "./worktree";
 import { gitGraphHandlers, type GitGraphFrames } from "./git-graph";
 import { collabHandlers, type CollabFrames } from "./collab";
+import { contextViewHandlers, type ContextViewFrames } from "./contextView";
 import type { HandlerMap, IgnoredFrames } from "./types";
 import type { HostFrame } from "../../types/frames";
 
@@ -22,7 +23,7 @@ import type { HostFrame } from "../../types/frames";
 // IgnoredFrames (session_tree) is excluded on purpose: the host still serves the cross-file
 // branch-family query (smoke-branch.ts probes it), but the UI has no consumer since the
 // right-panel branch tree was removed.
-type Covered = ConfigFrames | SessionFrames | StreamFrames | FilesFrames | SettingsFrames | AutomationsFrames | BtwFrames | WorktreeFrames | GitGraphFrames | CollabFrames;
+type Covered = ConfigFrames | SessionFrames | StreamFrames | FilesFrames | SettingsFrames | AutomationsFrames | BtwFrames | WorktreeFrames | GitGraphFrames | CollabFrames | ContextViewFrames;
 type Missing = Exclude<HostFrame["type"], Covered | IgnoredFrames>;
 type AssertNever<T extends never> = T;
 type _allFramesCovered = AssertNever<Missing>;
@@ -38,6 +39,7 @@ export const frameHandlers: HandlerMap = {
   ...worktreeHandlers,
   ...gitGraphHandlers,
   ...collabHandlers,
+  ...contextViewHandlers,
 };
 
 /** Single-frame dispatch: table-driven (unknown runtime frames silently ignored, same fallback as the old switch default) */

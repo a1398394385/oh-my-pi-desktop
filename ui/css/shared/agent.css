@@ -17,13 +17,8 @@
 /* Top block: avatar | name over model | status over elapsed. */
 .hub-top { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
 
-.hub-avatar {
-  flex: none;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: var(--r-sm);
-  background: var(--panel-2); color: var(--text);
-  font-size: var(--ui-fs-md); font-weight: 600;
-}
+/* The tile face svg fills the slot; sizing only, the plate and the letter are gone. */
+.hub-avatar { flex: none; width: 36px; height: 36px; }
 
 /* Middle column of the top block: the name rides over the model line (a column, so the
    right-side status column never wraps into them). */
@@ -91,4 +86,100 @@
 @media (min-resolution: 3dppx) {
   .hub-row { box-shadow: inset 0 0 0 .33px color-mix(in srgb, var(--line) 75%, transparent); }
   .hub-row:hover, .hub-row.on { box-shadow: inset 0 0 0 .33px var(--line); }
+}
+
+/* ---------- Tile face (ZCode workflow-face engine; OMP species face) ----------
+   One violet-night body for every agent (the face is the brand); identity color rides the
+   π brow and the pupils via --agent-face-eye, set inline by AgentFace. Motion reduction is
+   the app's global contract (global/animations.css kills every animation under reduce/off,
+   and faceMotion.ts stops scheduling via motionEnabled) — the expression itself stays
+   visible because it carries status, it is information not decor. */
+.agent-face {
+  min-width: 20px;
+  min-height: 20px;
+  flex-shrink: 0;
+  overflow: visible;
+  --agent-face-body: #2a0c4b;
+  --agent-face-eye: #ffffff;
+  --agent-face-x: 0px;
+  --agent-face-y: 0px;
+}
+.agent-face-eyes {
+  transform: translate(var(--agent-face-x), var(--agent-face-y));
+  transition: transform 360ms ease-in-out;
+}
+.agent-face-lids {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.agent-face [data-eye-expression] { display: none; }
+.agent-face[data-expression="dots"] [data-eye-expression="dots"],
+.agent-face[data-expression="pill"] [data-eye-expression="pill"] { display: inline; }
+.agent-face[data-expression="happy"] [data-eye-expression="happy"] { display: inline; }
+.agent-face[data-expression="sleepy"] [data-eye-expression="sleepy"] { display: inline; }
+.agent-face[data-expression="focused"] [data-eye-expression="focused"] { display: inline; }
+.agent-face[data-expression="sad"] [data-eye-expression="sad"] { display: inline; }
+.agent-face[data-expression="confused"] [data-eye-expression="confused"] { display: inline; }
+
+.agent-face[data-motion="blink"] .agent-face-lids {
+  animation: agent-face-blink var(--agent-face-blink-time, 230ms) ease-in-out var(--agent-face-blinks, 2);
+}
+.agent-face[data-motion="morph"] .agent-face-lids {
+  animation: agent-face-morph 180ms ease-in-out;
+}
+.agent-face[data-motion="hop"] .agent-face-bounce {
+  animation: agent-face-hop 240ms ease-in-out var(--agent-face-hops, 2);
+}
+.agent-face-closed { opacity: 0; }
+.agent-face[data-motion="blink"] .agent-face-closed {
+  animation: agent-face-closed-blink var(--agent-face-blink-time, 230ms) ease-in-out var(--agent-face-blinks, 2);
+}
+.agent-face[data-motion="morph"] .agent-face-closed {
+  animation: agent-face-closed-morph 180ms ease-in-out;
+}
+@keyframes agent-face-blink {
+  0%, 70%, 100% { transform: scaleY(1); opacity: 1; }
+  35% { transform: scaleY(0.333333); opacity: 0; }
+}
+@keyframes agent-face-closed-blink {
+  0%, 70%, 100% { opacity: 0; }
+  35% { opacity: 1; }
+}
+@keyframes agent-face-morph {
+  0%, 100% { transform: scaleY(1); opacity: 1; }
+  40%, 50% { transform: scaleY(0.333333); opacity: 0; }
+}
+@keyframes agent-face-closed-morph {
+  0%, 100% { opacity: 0; }
+  40%, 50% { opacity: 1; }
+}
+.agent-face[data-motion="float"] .agent-face-bounce {
+  animation: agent-face-float 600ms ease-in-out var(--agent-face-floats, 1);
+}
+.agent-face[data-motion="shake"] .agent-face-bounce {
+  animation: agent-face-shake 90ms linear var(--agent-face-shakes, 3);
+}
+@keyframes agent-face-float {
+  0%, 100% { transform: translateY(0); }
+  30% { transform: translateY(-0.5px); }
+  70% { transform: translateY(0.5px); }
+}
+@keyframes agent-face-shake {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(-0.9px, -0.35px); }
+  75% { transform: translate(0.9px, 0.35px); }
+}
+.agent-face[data-motion="dots-wave"] [data-eye-expression="dots"] circle {
+  animation: agent-face-dot-float 500ms ease-in-out both;
+}
+.agent-face[data-motion="dots-wave"] [data-eye-expression="dots"] circle:nth-child(2) { animation-delay: 200ms; }
+.agent-face[data-motion="dots-wave"] [data-eye-expression="dots"] circle:nth-child(3) { animation-delay: 400ms; }
+@keyframes agent-face-dot-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+@keyframes agent-face-hop {
+  0%, 100% { transform: translateY(0); }
+  35% { transform: translateY(-1px); }
+  70% { transform: translateY(0.7px); }
 }

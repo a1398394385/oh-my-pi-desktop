@@ -785,6 +785,7 @@ html[data-motion="off"] .shimmer { animation: none; background-image: none; colo
 .ctx-ring {
   width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center;
   padding: 4px; border-radius: 7px; /* reserve at rest; the hover plate appears without shifting layout (border-box: 24 = 16 ring + 4x2 padding) */
+  cursor: pointer; /* click swaps the middle column to the context viewer */
 }
 
 /* hover plate = --panel-2, the same fill as every other composer-toolbar button */

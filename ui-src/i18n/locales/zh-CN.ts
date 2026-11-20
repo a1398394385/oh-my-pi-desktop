@@ -18,6 +18,7 @@ import collab from "./ui/collab.zh";
 import autoList from "./ui/autoList.zh";
 import autoEdit from "./ui/autoEdit.zh";
 import remote from "./ui/remote.zh";
+import contextViewer from "./ui/contextViewer.zh";
 
 const zhCN = {
   common,
@@ -37,6 +38,7 @@ const zhCN = {
   autoList,
   autoEdit,
   remote,
+  contextViewer,
 };
 
 export default zhCN;

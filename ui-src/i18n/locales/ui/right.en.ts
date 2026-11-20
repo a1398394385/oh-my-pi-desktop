@@ -144,6 +144,8 @@ export const rightEn = {
   subMessagesLoading: "Loading messages…",
   subMessagesEmpty: "This subagent has not produced any message yet.",
   hubEmpty: "No subagents in this session yet.",
+  hubTabOverview: "Overview",
+  hubTabCommand: "Command",
   hubActiveAgo: "active {{age}} ago",
   hubTask: "Task",
   // Dossier tabs (right-sidebar detail): the same shell for the hub's linked page and the

@@ -143,6 +143,8 @@ export const rightZh = {
   subMessagesLoading: "正在读取消息…",
   subMessagesEmpty: "这个子代理还没有产生消息。",
   hubEmpty: "当前会话还没有子代理。",
+  hubTabOverview: "总览",
+  hubTabCommand: "指挥",
   hubActiveAgo: "{{age}}前活跃",
   hubTask: "任务",
   // Dossier tabs (right-sidebar detail): the same shell for the hub's linked page and the

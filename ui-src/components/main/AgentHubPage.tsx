@@ -1,10 +1,13 @@
 // Agent Hub middle card: replaces the chat stream while open. Flat roster of the session's
-// subagents (projected rows from subRoster), status filter pills in the top bar, and the
-// aggregate usage summary above the list. Selection links to the right sidebar's hub detail
-// page; Enter bridges into the regular subagent tab; x kills via kill_subagent.
+// subagents (projected rows from subRoster) at standard density (the deck's minimal density
+// is sidebar-only), an overview/command segmented control and the status filter pills in the
+// top bar, and the aggregate usage stats at the bar's right edge. Selection links to the
+// right sidebar's hub detail page; Enter bridges into the regular subagent tab; x kills via
+// kill_subagent. The back button and the grouping toggle live in the shared headerbar
+// (MainHeader) while the hub is open.
 import { useEffect, useRef } from "react";
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import Icon from "../../Icon";
 import { useAppStore, send } from "../../store";
 import { HubUsage, StatusTabs, useRosterRows, useRosterTick, openSubagentSession, treeDepth, HubPageCard } from "../shared/agent/subRoster";
 
@@ -14,8 +17,8 @@ export default function AgentHub() {
   const { t } = useTranslation();
   const s = useAppStore((st) => (st.activePath ? st.openSessions.get(st.activePath) : undefined));
   const hubSel = useAppStore((st) => st.hubSel);
-  const density = useAppStore((st) => st.hubDensity);
   const grouping = useAppStore((st) => st.hubGrouping);
+  const hubView = useAppStore((st) => st.hubView);
   // Repaint the age column once per second while anything streams
   useRosterTick(s);
   const rows = useRosterRows(s);
@@ -79,90 +82,75 @@ export default function AgentHub() {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [rows, s]);
 
-  // Mouse exit (the keybinds live only in the keybind bar below)
-  const backBtn = (
-    <button type="button" className="subagent-return-btn ml-auto" onClick={() => useAppStore.getState().closeHub()}>
-      {t("chat.backToParentSession")}
-    </button>
-  );
+  // The back button lives in the shared headerbar while the hub is open (same slot the
+  // subagent detail page uses), so neither the empty state nor the top bar carries one here.
 
   if (!s || s.subagents.size === 0) {
     return (
       <div id="agentHub" className="hub-empty text-faint text-ui-base">
         {t("right.hubEmpty")}
-        {backBtn}
       </div>
     );
   }
 
   return (
     <div id="agentHub">
-      {/* Top bar: title, status filter pills, back button. No plate of its own — the pills
-          carry the only chrome (the old keybind row's background and hints are gone; the
-          shortcuts themselves still work). */}
+      {/* Top bar: the overview/command segmented control (the sidebar's .seg switch with two
+          slots), the status filter pills, and the labeled aggregate stats row pinned to the
+          right edge — the same five-cell line the right sidebar's subagent page renders in
+          its pulse header. No plate of its own; the pills and the control carry the chrome. */}
       <div className="hub-topbar">
-        <span className="hub-title">{t("right.hubTitle")}</span>
+        <div
+          className="seg hub-seg"
+          role="tablist"
+          style={{ "--seg-i": hubView === "command" ? 1 : 0, "--seg-n": 2 } as CSSProperties}
+        >
+          <button
+            type="button"
+            role="tab"
+            data-view="overview"
+            className={hubView === "overview" ? "on" : ""}
+            aria-selected={hubView === "overview"}
+            onClick={() => useAppStore.getState().setHubView("overview")}
+          >
+            {t("right.hubTabOverview")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            data-view="command"
+            className={hubView === "command" ? "on" : ""}
+            aria-selected={hubView === "command"}
+            onClick={() => useAppStore.getState().setHubView("command")}
+          >
+            {t("right.hubTabCommand")}
+          </button>
+        </div>
         <StatusTabs s={s} />
-        <span className="ad-seg" role="group" aria-label={t("right.adGrouping")}>
-          <button
-            type="button"
-            className={grouping === "tree" ? "active" : ""}
-            aria-pressed={grouping === "tree"}
-            title={t("right.adGroupingTree")}
-            onClick={() => useAppStore.getState().setHubGrouping("tree")}
-          >
-            <Icon name="tree" size={13} />
-          </button>
-          <button
-            type="button"
-            className={grouping === "status" ? "active" : ""}
-            aria-pressed={grouping === "status"}
-            title={t("right.adGroupingStatus")}
-            onClick={() => useAppStore.getState().setHubGrouping("status")}
-          >
-            <Icon name="list" size={13} />
-          </button>
-        </span>
-        <span className="ad-seg" role="group" aria-label={t("right.adDensity")}>
-          <button
-            type="button"
-            className={density === "standard" ? "active" : ""}
-            aria-pressed={density === "standard"}
-            title={t("right.adDensityStandard")}
-            onClick={() => useAppStore.getState().setHubDensity("standard")}
-          >
-            <Icon name="list" size={13} />
-          </button>
-          <button
-            type="button"
-            className={density === "minimal" ? "active" : ""}
-            aria-pressed={density === "minimal"}
-            title={t("right.adDensityMinimal")}
-            onClick={() => useAppStore.getState().setHubDensity("minimal")}
-          >
-            <Icon name="sort" size={13} />
-          </button>
-        </span>
-        {backBtn}
+        <div className="hub-stats">
+          <HubUsage s={s} />
+        </div>
       </div>
-      <HubUsage s={s} compact />
-      <div className="hub-list" role="listbox">
-        {rows.map((row) => {
-          // Tree grouping indents by ancestry depth, so a subagent's subagent nests further
-          const depth = grouping === "tree" ? treeDepth(rows, row) : 0;
-          return (
-            <div key={row.id} style={depth ? { paddingLeft: depth * 14 } : undefined}>
-              <HubPageCard
-                row={row}
-                selected={row.id === hubSel}
-                minimal={density === "minimal"}
-                onSelect={() => useAppStore.getState().setHubSel(row.id)}
-                t={t}
-              />
-            </div>
-          );
-        })}
-      </div>
+      {hubView === "command" ? (
+        <div className="hub-comms-soon">{t("right.adTabSoon")}</div>
+      ) : (
+        <div className="hub-list" role="listbox">
+          {rows.map((row) => {
+            // Tree grouping indents by ancestry depth, so a subagent's subagent nests further
+            const depth = grouping === "tree" ? treeDepth(rows, row) : 0;
+            return (
+              <div key={row.id} style={depth ? { paddingLeft: depth * 14 } : undefined}>
+                <HubPageCard
+                  row={row}
+                  selected={row.id === hubSel}
+                  onSelect={() => useAppStore.getState().setHubSel(row.id)}
+                  t={t}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
