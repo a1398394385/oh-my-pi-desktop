@@ -394,6 +394,8 @@ export interface SubagentUsage {
   requests?: number;
   toolCount?: number;
   tokens?: Record<string, number>; // host normalizes the base's plain cumulative number to { total }
+  outputTokens?: number; // generated output tokens (host-counted from child turn_end events)
+  genMs?: number; // summed per-request generation duration behind outputTokens
   contextTokens?: number;
   contextWindow?: number;
   completionPercent?: number; // base progress.completionPercent: live self-estimate of completion (0–100)

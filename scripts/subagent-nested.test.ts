@@ -16,6 +16,9 @@ interface Frame {
   name?: string;
   parent?: string;
   status?: string;
+  tokens?: Record<string, number>;
+  outputTokens?: number;
+  genMs?: number;
 }
 
 interface FakeBus {
@@ -79,6 +82,26 @@ describe("live nested subagent frames", () => {
     createSubagentView(ws, "s1", entry, rootBus).unsubscribe();
     rootBus.emit("task:subagent:lifecycle", { id: "Root", agent: "task", status: "started", index: 0 });
     expect(frames.map((f) => f.subagentId)).toEqual(["Root"]);
+  });
+
+  // The rate cell divides generated output tokens by the assistant requests' own durations;
+  // neither number survives base progress (one input+output+cacheWrite counter, one wall
+  // clock), so the host sums them from the child's message_end events.
+  test("progress frames carry the generation counters from child message_end events", () => {
+    const subagentBus = fakeBus();
+    const { frames } = view(subagentBus);
+    subagentBus.emit("task:subagent:lifecycle", { id: "A", agent: "task", status: "started", index: 0 });
+    subagentBus.emit("task:subagent:event", {
+      id: "A",
+      event: { type: "message_end", message: { role: "assistant", usage: { output: 120 }, duration: 2000 } },
+    });
+    subagentBus.emit("task:subagent:event", {
+      id: "A",
+      event: { type: "message_end", message: { role: "assistant", usage: { output: 80 }, duration: 1000 } },
+    });
+    subagentBus.emit("task:subagent:progress", { progress: { id: "A", status: "running", tokens: 500, durationMs: 9000 } });
+    const progress = frames.filter((f) => f.type === "subagent_progress").at(-1);
+    expect(progress).toMatchObject({ outputTokens: 200, genMs: 3000 });
   });
 });
 
@@ -144,5 +167,39 @@ describe("disk replay of nested transcripts", () => {
     };
     expect(rows()).toHaveLength(0); // pooled session: its own live frames own the row
     expect(rows(false)).toHaveLength(1); // rebuilt entry: this replay is the only copy
+  });
+
+  // Replay must land on the live frame's counter, not on the per-turn context size:
+  // summing usage.totalTokens would add every turn's cache read and make a finished run's
+  // token figure (and its rate) jump by an order of magnitude when the session is reopened.
+  test("replayed tokens exclude cache reads and keep the generation counters", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nested-rate-"));
+    const rootFile = path.join(dir, "root.jsonl");
+    const childDir = path.join(dir, "root");
+    const childFile = path.join(childDir, "Outer.jsonl");
+    fs.mkdirSync(childDir, { recursive: true });
+    fs.writeFileSync(rootFile, JSON.stringify({ type: "session", timestamp: "2026-01-01T00:00:00.000Z" }));
+    const entry = (usage: Record<string, number>, duration: number) =>
+      JSON.stringify({
+        type: "message",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        message: { role: "assistant", content: "ok", duration, usage },
+      });
+    fs.writeFileSync(
+      childFile,
+      [
+        JSON.stringify({ type: "session", timestamp: "2026-01-01T00:00:00.000Z", parentSession: rootFile }),
+        entry({ input: 100, output: 50, cacheRead: 900, cacheWrite: 0, totalTokens: 1050 }, 1000),
+        entry({ input: 20, output: 30, cacheRead: 800, cacheWrite: 0, totalTokens: 850 }, 500),
+      ].join("\n") + "\n",
+    );
+    const past = new Date(Date.now() - 3_600_000);
+    fs.utimesSync(childFile, past, past);
+
+    const frames: Frame[] = [];
+    replaySubagentHistory({ send: (data: string) => frames.push(JSON.parse(data) as Frame) }, rootFile, "s1", false);
+    const progress = frames.filter((f) => f.type === "subagent_progress").at(-1);
+    expect(progress?.tokens?.total).toBe(200); // 100+50 + 20+30, cache reads excluded
+    expect(progress).toMatchObject({ outputTokens: 80, genMs: 1500 });
   });
 });

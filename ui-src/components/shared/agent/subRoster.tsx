@@ -111,7 +111,7 @@ function usageSignature(s: RosterSession): string {
   return [...s.subagents]
     .map(
       ([id, x]) =>
-        `${id}:${x.streaming ? 1 : 0}:${x.status}:${x.usage?.cost ?? ""}:${x.usage?.durationMs ?? ""}:${x.usage?.requests ?? ""}:${x.usage?.toolCount ?? x.tools.length}:${tokenTotal(x.usage?.tokens) ?? ""}`,
+        `${id}:${x.streaming ? 1 : 0}:${x.status}:${x.usage?.cost ?? ""}:${x.usage?.durationMs ?? ""}:${x.usage?.requests ?? ""}:${x.usage?.toolCount ?? x.tools.length}:${tokenTotal(x.usage?.tokens) ?? ""}:${x.usage?.outputTokens ?? ""}:${x.usage?.genMs ?? ""}`,
     )
     .join(";");
 }
@@ -154,7 +154,7 @@ export function HubUsage({ s, compact = false }: { s: RosterSession; compact?: b
   const { t } = useTranslation();
   const sig = usageSignature(s);
   const agg = useMemo(() => {
-    let cost = 0, dur = 0, reqs = 0, tools = 0, tok = 0, measured = 0;
+    let cost = 0, dur = 0, reqs = 0, tools = 0, tok = 0, out = 0, genMs = 0, measured = 0;
     for (const [, sub] of s.subagents) {
       const u = sub.usage;
       if (!u) continue;
@@ -164,8 +164,10 @@ export function HubUsage({ s, compact = false }: { s: RosterSession; compact?: b
       reqs += u.requests ?? 0;
       tools += u.toolCount ?? sub.tools.length;
       tok += tokenTotal(u.tokens) ?? 0;
+      out += u.outputTokens ?? 0;
+      genMs += u.genMs ?? 0;
     }
-    return { cost, dur, reqs, tools, tok, measured };
+    return { cost, dur, reqs, tools, tok, out, genMs, measured };
   }, [sig]);
   if (compact) {
     return (
@@ -182,8 +184,11 @@ export function HubUsage({ s, compact = false }: { s: RosterSession; compact?: b
       </div>
     );
   }
-  // Throughput matches the deck pulse: aggregate tokens per second of agent time.
-  const rate = agg.dur > 0 ? agg.tok / (agg.dur / 1000) : 0;
+  // Same formula as the main stats bar's tokenSpeed: generated output tokens over the
+  // assistant requests' own durations. The lifetime token counter and the run's wall clock
+  // (which includes tool execution and idle waits) yield prompt throughput, not generation
+  // speed — often an order of magnitude off.
+  const rate = agg.genMs > 0 ? (agg.out * 1000) / agg.genMs : 0;
   const cells: Array<[string, string]> = [
     [t("right.hubStatTokens"), fmtTokens(agg.tok)],
     [t("right.hubStatCost"), `$${agg.cost.toFixed(3)}`],

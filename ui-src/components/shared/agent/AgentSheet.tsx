@@ -69,7 +69,10 @@ export default function AgentSheet({
     [t("right.hubTilesRequests"), String(u?.requests ?? 0)],
     [t("right.hubStatTools"), String(u?.toolCount ?? sub.tools.length)],
     [t("right.hubStatCost"), u?.cost ? `$${u.cost.toFixed(2)}` : "—"],
-    [t("right.hubStatRate"), streaming && elapsed > 0 && tokens ? `${Math.round(tokens / (elapsed / 1000))} t/s` : "—"],
+    // Generation speed = output tokens over the assistant requests' own durations (host
+    // counters from child turn_end events). The old tokens/wall-clock formula mixed
+    // prompt tokens into the numerator, reading tens of thousands of t/s early in a run.
+    [t("right.hubStatRate"), u?.genMs ? `${Math.round(((u.outputTokens ?? 0) * 1000) / u.genMs)} t/s` : "—"],
   ];
 
   return (

@@ -321,6 +321,8 @@ export const streamHandlers = {
           requests: msg.requests,
           toolCount: msg.toolCount,
           tokens: msg.tokens,
+          outputTokens: msg.outputTokens,
+          genMs: msg.genMs,
           contextTokens: msg.contextTokens,
           contextWindow: msg.contextWindow,
           completionPercent: msg.completionPercent,

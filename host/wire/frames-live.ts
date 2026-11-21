@@ -67,6 +67,11 @@ export interface SubagentProgressFrame {
   toolCount?: number;
   // TODO(narrowing pass): tokens is the bucketed object of base progress; follows the SDK
   tokens?: Record<string, number>;
+  /** Output tokens over the assistant requests' own durations (main stats bar tokenSpeed
+   *  formula). Live frames count them from subagent message_end events; history replay
+   *  re-sums them from the child transcript. Absent until a request has finished. */
+  outputTokens?: number;
+  genMs?: number;
   contextTokens?: number;
   contextWindow?: number;
   /** Base progress.completionPercent: the subagent's self-estimated completion (0–100) */

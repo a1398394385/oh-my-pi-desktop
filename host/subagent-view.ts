@@ -52,6 +52,15 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
     { requests: number; toolCount: number; cost: number; durationMs: number; tokens: Record<string, number> }
   >();
   const subFirstTask = new Map<string, string>(); // original assignment, kept across wake turns
+  // Generation counters behind the roster's "rate" cell: output tokens over the assistant
+  // messages' own durations (the main stats bar's tokenSpeed formula). Base progress only
+  // gives one input+output+cacheWrite counter and the whole run's wall clock — dividing
+  // those yields prompt-throughput, not generation speed.
+  const subGen = new Map<string, { output: number; genMs: number }>();
+  const genFields = (id: string): { outputTokens?: number; genMs?: number } => {
+    const g = subGen.get(id);
+    return g ? { outputTokens: g.output, genMs: g.genMs } : {};
+  };
   const callOwner = new Map<string, { owner: string; names: string[] }>(); // task toolCallId -> owner + spawned subagent names
   const spawnTools: Record<string, true> = { task: true, agent: true };
   const spawnNames = (args: Record<string, unknown>): string[] => {
@@ -112,7 +121,7 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
     // After a terminal-status frame, re-send the last progress frame (throttling may have swallowed it) so cost/tokens settle at final values
     if (p.status !== "started") {
       const last = subLastProgress.get(p.id);
-      if (last) ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, ...last, status: p.status }));
+      if (last) ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId: p.id, ...last, ...genFields(p.id), status: p.status }));
     }
   });
   // Aggregate progress frames: cost/duration/requests/tools/tokens/context (high-frequency and cumulative, throttled at 500ms; status changes send immediately)
@@ -193,7 +202,7 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
     if (!statusChanged && now - (subSentAt.get(subagentId) ?? 0) < 500) return;
     subSentAt.set(subagentId, now);
     subSentStatus.set(subagentId, pr.status);
-    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, name: subName(subagentId, p.agent, pr.index), parent: subParent(subagentId), registeredAt: subRegistered.get(subagentId), ...payload }));
+    ws.send(JSON.stringify({ type: "subagent_progress", sessionId, subagentId, name: subName(subagentId, p.agent, pr.index), parent: subParent(subagentId), registeredAt: subRegistered.get(subagentId), ...payload, ...genFields(subagentId) }));
   });
   // Late joiner (remote control / frontend reload): a subagent already running when this
   // socket subscribes fired its "started" frame into the void, and the disk replay skips a
@@ -207,6 +216,15 @@ export function createSubagentView(ws: any, sessionId: string, entry: PoolEntry,
     ws.send(JSON.stringify(stampEvent({ type: "subagent_lifecycle", sessionId, subagentId: snap.id, agent: snap.agent, description: snap.description ?? "", status: "started", name: subName(snap.id, snap.agent), parent: subParent(snap.id), sessionFile: snap.sessionFile, registeredAt, detached: false })));
   }
   const unsubEvents = bus.on("task:subagent:event", ({ id, event }: any) => {
+    // Base assistant messages carry the per-request usage and the request's own duration
+    // (pi-ai AssistantMessage.duration); wake re-runs keep appending to the same id.
+    if (event.type === "message_end" && event.message?.role === "assistant") {
+      const acc = subGen.get(id) ?? { output: 0, genMs: 0 };
+      acc.output += event.message.usage?.output ?? 0;
+      const duration = event.message.duration;
+      if (typeof duration === "number" && duration > 0) acc.genMs += duration;
+      subGen.set(id, acc);
+    }
     // Task calls inside a subagent stream: owned by that subagent (nested spawn)
     if (event.type === "tool_execution_start" && spawnTools[event.toolName]) {
       callOwner.set(event.toolCallId, { owner: subName(id, id), names: spawnNames(event.args) });
@@ -299,6 +317,7 @@ interface HistEntry {
     stopReason?: string;
     errorMessage?: string;
     isError?: boolean;
+    duration?: number; // per-request generation duration (pi-ai AssistantMessage.duration)
   };
   data?: { toolCallId?: string; toolName?: string; args?: unknown };
 }
@@ -323,7 +342,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
   let lastIsError: boolean | undefined;
   const seenToolCalls = new Set<string>();
   const toolEvents: Record<string, unknown>[] = [];
-  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, total = 0, cost = 0, requests = 0;
+  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0, genMs = 0, cost = 0, requests = 0;
   let lastContextTokens = 0; // final assistant turn's totalTokens — terminal context size (same semantics as the executor's progress.contextTokens)
   let model: string | null = null;
   let modelRole: string | undefined;
@@ -396,7 +415,7 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
         output += u.output || 0;
         cacheRead += u.cacheRead || 0;
         cacheWrite += u.cacheWrite || 0;
-        total += u.totalTokens || 0;
+        if (typeof e.message.duration === "number" && e.message.duration > 0) genMs += e.message.duration;
         cost += u.cost?.total || 0;
         if (u.totalTokens && u.totalTokens > 0) lastContextTokens = u.totalTokens;
       }
@@ -431,7 +450,12 @@ function aggregateSubagentHistory(file: string, parentSessionPath: string): Hist
       durationMs: Math.max(0, lastTs - registeredAt),
       requests,
       toolCount: seenToolCalls.size,
-      tokens: { input, output, cacheRead, cacheWrite, total },
+      // `total` follows the live frame's counter (base executor getUsageTokens: input +
+      // output + cacheWrite, cacheRead excluded — re-reads would dwarf a lifetime figure);
+      // the bucketed totalTokens is the per-turn context size, kept separately above.
+      tokens: { input, output, cacheRead, cacheWrite, total: input + output + cacheWrite },
+      outputTokens: output,
+      genMs,
       contextTokens: lastContextTokens || undefined,
       contextWindow: modelRegistryContextWindow(model),
       resolvedModel: model && thinkingLevel ? `${model}:${thinkingLevel}` : model,
