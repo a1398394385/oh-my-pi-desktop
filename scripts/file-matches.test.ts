@@ -101,4 +101,17 @@ describe("listFileMatches path prefixes", () => {
       ["realdir/", true],
     ]);
   });
+
+  // An absolute query must complete against that directory on every platform:
+  // the Windows spelling ("C:\dir\") is what the composer sends, and it used to
+  // fall into the fuzzy branch, which never matches a path.
+  test("an absolute path prefix lists that directory, not a fuzzy match", async () => {
+    const abs = path.resolve(root, "realdir");
+    const hits = await listFileMatches(root, abs + path.sep);
+    expect(hits.map((h) => [path.basename(h.path), h.dir])).toEqual([["inner.ts", false]]);
+    // Without a trailing separator the query is a name prefix: it completes to the
+    // matching entry itself, not to the directory's content.
+    const noSep = await listFileMatches(root, abs);
+    expect(noSep.map((h) => [path.basename(h.path), h.dir])).toEqual([["realdir", true]]);
+  });
 });

@@ -53,7 +53,7 @@ describe("run-changes tracking + revert", () => {
     const cwd = await tmpdir();
     const { entry, entries } = fakeEntry(cwd);
     const abs = path.join(cwd, "a.txt");
-    trackRunToolStart(entry, "write", { path: abs, content: "hello\nworld\n" });
+    await trackRunToolStart(entry, "write", { path: abs, content: "hello\nworld\n" });
     await settle();
     await fsp.writeFile(abs, "hello\nworld\n");
     trackRunToolEnd(entry, "write", { path: abs, content: "hello\nworld\n" }, {}, false, { added: 2, removed: 0 });
@@ -79,7 +79,7 @@ describe("run-changes tracking + revert", () => {
     const { entry } = fakeEntry(cwd);
     const abs = path.join(cwd, "b.txt");
     await fsp.writeFile(abs, "old\n");
-    trackRunToolStart(entry, "edit", { path: abs, oldText: "old", newText: "new" });
+    await trackRunToolStart(entry, "edit", { path: abs, oldText: "old", newText: "new" });
     await settle();
     await fsp.writeFile(abs, "new\n");
     trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "old\n", newText: "new\n" } }, false);
@@ -101,13 +101,13 @@ describe("run-changes tracking + revert", () => {
     const abs = path.join(cwd, "c.txt");
     await fsp.writeFile(abs, "v0\n");
     // run 1: v0 -> v1
-    trackRunToolStart(entry, "edit", { path: abs });
+    await trackRunToolStart(entry, "edit", { path: abs });
     await settle();
     await fsp.writeFile(abs, "v1\n");
     trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "v0\n", newText: "v1\n" } }, false);
     await finalizeRunChanges(entry, "r1", () => {});
     // run 2: v1 -> v2
-    trackRunToolStart(entry, "edit", { path: abs });
+    await trackRunToolStart(entry, "edit", { path: abs });
     await settle();
     await fsp.writeFile(abs, "v2\n");
     trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "v1\n", newText: "v2\n" } }, false);
@@ -126,7 +126,7 @@ describe("run-changes tracking + revert", () => {
     const { entry } = fakeEntry(cwd);
     const abs = path.join(cwd, "d.txt");
     await fsp.writeFile(abs, "old\n");
-    trackRunToolStart(entry, "edit", { path: abs });
+    await trackRunToolStart(entry, "edit", { path: abs });
     await settle();
     await fsp.writeFile(abs, "new\n");
     trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "old\n", newText: "new\n" } }, false);
@@ -141,7 +141,7 @@ describe("run-changes tracking + revert", () => {
     const { entry } = fakeEntry(cwd);
     const abs = path.join(cwd, "t.txt");
     await fsp.writeFile(abs, "old\n");
-    trackRunToolStart(entry, "edit", { path: abs });
+    await trackRunToolStart(entry, "edit", { path: abs });
     await settle();
     await fsp.writeFile(abs, "new\n");
     trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "old\n", newText: "new\n" } }, false);
@@ -157,7 +157,7 @@ describe("run-changes tracking + revert", () => {
     const { entry } = fakeEntry(cwd);
     const abs = path.join(cwd, "s.txt");
     await fsp.writeFile(abs, "old\n");
-    trackRunToolStart(entry, "edit", { path: abs });
+    await trackRunToolStart(entry, "edit", { path: abs });
     await settle();
     await fsp.writeFile(abs, "new\n");
     trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "old\n", newText: "new\n" } }, false);
@@ -172,7 +172,7 @@ describe("run-changes tracking + revert", () => {
     const { entry, entries } = fakeEntry(cwd);
     const abs = path.join(cwd, "e.txt");
     await fsp.writeFile(abs, "same\n");
-    trackRunToolStart(entry, "edit", { path: abs });
+    await trackRunToolStart(entry, "edit", { path: abs });
     await settle();
     trackRunToolEnd(entry, "edit", { path: abs }, { details: { oldText: "same\n", newText: "same\n" } }, false);
     const emitted: Emitted[] = [];
@@ -186,12 +186,12 @@ describe("run-changes tracking + revert", () => {
     const { entry } = fakeEntry(cwd);
     const abs = path.join(cwd, "f.txt");
     await fsp.writeFile(abs, "a\n");
-    trackRunToolStart(entry, "write", { path: abs, content: "a\nb\n" });
+    await trackRunToolStart(entry, "write", { path: abs, content: "a\nb\n" });
     await settle();
     await fsp.writeFile(abs, "a\nb\n");
     trackRunToolEnd(entry, "write", { path: abs, content: "a\nb\n" }, {}, false, { added: 1, removed: 0 });
     // Second write in the same run: its pre-read must not replace the run's first before
-    trackRunToolStart(entry, "write", { path: abs, content: "a\nc\n" });
+    await trackRunToolStart(entry, "write", { path: abs, content: "a\nc\n" });
     await settle();
     await fsp.writeFile(abs, "a\nc\n");
     trackRunToolEnd(entry, "write", { path: abs, content: "a\nc\n" }, {}, false, { added: 1, removed: 1 });

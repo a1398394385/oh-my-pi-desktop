@@ -181,9 +181,15 @@ async function main(): Promise<void> {
   mainWs.sendRaw("prompt", { sessionId: created.sessionId, text: "dual-channel-probe" });
   const echo = await waitForStray(remoteWs.strayFrames, (m) => m.type === "event" && m.kind === "user_message" && m.text === "dual-channel-probe");
   assert(echo !== undefined, "远程通道收到 user_message 回显(修复前另一端永远看不到对端发的消息)");
-  await delay(400); // negative assertion window: the sender must not get its own echo
+  await delay(400);
+  // The sender-side expectation depends on the state the prompt was sent from:
+  // while the session is running, the sender drew its own optimistic bubble and
+  // the echo skips it (host/rpc/prompt.ts sends it to every OTHER socket). An
+  // idle session queues instead of drawing, so the echo reaches the sender too
+  // and the frontend dedups it by text — a requester-only echo would leave the
+  // sender without any bubble at all.
   const selfEcho = mainWs.strayFrames.find((m) => m.type === "event" && m.kind === "user_message" && m.text === "dual-channel-probe");
-  assert(selfEcho === undefined, "发送方不收到自身回显(避免与乐观气泡重复)");
+  assert(selfEcho !== undefined, "空闲首条 prompt 的发送方也收到回显(排队路径无乐观气泡, 前端按文本去重)");
 
   // --- Matrix: terminal run end notifies channels that never attached ---
   // Fresh session no other channel loaded: pool_sessions busy broadcast proves the
@@ -223,6 +229,59 @@ async function main(): Promise<void> {
   mainWs.sendRaw("reload_settings", {}); // disk re-read only: no persistence, pushes models + settings
   const settingsEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "settings");
   assert(settingsEcho !== undefined, "远程通道收到 settings 快照(主机设置不再冻结在连接时刻)");
+
+  // --- Matrix: every shared broadcast frame reaches the other channel ---
+  // scripts/check-frame-fanout.mjs lists these frames as shared state: a send that
+  // only the requester sees leaves the other end stale until a reload. Each frame
+  // below is asserted on the remote channel, so the list cannot rot unnoticed.
+  remoteWs.strayFrames.length = 0;
+
+  // approval_mode — process-wide permission mode, both channels flip the pill.
+  mainWs.sendRaw("set_approval_mode", { mode: "write" });
+  const approvalEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "approval_mode");
+  assert(approvalEcho !== undefined, "远程通道收到 approval_mode(审批模式双端同步)");
+
+  // plan_mode / computer_mode — per-session toggles, still broadcast.
+  mainWs.sendRaw("set_plan_mode", { sessionId: created.sessionId, enabled: false });
+  const planEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "plan_mode");
+  assert(planEcho !== undefined, "远程通道收到 plan_mode(计划模式双端同步)");
+
+  mainWs.sendRaw("set_computer_mode", { sessionId: created.sessionId, enabled: false });
+  const computerEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "computer_mode");
+  assert(computerEcho !== undefined, "远程通道收到 computer_mode(电脑模式双端同步)");
+
+  // cycle_model — role cycling; the "nothing to cycle" branch reports it too.
+  mainWs.sendRaw("cycle_model", { sessionId: created.sessionId });
+  const cycleEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "cycle_model");
+  assert(cycleEcho !== undefined, "远程通道收到 cycle_model(模型循环双端同步)");
+
+  // session_model — a real model switch, so the catalog has to name one.
+  mainWs.sendRaw("get_models_catalog", {});
+  const catalog = await waitForStray(mainWs.strayFrames, (m) => m.type === "models_catalog");
+  const catalogModels = (catalog?.models as Array<{ id: string; enabled: boolean }> | undefined) ?? [];
+  const modelId = catalogModels.find((m) => m.enabled)?.id;
+  assert(typeof modelId === "string", "模型目录给出可切换的模型");
+  mainWs.sendRaw("set_model", { sessionId: created.sessionId, model: modelId });
+  const modelEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "session_model" && m.sessionId === created.sessionId);
+  assert(modelEcho !== undefined, "远程通道收到 session_model(模型切换双端同步)");
+
+  // pool_sessions — the session list is global state: creating a session on one
+  // channel republishes the pool snapshot on the other.
+  const second = await mainWs.rpc<{ sessionId: string; path: string }>("create_session", { cwd }, "session_created");
+  const poolEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "pool_sessions");
+  assert(poolEcho !== undefined, "远程通道收到 pool_sessions(会话池快照双端同步)");
+
+  // session_title_changed — a rename lands on both channels.
+  mainWs.sendRaw("rename_session", { path: created.path, title: "dual-channel-title" });
+  const titleEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "session_title_changed" && m.sessionId === created.sessionId);
+  assert(titleEcho !== undefined, "远程通道收到 session_title_changed(会话标题双端同步)");
+
+  // session_unloaded — evicting a pooled session drops the slot everywhere. The
+  // first session is busy (its prompt still runs), and the host refuses to evict
+  // a busy session, so the idle second one carries the assertion.
+  mainWs.sendRaw("session_unload", { path: second.path });
+  const unloadedEcho = await waitForStray(remoteWs.strayFrames, (m) => m.type === "session_unloaded" && m.path === second.path);
+  assert(unloadedEcho !== undefined, "远程通道收到 session_unloaded(会话卸载双端同步)");
 
   remoteWs.close();
   mainWs.close();

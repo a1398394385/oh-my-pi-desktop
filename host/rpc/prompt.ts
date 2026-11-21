@@ -286,11 +286,15 @@ async function pushNewSessionCommands(ws: { send(data: string): unknown }, cwd: 
 // non-empty one, so the composer decides from this flag instead of guessing.
 export async function listFileMatches(root: string, query: string): Promise<Array<{ path: string; dir: boolean; empty?: boolean }>> {
   if (!query) return await listPrefix(root, "", "");
-  if (query.startsWith("/") || query.startsWith("~")) {
+  // Absolute-path prefix: path.isAbsolute covers POSIX "/" and the Windows spellings
+  // ("C:\...", "C:/...", "\\server\share") — a hand-rolled startsWith("/") check left
+  // every Windows absolute path in the fuzzy branch, where it never matched.
+  if (path.isAbsolute(query) || query.startsWith("~")) {
     const expanded = query.startsWith("~") ? os.homedir() + query.slice(1) : query;
-    const dirPart = query.endsWith("/") ? query : query.slice(0, query.length - path.basename(query).length);
-    const searchDir = query.endsWith("/") ? expanded : path.dirname(expanded);
-    return await listPrefix(searchDir, dirPart, query.endsWith("/") ? "" : path.basename(expanded));
+    const endsWithSep = query.endsWith("/") || query.endsWith(path.sep);
+    const dirPart = endsWithSep ? query : query.slice(0, query.length - path.basename(query).length);
+    const searchDir = endsWithSep ? expanded : path.dirname(expanded);
+    return await listPrefix(searchDir, dirPart, endsWithSep ? "" : path.basename(expanded));
   }
   if (query.includes("/")) {
     const cut = query.lastIndexOf("/") + 1;

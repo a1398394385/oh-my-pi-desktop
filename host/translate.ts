@@ -472,7 +472,7 @@ export function translateEvent(ev: any, entry: PoolEntry): UiEvent | null {
       return streamedEditPreview(ev);
     case "tool_execution_start": {
       flushAssistantDraft(entry);
-      trackRunToolStart(entry, ev.toolName, ev.args);
+      void trackRunToolStart(entry, ev.toolName, ev.args);
       // The call's final args supersede the streamed preview.
       if (ev.toolCallId) writeStreams.delete(ev.toolCallId);
       if (ev.toolName === "write" && ev.toolCallId) {

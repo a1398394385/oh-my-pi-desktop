@@ -92,21 +92,28 @@ function targetPaths(entry: PoolEntry, name: string, args: unknown): string[] {
   return out;
 }
 
-export function trackRunToolStart(entry: PoolEntry, name: string, args: unknown): void {
+export function trackRunToolStart(entry: PoolEntry, name: string, args: unknown): Promise<void> {
   const paths = targetPaths(entry, name, args);
-  if (!paths.length) return;
+  if (!paths.length) return Promise.resolve();
   let tracker = trackers.get(entry);
   if (!tracker) {
     tracker = { files: new Map() };
     trackers.set(entry, tracker);
   }
+  const reads: Promise<void>[] = [];
   for (const abs of paths) {
     if (tracker.files.has(abs)) continue; // the run's first before wins
     // The pre-read races the tool's own write (same residual race as translate.ts's
     // pendingWrites): the edit tool's oldText supersedes it where available, and a lost race
     // surfaces as before===after, which finalize drops as a no-op instead of reverting wrongly.
-    tracker.files.set(abs, { abs, touched: false, beforeRead: readSnapshot(abs), added: 0, removed: 0 });
+    const beforeRead = readSnapshot(abs);
+    reads.push(beforeRead.then(() => undefined));
+    tracker.files.set(abs, { abs, touched: false, beforeRead, added: 0, removed: 0 });
   }
+  // The returned promise settles when the pre-reads landed: a caller that has to know
+  // the "before" content (tests, or a tool that writes immediately after the start
+  // frame) can await it instead of guessing how long the read takes.
+  return Promise.all(reads).then(() => undefined);
 }
 
 // Per-file old/new text from the edit tool's result details (single-file oldText/newText or
